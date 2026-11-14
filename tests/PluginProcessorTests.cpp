@@ -61,7 +61,7 @@ TEST_CASE ("Processor reports its identity", "[processor]")
 {
     LivecutAudioProcessor processor;
 
-    CHECK (processor.getName() == "Livecut");
+    CHECK (processor.getName() == "Livecut Redux");
     CHECK_FALSE (processor.acceptsMidi());
     CHECK_FALSE (processor.producesMidi());
 }
