@@ -1,10 +1,11 @@
 # Livecut Redux
 
-Livecut Redux, by Human Being Music, is a live beat slicer. Instead of chopping
-audio into equal slices, it builds *phrases* out of *blocks* of *cuts* whose
-length and number of repeats depend on the cutting procedure, the way a jungle
-or drum & bass producer would re-edit a break. It is based on Nick Collins'
-[BBCut](https://composerprogrammer.com/bbcut2.html) library for SuperCollider.
+Livecut Redux, published by Human Being Music, is a live beat slicer. Instead
+of chopping audio into equal slices, it builds *phrases* out of *blocks* of
+*cuts* whose length and number of repeats depend on the cutting procedure, the
+way a jungle or drum & bass producer would re-edit a break. It is based on
+Nick Collins' [BBCut](https://composerprogrammer.com/bbcut2.html) library for
+SuperCollider.
 
 CutProc11, WarpCut and SQPusher come from BBCut. Bounce is new to this port.
 It cuts the way 2020s club music does: triplet bounces against a straight beat,
@@ -132,8 +133,8 @@ otherwise list it twice. Anything else called Livecut, such as the original
   (2003–2004).
 - **Nick Collins** designed the BBCut algorithms Livecut implements.
 - Livecut-GUI 0.1, a JUCE 6 fork, exposed every parameter in a GUI.
-- Livecut Redux is this project's ground-up rewrite, published by
-  **Human Being Music**.
+- **Sean Dearnaley** wrote Livecut Redux, this project's ground-up rewrite,
+  published by **Human Being Music**.
 
 ## License
 
