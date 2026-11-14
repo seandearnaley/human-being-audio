@@ -5,9 +5,11 @@
 #include "PluginProcessor.h"
 #include "ProcessorTestSupport.h"
 #include "ui/AboutSheet.h"
+#include "ui/Controls.h"
 #include "ui/LivecutLookAndFeel.h"
 #include "ui/PadArt.h"
 #include "ui/PhraseRuler.h"
+#include "ui/RangeSlider.h"
 #include "ui/Theme.h"
 #include "ui/XYPad.h"
 
@@ -15,6 +17,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <ctime>
 #include <functional>
 #include <set>
 
@@ -41,23 +44,31 @@ double contrast (juce::Colour a, juce::Colour b)
     return (lighter + 0.05) / (darker + 0.05);
 }
 
-// An image's colour, averaged over a grid of samples.
+// The colour of an image's bright card, averaged over a grid of samples. Its deep
+// card leans toward red or blue on purpose, so it is the bright card that says what colour a picture is.
 juce::Colour average (const juce::Image& image)
 {
     double red = 0.0, green = 0.0, blue = 0.0;
+    int samples = 0;
     constexpr int columns = 32, rows = 18;
 
     for (int row = 0; row < rows; ++row)
         for (int column = 0; column < columns; ++column)
         {
             const auto pixel = image.getPixelAt ((2 * column + 1) * image.getWidth() / (2 * columns), (2 * row + 1) * image.getHeight() / (2 * rows));
+
+            if (pixel.getBrightness() < 0.6f)
+                continue;
+
             red += pixel.getFloatRed();
             green += pixel.getFloatGreen();
             blue += pixel.getFloatBlue();
+            ++samples;
         }
 
-    constexpr auto samples = static_cast<double> (columns * rows);
-    return juce::Colour::fromFloatRGBA (static_cast<float> (red / samples), static_cast<float> (green / samples), static_cast<float> (blue / samples), 1.0f);
+    REQUIRE (samples > 20); // there is bright card to speak of
+    const auto count = static_cast<double> (samples);
+    return juce::Colour::fromFloatRGBA (static_cast<float> (red / count), static_cast<float> (green / count), static_cast<float> (blue / count), 1.0f);
 }
 
 // How far apart two hues are, from 0 to 0.5 of the way round the wheel.
@@ -120,7 +131,7 @@ TEST_CASE ("An open editor keeps the typeface loaded, so its fonts share one", "
 }
 
 // A program's art, drawn 404 by 248: half the size the pad shows it.
-juce::Image art (int program, const ui::ArtMotion& motion)
+static juce::Image art (int program, const ui::ArtMotion& motion)
 {
     juce::Image image (juce::Image::ARGB, 404, 248, true);
     juce::Graphics g (image);
@@ -129,7 +140,7 @@ juce::Image art (int program, const ui::ArtMotion& motion)
 }
 
 // How many of a grid of sample points differ between two pictures of the same size.
-int difference (const juce::Image& a, const juce::Image& b)
+static int difference (const juce::Image& a, const juce::Image& b)
 {
     int differing = 0;
 
@@ -151,7 +162,8 @@ TEST_CASE ("Each program has its own colour, which ink reads on, and art in that
         const auto colour = ui::programColour (program);
         colours.insert (colour.getARGB());
         CHECK (colour.isOpaque());
-        CHECK (contrast (colour, ui::palette::ink) >= 4.5); // the tab's name and the axis tags are ink on it
+        CHECK (contrast (colour, ui::palette::onColour) >= 4.5); // a playing tab's name and the axis tags are black on it
+        CHECK (contrast (colour, ui::palette::well) >= 4.5);     // a resting tab's name is the colour, on a dark tab
 
         const auto picture = art (program, {});
         CHECK (picture.getPixelAt (2, 2).isOpaque()); // it fills its area, corner to corner
@@ -175,7 +187,7 @@ TEST_CASE ("Every program's art moves with time, with both axes and at a cut", "
         CHECK (difference (still, art (program, rest)) == 0); // the same motion draws the same picture
 
         auto later = rest;
-        later.time = later.spin = 1.5f;
+        later.beat = later.spin = 1.3f;
         CHECK (difference (still, art (program, later)) > 0);
 
         auto across = rest, up = rest;
@@ -191,7 +203,63 @@ TEST_CASE ("Every program's art moves with time, with both axes and at a cut", "
     }
 }
 
-TEST_CASE ("The pad's art idles at rest, quickens while it plays, and settles after a cut", "[skin][art][pad]")
+TEST_CASE ("The pad's art keeps a slow pulse at rest, and the host's beat while it cuts", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    ui::XYPad pad (*processor.getParameterState().getParameter (livecut::ids::padX),
+                   *processor.getParameterState().getParameter (livecut::ids::padY),
+                   *processor.getParameterState().getParameter (livecut::ids::padTouch));
+    pad.setSize (840, 528);
+    const auto beatPhase = [&pad] { return pad.artMotion().beat - std::floor (pad.artMotion().beat); };
+
+    // At rest: half a beat a second.
+    pad.animate (1.0);
+    CHECK_THAT (pad.artMotion().beat, WithinAbs (0.5, 0.001));
+
+    // The host cuts at 150 beats a minute. The editor reports its place 30 times a second and the display refreshes at 60.
+    constexpr auto tempo = 2.5; // beats a second
+    auto host = 7.3;            // beats into the phrase: nowhere near the pad's own count
+    const auto run = [&] (double seconds)
+    {
+        for (int frame = 0; frame < juce::roundToInt (seconds * 60.0); ++frame)
+        {
+            if (frame % 2 == 0)
+                pad.followBeat (host);
+
+            pad.animate (1.0 / 60);
+            host += tempo / 60.0;
+        }
+    };
+
+    run (1.5); // long enough to learn the tempo and be drawn onto the beat
+    const auto phaseError = [&]
+    {
+        const auto error = static_cast<float> (host - std::floor (host)) - beatPhase();
+        return std::abs (error - std::round (error));
+    };
+    CHECK (phaseError() < 0.03f);
+
+    const auto before = pad.artMotion().beat;
+    run (2.0);
+    CHECK_THAT (pad.artMotion().beat - before, WithinAbs (2.0 * tempo, 0.05)); // it runs at the host's tempo
+    CHECK (phaseError() < 0.03f);
+
+    // The phrase starts again: the host's count jumps back, on a beat. The art doesn't flinch.
+    host -= 4.0;
+    const auto atJump = pad.artMotion().beat;
+    run (1.0);
+    CHECK_THAT (pad.artMotion().beat - atJump, WithinAbs (tempo, 0.05));
+    CHECK (phaseError() < 0.03f);
+
+    // The host stops cutting: back to the slow pulse.
+    pad.followBeat (std::nullopt);
+    const auto resting = pad.artMotion().beat;
+    pad.animate (1.0);
+    CHECK_THAT (pad.artMotion().beat - resting, WithinAbs (0.5, 0.001));
+}
+
+TEST_CASE ("A new block kicks the art, which glides after the pointer mark", "[skin][art][pad]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     LivecutAudioProcessor processor;
@@ -199,24 +267,11 @@ TEST_CASE ("The pad's art idles at rest, quickens while it plays, and settles af
     ui::XYPad pad (x, *processor.getParameterState().getParameter (livecut::ids::padY),
                    *processor.getParameterState().getParameter (livecut::ids::padTouch));
     pad.setSize (840, 528);
-
     pad.animate (1.0);
-    const auto resting = pad.artMotion().time;
-    CHECK (resting > 0.0f);
 
-    // Playing, the art's clock runs faster: more than twice as far in the same second.
-    pad.showEngaged (true);
-    for (int frame = 0; frame < 60; ++frame)
-        pad.animate (1.0 / 60);
-    const auto warming = pad.artMotion().time;
-    for (int frame = 0; frame < 60; ++frame)
-        pad.animate (1.0 / 60);
-    CHECK (pad.artMotion().time - warming > 2.0f * resting);
-
-    // A cut kicks the art, which settles in well under a second; the brake clock stands still at the kick.
-    const auto cutsBefore = pad.artMotion().cuts;
+    // The kick settles in well under a second; the braked count stands still at the kick, then runs again.
     pad.pulse();
-    CHECK (pad.artMotion().cuts == cutsBefore + 1);
+    CHECK (pad.artMotion().cuts == 1);
     CHECK_THAT (pad.artMotion().kick, WithinAbs (1.0, 0.0001));
     const auto spin = pad.artMotion().spin;
     pad.animate (1.0 / 600);
@@ -237,6 +292,38 @@ TEST_CASE ("The pad's art idles at rest, quickens while it plays, and settles af
     CHECK_THAT (pad.artMotion().x, WithinAbs (1.0, 0.001));
 }
 
+TEST_CASE ("The pad follows the host's beat only while it cuts", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessorEditor editor (processor);
+    auto* pad = dynamic_cast<ui::XYPad*> (findById (editor, "padTouch"));
+    REQUIRE (pad != nullptr);
+    auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+    const auto beatsInASecond = [&]
+    {
+        const auto before = pad->artMotion().beat;
+        for (int frame = 0; frame < 60; ++frame)
+        {
+            display.position.store (display.position.load() + 16.0 * 0.75 / 60.0); // three bars every four seconds: 180 beats a minute
+            editor.refreshDisplay();
+            pad->animate (1.0 / 60);
+        }
+        return pad->artMotion().beat - before;
+    };
+
+    // Stopped: the pad's own slow pulse, whatever the display's stale position says.
+    CHECK_THAT (beatsInASecond(), WithinAbs (0.5, 0.01));
+
+    // Cutting, sixteen units to the bar: four beats to those sixteen units.
+    display.status.store (livecut::DisplayState::Status::cutting);
+    display.phraseBars.store (4);
+    display.unitsPerBar.store (16);
+    display.padEngaged.store (true);
+    beatsInASecond();
+    CHECK_THAT (beatsInASecond(), WithinAbs (3.0, 0.1));
+}
+
 TEST_CASE ("The scissors are cut from the accent colour, and open", "[skin][art]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -249,7 +336,7 @@ TEST_CASE ("The scissors are cut from the accent colour, and open", "[skin][art]
     };
 
     const auto shut = draw (0.0f), open = draw (1.0f);
-    CHECK (shut.getPixelAt (4, 4).isTransparent()); // they lie on the paper, with nothing behind them
+    CHECK (shut.getPixelAt (4, 4).isTransparent()); // they lie on the sheet, with nothing behind them
     CHECK (difference (shut, open) > 20);
 
     int handles = 0;
@@ -681,6 +768,249 @@ TEST_CASE ("A screen reader meets the pad surface in reading order", "[skin][pad
     CHECK_FALSE (order.contains ("closeAbout"));
 }
 
+TEST_CASE ("The pad surface is laid out on one even grid", "[skin][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessorEditor editor (processor);
+    editor.refreshDisplay();
+    const auto in = [&editor] (const char* id)
+    {
+        auto* component = findById (editor, id);
+        REQUIRE (component != nullptr);
+        return editor.getLocalArea (component, component->getLocalBounds());
+    };
+    constexpr int margin = 20;
+    const auto width = editor.getWidth(), height = editor.getHeight();
+
+    // The header: the wordmark and the surface switch are a pair, with the tape centred between them on one line.
+    const auto wordmark = in ("about"), surface = in ("surface");
+    const auto tape = editor.getLocalArea (findControl<ui::PhraseRuler> (editor), findControl<ui::PhraseRuler> (editor)->getLocalBounds());
+    CHECK (wordmark.getX() == margin);
+    CHECK (surface.getRight() == width - margin);
+    CHECK (wordmark.getWidth() == surface.getWidth());
+    CHECK (tape.getCentreX() == width / 2);
+    CHECK (tape.getX() - wordmark.getRight() == surface.getX() - tape.getRight());
+    CHECK (wordmark.getCentreY() == tape.getCentreY());
+    CHECK (surface.getCentreY() == tape.getCentreY());
+
+    // The tabs and the sheet run from margin to margin, and the art has the same rail on every side.
+    const auto sheet = in ("padTouch");
+    auto* pad = dynamic_cast<ui::XYPad*> (findById (editor, "padTouch"));
+    const auto art = pad->padBounds().toNearestInt();
+    CHECK (in ("program0").getX() == margin);
+    CHECK (in ("program7").getRight() == width - margin);
+    CHECK (in ("program0").getBottom() == sheet.getY());
+    CHECK (sheet.getX() == margin);
+    CHECK (sheet.getRight() == width - margin);
+    CHECK (art.getX() == art.getY());
+    CHECK (art.getX() == pad->getWidth() - art.getRight());
+    CHECK (art.getX() == pad->getHeight() - art.getBottom());
+
+    // The bottom row: one centre line, even gaps, and the same margin beneath it as beside it.
+    const auto hold = in ("padHold"), straight = in ("padStraight"), quantize = in ("padQuantize"), mix = in ("padMix");
+    CHECK (hold.getX() == margin);
+    CHECK (mix.getRight() == width - margin);
+    CHECK (mix.getBottom() == height - margin);
+    CHECK (straight.getX() - hold.getRight() == quantize.getX() - straight.getRight());
+    for (const auto& control : { straight, quantize, mix })
+        CHECK (control.getCentreY() == hold.getCentreY());
+    CHECK (hold.getY() - sheet.getBottom() == margin);
+
+    // Mix is on one line: its name, its slider and its value share that centre line too.
+    auto* mixRow = findById (editor, "padMix");
+    for (auto* child : mixRow->getChildren())
+        CHECK (editor.getLocalArea (child, child->getLocalBounds()).getCentreY() == hold.getCentreY());
+}
+
+TEST_CASE ("The wordmark makes its cut again at each new block", "[skin][wordmark]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    ui::Wordmark wordmark;
+    wordmark.setSize (96, 36);
+
+    // How many pixels differ between two pictures of the wordmark, over the columns from `from` up to `to`.
+    const auto changed = [] (const juce::Image& a, const juce::Image& b, int from, int to)
+    {
+        int count = 0;
+
+        for (int x = from; x < to; ++x)
+            for (int y = 0; y < a.getHeight(); ++y)
+                count += a.getPixelAt (x, y) != b.getPixelAt (x, y) ? 1 : 0;
+
+        return count;
+    };
+    const auto resting = snapshot (wordmark);
+    const auto width = resting.getWidth();
+
+    // CUT drops under the blade while LIVE and Redux stay put, and then it springs back.
+    wordmark.cut();
+    const auto dropped = snapshot (wordmark);
+    CHECK (changed (resting, dropped, 0, width / 4) == 0);
+    CHECK (changed (resting, dropped, width / 2, width) > 40);
+    wordmark.animate (0.1);
+    const auto rising = snapshot (wordmark);
+    CHECK (changed (resting, rising, width / 2, width) > 0);
+    CHECK (changed (dropped, rising, width / 2, width) > 0);
+    wordmark.animate (1.0);
+    CHECK (changed (resting, snapshot (wordmark), 0, width) == 0);
+
+    // In the editor it follows the tape: a cut for each block that starts, and none for the one it opened on.
+    LivecutAudioProcessor processor;
+    auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+    display.status.store (livecut::DisplayState::Status::cutting);
+    display.phraseBars.store (4);
+    display.unitsPerBar.store (8);
+    display.blockStart.store (8.0);
+    LivecutAudioProcessorEditor editor (processor);
+    auto* mark = dynamic_cast<ui::Wordmark*> (findById (editor, "about"));
+    REQUIRE (mark != nullptr);
+    editor.refreshDisplay();
+    CHECK_FALSE (mark->isCutting());
+
+    display.blockStart.store (12.0);
+    editor.refreshDisplay();
+    CHECK (mark->isCutting());
+    mark->animate (1.0);
+    editor.refreshDisplay(); // the same block, seen again
+    CHECK_FALSE (mark->isCutting());
+
+    display.status.store (livecut::DisplayState::Status::waitingForHost);
+    display.blockStart.store (16.0);
+    editor.refreshDisplay();
+    CHECK_FALSE (mark->isCutting());
+}
+
+TEST_CASE ("A slider's thumb travels from one end of its row to the other", "[skin][classic]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessorEditor editor (processor);
+
+    // At its ends the thumb's edge meets the row's, where the caption starts and the value stops, whatever the row's height.
+    for (const auto* id : { "wet", "seed", "resonanceRootHz", "padMix" })
+    {
+        INFO (id);
+        auto* row = findById (editor, id);
+        REQUIRE (row != nullptr);
+        auto* slider = findControl<juce::Slider> (*row);
+        REQUIRE (slider != nullptr);
+        const auto radius = static_cast<double> (slider->getLookAndFeel().getSliderThumbRadius (*slider));
+        CHECK_THAT (slider->getPositionOfValue (slider->getMinimum()), WithinAbs (radius, 0.01));
+        CHECK_THAT (slider->getPositionOfValue (slider->getMaximum()), WithinAbs (slider->getWidth() - radius, 0.01));
+    }
+}
+
+TEST_CASE ("The Classic pages are laid out on one grid", "[skin][classic]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    useClassicSurface (processor);
+    LivecutAudioProcessorEditor editor (processor);
+    editor.refreshDisplay();
+    constexpr int margin = 20, gap = 12, padding = 12, rowPadding = 8, sliderRow = 40;
+    const auto width = editor.getWidth(), height = editor.getHeight();
+    const auto in = [&editor] (juce::Component& component) { return editor.getLocalArea (&component, component.getLocalBounds()); };
+    const auto at = [&] (const char* id)
+    {
+        auto* component = findById (editor, id);
+        REQUIRE (component != nullptr);
+        return in (*component);
+    };
+
+    // One of `count` equal columns between the margins, `gap` apart.
+    const auto column = [&] (int index, int count)
+    {
+        const auto each = (width - 2 * margin - (count - 1) * gap) / count;
+        return juce::Range<int>::withStartAndLength (margin + index * (each + gap), each);
+    };
+    const auto across = [] (juce::Rectangle<int> bounds) { return bounds.getHorizontalRange(); };
+
+    // Four bands, a margin apart and a margin from every edge: the header, the tape, a page of cards and the strip
+    // of controls that every page shares.
+    const auto wordmark = at ("about"), surface = at ("surface"), tape = in (*findControl<ui::PhraseRuler> (editor));
+    const auto page = at ("impactPage");
+    CHECK (wordmark.getPosition() == juce::Point<int> (margin, margin));
+    CHECK (surface.getRight() == width - margin);
+    CHECK (across (tape) == juce::Range<int> (margin, width - margin));
+    CHECK (tape.getY() - wordmark.getBottom() == margin);
+    CHECK (across (page) == juce::Range<int> (margin, width - margin));
+    CHECK (page.getY() - tape.getBottom() == margin);
+    CHECK (at ("wet").getY() - page.getBottom() == margin);
+    CHECK (at ("swing").getBottom() == height - margin);
+    CHECK (at ("fracturePage") == page);
+    CHECK (at ("resonancePage") == page);
+
+    // The header's groups share its centre line: the tabs evenly spaced, then the procedures, then the surface switch.
+    const std::array tabs { "patternTab", "recutTab", "impactTab", "fractureTab", "resonanceTab" };
+    for (const auto* id : { "patternTab", "recutTab", "impactTab", "fractureTab", "resonanceTab", "procedure", "surface" })
+    {
+        INFO (id);
+        CHECK (at (id).getCentreY() == wordmark.getCentreY());
+    }
+    for (std::size_t tab = 2; tab < tabs.size(); ++tab)
+        CHECK (at (tabs[tab]).getX() - at (tabs[tab - 1]).getRight() == at (tabs[1]).getX() - at (tabs[0]).getRight());
+    CHECK (at ("patternTab").getX() >= wordmark.getRight());
+    CHECK (at ("procedure").getX() - at ("resonanceTab").getRight() == gap);
+    CHECK (surface.getX() - at ("procedure").getRight() == gap);
+
+    // Every slider on every page fills a card's column, in thirds or in halves, and they are all one height.
+    const std::function<void (juce::Component&)> checkSliders = [&] (juce::Component& component)
+    {
+        if (! component.isVisible())
+            return;
+
+        if (dynamic_cast<ui::SliderRow*> (&component) != nullptr || dynamic_cast<ui::RangeSlider*> (&component) != nullptr)
+        {
+            INFO (component.getComponentID());
+            const auto bounds = in (component);
+            CHECK (bounds.getHeight() == sliderRow);
+
+            if (bounds.getY() >= page.getBottom())
+                return; // the strip's sliders, below
+
+            auto fills = false;
+            for (const auto count : { 2, 3 })
+                for (int index = 0; index < count; ++index)
+                    fills = fills || across (bounds) == column (index, count).expanded (-padding);
+            CHECK (fills);
+            CHECK (page.contains (bounds));
+            return;
+        }
+
+        for (auto* child : component.getChildren())
+            checkSliders (*child);
+    };
+
+    for (const auto* tab : tabs)
+    {
+        INFO (tab);
+        dynamic_cast<juce::TextButton*> (findById (editor, tab))->onClick();
+        checkSliders (editor);
+    }
+
+    // On Pattern and Recut the cards end where the page does.
+    CHECK (at ("minDelay,maxDelay").getBottom() + rowPadding == page.getBottom());
+
+    // The strip: four sliders in the left half, and capture and hold in the right, each with its status beside it.
+    const auto left = column (0, 2), right = column (1, 2);
+    CHECK (at ("wet").getX() == left.getStart());
+    CHECK (at ("outputTrim").getRight() == left.getEnd());
+    CHECK (at ("wet").getWidth() == at ("outputTrim").getWidth());
+    CHECK (at ("outputTrim").getX() - at ("wet").getRight() == gap);
+    CHECK (across (at ("swing")) == across (at ("wet")));
+    CHECK (across (at ("accent")) == across (at ("outputTrim")));
+    CHECK (at ("capture").getX() == right.getStart());
+    CHECK (at ("saveCapture").getRight() == right.getEnd());
+    CHECK (at ("capture").getWidth() == at ("saveCapture").getWidth());
+    CHECK (at ("capture").getCentreY() == at ("wet").getCentreY());
+    CHECK (at ("captureStatus").getX() == right.getStart());
+    CHECK (at ("hold").getX() == right.getStart());
+    CHECK (at ("hold").getCentreY() == at ("swing").getCentreY());
+    CHECK (at ("holdStatus").getCentreY() == at ("hold").getCentreY());
+    CHECK (at ("holdStatus").getRight() == right.getEnd());
+}
+
 // Hidden: run `LIVECUT_SCREENSHOT_DIR=<dir> LivecutTests "[.icon]"` to draw the app icon to
 // icon.png in that directory. assets/icon.png is a copy of it.
 TEST_CASE ("Draw the app icon", "[.icon]")
@@ -691,14 +1021,14 @@ TEST_CASE ("Draw the app icon", "[.icon]")
     // macOS icons sit in an 824-point rounded square on a 1024-point canvas.
     juce::Image icon (juce::Image::ARGB, 1024, 1024, true);
     juce::Graphics g (icon);
-    const auto paper = juce::Rectangle<float> (100.0f, 100.0f, 824.0f, 824.0f);
+    const auto square = juce::Rectangle<float> (100.0f, 100.0f, 824.0f, 824.0f);
     juce::Path plate;
-    plate.addRoundedRectangle (paper, 186.0f);
+    plate.addRoundedRectangle (square, 186.0f);
     juce::DropShadow (juce::Colours::black.withAlpha (0.35f), 22, { 0, 12 }).drawForPath (g, plate);
-    g.setColour (ui::palette::paper);
+    g.setColour (ui::palette::backdrop);
     g.fillPath (plate);
     g.reduceClipRegion (plate);
-    ui::drawScissors (g, paper.reduced (70.0f), 0.8f);
+    ui::drawScissors (g, square.reduced (70.0f), 0.8f);
 
     juce::FileOutputStream stream (directory.getChildFile ("icon.png"));
     REQUIRE (stream.openedOk());
@@ -719,7 +1049,7 @@ TEST_CASE ("Time each program's art", "[.benchmark]")
     const auto motionAt = [] (int frame)
     {
         ui::ArtMotion motion;
-        motion.time = motion.spin = static_cast<float> (frame) / 60.0f;
+        motion.beat = motion.spin = static_cast<float> (frame) / 30.0f;
         motion.x = motion.y = 1.0f;
         motion.kick = static_cast<float> (frame % 30) / 30.0f;
         motion.cuts = frame / 30;
@@ -727,10 +1057,11 @@ TEST_CASE ("Time each program's art", "[.benchmark]")
     };
     const auto time = [&] (auto&& drawFrame)
     {
-        const auto start = juce::Time::getMillisecondCounterHiRes();
+        // Processor time, not the wall clock, so a busy machine doesn't slow the answer.
+        const auto start = std::clock();
         for (int frame = 0; frame < frames; ++frame)
             drawFrame (frame);
-        return (juce::Time::getMillisecondCounterHiRes() - start) / frames;
+        return 1000.0 * static_cast<double> (std::clock() - start) / CLOCKS_PER_SEC / frames;
     };
 
     juce::Image screen (juce::Image::ARGB, 1616, 992, true, juce::NativeImageType());

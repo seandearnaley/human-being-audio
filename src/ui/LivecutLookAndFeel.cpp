@@ -24,7 +24,7 @@ juce::TextLayout tooltipLayout (const juce::String& text)
 {
     juce::AttributedString string;
     string.setJustification (juce::Justification::centredLeft);
-    string.append (text, uiFont (13.0f), palette::paper);
+    string.append (text, uiFont (13.0f), palette::backdrop);
     juce::TextLayout layout;
     layout.createLayout (string, tooltipWidth);
     return layout;
@@ -35,20 +35,20 @@ LivecutLookAndFeel::LivecutLookAndFeel()
 {
     using namespace palette;
 
-    setColour (juce::ResizableWindow::backgroundColourId, paper);
+    setColour (juce::ResizableWindow::backgroundColourId, backdrop);
     setColour (juce::Label::textColourId, ink);
     setColour (juce::Slider::textBoxTextColourId, ink);
-    setColour (juce::ComboBox::backgroundColourId, paper);
+    setColour (juce::ComboBox::backgroundColourId, backdrop);
     setColour (juce::ComboBox::textColourId, ink);
     setColour (juce::ComboBox::outlineColourId, rule);
     setColour (juce::ComboBox::arrowColourId, ink);
-    setColour (juce::PopupMenu::backgroundColourId, paper);
+    setColour (juce::PopupMenu::backgroundColourId, well);
     setColour (juce::PopupMenu::textColourId, ink);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, ink);
-    setColour (juce::PopupMenu::highlightedTextColourId, paper);
+    setColour (juce::PopupMenu::highlightedTextColourId, backdrop);
     setColour (juce::ToggleButton::textColourId, ink);
     setColour (juce::TextButton::textColourOffId, ink);
-    setColour (juce::TextButton::textColourOnId, paper);
+    setColour (juce::TextButton::textColourOnId, backdrop);
 }
 
 void LivecutLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -101,14 +101,14 @@ int LivecutLookAndFeel::getSliderThumbRadius (juce::Slider&)
 
 void LivecutLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
 {
-    // A switch: its knob slides right and the track fills with ink when on.
+    // A switch: its knob slides right and the track fills with white when on.
     const auto bounds = button.getLocalBounds().toFloat();
     const auto track = juce::Rectangle<float> (30.0f, 18.0f).withCentre ({ bounds.getX() + 15.0f, bounds.getCentreY() });
     const auto on = button.getToggleState();
 
     g.setColour (on ? palette::ink : palette::rule.withMultipliedAlpha (highlighted ? 1.6f : 1.0f));
     g.fillRoundedRectangle (track, track.getHeight() * 0.5f);
-    g.setColour (palette::paper);
+    g.setColour (on ? palette::backdrop : palette::inkMuted);
     g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre ({ on ? track.getRight() - 9.0f : track.getX() + 9.0f, track.getCentreY() }));
 
     g.setColour (palette::ink);
@@ -121,7 +121,7 @@ void LivecutLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
 
 void LivecutLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&, bool highlighted, bool down)
 {
-    // A pill that fills with ink when chosen. A button joined to its
+    // A pill that fills with white when chosen. A button joined to its
     // neighbours is a segment of their shared pill, which the group outlines.
     const auto segment = button.getConnectedEdgeFlags() != 0;
     const auto bounds = button.getLocalBounds().toFloat().reduced (segment ? 3.0f : 0.75f);
@@ -154,7 +154,7 @@ void LivecutLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
 void LivecutLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
 {
     g.setFont (getTextButtonFont (button, button.getHeight()));
-    g.setColour (button.getToggleState() ? palette::paper : palette::ink);
+    g.setColour (button.getToggleState() ? palette::backdrop : palette::ink);
     g.drawText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred);
 }
 

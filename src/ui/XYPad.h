@@ -7,6 +7,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <optional>
+
 namespace livecut::ui
 {
 
@@ -16,9 +18,9 @@ namespace livecut::ui
 // parameters at once, with the mouse button as the third. Pressing sets Pad Touch and letting go clears it, and the X and Y
 // gestures open and close together, so a host records one drag as one
 // automation pass on each. Each axis has a tag in a corner of the art, naming
-// it and giving its value, and a native slider along the art's edge, under a
-// marker that follows the pointer mark, for precise keyboard and
-// screen-reader editing.
+// it and giving its value. Markers on all four sides follow the pointer
+// mark; under the bottom and right ones are native sliders, for precise
+// keyboard and screen-reader editing.
 class XYPad final : public juce::Component, private juce::Timer
 {
 public:
@@ -37,9 +39,13 @@ public:
     // A new block of cuts: a ring leaves the pointer mark and the art answers.
     void pulse();
 
+    // Where the host is, in beats, while it has a beat to keep; nothing when it
+    // hasn't. The art keeps time with it, and with a slow pulse of its own otherwise.
+    void followBeat (std::optional<double> beats);
+
     // The display refreshed at this time, in seconds. Moves the pad on if a
-    // frame is due, 30 times a second at rest and 60 while anything on it is
-    // moving, and says whether it did.
+    // frame is due, 30 times a second at rest and 60 while it plays or
+    // anything on it is changing, and says whether it did.
     bool displayRefreshed (double now);
 
     // Moves everything that moves on by this many seconds: the art, a change of program and the ring.
@@ -135,7 +141,10 @@ private:
     int program = 0, programBefore = 0;
     float change = 1.0f;     // how far the sheet has changed from the program before: 1 is done
     float ring = 1.0f;       // how far the ring has travelled from the pointer mark: 1 is gone
-    float liveliness = 0.0f; // eases to 1 while the pad plays, and sets the art's pace
+    std::optional<double> hostBeat; // where the host last was, in beats
+    double hostBeatAt = 0.0;        // and when, on the pad's own clock
+    double runSeconds = 0.0;        // that clock: how long the pad has been animated for
+    float tempo = 2.0f;             // the host's, in beats a second, as last measured
     bool artStale = true;    // whether the art has moved since it was last drawn
     bool dragging = false, fineDragging = false, touching = false, engaged = false;
 

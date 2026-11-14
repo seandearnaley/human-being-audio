@@ -9,8 +9,8 @@
 namespace livecut::ui
 {
 
-// The standard controls, drawn in ink on paper: sliders with a round thumb,
-// switches, and buttons as pills that fill with ink when chosen.
+// The standard controls, drawn in white on black: sliders with a round thumb,
+// switches, and buttons as pills that fill with white when chosen.
 class LivecutLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:

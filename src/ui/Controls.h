@@ -11,11 +11,17 @@ namespace livecut::ui
 
 // Each control's component ID is its parameter's ID.
 
-// A caption, a horizontal slider and the parameter's value as text.
+// A caption, a horizontal slider and the parameter's value as text: stacked,
+// with the slider beneath the words, or all on one line.
 class SliderRow final : public juce::Component
 {
 public:
-    SliderRow (juce::RangedAudioParameter& parameter, const juce::String& caption);
+    enum class Layout { stacked, oneLine };
+
+    // The line a stacked row gives its caption and value, above the slider.
+    static constexpr int captionHeight = 18;
+
+    SliderRow (juce::RangedAudioParameter& parameter, const juce::String& caption, Layout layout = Layout::stacked);
 
     void resized() override;
     void setTooltip (const juce::String& text) { slider.setTooltip (text); caption.setTooltip (text); readout.setTooltip (text); }
@@ -24,6 +30,7 @@ private:
     void showValue();
 
     juce::RangedAudioParameter& parameter;
+    Layout layout;
     juce::Label caption, readout;
     juce::Slider slider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
     juce::SliderParameterAttachment attachment;

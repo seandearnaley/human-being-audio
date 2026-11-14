@@ -99,26 +99,19 @@ void PhraseRuler::setAccent (juce::Colour colour)
 
 void PhraseRuler::paint (juce::Graphics& g)
 {
-    constexpr auto tapeHeight = 26.0f, lineHeight = 22.0f, lineGap = 10.0f, barGap = 4.0f;
-    auto area = getLocalBounds().toFloat();
-    const auto hasPhrase = current.status == DisplayState::Status::cutting && current.phraseBars >= 1 && current.unitsPerBar >= 1;
-    const auto roomForLine = area.getHeight() >= tapeHeight + lineHeight;
+    constexpr auto tapeHeight = 26.0f, barGap = 4.0f;
+    const auto area = getLocalBounds().toFloat();
 
-    if (roomForLine || ! hasPhrase)
+    // With no phrase to show, the line takes the tape's place.
+    if (current.status != DisplayState::Status::cutting || current.phraseBars < 1 || current.unitsPerBar < 1)
     {
         g.setColour (palette::ink);
         g.setFont (uiFont (14.0f, weight::medium));
-        g.drawText (headline.isNotEmpty() ? headline : describe (current),
-                    roomForLine ? area.removeFromTop (lineHeight) : area, juce::Justification::centredLeft);
+        g.drawText (headline.isNotEmpty() ? headline : describe (current), area, juce::Justification::centredLeft);
+        return;
     }
 
-    if (! hasPhrase)
-        return;
-
-    if (roomForLine)
-        area.removeFromTop (lineGap);
-
-    const auto tape = roomForLine ? area.removeFromTop (tapeHeight) : area.withSizeKeepingCentre (area.getWidth(), tapeHeight);
+    const auto tape = area.withSizeKeepingCentre (area.getWidth(), tapeHeight);
     const auto barWidth = (tape.getWidth() - barGap * static_cast<float> (current.phraseBars - 1)) / static_cast<float> (current.phraseBars);
     const auto units = static_cast<double> (current.unitsPerBar);
 

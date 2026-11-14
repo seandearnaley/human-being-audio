@@ -20,21 +20,24 @@ namespace livecut::ui
 class PadPage final : public juce::Component
 {
 public:
-    // A tab of coloured card, like a divider in a ring binder: pale until its
-    // program plays, when it stands taller in its full colour and runs into
-    // the pad's sheet. While it waits for the grid it pulses.
+    // A tab like a divider in a ring binder: dark, with its name in its
+    // program's colour, until that program plays, when it stands taller in
+    // the colour itself and runs into the pad's sheet. While it waits for the
+    // grid it lights on every beat.
     class ProgramButton final : public juce::Button
     {
     public:
         ProgramButton (const juce::String& name, juce::Colour colour);
 
-        void setPending (bool pending);
+        // `beat` is the pad's beat count: a waiting tab is brightest on each beat.
+        void setPending (bool pending, float beat);
         bool isPending() const { return pending; }
 
         void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
     private:
         juce::Colour colour;
+        float lit = 0.0f; // how brightly a waiting tab is lit just now
         bool pending = false;
     };
 

@@ -12,9 +12,8 @@ namespace livecut::ui
 
 // The phrase as a strip of tape, cut into its bars: the units marked along
 // it, the block being cut in the accent colour, and the playhead. Until there
-// is a phrase to show, a line of status text takes the tape's place; given
-// room above the tape, the line stays there. Shown or not, the line is the
-// ruler's description, so a screen reader can always read it.
+// is a phrase to show, a line of status text takes the tape's place. Shown or
+// not, the line is the ruler's description, so a screen reader can always read it.
 class PhraseRuler final : public juce::Component
 {
 public:

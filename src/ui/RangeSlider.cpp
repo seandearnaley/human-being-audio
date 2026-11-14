@@ -2,6 +2,7 @@
 
 #include "ui/RangeSlider.h"
 
+#include "ui/Controls.h"
 #include "ui/LivecutLookAndFeel.h"
 
 #include <cmath>
@@ -126,7 +127,7 @@ void RangeSlider::resized()
 {
     // Caption and values on one line, the slider full width beneath.
     auto area = getLocalBounds();
-    auto top = area.removeFromTop (18);
+    auto top = area.removeFromTop (SliderRow::captionHeight);
     caption.setBounds (top.removeFromLeft (top.getWidth() / 3));
     readout.setBounds (top);
     slider.setBounds (area);

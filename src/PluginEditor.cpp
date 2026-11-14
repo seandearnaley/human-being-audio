@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace ids = livecut::ids;
@@ -18,12 +19,30 @@ namespace ui = livecut::ui;
 
 namespace
 {
-constexpr int margin = 20;
-constexpr int gap = 10;
-constexpr int sectionPadding = 12;
+// The Classic surface's grid. It is four bands, a margin apart and a margin from every edge: the header, the
+// tape, a page of cards, and a strip of controls that every page shares. Cards sit in equal columns.
+constexpr int margin = 20;         // around the editor, and between its bands
+constexpr int gap = 12;            // between cards, and between the groups in a band
+constexpr int sectionPadding = 12; // inside a card, at its sides
+constexpr int rowPadding = 8;      // and above and below its rows, which carry space of their own
+constexpr int rowHeight = 28;      // a card's title, a switch, a drop-down or a button
 constexpr int sliderRowHeight = 40;
-constexpr int choiceRowHeight = 28;
 constexpr int rowGap = 4;
+constexpr int noteHeight = 18;     // a line of status or advice
+constexpr float cardRadius = 8.0f;
+
+constexpr int headerHeight = 36, headerControlHeight = 30;
+constexpr int wordmarkWidth = 96;
+constexpr int tabPadding = 10, tabGap = 4;
+constexpr int procedureWidth = 84; // each procedure's segment of the switch
+constexpr int tapeHeight = 32;
+constexpr int holdWidth = 126;
+constexpr int stripHeight = sliderRowHeight + rowHeight + sliderRowHeight;
+constexpr int pageTop = margin + headerHeight + margin + tapeHeight + margin;
+constexpr int pageHeight = LivecutAudioProcessorEditor::baseHeight - pageTop - margin - stripHeight - margin;
+
+// The card across the top of the Impact and Fracture pages: a row of controls over a line of advice.
+constexpr int sharedCardHeight = 2 * rowPadding + sliderRowHeight + rowGap + noteHeight;
 
 struct ProcedureInfo
 {
@@ -38,7 +57,46 @@ constexpr std::array procedures {
     ProcedureInfo { "Bounce", "Straight hits and triplet bounces, a ratchet roll that climbs to close each phrase, and the odd halftime bar" },
 };
 
-// Stacks rows down a column, top to bottom.
+// One of `count` equal columns across `area`, `gap` apart.
+juce::Rectangle<int> columnOf (juce::Rectangle<int> area, int index, int count)
+{
+    const auto width = (area.getWidth() - (count - 1) * gap) / count;
+    return area.withX (area.getX() + index * (width + gap)).withWidth (width);
+}
+
+// What a card holds, inside its padding.
+juce::Rectangle<int> inside (juce::Rectangle<int> card)
+{
+    return card.reduced (sectionPadding, rowPadding);
+}
+
+void fillCard (juce::Graphics& g, juce::Rectangle<int> card)
+{
+    g.setColour (ui::palette::well);
+    g.fillRoundedRectangle (card.toFloat(), cardRadius);
+}
+
+// A card's title, on its first row.
+void drawTitle (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> card)
+{
+    g.setColour (ui::palette::ink);
+    g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
+    g.drawText (text, inside (card).removeFromTop (rowHeight), juce::Justification::centredLeft);
+}
+
+// A line or two of status or advice: small and muted.
+void makeNote (juce::Label& label, const char* id, const char* title, juce::Justification justification = juce::Justification::centredLeft)
+{
+    label.setComponentID (id);
+    label.setTitle (title);
+    label.setFont (ui::uiFont (12.0f));
+    label.setColour (juce::Label::textColourId, ui::palette::inkMuted);
+    label.setJustificationType (justification);
+    label.setBorderSize ({});
+    label.setMinimumHorizontalScale (1.0f);
+}
+
+// Stacks rows down a card, top to bottom.
 struct Column
 {
     juce::Rectangle<int> area;
@@ -48,37 +106,76 @@ struct Column
         component.setBounds (area.removeFromTop (height));
         area.removeFromTop (rowGap);
     }
+
+    // Leaves a row for something painted there, such as the card's title.
+    void skip (int height) { area.removeFromTop (height + rowGap); }
 };
+
+// The three cards across a page, each ready to stack rows inside its padding.
+std::array<Column, 3> cardColumns (juce::Rectangle<int> area)
+{
+    return { Column { inside (columnOf (area, 0, 3)) },
+             Column { inside (columnOf (area, 1, 3)) },
+             Column { inside (columnOf (area, 2, 3)) } };
+}
+
+// One parameter's control on a page of cards, and the card it stacks in: -1 is the card across the page's top.
+struct Row
+{
+    std::unique_ptr<juce::Component> control;
+    int column, height;
+};
+
+// A drop-down for a choice, a switch for a boolean and a slider for anything else.
+Row makeRow (juce::AudioProcessorValueTreeState& state, const char* id, const char* caption, const char* help,
+             int column, const char* choiceCaption = "")
+{
+    auto* parameter = state.getParameter (id);
+    jassert (parameter != nullptr);
+    std::unique_ptr<juce::Component> control;
+    auto height = rowHeight;
+
+    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (parameter))
+    {
+        control = std::make_unique<ui::ChoiceRow> (*choice, choiceCaption);
+    }
+    else if (parameter->isBoolean())
+    {
+        control = std::make_unique<ui::PowerSwitch> (*parameter, caption);
+    }
+    else
+    {
+        control = std::make_unique<ui::SliderRow> (*parameter, caption);
+        height = sliderRowHeight;
+    }
+
+    control->setTitle (parameter->getName (80));
+
+    for (auto* child : control->getChildren())
+    {
+        child->setTitle (parameter->getName (80));
+
+        if (auto* tooltip = dynamic_cast<juce::SettableTooltipClient*> (child))
+            tooltip->setTooltip (help);
+    }
+
+    return { std::move (control), column, height };
+}
 } // namespace
 
 namespace
 {
-// Dedicated page keeps the existing Pattern and Recut rows at their original size.
+// The Impact effects: the envelope they share across the top, and a card for each.
 class ImpactPage final : public juce::Component
 {
 public:
     explicit ImpactPage (juce::AudioProcessorValueTreeState& state)
     {
-        const auto add = [&] (const char* id, const char* caption, const char* help, int column)
+        setComponentID ("impactPage");
+        const auto add = [&] (const char* id, const char* caption, const char* tip, int column)
         {
-            auto* parameter = state.getParameter (id);
-            jassert (parameter != nullptr);
-            std::unique_ptr<juce::Component> control;
-            if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (parameter))
-                control = std::make_unique<ui::ChoiceRow> (*choice, "");
-            else if (parameter->isBoolean())
-                control = std::make_unique<ui::PowerSwitch> (*parameter, caption);
-            else
-                control = std::make_unique<ui::SliderRow> (*parameter, caption);
-            control->setTitle (parameter->getName (80));
-            for (auto* child : control->getChildren())
-            {
-                child->setTitle (parameter->getName (80));
-                if (auto* tooltip = dynamic_cast<juce::SettableTooltipClient*> (child))
-                    tooltip->setTooltip (help);
-            }
-            addAndMakeVisible (*control);
-            rows.push_back ({ std::move (control), column, parameter->isBoolean() ? 26 : dynamic_cast<juce::AudioParameterChoice*> (parameter) != nullptr ? 28 : 35 });
+            rows.push_back (makeRow (state, id, caption, tip, column));
+            addAndMakeVisible (*rows.back().control);
         };
         add (ids::impactAttackMs, "Env attack", "Shared cut envelope attack, 0 to 25 ms. Restarts on each cut/repeat.", -1);
         add (ids::impactDecayMs, "Env decay", "Shared cut envelope decay to -60 dB, 5 to 1000 ms.", -1);
@@ -103,48 +200,48 @@ public:
         add (ids::impactTransientSustainDb, "Sustain", "Body gain, -18 to +18 dB. Attack and sustain both 0 dB are neutral.", 2);
         add (ids::impactTransientTimeMs, "Response", "Stereo-linked detector response, 10 to 200 ms.", 2);
         add (ids::impactTransientMix, "Transient mix", "Transient effect amount; 0% is neutral after the gate ramp settles.", 2);
-        help.setComponentID ("impactHelp");
-        help.setTitle ("Impact timing and signal path");
+        makeNote (help, "impactHelp", "Impact timing and signal path");
         help.setText ("Next planned block  |  2 ms FX gates  |  Filter > Drive > Transient", juce::dontSendNotification);
-        help.setFont (ui::uiFont (12.0f));
-        help.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-        help.setBorderSize ({});
         addAndMakeVisible (help);
     }
 
     void resized() override
     {
-        const auto width = (getWidth() - 2 * gap) / 3;
-        std::array<int, 3> tops { 94, 94, 94 };
-        int shared = 0;
+        auto area = getLocalBounds();
+        auto shared = inside (area.removeFromTop (sharedCardHeight));
+        area.removeFromTop (gap);
+        auto columns = cardColumns (area);
+        help.setBounds (shared.removeFromBottom (noteHeight));
+
+        // Across the top the envelope's two sliders sit over the second and third cards, beside its name.
+        std::size_t sharedColumn = 1;
+
         for (auto& row : rows)
         {
             if (row.column < 0)
-            {
-                row.control->setBounds (166 + shared++ * 254, 8, 230, 40);
-                continue;
-            }
-            const auto col = static_cast<std::size_t> (row.column);
-            row.control->setBounds (row.column * (width + gap) + sectionPadding, tops[col], width - 2 * sectionPadding, row.height);
-            tops[col] += row.height + 3;
+                row.control->setBounds (columns[sharedColumn++].area.withY (shared.getY()).withHeight (row.height));
+            else
+                columns[static_cast<std::size_t> (row.column)].place (*row.control, row.height);
         }
-        help.setBounds (sectionPadding, 53, getWidth() - 2 * sectionPadding, 22);
     }
 
     void paint (juce::Graphics& g) override
     {
-        g.setColour (ui::palette::well);
-        g.fillRoundedRectangle (getLocalBounds().removeFromTop (81).toFloat(), 4.0f);
-        const auto width = (getWidth() - 2 * gap) / 3;
-        for (int col = 0; col < 3; ++col)
-            g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 84, width, getHeight() - 84).toFloat(), 4.0f);
+        auto area = getLocalBounds();
+        const auto shared = area.removeFromTop (sharedCardHeight);
+        area.removeFromTop (gap);
+        fillCard (g, shared);
+
+        for (int column = 0; column < 3; ++column)
+            fillCard (g, columnOf (area, column, 3));
+
+        // The name shares its sliders' caption line.
         g.setColour (ui::palette::ink);
         g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
-        g.drawFittedText ("Filter / drive\nenvelope", { sectionPadding, 8, 140, 40 }, juce::Justification::centredLeft, 2);
+        g.drawText ("Filter / drive envelope", inside (shared).removeFromTop (ui::SliderRow::captionHeight), juce::Justification::centredLeft);
     }
 
 private:
-    struct Row { std::unique_ptr<juce::Component> control; int column, height; };
     std::vector<Row> rows;
     juce::Label help;
 };
@@ -155,26 +252,11 @@ public:
     explicit ResonancePage (LivecutAudioProcessor& processor) : owner (processor)
     {
         auto& state = owner.getParameterState();
-        const auto add = [&] (const char* id, const char* caption, const char* help, int column)
+        setComponentID ("resonancePage");
+        const auto add = [&] (const char* id, const char* caption, const char* tip, int column)
         {
-            auto* parameter = state.getParameter (id);
-            jassert (parameter != nullptr);
-            std::unique_ptr<juce::Component> control;
-            if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (parameter))
-                control = std::make_unique<ui::ChoiceRow> (*choice, "");
-            else if (parameter->isBoolean())
-                control = std::make_unique<ui::PowerSwitch> (*parameter, caption);
-            else
-                control = std::make_unique<ui::SliderRow> (*parameter, caption);
-            control->setTitle (parameter->getName (80));
-            for (auto* child : control->getChildren())
-            {
-                child->setTitle (parameter->getName (80));
-                if (auto* tooltip = dynamic_cast<juce::SettableTooltipClient*> (child))
-                    tooltip->setTooltip (help);
-            }
-            addAndMakeVisible (*control);
-            rows.push_back ({ std::move (control), column, parameter->isBoolean() ? 27 : dynamic_cast<juce::AudioParameterChoice*> (parameter) != nullptr ? 30 : 35 });
+            rows.push_back (makeRow (state, id, caption, tip, column));
+            addAndMakeVisible (*rows.back().control);
         };
         add (ids::resonanceEnabled, "Resonator", "Enable four tuned resonances. Controls apply at the next planned block; tuning changes crossfade over 50 ms.", 0);
         add (ids::resonanceRootHz, "Root", "Root frequency, 40 to 800 Hz. Four voices use semitone offsets from this frequency.", 0);
@@ -199,27 +281,13 @@ public:
         apply.setTooltip ("Stop the host, then apply the requested Live / Studio mode and Spectral engine together, or replace a faulted prepared stream.");
         apply.onClick = [this] { owner.applyRequestedMode(); refresh(); };
         addAndMakeVisible (apply);
-        status.setComponentID ("spectralStatus");
-        status.setTitle ("Spectral readiness and latency");
-        status.setFont (ui::uiFont (12.0f));
-        status.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-        status.setJustificationType (juce::Justification::topLeft);
-        status.setBorderSize ({});
-        addAndMakeVisible (status);
-        tuningStatus.setComponentID ("resonatorStatus");
-        tuningStatus.setTitle ("Resonator validity and effect order");
-        tuningStatus.setFont (ui::uiFont (12.0f));
-        tuningStatus.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-        tuningStatus.setJustificationType (juce::Justification::topLeft);
-        tuningStatus.setBorderSize ({});
-        addAndMakeVisible (tuningStatus);
-        help.setComponentID ("resonanceHelp");
-        help.setTitle ("Resonance signal path instructions");
+        makeNote (status, "spectralStatus", "Spectral readiness and latency", juce::Justification::topLeft);
+        makeNote (tuningStatus, "resonatorStatus", "Resonator validity and effect order", juce::Justification::topLeft);
+        makeNote (help, "resonanceHelp", "Resonance signal path instructions");
         help.setText ("Crusher / Comb precede this rack. Spectral follows all three orders. Hold and Capture follow Spectral.", juce::dontSendNotification);
-        help.setFont (ui::uiFont (12.0f));
-        help.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-        help.setBorderSize ({});
-        addAndMakeVisible (help);
+
+        for (auto* note : { &status, &tuningStatus, &help })
+            addAndMakeVisible (note);
     }
     void refresh()
     {
@@ -267,34 +335,36 @@ public:
     }
     void resized() override
     {
-        const auto width = (getWidth() - 2 * gap) / 3;
-        std::array<int, 3> tops { 38, 38, 38 };
+        auto columns = cardColumns (cards());
+
+        for (auto& column : columns)
+            column.skip (rowHeight); // its title
+
         for (auto& row : rows)
-        {
-            const auto col = static_cast<std::size_t> (row.column);
-            row.control->setBounds (row.column * (width + gap) + sectionPadding, tops[col], width - 2 * sectionPadding, row.height);
-            tops[col] += row.height + 3;
-        }
-        tuningStatus.setBounds (sectionPadding, 263, width - 2 * sectionPadding, 80);
-        apply.setBounds (2 * (width + gap) + sectionPadding, 185, width - 2 * sectionPadding, 28);
-        status.setBounds (2 * (width + gap) + sectionPadding, 221, width - 2 * sectionPadding, 129);
-        help.setBounds (sectionPadding, getHeight() - 26, getWidth() - 2 * sectionPadding, 22);
+            columns[static_cast<std::size_t> (row.column)].place (*row.control, row.height);
+
+        // Under the rows: what the resonator is doing, then the spectral engine's Apply button and its state.
+        tuningStatus.setBounds (columns[0].area.withTrimmedTop (rowGap));
+        columns[2].place (apply, rowHeight);
+        status.setBounds (columns[2].area.withTrimmedTop (rowGap));
+        help.setBounds (getLocalBounds().removeFromBottom (noteHeight));
     }
+
     void paint (juce::Graphics& g) override
     {
-        const auto width = (getWidth() - 2 * gap) / 3;
         const std::array titles { "Tuned resonator", "Four voices", "Spectral Freeze / Smear" };
-        for (int col = 0; col < 3; ++col)
+
+        for (int column = 0; column < 3; ++column)
         {
-            g.setColour (ui::palette::well);
-            g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 0, width, getHeight() - 30).toFloat(), 4.0f);
-            g.setColour (ui::palette::ink);
-            g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
-            g.drawText (titles[static_cast<std::size_t> (col)], juce::Rectangle<int> { col * (width + gap) + sectionPadding, 8, width - 2 * sectionPadding, 22 }, juce::Justification::centredLeft);
+            const auto card = columnOf (cards(), column, 3);
+            fillCard (g, card);
+            drawTitle (g, titles[static_cast<std::size_t> (column)], card);
         }
     }
 private:
-    struct Row { std::unique_ptr<juce::Component> control; int column, height; };
+    // The cards stop short of the page's foot, which holds a line of advice.
+    juce::Rectangle<int> cards() const { return getLocalBounds().withTrimmedBottom (noteHeight + rowGap); }
+
     LivecutAudioProcessor& owner;
     std::vector<Row> rows;
     juce::TextButton apply { "Apply while stopped" };
@@ -313,27 +383,11 @@ public:
                   onFamilyChange();
           })
     {
-        const auto add = [&] (const char* id, const char* caption, const char* help, int column)
+        setComponentID ("fracturePage");
+        const auto add = [&] (const char* id, const char* caption, const char* tip, int column)
         {
-            auto* parameter = state.getParameter (id);
-            jassert (parameter != nullptr);
-            std::unique_ptr<juce::Component> control;
-            const auto isChoice = dynamic_cast<juce::AudioParameterChoice*> (parameter) != nullptr;
-            if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (parameter))
-                control = std::make_unique<ui::ChoiceRow> (*choice, column < 0 ? "Family" : "");
-            else if (parameter->isBoolean())
-                control = std::make_unique<ui::PowerSwitch> (*parameter, caption);
-            else
-                control = std::make_unique<ui::SliderRow> (*parameter, caption);
-            control->setTitle (parameter->getName (80));
-            for (auto* child : control->getChildren())
-            {
-                child->setTitle (parameter->getName (80));
-                if (auto* tooltip = dynamic_cast<juce::SettableTooltipClient*> (child))
-                    tooltip->setTooltip (help);
-            }
-            addAndMakeVisible (*control);
-            rows.push_back ({ std::move (control), column, parameter->isBoolean() ? 26 : isChoice ? 28 : 35 });
+            rows.push_back (makeRow (state, id, caption, tip, column, column < 0 ? "Family" : ""));
+            addAndMakeVisible (*rows.back().control);
         };
         add (ids::fractureProcedure, "Family", "Classic retains the original four procedures. GrainCut and TapeCut replace the wet source reader. Family changes apply at the next bar.", -1);
         add (ids::fractureActivity, "Activity", "Grain outer rhythm: 0%, 50%, 100% select 1, 2, 4 cuts per beat. Intermediate values choose adjacent densities deterministically.", 0);
@@ -354,18 +408,10 @@ public:
         add (ids::fractureFrequencyEnvHz, "Env depth", "Hz offset driven by the existing Impact cut attack/decay clock. Edit AD timing on the Impact page; internal grains do not retrigger it.", 2);
         add (ids::fractureFrequencyRepeatHz, "Repeat", "Hz offset from first to last outer cut in the block. A single cut uses zero progression.", 2);
         add (ids::fractureFrequencyMix, "Frequency mix", "Frequency amount. Off or 0% is exact dry after a 2 ms transition. IIR phase coloration can affect mixed audio.", 2);
-        const auto label = [&] (juce::Label& target, const char* id, const char* title)
-        {
-            target.setComponentID (id);
-            target.setTitle (title);
-            target.setFont (ui::uiFont (12.0f));
-            target.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-            target.setBorderSize ({});
-            target.setJustificationType (juce::Justification::centredLeft);
-            addAndMakeVisible (target);
-        };
-        label (status, "fractureStatus", "Active reader and source status");
-        label (help, "fractureHelp", "Reader timing and shared envelope instructions");
+        makeNote (status, "fractureStatus", "Active reader and source status");
+        makeNote (help, "fractureHelp", "Reader timing and shared envelope instructions");
+        addAndMakeVisible (status);
+        addAndMakeVisible (help);
         familyAttachment.sendInitialUpdate();
     }
 
@@ -404,34 +450,39 @@ public:
 
     void resized() override
     {
-        const auto width = (getWidth() - 2 * gap) / 3;
-        std::array<int, 3> tops { 120, 120, 94 };
+        auto area = getLocalBounds();
+        auto shared = inside (area.removeFromTop (sharedCardHeight));
+        area.removeFromTop (gap);
+        auto columns = cardColumns (area);
+        columns[0].skip (rowHeight); // GrainCut's title
+        columns[1].skip (rowHeight); // TapeCut's
+
+        // Across the top: the family in the first column, what the reader is doing beside it, and advice beneath.
+        auto top = shared.removeFromTop (rowHeight);
+        help.setBounds (shared.removeFromBottom (noteHeight));
+
         for (auto& row : rows)
         {
             if (row.column < 0)
-            {
-                row.control->setBounds (sectionPadding, 8, 275, 28);
-                continue;
-            }
-            const auto col = static_cast<std::size_t> (row.column);
-            row.control->setBounds (row.column * (width + gap) + sectionPadding, tops[col], width - 2 * sectionPadding, row.height);
-            tops[col] += row.height + 3;
+                row.control->setBounds (top.removeFromLeft (columns[0].area.getWidth()));
+            else
+                columns[static_cast<std::size_t> (row.column)].place (*row.control, row.height);
         }
-        status.setBounds (303, 6, getWidth() - 315, 32);
-        help.setBounds (sectionPadding, 43, getWidth() - 2 * sectionPadding, 32);
+
+        status.setBounds (top.withLeft (columns[1].area.getX()));
     }
 
     void paint (juce::Graphics& g) override
     {
-        g.setColour (ui::palette::well);
-        g.fillRoundedRectangle (getLocalBounds().removeFromTop (81).toFloat(), 4.0f);
-        const auto width = (getWidth() - 2 * gap) / 3;
-        for (int col = 0; col < 3; ++col)
-            g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 84, width, getHeight() - 84).toFloat(), 4.0f);
-        g.setColour (ui::palette::ink);
-        g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
-        g.drawText ("GrainCut", juce::Rectangle<int> (sectionPadding, 94, width - 24, 22), juce::Justification::centredLeft);
-        g.drawText ("TapeCut", juce::Rectangle<int> (width + gap + sectionPadding, 94, width - 24, 22), juce::Justification::centredLeft);
+        auto area = getLocalBounds();
+        fillCard (g, area.removeFromTop (sharedCardHeight));
+        area.removeFromTop (gap);
+
+        for (int column = 0; column < 3; ++column)
+            fillCard (g, columnOf (area, column, 3));
+
+        drawTitle (g, "GrainCut", columnOf (area, 0, 3));
+        drawTitle (g, "TapeCut", columnOf (area, 1, 3));
     }
 
 private:
@@ -461,7 +512,6 @@ private:
             : "Family: next bar; other settings: next block. Frequency Env uses the cut AD timing on the Impact page.", juce::dontSendNotification);
     }
 
-    struct Row { std::unique_ptr<juce::Component> control; int column, height; };
     std::vector<Row> rows;
     juce::Label status, help;
     livecut::engine::FractureProcedure family = livecut::engine::FractureProcedure::classic;
@@ -596,19 +646,10 @@ public:
         applyMode.setTitle ("Apply requested Mode and Spectral configuration while stopped");
         applyMode.setTooltip ("Stop playback, then apply the requested Live / Studio mode and Spectral engine together, or replace a faulted prepared stream.");
         applyMode.onClick = [this] { hostProcessor.applyRequestedMode(); refreshRecut(); };
-        const auto statusLabel = [] (juce::Label& label, const char* id, const char* title)
-        {
-            label.setComponentID (id);
-            label.setTitle (title);
-            label.setFont (ui::uiFont (13.0f));
-            label.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-            label.setJustificationType (juce::Justification::topLeft);
-            label.setBorderSize ({});
-        };
-        statusLabel (modeSummary, "modeSummary", "Active processing mode and latency");
-        statusLabel (modeStatus, "modeStatus", "Processing mode status");
-        statusLabel (modeHelp, "modeHelp", "Processing mode instructions");
-        statusLabel (transformStatus, "transformStatus", "Attack and reverse status");
+        makeNote (modeSummary, "modeSummary", "Active processing mode and latency");
+        makeNote (modeStatus, "modeStatus", "Processing mode status", juce::Justification::topLeft);
+        makeNote (modeHelp, "modeHelp", "Processing mode instructions", juce::Justification::bottomLeft);
+        makeNote (transformStatus, "transformStatus", "Attack and reverse status", juce::Justification::topLeft);
         modeHelp.setText ("Studio adds 500 ms of delay so more slices can use attack alignment and reverse. Stop your host, choose a mode, then Apply.", juce::dontSendNotification);
 
         for (auto* component : std::initializer_list<juce::Component*> { &repeats, &stutter, &stutterArea })
@@ -625,20 +666,16 @@ public:
         for (auto* controls : { &cutProc11Controls, &warpCutControls, &sqPusherControls, &bounceControls })
             addChildComponent (controls);
 
-        holdStatus.setComponentID ("holdStatus");
-        holdStatus.setFont (ui::uiFont (12.0f));
-        holdStatus.setColour (juce::Label::textColourId, ui::palette::inkMuted);
+        makeNote (holdStatus, "holdStatus", "Audio Hold status");
         swing.setTooltip ("50% is straight; 75% delays each paired eighth. Changes apply at the next bar.");
         accent.setTooltip ("Deterministic amplitude variation, attenuation only, up to 25%");
         captureButton.setComponentID ("capture");
         saveButton.setComponentID ("saveCapture");
-        captureStatus.setComponentID ("captureStatus");
+        makeNote (captureStatus, "captureStatus", "Capture status");
         wet.setTooltip ("Linear dry/wet mix, smoothed over 20 ms");
         trim.setTooltip ("Output gain from -24 to +24 dB, smoothed over 20 ms");
         captureButton.setTooltip ("Keep the last fully completed phrase, including Wet and Trim");
         saveButton.setTooltip ("Save the captured phrase as stereo 32-bit float WAV");
-        captureStatus.setColour (juce::Label::textColourId, ui::palette::inkMuted);
-        captureStatus.setFont (ui::uiFont (12.0f));
         captureButton.onClick = [this] { captures.requestCapture(); refreshCapture(); };
         saveButton.onClick = [this] { chooseSaveFile(); };
         refreshCapture();
@@ -658,7 +695,6 @@ public:
         showProcedure (static_cast<int> (std::lround (state.getRawParameterValue (ids::procedure)->load())));
         showPage (Page::pattern);
         surfaceAttachment.sendInitialUpdate();
-        setSize (baseWidth, baseHeight);
     }
 
     // The Pad surface shows the ruler and the pad page; Classic shows the tabs
@@ -674,8 +710,12 @@ public:
         padPage.setVisible (! classic);
         surfaceButton.setButtonText (classic ? "Pad" : "Classic");
         surfaceButton.setTooltip (classic ? "Play the pad" : "Show the Classic pages");
-        placeSurfaceButton();
-        placeRuler();
+
+        // Before the panel is in the editor its controls can't find the look-and-feel that sizes them, and the
+        // editor lays it out as soon as it is.
+        if (getParentComponent() != nullptr)
+            resized();
+
         showPage (selectedPage);
         refreshRuler (hostProcessor.getDisplayState());
     }
@@ -768,151 +808,178 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (ui::palette::paper);
+        g.fillAll (ui::palette::backdrop);
 
-        const auto classicSurface = surface == livecut::Surface::classic;
+        if (surface != livecut::Surface::classic || (selectedPage != Page::pattern && selectedPage != Page::recut))
+            return;
 
-        if (classicSurface && (selectedPage == Page::pattern || selectedPage == Page::recut))
-        for (const auto& section : { crusherSection, combSection })
+        fillCard (g, crusherSection);
+        fillCard (g, combSection);
+
+        if (selectedPage == Page::recut)
         {
-            g.setColour (ui::palette::well);
-            g.fillRoundedRectangle (section.toFloat(), 4.0f);
+            fillCard (g, modeSection);
+            fillCard (g, transformSection);
+            drawTitle (g, "Processing mode", modeSection);
+            drawTitle (g, "Attack & reverse", transformSection);
+            return;
         }
 
-        const auto title = [&] (const juce::String& text, juce::Rectangle<int> section)
-        {
-            g.setColour (ui::palette::ink);
-            g.setFont (ui::uiFont (16.0f, ui::weight::semibold));
-            g.drawText (text, section.reduced (sectionPadding).removeFromTop (22), juce::Justification::centredLeft);
-        };
+        for (const auto& section : { phraseSection, cutsSection, procedureSection })
+            fillCard (g, section);
 
-        if (classicSurface && selectedPage == Page::recut)
-        {
-            for (const auto& section : { modeSection, transformSection })
-            {
-                g.setColour (ui::palette::well);
-                g.fillRoundedRectangle (section.toFloat(), 4.0f);
-            }
-            title ("Processing mode", modeSection);
-            title ("Attack & reverse", transformSection);
-        }
-        else if (classicSurface && selectedPage == Page::pattern)
-        {
-            for (const auto& section : { phraseSection, cutsSection, procedureSection })
-            {
-                g.setColour (ui::palette::well);
-                g.fillRoundedRectangle (section.toFloat(), 4.0f);
-            }
-            title ("Phrase", phraseSection);
-            title ("Cuts", cutsSection);
-            const auto& info = procedures[static_cast<std::size_t> (activeProcedure)];
-            const auto family = fractureControls.requestedFamily();
-            const auto classic = family == livecut::engine::FractureProcedure::classic;
-            title (classic ? info.name : family == livecut::engine::FractureProcedure::grainCut ? "GrainCut override" : "TapeCut override", procedureSection);
-            g.setColour (ui::palette::inkMuted);
-            g.setFont (ui::uiFont (13.0f));
-            g.drawFittedText (classic ? info.description : "Classic procedure controls are inactive. Edit the reader on the Fracture page.",
-                              procedureSection.reduced (sectionPadding).withTrimmedTop (24).removeFromTop (34), juce::Justification::topLeft, 2);
-        }
+        const auto& info = procedures[static_cast<std::size_t> (activeProcedure)];
+        const auto family = fractureControls.requestedFamily();
+        const auto classic = family == livecut::engine::FractureProcedure::classic;
+        drawTitle (g, "Phrase", phraseSection);
+        drawTitle (g, "Cuts", cutsSection);
+        drawTitle (g, classic ? info.name : family == livecut::engine::FractureProcedure::grainCut ? "GrainCut override" : "TapeCut override", procedureSection);
+        g.setColour (ui::palette::inkMuted);
+        g.setFont (ui::uiFont (12.0f));
+        g.drawFittedText (classic ? info.description : "Classic procedure controls are inactive. Edit the reader on the Fracture page.",
+                          procedureNote, juce::Justification::topLeft, 3, 1.0f);
     }
 
     void resized() override
     {
-        patternTab.setBounds (122, 20, 63, 30);
-        recutTab.setBounds (189, 20, 51, 30);
-        impactTab.setBounds (244, 20, 56, 30);
-        fractureTab.setBounds (304, 20, 70, 30);
-        resonanceTab.setBounds (378, 20, 82, 30);
-        procedureSwitch.setBounds (466, 20, 350, 30);
-        wordmark.setBounds (margin, 14, 96, 44);
+        const auto classic = surface == livecut::Surface::classic;
+        const juce::Rectangle<int> band (margin, margin, baseWidth - 2 * margin, headerHeight);
+        wordmark.setBounds (band.withWidth (wordmarkWidth));
         about.setBounds (getLocalBounds());
-        placeSurfaceButton();
-        placeRuler();
-        resonanceControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
-        fractureControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
-        impactControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
-        padPage.setBounds (margin, 78, baseWidth - 2 * margin, baseHeight - 24 - 78);
 
-        const auto middleTop = 166;
-        const auto middleHeight = 276;
-        phraseSection = { margin, middleTop, 262, middleHeight };
-        cutsSection = { phraseSection.getRight() + gap, middleTop, 290, middleHeight };
-        procedureSection = { cutsSection.getRight() + gap, middleTop, baseWidth - margin - cutsSection.getRight() - gap, middleHeight };
-        modeSection = { margin, middleTop, 405, middleHeight };
-        transformSection = { modeSection.getRight() + gap, middleTop, 425, middleHeight };
-        processingMode.setBounds (32, 208, 221, choiceRowHeight);
-        applyMode.setBounds (263, 208, 150, choiceRowHeight);
-        modeSummary.setBounds (32, 250, 381, 24);
-        modeStatus.setBounds (32, 284, 381, 68);
-        modeHelp.setBounds (32, 370, 381, 56);
-        attackAlign.setBounds (447, 208, 240, choiceRowHeight);
-        attackThreshold.setBounds (447, 248, 401, sliderRowHeight);
-        reverseChance.setBounds (447, 296, 401, sliderRowHeight);
-        transformStatus.setBounds (447, 350, 401, 76);
+        // The header's controls sit on its centre line. From the right on Classic: the surface switch, the
+        // procedures, and a tab for each page, each as wide as its name.
+        auto header = band.withSizeKeepingCentre (band.getWidth(), headerControlHeight);
+        const auto fitted = [this] (juce::TextButton& button)
+        {
+            const auto font = getLookAndFeel().getTextButtonFont (button, headerControlHeight);
+            return juce::roundToInt (std::ceil (juce::GlyphArrangement::getStringWidth (font, button.getButtonText()))) + 2 * tabPadding;
+        };
+        surfaceButton.setBounds (header.removeFromRight (classic ? fitted (surfaceButton) : wordmarkWidth));
+        header.removeFromRight (gap);
+        procedureSwitch.setBounds (header.removeFromRight (static_cast<int> (procedures.size()) * procedureWidth));
+        header.removeFromRight (gap - tabGap);
 
-        Column phrase { phraseSection.reduced (sectionPadding).withTrimmedTop (30) };
-        phrase.place (subdivision, choiceRowHeight);
-        phrase.place (phraseBars, sliderRowHeight);
-        phrase.place (seed, sliderRowHeight);
-        phrase.place (fade, sliderRowHeight);
+        for (auto* tab : { &resonanceTab, &fractureTab, &impactTab, &recutTab, &patternTab })
+        {
+            header.removeFromRight (tabGap);
+            tab->setBounds (header.removeFromRight (fitted (*tab)));
+        }
 
-        Column cuts { cutsSection.reduced (sectionPadding).withTrimmedTop (30) };
+        // On the pad the tape runs along the header, centred between the wordmark and the switch, which are the
+        // same width. Classic gives it a band of its own.
+        ruler.setBounds (classic ? band.translated (0, headerHeight + margin).withHeight (tapeHeight)
+                                 : juce::Rectangle<int> (600, tapeHeight).withCentre (band.getCentre()));
+        padPage.setBounds (band.withTop (band.getBottom() + margin).withBottom (baseHeight - margin));
+
+        const juce::Rectangle<int> page (margin, pageTop, band.getWidth(), pageHeight);
+
+        for (auto* controls : std::initializer_list<juce::Component*> { &impactControls, &fractureControls, &resonanceControls })
+            controls->setBounds (page);
+
+        // Pattern and Recut have their own cards, above Crusher and Comb, which the two pages share.
+        auto upper = page;
+        const auto lower = upper.removeFromBottom (2 * rowPadding + rowHeight + 2 * (rowGap + sliderRowHeight));
+        upper.removeFromBottom (gap);
+        phraseSection = columnOf (upper, 0, 3);
+        cutsSection = columnOf (upper, 1, 3);
+        procedureSection = columnOf (upper, 2, 3);
+        modeSection = columnOf (upper, 0, 2);
+        transformSection = columnOf (upper, 1, 2);
+        crusherSection = columnOf (lower, 0, 2);
+        combSection = columnOf (lower, 1, 2);
+
+        Column phrase { inside (phraseSection) };
+        phrase.skip (rowHeight);
+        phrase.place (subdivision, rowHeight);
+
+        for (auto* row : std::initializer_list<juce::Component*> { &phraseBars, &seed, &fade })
+            phrase.place (*row, sliderRowHeight);
+
+        Column cuts { inside (cutsSection) };
+        cuts.skip (rowHeight);
 
         for (auto* row : std::initializer_list<juce::Component*> { &duty, &fillDuty, &amp, &pan, &pitch })
             cuts.place (*row, sliderRowHeight);
 
-        const auto procedureArea = procedureSection.reduced (sectionPadding).withTrimmedTop (64);
+        // What the procedure does, in up to three lines under its name, then its own controls.
+        Column procedure { inside (procedureSection) };
+        procedure.skip (rowHeight);
+        procedureNote = procedure.area.removeFromTop (3 * noteHeight - rowGap);
+        procedure.area.removeFromTop (rowGap);
 
         for (auto* controls : { &cutProc11Controls, &warpCutControls, &sqPusherControls, &bounceControls })
         {
-            controls->setBounds (procedureArea);
+            controls->setBounds (procedure.area);
             Column column { controls->getLocalBounds() };
 
             for (auto* row : controls->getChildren())
                 column.place (*row, sliderRowHeight);
         }
 
-        const auto bottomTop = middleTop + middleHeight + gap;
-        const auto bottomHeight = 98;
-        const auto halfWidth = (baseWidth - 2 * margin - gap) / 2;
-        crusherSection = { margin, bottomTop, halfWidth, bottomHeight };
-        combSection = { crusherSection.getRight() + gap, bottomTop, halfWidth, bottomHeight };
+        // The mode to ask for and the button that applies it share a row; the advice sits at the foot of the card.
+        Column mode { inside (modeSection) };
+        mode.skip (rowHeight);
+        auto request = mode.area.removeFromTop (rowHeight);
+        applyMode.setBounds (request.removeFromRight (140));
+        request.removeFromRight (gap);
+        processingMode.setBounds (request);
+        mode.area.removeFromTop (rowGap);
+        mode.place (modeSummary, rowHeight);
+        modeHelp.setBounds (mode.area.removeFromBottom (3 * noteHeight));
+        modeStatus.setBounds (mode.area);
 
-        auto crusherArea = crusherSection.reduced (sectionPadding);
-        crusher.setBounds (crusherArea.removeFromTop (24).withWidth (140));
-        crusherArea.removeFromTop (8);
-        const auto crusherColumn = (crusherArea.getWidth() - gap) / 2;
-        bits.setBounds (crusherArea.removeFromLeft (crusherColumn).withHeight (sliderRowHeight));
-        crusherArea.removeFromLeft (gap);
-        rate.setBounds (crusherArea.withHeight (sliderRowHeight));
+        Column transform { inside (transformSection) };
+        transform.skip (rowHeight);
+        transform.place (attackAlign, rowHeight);
+        transform.place (attackThreshold, sliderRowHeight);
+        transform.place (reverseChance, sliderRowHeight);
+        transform.area.removeFromTop (rowGap);
+        transformStatus.setBounds (transform.area);
 
-        auto combArea = combSection.reduced (sectionPadding);
-        auto combHeader = combArea.removeFromTop (24);
-        comb.setBounds (combHeader.removeFromLeft (110));
-        combType.setBounds (combHeader.removeFromLeft (150));
-        combArea.removeFromTop (8);
-        const auto combColumn = (combArea.getWidth() - gap) / 2;
-        combFeedback.setBounds (combArea.removeFromLeft (combColumn).withHeight (sliderRowHeight));
-        combArea.removeFromLeft (gap);
-        delay.setBounds (combArea.withHeight (sliderRowHeight));
+        Column crush { inside (crusherSection) };
+        crush.place (crusher, rowHeight);
+        crush.place (bits, sliderRowHeight);
+        crush.place (rate, sliderRowHeight);
 
-        wet.setBounds (margin, 562, 240, sliderRowHeight);
-        trim.setBounds (270, 562, 240, sliderRowHeight);
-        captureButton.setBounds (536, 566, 156, 30);
-        saveButton.setBounds (702, 566, 158, 30);
-        captureStatus.setBounds (margin, 604, baseWidth - 2 * margin, 24);
-        swing.setBounds (margin, 638, 240, sliderRowHeight);
-        accent.setBounds (270, 638, 240, sliderRowHeight);
-        hold.setBounds (536, 644, 156, 28);
-        holdStatus.setBounds (margin, 678, baseWidth - 2 * margin, 22);
+        // Comb's switch and its type share the card's first row.
+        Column combed { inside (combSection) };
+        auto combHeader = combed.area.removeFromTop (rowHeight);
+        combType.setBounds (combHeader.removeFromRight (160));
+        comb.setBounds (combHeader.withTrimmedRight (gap));
+        combed.area.removeFromTop (rowGap);
+        combed.place (combFeedback, sliderRowHeight);
+        combed.place (delay, sliderRowHeight);
+
+        // The strip: Wet, Trim, Swing and Accent on the left; capture and hold on the right, each with its status.
+        auto strip = page.withY (page.getBottom() + margin).withHeight (stripHeight);
+        const auto upperRow = strip.removeFromTop (sliderRowHeight), lowerRow = strip.removeFromBottom (sliderRowHeight);
+        const auto pair = [] (juce::Rectangle<int> row, juce::Component& first, juce::Component& second)
+        {
+            first.setBounds (columnOf (row, 0, 2));
+            second.setBounds (columnOf (row, 1, 2));
+        };
+        pair (columnOf (upperRow, 0, 2), wet, trim);
+        pair (columnOf (lowerRow, 0, 2), swing, accent);
+        pair (columnOf (upperRow, 1, 2).withSizeKeepingCentre (columnOf (upperRow, 1, 2).getWidth(), rowHeight), captureButton, saveButton);
+        captureStatus.setBounds (columnOf (strip, 1, 2));
+        auto holdRow = columnOf (lowerRow, 1, 2);
+        hold.setBounds (holdRow.removeFromLeft (holdWidth).withSizeKeepingCentre (holdWidth, rowHeight));
+        holdStatus.setBounds (holdRow);
     }
 
     void refreshFracture() { fractureControls.refresh (hostProcessor.getDisplayState()); resonanceControls.refresh(); }
 
-    // The pad page and the ruler's headline follow the display; Classic shows the plain status line.
+    // The pad page and the ruler's headline follow the display; Classic shows the plain status.
     void refreshRuler (const livecut::DisplayState& display)
     {
         const auto snapshot = ui::PhraseRuler::Snapshot::of (display);
+
+        // The wordmark makes its cut again as each block starts on the tape.
+        if (snapshot.status == livecut::DisplayState::Status::cutting && shownBlock.has_value() && ! juce::exactlyEqual (*shownBlock, snapshot.blockStart))
+            wordmark.cut();
+
+        shownBlock = snapshot.blockStart;
 
         if (surface == livecut::Surface::pad)
         {
@@ -944,20 +1011,6 @@ public:
     ui::PhraseRuler ruler;
 
 private:
-    // A small switch at the top right: "Classic" on the pad, "Pad" on the Classic pages.
-    void placeSurfaceButton()
-    {
-        surfaceButton.setBounds (surface == livecut::Surface::classic ? juce::Rectangle<int> (824, 20, 36, 30)
-                                                                      : juce::Rectangle<int> (784, 20, 76, 30));
-    }
-
-    // On the pad the tape runs along the header; the Classic pages give it a status line too.
-    void placeRuler()
-    {
-        ruler.setBounds (surface == livecut::Surface::classic ? juce::Rectangle<int> (margin, 62, baseWidth - 2 * margin, 88)
-                                                              : juce::Rectangle<int> (144, 19, 616, 32));
-    }
-
     void chooseSaveFile()
     {
         chooser = std::make_unique<juce::FileChooser> ("Save captured phrase", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Livecut Redux phrase.wav"), "*.wav");
@@ -1020,12 +1073,13 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Component cutProc11Controls, warpCutControls, sqPusherControls, bounceControls;
-    juce::Rectangle<int> phraseSection, cutsSection, procedureSection, crusherSection, combSection;
+    juce::Rectangle<int> phraseSection, cutsSection, procedureSection, procedureNote, crusherSection, combSection;
     juce::Rectangle<int> modeSection, transformSection;
     int activeProcedure = 0;
     Page selectedPage = Page::pattern;
     ui::PadPage padPage;
     ui::Wordmark wordmark;
+    std::optional<double> shownBlock; // where the block the tape last showed began
     ui::AboutSheet about;
     juce::TextButton surfaceButton;
     juce::ParameterAttachment surfaceAttachment;
@@ -1057,7 +1111,7 @@ LivecutAudioProcessorEditor::~LivecutAudioProcessorEditor()
 
 void LivecutAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (livecut::ui::palette::paper);
+    g.fillAll (livecut::ui::palette::backdrop);
 }
 
 void LivecutAudioProcessorEditor::resized()

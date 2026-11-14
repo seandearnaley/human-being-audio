@@ -9,8 +9,9 @@
 namespace livecut::ui
 {
 
-SliderRow::SliderRow (juce::RangedAudioParameter& p, const juce::String& captionText)
+SliderRow::SliderRow (juce::RangedAudioParameter& p, const juce::String& captionText, Layout rowLayout)
     : parameter (p),
+      layout (rowLayout),
       attachment (p, slider)
 {
     setComponentID (parameter.getParameterID());
@@ -36,9 +37,23 @@ void SliderRow::showValue()
 
 void SliderRow::resized()
 {
-    // Caption and value on one line, the slider full width beneath, so narrow columns still get a usable slider.
     auto area = getLocalBounds();
-    auto top = area.removeFromTop (18);
+
+    if (layout == Layout::oneLine)
+    {
+        // The caption as wide as its word, the widest value at the far end, and the slider between them.
+        const auto width = [this] (const juce::String& text)
+        {
+            return juce::roundToInt (std::ceil (juce::GlyphArrangement::getStringWidth (getLookAndFeel().getLabelFont (caption), text)));
+        };
+        caption.setBounds (area.removeFromLeft (width (caption.getText())));
+        readout.setBounds (area.removeFromRight (width ("100%")));
+        slider.setBounds (area.reduced (12, 0));
+        return;
+    }
+
+    // Caption and value on one line, the slider full width beneath, so narrow columns still get a usable slider.
+    auto top = area.removeFromTop (captionHeight);
     caption.setBounds (top.removeFromLeft (top.getWidth() / 2));
     readout.setBounds (top);
     slider.setBounds (area);

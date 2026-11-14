@@ -11,13 +11,14 @@ namespace livecut::ui
 
 namespace
 {
-constexpr int frame = 8;         // the sheet showing around the art, left and top
-constexpr int rail = 24;         // and right and bottom, where the axis markers run
+constexpr int rail = 20;            // the sheet showing on every side of the art, where the axis markers run
 constexpr float sheetRadius = 14.0f;
-constexpr float artRadius = 7.0f;
+constexpr float artRadius = 8.0f;
 constexpr int tagHeight = 24;
-constexpr int tagPadding = 9;
-constexpr float markerReach = 7.0f; // half a marker's width
+constexpr int tagPadding = 10;
+constexpr float markerReach = 6.0f; // half a marker's width
+constexpr float markerInset = 6.0f; // from the art's edge to a marker's tip
+constexpr float markerLength = 8.0f;
 
 constexpr float markRadius = 10.0f;
 constexpr float pressedRing = 22.0f;
@@ -26,7 +27,8 @@ constexpr float cutRingTravel = 30.0f;
 constexpr float kickSeconds = 0.6f;       // how long the art takes to settle after a new block
 constexpr float changeSeconds = 0.18f;    // how long one program's sheet takes to become another's
 constexpr float ringSeconds = 0.32f;      // how long the ring from the pointer mark lasts
-constexpr float restingPace = 0.45f;      // the art's clock at rest, against 1 while the pad plays
+constexpr float restingTempo = 0.5f;      // beats a second, when there is no host beat to keep
+constexpr float slowest = 0.5f, fastest = 8.0f; // the host tempos the art will keep, in beats a second
 constexpr double restingFrame = 1.0 / 30; // the pad is redrawn this often at rest,
 constexpr double movingFrame = 1.0 / 60;  // and this often while it plays or something on it is changing
 constexpr float sharpest = 2.0f;          // the art is drawn at up to this many pixels a point
@@ -36,6 +38,8 @@ juce::Font readoutFont() { return numberFont (13.0f); }
 
 // Quick at first, then gentle.
 float easedOut (float progress) { return 1.0f - juce::square (1.0f - progress); }
+
+float fraction (float value) { return value - std::floor (value); }
 } // namespace
 
 XYPad::AxisSlider::AxisSlider (XYPad& pad, bool horizontalAxis)
@@ -50,7 +54,7 @@ void XYPad::AxisSlider::paint (juce::Graphics& g)
     // The pad draws the marker, which overhangs the ends; the slider only shows that it has the keyboard.
     if (hasKeyboardFocus (false))
     {
-        g.setColour (palette::ink);
+        g.setColour (palette::onColour);
         g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
     }
 }
@@ -65,9 +69,11 @@ XYPad::Tag::Tag (XYPad& pad, bool horizontalAxis) : owner (pad), horizontal (hor
     setInterceptsMouseClicks (false, false);
     caption.setFont (captionFont());
     readout.setFont (readoutFont());
+    readout.setJustificationType (juce::Justification::centredRight); // so the tag's padding is even whatever the value
 
     for (auto* label : { &caption, &readout })
     {
+        label->setColour (juce::Label::textColourId, palette::onColour);
         label->setBorderSize ({});
         label->setMinimumHorizontalScale (1.0f);
         addAndMakeVisible (label);
@@ -191,9 +197,24 @@ void XYPad::pulse()
     ring = 0.0f;
 }
 
+void XYPad::followBeat (std::optional<double> beats)
+{
+    // Between two looks at the host, how fast it ran. A phrase starting again counts backwards, and says nothing.
+    if (beats.has_value() && hostBeat.has_value())
+    {
+        const auto moved = *beats - *hostBeat, took = runSeconds - hostBeatAt;
+
+        if (moved > 0.0 && took > 0.02)
+            tempo += (juce::jlimit (slowest, fastest, static_cast<float> (moved / took)) - tempo) * 0.35f;
+    }
+
+    hostBeat = beats;
+    hostBeatAt = runSeconds;
+}
+
 bool XYPad::displayRefreshed (double now)
 {
-    const auto moving = liveliness > 0.01f || change < 1.0f || ring < 1.0f;
+    const auto moving = engaged || hostBeat.has_value() || change < 1.0f || ring < 1.0f;
     const auto elapsed = clock.tick (now, moving ? movingFrame : restingFrame);
 
     if (elapsed.has_value())
@@ -207,16 +228,26 @@ void XYPad::animate (double seconds)
     const auto elapsed = static_cast<float> (seconds);
     const auto towards = [elapsed] (float from, float to, float rate) { return from + (to - from) * juce::jmin (1.0f, elapsed * rate); };
 
+    runSeconds += seconds;
     change = juce::jmin (1.0f, change + elapsed / changeSeconds);
     ring = juce::jmin (1.0f, ring + elapsed / ringSeconds);
-    liveliness = towards (liveliness, engaged ? 1.0f : 0.0f, 5.0f);
     motion.kick = juce::jmax (0.0f, motion.kick - elapsed / kickSeconds);
     motion.x = towards (motion.x, x.value, 14.0f);
     motion.y = towards (motion.y, y.value, 14.0f);
 
-    const auto pace = restingPace + (1.0f - restingPace) * liveliness;
-    motion.time += elapsed * pace;
-    motion.spin += elapsed * pace * juce::square (1.0f - motion.kick);
+    auto beats = elapsed * restingTempo;
+
+    if (hostBeat.has_value())
+    {
+        // The art's beat runs at the host's tempo. Whatever it is then out by, it makes up the shorter way round.
+        const auto host = static_cast<float> (*hostBeat + (runSeconds - hostBeatAt) * static_cast<double> (tempo));
+        auto out = fraction (host) - fraction (motion.beat + elapsed * tempo);
+        out -= std::round (out);
+        beats = juce::jmax (0.0f, elapsed * tempo + out * juce::jmin (1.0f, elapsed * 10.0f));
+    }
+
+    motion.beat = std::fmod (motion.beat + beats, ArtMotion::beatsBeforeWrap);
+    motion.spin = std::fmod (motion.spin + beats * juce::square (1.0f - motion.kick), ArtMotion::beatsBeforeWrap);
     artStale = true;
     repaint();
 }
@@ -228,7 +259,7 @@ juce::Colour XYPad::sheetColour() const
 
 juce::Rectangle<float> XYPad::padBounds() const
 {
-    return getLocalBounds().withTrimmedLeft (frame).withTrimmedTop (frame).withTrimmedRight (rail).withTrimmedBottom (rail).toFloat();
+    return getLocalBounds().reduced (rail).toFloat();
 }
 
 juce::Point<float> XYPad::mark() const
@@ -316,43 +347,51 @@ void XYPad::paintOverChildren (juce::Graphics& g)
         shape.addRoundedRectangle (area, artRadius);
         g.reduceClipRegion (shape);
 
-        g.setColour (palette::paper.withAlpha (0.55f));
+        g.setColour (palette::ink.withAlpha (0.5f));
         g.fillRect (juce::Rectangle<float> (area.getX(), at.y - 0.5f, area.getWidth(), 1.0f));
         g.fillRect (juce::Rectangle<float> (at.x - 0.5f, area.getY(), 1.0f, area.getHeight()));
 
         if (ring < 1.0f)
         {
             // A new block: a ring leaves the mark and fades.
-            g.setColour (palette::paper.withAlpha (1.0f - ring));
+            g.setColour (palette::ink.withAlpha (1.0f - ring));
             g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (markRadius + easedOut (ring) * cutRingTravel), 2.0f);
         }
 
         if (dragging)
         {
-            g.setColour (palette::ink.withAlpha (0.25f));
+            g.setColour (palette::onColour.withAlpha (0.3f));
             g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (pressedRing), 4.0f);
-            g.setColour (palette::paper);
+            g.setColour (palette::ink);
             g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (pressedRing), 2.0f);
         }
 
-        // The pointer mark: a paper dot that fills with ink while the pad plays.
-        const auto dot = juce::Rectangle<float>().withCentre (at).expanded (markRadius);
+        // The pointer mark: a white dot that turns black while the pad plays, and swells on the host's beat.
+        const auto swell = hostBeat.has_value() ? std::pow (1.0f - fraction (motion.beat), 3.0f) : 0.0f;
+        const auto dot = juce::Rectangle<float>().withCentre (at).expanded (markRadius * (1.0f + 0.18f * swell));
         juce::Path disc;
         disc.addEllipse (dot);
-        juce::DropShadow (palette::ink.withAlpha (0.45f), 8, { 0, 3 }).drawForPath (g, disc);
-        g.setColour (engaged ? palette::ink : palette::paper);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.5f), 8, { 0, 3 }).drawForPath (g, disc);
+        g.setColour (engaged ? palette::onColour : palette::ink);
         g.fillPath (disc);
-        g.setColour (engaged ? palette::paper : palette::ink);
+        g.setColour (engaged ? palette::ink : palette::onColour);
         g.drawEllipse (dot.reduced (1.25f), 2.5f);
     }
 
-    // A marker on each rail, pointing in at the mark from the art's edge.
+    // On every rail a marker points in at the mark, so each axis reads the same from either side.
     juce::Path markers;
-    markers.addTriangle (at.x, area.getBottom() + 4.0f, at.x - markerReach, area.getBottom() + 14.0f, at.x + markerReach, area.getBottom() + 14.0f);
-    markers.addTriangle (area.getRight() + 4.0f, at.y, area.getRight() + 14.0f, at.y - markerReach, area.getRight() + 14.0f, at.y + markerReach);
-    g.setColour (palette::ink);
+    const auto along = [&] (juce::Point<float> tip, juce::Point<float> out)
+    {
+        const juce::Point<float> side { out.y, out.x };
+        markers.addTriangle (tip, tip + out * markerLength + side * markerReach, tip + out * markerLength - side * markerReach);
+    };
+    along ({ at.x, area.getBottom() + markerInset }, { 0.0f, 1.0f });
+    along ({ at.x, area.getY() - markerInset }, { 0.0f, -1.0f });
+    along ({ area.getRight() + markerInset, at.y }, { 1.0f, 0.0f });
+    along ({ area.getX() - markerInset, at.y }, { -1.0f, 0.0f });
+    g.setColour (palette::onColour);
     g.fillPath (markers);
-    g.strokePath (markers, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved)); // rounds their corners
+    g.strokePath (markers, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved)); // rounds their corners
 
     if (hasKeyboardFocus (false))
         g.drawRoundedRectangle (area.expanded (3.0f), artRadius + 3.0f, 2.0f);

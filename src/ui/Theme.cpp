@@ -93,18 +93,29 @@ juce::Colour programColour (int program)
     return juce::Colour (colours[programIndex (program)]);
 }
 
-void drawWordmark (juce::Graphics& g, juce::Rectangle<float> area)
+float sideBearing (const juce::Font& font, const juce::String& text)
 {
-    // CUT drops by this much of the height, so the letters are set that much shorter.
-    constexpr auto drop = 0.12f;
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText (font, text.substring (0, 1), 0.0f, 0.0f);
+    juce::Path letter;
+    glyphs.createPath (letter);
+    return letter.getBounds().getX();
+}
+
+void drawWordmark (juce::Graphics& g, juce::Rectangle<float> area, float knock)
+{
+    // CUT drops by this much of the height, so the letters are set that much shorter. A knock from the blade
+    // drops it further, past the area's foot.
+    constexpr auto drop = 0.12f, furthest = 0.16f;
     const auto capHeight = area.getHeight() * (1.0f - drop);
     const auto font = displayFont (capHeight / 0.7f); // Bricolage's capitals are 70% of its height
     const auto baseline = area.getY() + capHeight;
+    const auto x = area.getX() - sideBearing (font, "L"); // the L's stem stands on the area's edge
 
     // Set as one word for its spacing, then as the two the blade will part.
     juce::GlyphArrangement glyphs, liveGlyphs, cutGlyphs;
-    glyphs.addLineOfText (font, "LIVECUT", area.getX(), baseline);
-    liveGlyphs.addLineOfText (font, "LIVE", area.getX(), baseline);
+    glyphs.addLineOfText (font, "LIVECUT", x, baseline);
+    liveGlyphs.addLineOfText (font, "LIVE", x, baseline);
     cutGlyphs.addLineOfText (font, "CUT", glyphs.getGlyph (4).getLeft(), baseline);
     juce::Path live, cut;
     liveGlyphs.createPath (live);
@@ -128,7 +139,7 @@ void drawWordmark (juce::Graphics& g, juce::Rectangle<float> area)
     };
 
     piece (live, area.getX() - capHeight, {});
-    piece (cut, cut.getBounds().getRight() + capHeight, juce::AffineTransform::translation (0.0f, area.getHeight() * drop));
+    piece (cut, cut.getBounds().getRight() + capHeight, juce::AffineTransform::translation (0.0f, area.getHeight() * (drop + furthest * knock)));
 }
 
 } // namespace livecut::ui

@@ -17,8 +17,9 @@ constexpr int tabHeight = 36;
 constexpr int tabGap = 4;
 constexpr int restingTabInset = 6; // a tab whose program isn't playing sits this much lower
 constexpr float tabRadius = 9.0f;
-constexpr int rowHeight = 40;
-constexpr int gapAboveRow = 16;
+constexpr int rowHeight = 36;
+constexpr int gap = 20;            // between the pad and the row beneath, as between everything on the surface
+constexpr int controlGap = 24;     // between the controls in that row
 
 const juce::String rightArrow = juce::CharPointer_UTF8 ("\xe2\x86\x92"); // →
 
@@ -54,39 +55,40 @@ PadPage::ProgramButton::ProgramButton (const juce::String& name, juce::Colour ta
 {
 }
 
-void PadPage::ProgramButton::setPending (bool next)
+void PadPage::ProgramButton::setPending (bool next, float beat)
 {
-    if (pending == next)
-    {
-        if (pending)
-            repaint(); // keeps the pulse moving
+    // Lit on the beat, and half as bright by the next.
+    const auto nowLit = next ? 0.45f + 0.55f * std::pow (1.0f - (beat - std::floor (beat)), 2.0f) : 0.0f;
 
+    if (pending == next && juce::approximatelyEqual (lit, nowLit))
         return;
-    }
 
     pending = next;
+    lit = nowLit;
     repaint();
 }
 
 void PadPage::ProgramButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
+    // At rest a tab is dark, with its name in its colour. Playing, it is its colour, with its name in black.
     const auto playing = getToggleState();
-    const auto pulse = pending ? static_cast<float> (0.5 + 0.5 * std::sin (juce::Time::getMillisecondCounterHiRes() * 0.008)) : 0.0f;
-    const auto strength = playing ? 1.0f : pending ? 0.3f + 0.7f * pulse : down ? 0.6f : highlighted ? 0.45f : 0.3f;
-    const auto face = getLocalBounds().toFloat().withTrimmedTop (playing ? 0.0f : static_cast<float> (restingTabInset));
+    const auto filled = playing ? 1.0f : pending ? lit : down ? 0.3f : highlighted ? 0.16f : 0.0f;
+    const auto resting = getLocalBounds().toFloat().withTrimmedTop (static_cast<float> (restingTabInset));
+    const auto face = playing ? getLocalBounds().toFloat() : resting;
 
     juce::Path tab;
     tab.addRoundedRectangle (face.getX(), face.getY(), face.getWidth(), face.getHeight(), tabRadius, tabRadius, true, true, false, false);
-    g.setColour (palette::paper.interpolatedWith (colour, strength));
+    g.setColour (palette::well.interpolatedWith (colour, filled));
     g.fillPath (tab);
 
-    g.setColour (palette::ink);
+    // Every name sits on the same line, whether or not its tab stands taller.
+    g.setColour (filled > 0.4f ? palette::onColour : colour);
     g.setFont (uiFont (14.0f, playing ? weight::bold : weight::medium));
-    g.drawText (getButtonText(), face, juce::Justification::centred);
+    g.drawText (getButtonText(), resting, juce::Justification::centred);
 
     if (hasKeyboardFocus (false))
     {
-        g.setColour (palette::ink);
+        g.setColour (playing ? palette::onColour : palette::ink);
         g.drawRoundedRectangle (face.reduced (2.0f), tabRadius - 2.0f, 1.5f);
     }
 }
@@ -102,7 +104,7 @@ PadPage::PadPage (juce::AudioProcessorValueTreeState& s)
       hold (parameter (s, ids::padHold), "Hold"),
       straight (parameter (s, ids::padStraight), "Straight"),
       quantize (choice (s, ids::padQuantize)),
-      mix (parameter (s, ids::wet), "Mix")
+      mix (parameter (s, ids::wet), "Mix", SliderRow::Layout::oneLine)
 {
     addAndMakeVisible (pad);
 
@@ -174,7 +176,7 @@ void PadPage::refresh (const DisplayState& display)
     for (int i = 0; i < programs.size(); ++i)
     {
         programs[i]->setToggleState (i == playing, juce::dontSendNotification);
-        programs[i]->setPending (i == pending);
+        programs[i]->setPending (i == pending, pad.artMotion().beat);
     }
 
     const auto captions = engine::padCaptions (static_cast<engine::PadProgram> (playing));
@@ -182,10 +184,13 @@ void PadPage::refresh (const DisplayState& display)
     pad.setProgram (playing);
     pad.showEngaged (display.padEngaged.load());
 
+    // While it cuts, the host is so many units into the phrase. Four beats to the bar is near enough for a picture.
+    const auto cutting = display.status.load() == DisplayState::Status::cutting && display.unitsPerBar.load() > 0;
+    pad.followBeat (cutting ? std::optional<double> (4.0 * display.position.load() / display.unitsPerBar.load()) : std::nullopt);
+
     // The pad answers each block of cuts that starts while it plays. An editor opened mid-block has seen none start.
     const auto blockStart = display.blockStart.load();
-    if (display.status.load() == DisplayState::Status::cutting && display.padEngaged.load()
-        && lastBlockStart.has_value() && ! juce::exactlyEqual (blockStart, *lastBlockStart))
+    if (cutting && display.padEngaged.load() && lastBlockStart.has_value() && ! juce::exactlyEqual (blockStart, *lastBlockStart))
         pad.pulse();
 
     lastBlockStart = blockStart;
@@ -222,14 +227,17 @@ void PadPage::resized()
         programs[i]->setBounds (left, 0, right - left, tabHeight);
     }
 
+    // Everything in the bottom row sits on one centre line.
     auto row = area.removeFromBottom (rowHeight);
-    area.removeFromBottom (gapAboveRow);
+    area.removeFromBottom (gap);
     pad.setBounds (area);
 
-    mix.setBounds (row.removeFromRight (240));
-    hold.setBounds (row.getX(), row.getY() + 6, 76, 28);
-    straight.setBounds (row.getX() + 96, row.getY() + 6, 100, 28);
-    quantize.setBounds (row.getX() + 220, row.getY() + 3, 128, 34);
+    mix.setBounds (row.removeFromRight (280));
+    hold.setBounds (row.removeFromLeft (76));
+    row.removeFromLeft (controlGap);
+    straight.setBounds (row.removeFromLeft (104));
+    row.removeFromLeft (controlGap);
+    quantize.setBounds (row.removeFromLeft (128).reduced (0, 2));
 }
 
 void PadPage::visibilityChanged()
