@@ -355,37 +355,38 @@ TEST_CASE ("The pad follows the host's beat only while it cuts", "[skin][art][pa
         const auto before = pad->artMotion().beat;
         for (int frame = 0; frame < 60; ++frame)
         {
-            display.position.store (display.position.load() + 16.0 * 0.75 / 60.0); // three bars every four seconds: 180 beats a minute
+            display.beat.store (display.beat.load() + 3.0 / 60.0); // 180 beats a minute
             editor.refreshDisplay();
             pad->animate (1.0 / 60);
         }
         return pad->artMotion().beat - before;
     };
 
-    // Stopped: the pad's own slow pulse, whatever the display's stale position says.
+    // Stopped: the pad's own slow pulse, whatever the display's stale place says.
     CHECK_THAT (beatsInASecond(), WithinAbs (0.5, 0.01));
 
-    // Cutting in 4/4 at 180 beats a minute, sixteen units to the bar.
+    // Cutting at 180 beats a minute.
     display.status.store (livecut::DisplayState::Status::cutting);
-    display.phraseBars.store (4);
-    display.unitsPerBar.store (16);
+    display.phraseBars.store (1);
+    display.unitsPerBar.store (14);
     display.bpm.store (180.0);
     display.padEngaged.store (true);
     beatsInASecond();
     CHECK_THAT (beatsInASecond(), WithinAbs (3.0, 0.1));
 
-    // In 3/4 the beat is still the host's quarter note: three of them to the bar's sixteen units.
-    display.beatsPerBar.store (3.0);
-    display.position.store (0.0);
+    // The art's beat is the host's quarter note, not a count from where the phrase began. In 7/8 a one-bar
+    // phrase starts again every three and a half of them, and the art stays on the host's.
+    display.beat.store (20.0);
 
-    for (int frame = 0; frame < 100; ++frame)
+    for (int frame = 0; frame < 140; ++frame)
     {
         editor.refreshDisplay();
         pad->animate (1.0 / 60);
-        display.position.store (display.position.load() + 16.0 / 60.0); // a bar a second
+        display.beat.store (display.beat.load() + 3.0 / 60.0);
+        display.position.store (std::fmod (display.position.load() + 14.0 * 3.0 / 3.5 / 60.0, 14.0)); // a phrase of 14 units, again and again
     }
 
-    // A second and two thirds in, the host is on its sixth quarter note, and so is the art.
+    // Seven beats on, the host is on a quarter note, and so is the art.
     CHECK_THAT (pad->artMotion().beat - std::round (pad->artMotion().beat), WithinAbs (0.0, 0.05));
 
     // Away on the Classic pages the pad is not shown, and goes back to its own slow pulse.

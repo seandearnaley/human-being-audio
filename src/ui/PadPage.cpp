@@ -204,12 +204,10 @@ void PadPage::refresh (const DisplayState& display)
     pad.setProgram (playing);
     pad.showEngaged (display.padEngaged.load());
 
-    // While it cuts, the host is so many units into the phrase, and a bar's units are so many of its beats.
-    const auto unitsPerBar = display.unitsPerBar.load();
-    const auto cutting = display.status.load() == DisplayState::Status::cutting && unitsPerBar > 0;
-    pad.followBeat (cutting ? std::optional (HostBeat { display.position.load() * display.beatsPerBar.load() / unitsPerBar,
-                                                        display.bpm.load() / 60.0 })
-                            : std::nullopt);
+    // While it cuts, the art keeps the host's own beat: its place in quarter notes, not a count from where the
+    // phrase began, which in a metre such as 7/8 starts half way between two of them as often as not.
+    const auto cutting = display.status.load() == DisplayState::Status::cutting;
+    pad.followBeat (cutting ? std::optional (HostBeat { display.beat.load(), display.bpm.load() / 60.0 }) : std::nullopt);
 
     // The pad answers each block of cuts that starts while it plays. An editor opened mid-block has seen none start.
     const auto blockStart = display.blockStart.load();

@@ -32,7 +32,7 @@ orange comes from it.
   what to do next where the tape would be. On the Classic pages a control's
   status sits beside that control.
 - **Motion keeps time.** While the pad cuts, its art follows the host's beat
-  (its quarter note, in any metre), the pointer mark swells on each beat, and
+  (its own quarter notes, in any metre), the pointer mark swells on each beat, and
   a tab that is waiting for its switch glows on each beat. Each new block of cuts kicks the art, which
   settles in 0.6 s, sends a ring out from the pointer mark (320 ms), and
   drops CUT in the wordmark under its blade, to spring back (300 ms). At rest
@@ -121,9 +121,11 @@ block), so the same motion always draws the same picture and a test can step
 it. `lay` puts a piece of card down on its own shadow.
 
 While the pad cuts, the count of beats is the host's. The processor publishes
-the host's tempo and bar length beside the phrase position; the pad runs its
-count at that tempo and corrects its phase a little each frame, so the picture
-stays on the beat without jumping. The host's place moves on once for each
+the host's tempo and its place in quarter notes beside the phrase position;
+the pad runs its count at that tempo and corrects its phase a little each
+frame, so the picture stays on the beat without jumping. The beat is the
+host's own, not a count from where the phrase began: in a metre such as 7/8 a
+phrase starts half way between two quarter notes as often as on one. The host's place moves on once for each
 block of audio, so the pad takes a place it has already seen as no news. Every
 picture repeats within a number of beats that divides 3840, where the count
 wraps, and each scene brings the count within its own period before scaling
