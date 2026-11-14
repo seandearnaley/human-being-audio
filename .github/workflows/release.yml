@@ -110,7 +110,7 @@ jobs:
         run: |
           key="$RUNNER_TEMP/notary.p8"
           printf '%s' "$NOTARY_API_KEY" | base64 --decode > "$key"
-          installer="dist/Livecut-${GITHUB_REF_NAME#v}.pkg"
+          installer="dist/Livecut-Redux-${GITHUB_REF_NAME#v}.pkg"
           xcrun notarytool submit "$installer" --key "$key" --key-id "$NOTARY_API_KEY_ID" \
             --issuer "$NOTARY_API_ISSUER_ID" --wait --timeout 30m
           rm "$key"
@@ -155,11 +155,11 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p dist/Livecut
-          cp -R "$ARTEFACTS/VST3/Livecut.vst3" dist/Livecut/
-          cp "$ARTEFACTS/Standalone/Livecut.exe" dist/Livecut/
-          cp LICENSE dist/Livecut/
-          (cd dist && 7z a "Livecut-${GITHUB_REF_NAME#v}-windows-x64.zip" Livecut)
+          mkdir -p "dist/Livecut Redux"
+          cp -R "$ARTEFACTS/VST3/Livecut Redux.vst3" "dist/Livecut Redux/"
+          cp "$ARTEFACTS/Standalone/Livecut Redux.exe" "dist/Livecut Redux/"
+          cp LICENSE "dist/Livecut Redux/"
+          (cd dist && 7z a "Livecut-Redux-${GITHUB_REF_NAME#v}-windows-x64.zip" "Livecut Redux")
 
       - uses: actions/upload-artifact@v7
         with:
@@ -185,7 +185,7 @@ jobs:
         run: |
           # Releases start as drafts, so a person checks them before anyone can
           # download them. Versions with a suffix, such as v0.1.0-rc.1, are pre-releases.
-          options=(--draft --title "Livecut ${GITHUB_REF_NAME#v}" --generate-notes)
+          options=(--draft --title "Livecut Redux ${GITHUB_REF_NAME#v}" --generate-notes)
 
           if [[ $GITHUB_REF_NAME == *-* ]]; then
             options+=(--prerelease)
