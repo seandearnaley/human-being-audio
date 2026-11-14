@@ -63,11 +63,11 @@ target_link_libraries(LivecutSpectral PRIVATE juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 juce_add_plugin(Livecut
-    PRODUCT_NAME "Livecut"
+    PRODUCT_NAME "Livecut Redux"
     DESCRIPTION "BBCut-style live beat slicer"
-    COMPANY_NAME "Sean Dearnaley"
+    COMPANY_NAME "Human Being Music"
     COMPANY_WEBSITE "https://github.com/seandearnaley/livecut"
-    BUNDLE_ID "com.seandearnaley.livecut"
+    BUNDLE_ID "com.humanbeingmusic.livecutredux"
     PLUGIN_MANUFACTURER_CODE Sdrn
     PLUGIN_CODE Lvct
     FORMATS VST3 AU Standalone
@@ -77,7 +77,7 @@ juce_add_plugin(Livecut
     VST3_CATEGORIES Fx
     AU_MAIN_TYPE kAudioUnitType_Effect
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "Livecut cuts the audio coming into your Mac."
+    MICROPHONE_PERMISSION_TEXT "Livecut Redux cuts the audio coming into your Mac."
     COPY_PLUGIN_AFTER_BUILD ${LIVECUT_COPY_PLUGIN_AFTER_BUILD})
 
 target_compile_definitions(Livecut

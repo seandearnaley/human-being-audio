@@ -35,14 +35,14 @@ jobs:
           - name: macOS (universal)
             os: macos-26
             jobs: $(sysctl -n hw.logicalcpu)
-            artifact: Livecut-macOS-universal
+            artifact: Livecut-Redux-macOS-universal
             pluginval_zip: pluginval_macOS.zip
             pluginval_bin: pluginval/pluginval.app/Contents/MacOS/pluginval
             exe_suffix: ""
           - name: Windows (x64)
             os: windows-2025-vs2026
             jobs: $NUMBER_OF_PROCESSORS
-            artifact: Livecut-Windows-x64
+            artifact: Livecut-Redux-Windows-x64
             pluginval_zip: pluginval_Windows.zip
             pluginval_bin: pluginval/pluginval.exe
             exe_suffix: .exe
@@ -54,6 +54,10 @@ jobs:
 
       - name: Test release version checks
         run: cmake -P tests/release/ReleaseVersionTests.cmake
+
+      - name: Test installer preinstall script
+        if: runner.os == 'macOS'
+        run: tests/release/PreinstallTests.sh
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -83,18 +87,18 @@ jobs:
         run: |
           "${{ matrix.pluginval_bin }}" --strictness-level 10 \
             --vst3validator "vst3sdk/build/bin/Release/validator${{ matrix.exe_suffix }}" \
-            --validate "$ARTEFACTS/VST3/Livecut.vst3"
+            --validate "$ARTEFACTS/VST3/Livecut Redux.vst3"
 
       - name: Validate AU
         if: runner.os == 'macOS'
         run: |
           # macOS only finds an AU once it is installed and the registrar has rescanned.
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R "$ARTEFACTS/AU/Livecut.component" ~/Library/Audio/Plug-Ins/Components/
+          cp -R "$ARTEFACTS/AU/Livecut Redux.component" ~/Library/Audio/Plug-Ins/Components/
           pkill -9 AudioComponentRegistrar || [ $? -eq 1 ]  # exit 1 means it was not running
           auval -strict -v aufx Lvct Sdrn
           "${{ matrix.pluginval_bin }}" --strictness-level 10 \
-            --validate ~/Library/Audio/Plug-Ins/Components/Livecut.component
+            --validate ~/"Library/Audio/Plug-Ins/Components/Livecut Redux.component"
 
       - name: Upload plugins
         uses: actions/upload-artifact@v7

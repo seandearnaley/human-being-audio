@@ -61,9 +61,21 @@ TEST_CASE ("Processor reports its identity", "[processor]")
 {
     LivecutAudioProcessor processor;
 
-    CHECK (processor.getName() == "Livecut");
+    CHECK (processor.getName() == "Livecut Redux");
     CHECK_FALSE (processor.acceptsMidi());
     CHECK_FALSE (processor.producesMidi());
+}
+
+// Hosts find saved sessions by the four-character codes, never by the name:
+// the VST3 class IDs are made from them (JUCE_VST3_CAN_REPLACE_VST2 would make
+// them from the name instead), and so are the AU's subtype and manufacturer.
+TEST_CASE ("Plug-in is Livecut Redux by Human Being Music, with Livecut's codes", "[processor]")
+{
+    CHECK (juce::String (JucePlugin_Name) == "Livecut Redux");
+    CHECK (juce::String (JucePlugin_Manufacturer) == "Human Being Music");
+    CHECK (JucePlugin_ManufacturerCode == juce::ByteOrder::bigEndianInt ("Sdrn"));
+    CHECK (JucePlugin_PluginCode == juce::ByteOrder::bigEndianInt ("Lvct"));
+    STATIC_CHECK (JUCE_VST3_CAN_REPLACE_VST2 == 0);
 }
 
 // Cuts replay up to a bar of input after the input itself has stopped.
