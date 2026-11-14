@@ -575,6 +575,7 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
             }
             processingBeatsPerSample = context.timing.bpm / 60.0 / processingSampleRate;
             processingBeatsPerBar = context.timing.beatsPerBar;
+            display.bpm = context.timing.bpm;
             if (!resources.spectral && context.resetHold)
                 wetHold.interrupt ();
             applyRenderSettings (context.settings);
@@ -662,6 +663,7 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
             ((static_cast<double> (context.position.bar) - static_cast<double> (resources.cutter.phraseStartBar ())) +
              (context.position.beatsIntoBar + (resources.rendering->offset + 1) * processingBeatsPerSample) / context.timing.beatsPerBar) *
             resources.cutter.activeUnitsPerBar ();
+        processingBeat = context.ppq + static_cast<double> (resources.rendering->offset + 1) * processingBeatsPerSample;
         ++resources.nextRender;
         const auto contextEnded = ++resources.rendering->offset == resources.rendering->segment.frameCount;
         if (contextEnded && context.running)
@@ -846,6 +848,7 @@ livecut::spectral::DisplaySnapshot LivecutAudioProcessor::sourceDisplay () const
     result.blockStart = cutter.blockStartUnits ();
     result.blockEnd = cutter.blockEndUnits ();
     result.position = cutter.positionInPhrase ();
+    result.beat = processingBeat;
     result.cutting = cutter.isCutting ();
     result.timingSupported = cutter.isTimingSupported ();
     result.cutterError = static_cast<int> (cutter.error ());
@@ -884,6 +887,7 @@ void LivecutAudioProcessor::publishSourceDisplay (const livecut::spectral::Displ
     display.blockStart = source.blockStart;
     display.blockEnd = source.blockEnd;
     display.position = source.position;
+    display.beat = source.beat;
 }
 
 void LivecutAudioProcessor::publishTransformDisplay ()

@@ -142,6 +142,7 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     // the cutter starts, then up to 1 over 5 ms. 1 when not entering.
     float classicEntryGain = 1.0f, classicEntryStep = 1.0f;
     double processingSampleRate = 48000.0, processingBeatsPerSample = 0.0, processingBeatsPerBar = 4.0;
+    double processingBeat = 0.0; // the host's place, in quarter notes, at the end of the last sample rendered
     std::atomic<bool> resetHoldRequested{false};
     std::uint64_t transportEpochCounter = 1;
     bool processingRunning = false;

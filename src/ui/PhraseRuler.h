@@ -3,14 +3,17 @@
 #pragma once
 
 #include "DisplayState.h"
+#include "ui/Theme.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace livecut::ui
 {
 
-// The LCD across the top of the editor: the current phrase's bars and units,
-// the block being cut and the playhead, with a line of status text above.
+// The phrase as a strip of tape, cut into its bars: the units marked along
+// it, the block being cut in the accent colour, and the playhead. Until there
+// is a phrase to show, a line of status text takes the tape's place. Shown or
+// not, the line is the ruler's description, so a screen reader can always read it.
 class PhraseRuler final : public juce::Component
 {
 public:
@@ -40,11 +43,17 @@ public:
     void setHeadline (const juce::String& text);
     const juce::String& headlineText() const { return headline; }
 
+    // The colour of the block being cut.
+    void setAccent (juce::Colour colour);
+
     void paint (juce::Graphics& g) override;
 
 private:
+    void describeForScreenReaders();
+
     Snapshot current;
     juce::String headline;
+    juce::Colour accent { palette::accent };
 };
 
 } // namespace livecut::ui

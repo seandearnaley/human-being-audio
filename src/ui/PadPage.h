@@ -9,42 +9,63 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <optional>
+
 namespace livecut::ui
 {
 
-// The pad surface beneath the phrase ruler: the pad, a row of eight program
-// keys, then Hold, Straight, Beat / Bar and Mix. Where a control owns a parameter, its
+// The pad surface: eight program tabs, the pad they open onto, then Hold,
+// Straight, Beat / Bar and Mix. Where a control owns a parameter, its
 // component ID is the parameter's ID. Mix is the Wet parameter under its own ID.
+enum class TabState { resting, hovered, pressed, waiting, playing };
+
+// A tab's face, and its name on it.
+struct TabColours
+{
+    juce::Colour face, name;
+};
+
+// At rest a tab is dark, with its name in its program's colour. Playing, it
+// is that colour, with its name in black. Waiting for the grid it glows with
+// the colour under its name in white: `lit` is 1 on the beat and 0 by the next.
+TabColours tabColours (juce::Colour programColour, TabState state, float lit);
+
 class PadPage final : public juce::Component
 {
 public:
-    // A key like a drum machine's: lit while its program plays, outlined and
-    // pulsing while it waits for the grid, dimmed when it isn't here yet.
+    // A tab like a divider in a ring binder: dark, with its name in its
+    // program's colour, until that program plays, when it stands taller in
+    // the colour itself and runs into the pad's sheet. While it waits for the
+    // grid it lights on every beat.
     class ProgramButton final : public juce::Button
     {
     public:
-        ProgramButton (const juce::String& name, const juce::String& caption);
+        ProgramButton (const juce::String& name, juce::Colour colour);
 
-        void setPending (bool pending, const juce::String& when);
+        // `beat` is the pad's beat count: a waiting tab is brightest on each beat.
+        void setPending (bool pending, float beat);
         bool isPending() const { return pending; }
-        const juce::String& captionText() const { return caption; }
 
         void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
     private:
-        juce::String caption, pendingText;
+        juce::Colour colour;
+        float lit = 0.0f; // how brightly a waiting tab glows just now: 1 on the beat
         bool pending = false;
     };
 
     explicit PadPage (juce::AudioProcessorValueTreeState& state);
 
     // Follows the processor's display: which program plays or waits, the
-    // pad's captions and its touch mark.
+    // pad's look and captions, its pointer mark, and a ring for each new cut.
     void refresh (const DisplayState& display);
 
-    // The ruler's line: the program and the bar, a pending switch, a chosen
-    // program that isn't here yet, or, while the host plays but nothing is
-    // cut yet, an invitation to press the pad or a note that it's starting.
+    // The program whose tab is lit and whose colour the surface wears.
+    engine::PadProgram playingProgram (const DisplayState& display) const;
+
+    // The ruler's line: a pending switch, an invitation to press the pad or a
+    // note that it's starting while the host plays but nothing is cut yet,
+    // and otherwise the status.
     juce::String headline (const DisplayState& display, const juce::String& status) const;
 
     void resized() override;
@@ -52,7 +73,6 @@ public:
 
 private:
     engine::PadProgram chosenProgram() const { return static_cast<engine::PadProgram> (chosen); }
-    engine::PadProgram playingProgram (const DisplayState& display) const;
     bool landsOnBar() const;
     juce::String programName (int index) const;
 
@@ -67,6 +87,7 @@ private:
     ProcedureSwitch quantize;
     SliderRow mix;
     int chosen = 0;
+    std::optional<double> lastBlockStart; // nothing until the first look at the display
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadPage)
 };

@@ -2,7 +2,7 @@
 
 #include "ui/XYPad.h"
 
-#include "ui/LivecutLookAndFeel.h"
+#include "ui/Theme.h"
 
 #include <cmath>
 
@@ -11,20 +11,51 @@ namespace livecut::ui
 
 namespace
 {
-constexpr int axisRowHeight = 40;
-constexpr int axisRowGap = 10;
-constexpr float plotInset = 14.0f;
-constexpr float glowRadius = 64.0f;
+constexpr int rail = 20;            // the sheet showing on every side of the art, where the axis markers run
+constexpr float sheetRadius = 14.0f;
+constexpr float artRadius = 8.0f;
+constexpr int tagHeight = 24;
+constexpr int tagPadding = 10;
+constexpr float markerReach = 6.0f; // half a marker's width
+constexpr float markerInset = 6.0f; // from the art's edge to a marker's tip
+constexpr float markerLength = 8.0f;
 
-const juce::String upArrow = juce::CharPointer_UTF8 ("\xe2\x86\x91");    // ↑
-const juce::String rightArrow = juce::CharPointer_UTF8 ("\xe2\x86\x92"); // →
-const juce::String touchMark = juce::CharPointer_UTF8 ("\xe2\x97\x8f");  // ●
+constexpr float markRadius = 10.0f;
+constexpr float pressedRing = 22.0f;
+constexpr float cutRingTravel = 30.0f;
+
+constexpr float kickSeconds = 0.6f;       // how long the art takes to settle after a new block
+constexpr float changeSeconds = 0.18f;    // how long one program's sheet takes to become another's
+constexpr float ringSeconds = 0.32f;      // how long the ring from the pointer mark lasts
+constexpr float restingTempo = 0.5f;      // beats a second, when there is no host beat to keep
+constexpr double restingFrame = 1.0 / 30; // the pad is redrawn this often at rest,
+constexpr double movingFrame = 1.0 / 60;  // and this often while it plays or something on it is changing
+constexpr float sharpest = 2.0f;          // the art is drawn at up to this many pixels a point
+
+juce::Font captionFont() { return uiFont (13.0f, weight::semibold); }
+juce::Font readoutFont() { return numberFont (13.0f); }
+
+// Quick at first, then gentle.
+float easedOut (float progress) { return 1.0f - juce::square (1.0f - progress); }
+
+float fraction (float value) { return value - std::floor (value); }
 } // namespace
 
 XYPad::AxisSlider::AxisSlider (XYPad& pad, bool horizontalAxis)
-    : juce::Slider (LinearHorizontal, NoTextBox), owner (pad), horizontal (horizontalAxis)
+    // A bar's range is its whole length, so the slider's ends are the art's edges whatever look and feel it's in.
+    : juce::Slider (horizontalAxis ? LinearBar : LinearBarVertical, NoTextBox), owner (pad), horizontal (horizontalAxis)
 {
     setRange (0.0, 1.0, 0.001);
+}
+
+void XYPad::AxisSlider::paint (juce::Graphics& g)
+{
+    // The pad draws the marker, which overhangs the ends; the slider only shows that it has the keyboard.
+    if (hasKeyboardFocus (false))
+    {
+        g.setColour (palette::onColour);
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
+    }
 }
 
 bool XYPad::AxisSlider::keyPressed (const juce::KeyPress& key)
@@ -32,10 +63,57 @@ bool XYPad::AxisSlider::keyPressed (const juce::KeyPress& key)
     return owner.axisKey (horizontal, key);
 }
 
+XYPad::Tag::Tag (XYPad& pad, bool horizontalAxis) : owner (pad), horizontal (horizontalAxis)
+{
+    setInterceptsMouseClicks (false, false);
+    caption.setFont (captionFont());
+    readout.setFont (readoutFont());
+    readout.setJustificationType (juce::Justification::centredRight); // so the tag's padding is even whatever the value
+
+    for (auto* label : { &caption, &readout })
+    {
+        label->setColour (juce::Label::textColourId, palette::onColour);
+        label->setBorderSize ({});
+        label->setMinimumHorizontalScale (1.0f);
+        addAndMakeVisible (label);
+    }
+}
+
+int XYPad::Tag::widestReadout()
+{
+    return juce::roundToInt (std::ceil (juce::GlyphArrangement::getStringWidth (readoutFont(), "100%")));
+}
+
+int XYPad::Tag::fittedWidth() const
+{
+    // Room for the widest value, so the tag keeps its size while the value changes.
+    const auto captionWidth = juce::roundToInt (std::ceil (juce::GlyphArrangement::getStringWidth (captionFont(), caption.getText())));
+    return 2 * tagPadding + captionWidth + 6 + widestReadout();
+}
+
+void XYPad::Tag::paint (juce::Graphics& g)
+{
+    // Square where it meets the sheet, rounded where it lies on the art.
+    const auto bounds = getLocalBounds().toFloat();
+    juce::Path shape;
+    shape.addRoundedRectangle (bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), 8.0f, 8.0f,
+                               horizontal, false, false, ! horizontal);
+    g.setColour (owner.sheetColour());
+    g.fillPath (shape);
+}
+
+void XYPad::Tag::resized()
+{
+    auto area = getLocalBounds().reduced (tagPadding, 0);
+    caption.setBounds (area.removeFromLeft (area.getWidth() - widestReadout()));
+    readout.setBounds (area);
+}
+
 XYPad::Axis::Axis (XYPad& owner, juce::RangedAudioParameter& p, bool horizontal)
     : parameter (p),
       attachment (p, [&owner, horizontal] (float denormalised) { owner.receive (horizontal, denormalised); }),
-      slider (owner, horizontal)
+      slider (owner, horizontal),
+      tag (owner, horizontal)
 {
 }
 
@@ -43,34 +121,34 @@ XYPad::XYPad (juce::RangedAudioParameter& xParameter, juce::RangedAudioParameter
               juce::RangedAudioParameter& touchParameter)
     : x (*this, xParameter, true),
       y (*this, yParameter, false),
-      touchAttachment (touchParameter, [] (float) {})
+      touchAttachment (touchParameter, [] (float) {}),
+      frames (this, [this] (double now) { displayRefreshed (now); })
 {
     setComponentID (touchParameter.getParameterID());
     setTitle ("Pad");
     setWantsKeyboardFocus (true);
-    setTooltip ("Press to cut; let go to stop on the grid. Drag to change the sound side to side and up and down, "
-                "Shift-drag for fine changes. Arrow keys nudge 1%, Shift 0.1%, Ctrl 10%. Home resets.");
+    setHelpText ("Press to cut; let go to stop on the grid. Drag to change the sound side to side and up and down, "
+                 "Shift-drag for fine changes. Arrow keys nudge 1%, Shift 0.1%, Ctrl 10%. Home resets.");
 
     for (auto* a : { &x, &y })
     {
         a->slider.setComponentID (a->parameter.getParameterID());
         a->slider.setTitle (a->parameter.getName (80));
-        a->slider.setTooltip (getTooltip());
+        a->slider.setHelpText (getHelpText());
         a->slider.setDoubleClickReturnValue (true, a->parameter.getDefaultValue());
         a->slider.onDragStart = [this, a] { beginGesture (*a); };
         a->slider.onDragEnd = [this, a] { endGesture (*a); };
         a->slider.onValueChange = [this, a] { setAxis (*a, static_cast<float> (a->slider.getValue())); };
-        a->caption.setBorderSize ({});
-        a->readout.setBorderSize ({});
-        a->readout.setJustificationType (juce::Justification::centredRight);
-        a->readout.setColour (juce::Label::textColourId, palette::inkMuted);
-        addAndMakeVisible (a->caption);
-        addAndMakeVisible (a->readout);
+        addAndMakeVisible (a->tag);
         addAndMakeVisible (a->slider);
     }
 
+    x.slider.setExplicitFocusOrder (1); // left/right before up/down, though the Y slider sits higher
+    y.slider.setExplicitFocusOrder (2);
     x.attachment.sendInitialUpdate();
     y.attachment.sendInitialUpdate();
+    motion.x = x.value;
+    motion.y = y.value;
 }
 
 XYPad::~XYPad()
@@ -80,12 +158,25 @@ XYPad::~XYPad()
 
 void XYPad::setCaptions (juce::String xCaption, juce::String yCaption)
 {
-    if (x.caption.getText() == xCaption && y.caption.getText() == yCaption)
+    if (x.tag.caption.getText() == xCaption && y.tag.caption.getText() == yCaption)
         return;
 
-    x.caption.setText (xCaption, juce::dontSendNotification);
-    y.caption.setText (yCaption, juce::dontSendNotification);
+    x.tag.caption.setText (xCaption, juce::dontSendNotification);
+    y.tag.caption.setText (yCaption, juce::dontSendNotification);
     setDescription ("Left/right changes " + xCaption + "; up/down changes " + yCaption);
+    layoutTags();
+}
+
+void XYPad::setProgram (int next)
+{
+    if (program == next)
+        return;
+
+    // A change that lands mid-change starts from whichever program showed more.
+    programBefore = change >= 0.5f ? program : programBefore;
+    program = next;
+    change = 0.0f;
+    artStale = true;
     repaint();
 }
 
@@ -98,92 +189,211 @@ void XYPad::showEngaged (bool state)
     repaint();
 }
 
+void XYPad::pulse()
+{
+    motion.kick = 1.0f;
+    ++motion.cuts;
+    ring = 0.0f;
+}
+
+void XYPad::followBeat (std::optional<HostBeat> reported)
+{
+    // The host's place moves on once for each block of audio, and the editor may look more often than that. The
+    // same place seen again says nothing new about when the host was there, so only its tempo is taken.
+    if (reported.has_value() && host.has_value() && juce::exactlyEqual (reported->beats, host->beats))
+    {
+        host->perSecond = reported->perSecond;
+        return;
+    }
+
+    host = reported;
+    hostAt = runSeconds;
+}
+
+bool XYPad::displayRefreshed (double now)
+{
+    const auto moving = engaged || host.has_value() || change < 1.0f || ring < 1.0f;
+    const auto elapsed = clock.tick (now, moving ? movingFrame : restingFrame);
+
+    if (elapsed.has_value())
+        animate (*elapsed);
+
+    return elapsed.has_value();
+}
+
+void XYPad::animate (double seconds)
+{
+    const auto elapsed = static_cast<float> (seconds);
+    const auto towards = [elapsed] (float from, float to, float rate) { return from + (to - from) * juce::jmin (1.0f, elapsed * rate); };
+
+    runSeconds += seconds;
+    change = juce::jmin (1.0f, change + elapsed / changeSeconds);
+    ring = juce::jmin (1.0f, ring + elapsed / ringSeconds);
+    motion.kick = juce::jmax (0.0f, motion.kick - elapsed / kickSeconds);
+    motion.x = towards (motion.x, x.value, 14.0f);
+    motion.y = towards (motion.y, y.value, 14.0f);
+
+    auto beats = elapsed * restingTempo;
+
+    if (host.has_value())
+    {
+        // The art's beat runs at the host's tempo. Whatever it is then out by, it makes up the shorter way round.
+        const auto tempo = static_cast<float> (host->perSecond);
+        const auto there = host->beats + (runSeconds - hostAt) * host->perSecond;
+        auto out = static_cast<float> (there - std::floor (there)) - fraction (motion.beat + elapsed * tempo);
+        out -= std::round (out);
+        beats = juce::jmax (0.0f, elapsed * tempo + out * juce::jmin (1.0f, elapsed * 10.0f));
+    }
+
+    motion.beat = std::fmod (motion.beat + beats, ArtMotion::beatsBeforeWrap);
+    motion.spin = std::fmod (motion.spin + beats * juce::square (1.0f - motion.kick), ArtMotion::beatsBeforeWrap);
+    artStale = true;
+    repaint();
+}
+
+juce::Colour XYPad::sheetColour() const
+{
+    return programColour (programBefore).interpolatedWith (programColour (program), easedOut (change));
+}
+
 juce::Rectangle<float> XYPad::padBounds() const
 {
-    return getLocalBounds().withTrimmedBottom (axisRowHeight + axisRowGap).toFloat();
+    return getLocalBounds().reduced (rail).toFloat();
 }
 
-juce::Rectangle<float> XYPad::plotArea() const
+juce::Point<float> XYPad::mark() const
 {
-    return padBounds().reduced (plotInset);
+    const auto area = padBounds();
+    return { area.getX() + x.value * area.getWidth(), area.getBottom() - y.value * area.getHeight() };
 }
 
-void XYPad::layoutAxis (Axis& a, juce::Rectangle<int> area)
+void XYPad::layoutTags()
 {
-    auto top = area.removeFromTop (18);
-    a.caption.setBounds (top.removeFromLeft (top.getWidth() / 2));
-    a.readout.setBounds (top);
-    a.slider.setBounds (area);
+    const auto area = padBounds().toNearestInt();
+    y.tag.setBounds (area.getX(), area.getY(), y.tag.fittedWidth(), tagHeight);
+    const auto width = x.tag.fittedWidth();
+    x.tag.setBounds (area.getRight() - width, area.getBottom() - tagHeight, width, tagHeight);
 }
 
 void XYPad::resized()
 {
-    auto rows = getLocalBounds().removeFromBottom (axisRowHeight);
-    const auto width = (rows.getWidth() - 2 * axisRowGap) / 2;
-    layoutAxis (x, rows.removeFromLeft (width));
-    rows.removeFromLeft (2 * axisRowGap);
-    layoutAxis (y, rows);
+    const auto area = padBounds().toNearestInt();
+
+    // JUCE lays a bar out inside a one-pixel border, so each slider is that much longer than the art at both ends.
+    x.slider.setBounds (area.getX() - 1, area.getBottom(), area.getWidth() + 2, rail);
+    y.slider.setBounds (area.getRight(), area.getY() - 1, rail, area.getHeight() + 2);
+    layoutTags();
     endInteraction();
+    artStale = true;
 }
 
 void XYPad::paint (juce::Graphics& g)
 {
-    const auto surface = padBounds();
-    g.setColour (palette::lcd);
-    g.fillRoundedRectangle (surface, 6.0f);
+    // The sheet: square along the top, where the program tabs join it.
+    const auto bounds = getLocalBounds().toFloat();
+    juce::Path sheet;
+    sheet.addRoundedRectangle (bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
+                               sheetRadius, sheetRadius, false, false, true, true);
+    g.setColour (sheetColour());
+    g.fillPath (sheet);
 
-    const auto area = plotArea();
-    g.setColour (palette::lcdDim.withAlpha (0.5f));
-    g.drawRect (area, 1.0f);
+    // The art is drawn in software and copied across, which costs a fraction of
+    // what the platform's renderers take to draw it themselves.
+    const auto area = padBounds();
+    const auto density = juce::jmin (sharpest, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const auto width = juce::roundToInt (area.getWidth() * density), height = juce::roundToInt (area.getHeight() * density);
 
-    for (int division = 1; division < 8; ++division)
+    if (width <= 0 || height <= 0)
+        return;
+
+    const auto draw = [&] (juce::Image& image, int scene)
     {
-        const auto lineX = area.getX() + area.getWidth() * static_cast<float> (division) / 8.0f;
-        g.fillRect (juce::Rectangle<float> (lineX - 0.5f, area.getY(), 1.0f, area.getHeight()));
+        if (image.getWidth() != width || image.getHeight() != height)
+            image = juce::Image (juce::Image::RGB, width, height, false, juce::SoftwareImageType());
+        else if (! artStale)
+            return;
+
+        juce::Graphics art (image);
+        art.addTransform (juce::AffineTransform::scale (density));
+        drawProgramArt (art, scene, area.withZeroOrigin(), motion);
+    };
+
+    juce::Path shape;
+    shape.addRoundedRectangle (area, artRadius);
+    const juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (shape);
+
+    if (change < 1.0f)
+    {
+        draw (canvasBefore, programBefore);
+        g.drawImage (canvasBefore, area);
     }
 
-    for (int division = 1; division < 4; ++division)
+    draw (canvas, program);
+    g.setOpacity (easedOut (change));
+    g.drawImage (canvas, area);
+    artStale = false;
+}
+
+void XYPad::paintOverChildren (juce::Graphics& g)
+{
+    const auto area = padBounds();
+    const auto at = mark();
+
     {
-        const auto lineY = area.getY() + area.getHeight() * static_cast<float> (division) / 4.0f;
-        g.fillRect (juce::Rectangle<float> (area.getX(), lineY - 0.5f, area.getWidth(), 1.0f));
+        const juce::Graphics::ScopedSaveState state (g);
+        juce::Path shape;
+        shape.addRoundedRectangle (area, artRadius);
+        g.reduceClipRegion (shape);
+
+        g.setColour (palette::ink.withAlpha (0.5f));
+        g.fillRect (juce::Rectangle<float> (area.getX(), at.y - 0.5f, area.getWidth(), 1.0f));
+        g.fillRect (juce::Rectangle<float> (at.x - 0.5f, area.getY(), 1.0f, area.getHeight()));
+
+        if (ring < 1.0f)
+        {
+            // A new block: a ring leaves the mark and fades.
+            g.setColour (palette::ink.withAlpha (1.0f - ring));
+            g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (markRadius + easedOut (ring) * cutRingTravel), 2.0f);
+        }
+
+        if (dragging)
+        {
+            g.setColour (palette::onColour.withAlpha (0.3f));
+            g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (pressedRing), 4.0f);
+            g.setColour (palette::ink);
+            g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (pressedRing), 2.0f);
+        }
+
+        // The pointer mark: a white dot that turns black while the pad plays, and swells on the host's beat.
+        const auto swell = host.has_value() ? std::pow (1.0f - fraction (motion.beat), 3.0f) : 0.0f;
+        const auto dot = juce::Rectangle<float>().withCentre (at).expanded (markRadius * (1.0f + 0.18f * swell));
+        juce::Path disc;
+        disc.addEllipse (dot);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.5f), 8, { 0, 3 }).drawForPath (g, disc);
+        g.setColour (engaged ? palette::onColour : palette::ink);
+        g.fillPath (disc);
+        g.setColour (engaged ? palette::ink : palette::onColour);
+        g.drawEllipse (dot.reduced (1.25f), 2.5f);
     }
 
-    const juce::Point<float> target { area.getX() + x.value * area.getWidth(), area.getBottom() - y.value * area.getHeight() };
-
-    if (dragging)
+    // On every rail a marker points in at the mark, so each axis reads the same from either side.
+    juce::Path markers;
+    const auto along = [&] (juce::Point<float> tip, juce::Point<float> out)
     {
-        // A soft glow under the finger while pressed.
-        juce::ColourGradient glow (palette::lcdOn.withAlpha (0.55f), target,
-                                   palette::lcdOn.withAlpha (0.0f), target.translated (glowRadius, 0.0f), true);
-        glow.addColour (0.35, palette::lcdOn.withAlpha (0.16f));
-        g.setGradientFill (glow);
-        g.fillEllipse (juce::Rectangle<float> (glowRadius * 2.0f, glowRadius * 2.0f).withCentre (target));
-    }
+        const juce::Point<float> side { out.y, out.x };
+        markers.addTriangle (tip, tip + out * markerLength + side * markerReach, tip + out * markerLength - side * markerReach);
+    };
+    along ({ at.x, area.getBottom() + markerInset }, { 0.0f, 1.0f });
+    along ({ at.x, area.getY() - markerInset }, { 0.0f, -1.0f });
+    along ({ area.getRight() + markerInset, at.y }, { 1.0f, 0.0f });
+    along ({ area.getX() - markerInset, at.y }, { -1.0f, 0.0f });
+    g.setColour (palette::onColour);
+    g.fillPath (markers);
+    g.strokePath (markers, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved)); // rounds their corners
 
-    g.setColour (palette::lcdOn.withAlpha (0.45f));
-    g.fillRect (juce::Rectangle<float> (area.getX(), target.y - 0.5f, area.getWidth(), 1.0f));
-    g.fillRect (juce::Rectangle<float> (target.x - 0.5f, area.getY(), 1.0f, area.getHeight()));
-    g.setColour (palette::lcdOn);
-    g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (target));
-
-    if (dragging)
-        g.drawEllipse (juce::Rectangle<float> (22.0f, 22.0f).withCentre (target), 1.5f);
-
-    // The axes at the corners, and the touch mark lit while the pad plays.
-    const auto corners = surface.reduced (12.0f, 9.0f);
-    const auto dim = palette::lcdDim.brighter (0.6f);
-    g.setFont (lcdFont (11.0f));
-    g.setColour (dim);
-    g.drawText (upArrow + " " + y.caption.getText().toUpperCase(), corners, juce::Justification::topLeft);
-    g.drawText (x.caption.getText().toUpperCase() + " " + rightArrow, corners, juce::Justification::bottomRight);
-    g.setColour (engaged ? palette::lcdOn : dim);
-    g.drawText (touchMark + " TOUCH", corners, juce::Justification::topRight);
-
-    if (hasKeyboardFocus (true))
-    {
-        g.setColour (dim);
-        g.drawRoundedRectangle (surface.reduced (1.0f), 6.0f, 1.5f);
-    }
+    if (hasKeyboardFocus (false))
+        g.drawRoundedRectangle (area.expanded (3.0f), artRadius + 3.0f, 2.0f);
 }
 
 void XYPad::receive (bool horizontal, float value)
@@ -192,7 +402,7 @@ void XYPad::receive (bool horizontal, float value)
     a.value = a.parameter.convertTo0to1 (value);
     a.slider.setValue (a.value, juce::dontSendNotification);
     const auto unit = a.parameter.getLabel();
-    a.readout.setText (a.parameter.getText (a.value, 0) + (unit.isEmpty() ? "" : " " + unit), juce::dontSendNotification);
+    a.tag.readout.setText (a.parameter.getText (a.value, 0) + (unit.isEmpty() ? "" : " " + unit), juce::dontSendNotification);
     repaint();
 }
 
@@ -265,7 +475,7 @@ void XYPad::mouseDown (const juce::MouseEvent& event)
 
 void XYPad::movePointer (const juce::MouseEvent& event, bool updateFine)
 {
-    const auto area = plotArea();
+    const auto area = padBounds();
 
     if (area.isEmpty())
         return;
@@ -362,6 +572,11 @@ bool XYPad::keyPressed (const juce::KeyPress& key)
 
     const auto horizontal = key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey;
     return axisKey (horizontal, key);
+}
+
+void XYPad::focusGained (FocusChangeType)
+{
+    repaint();
 }
 
 void XYPad::focusLost (FocusChangeType)

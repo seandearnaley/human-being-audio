@@ -18,11 +18,21 @@ This repository is a ground-up port of Remy Muller's original Livecut plugin to
 on Apple Silicon, Intel Macs and Windows. Up to 1.0.0-beta.1 it was called
 Livecut; Livecut Redux opens sessions saved with those versions.
 
-![Livecut Redux's editor: an LCD phrase ruler above the phrase, cut and procedure controls](docs/editor.png)
+![Livecut Redux's editor: eight program tabs above an orange pad of cut strips, with the phrase as a strip of tape across the top](docs/editor.png)
 
-The LCD across the top shows the phrase being cut: its bars and units, the
-block playing now and the playhead. Livecut Redux follows the host's
-transport; while the host is stopped, dry audio passes through the output trim.
+Press the pad to cut and let go to stop on the next beat or bar; drag to play
+two settings of the program at once. Each of the eight programs has its own
+colour and its own picture, drawn in pieces of that colour, which keeps time
+with the host, moves with the pad and answers every cut. The strip across the top is the phrase, cut
+into its bars: the block playing now is in the program's colour, and the line
+is the playhead. Livecut Redux
+follows the host's transport; while the host is stopped, dry audio passes
+through the output trim.
+
+![The eight programs: Cut, Bounce, Glitch, Suction, Filter, Tape, Loops and Rush](docs/programs.jpg)
+
+The wordmark opens an About sheet with the plug-in's story. [docs/skin.md](docs/skin.md)
+has the editor's design rules.
 
 ## Status
 
@@ -135,6 +145,9 @@ otherwise list it twice. Anything else called Livecut, such as the original
 - Livecut-GUI 0.1, a JUCE 6 fork, exposed every parameter in a GUI.
 - **Sean Dearnaley** wrote Livecut Redux, this project's ground-up rewrite,
   published by **Human Being Music**.
+- The editor is set in [Bricolage Grotesque](https://github.com/ateliertriay/bricolage)
+  by Mathieu Triay, under the SIL Open Font License
+  ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)).
 
 ## License
 

@@ -3,7 +3,7 @@
 #include "ui/PadPage.h"
 
 #include "Parameters.h"
-#include "ui/LivecutLookAndFeel.h"
+#include "ui/Theme.h"
 
 #include <array>
 #include <cmath>
@@ -13,32 +13,29 @@ namespace livecut::ui
 
 namespace
 {
-constexpr int padHeight = 376;
-constexpr int keyHeight = 72;
-constexpr int keyGap = 8;
-constexpr int rowHeight = 40;
-constexpr int gapAbovePrograms = 14;
-constexpr int gapBelowPrograms = 16;
+constexpr int tabHeight = 36;
+constexpr int tabGap = 4;
+constexpr int restingTabInset = 6; // a tab whose program isn't playing sits this much lower
+constexpr float tabRadius = 9.0f;
+constexpr int rowHeight = 36;
+constexpr int gap = 20;            // between the pad and the row beneath, as between everything on the surface
+constexpr int controlGap = 24;     // between the controls in that row
+
+// How much of its colour a tab's face takes on. A waiting tab stops at as much as white still reads on.
+constexpr float hoveredFill = 0.12f, pressedFill = 0.3f, waitingFill = 0.2f, waitingLitFill = 0.5f;
 
 const juce::String rightArrow = juce::CharPointer_UTF8 ("\xe2\x86\x92"); // →
-const juce::String middleDot = juce::CharPointer_UTF8 ("\xc2\xb7");      // ·
 
-struct ProgramInfo
-{
-    const char* caption;
-    const char* tooltip;
-};
-
-// One line under each key, and what the pad does for the programs that are here.
-constexpr std::array<ProgramInfo, engine::padProgramCount> programInfo {
-    ProgramInfo { "re-edits", "Left to right: 8ths to 32nds with more repeats. Up: from the break as it is to a full re-edit." },
-    ProgramInfo { "triplets", "Left to right: more triplet bounce, with halftime bars at the far right. Up: ratchets climb faster and higher." },
-    ProgramInfo { "repeats", "Left to right: faster repeats that get crunchier as they speed up. Up: each repeat steps from falling to rising pitch." },
-    ProgramInfo { "squeeze", "Left to right: the band slides from lows to highs. Up: it squeezes narrower and sings, breathing with every cut." },
-    ProgramInfo { "resonance", "Left to right: the filter opens from dark to bright. Up: it rings, and every roll ends on a tuned note that ducks under the hits." },
-    ProgramInfo { "stops", "Left to right: stops from half a beat to four beats long. Up: from a stop every four bars to one on every beat, each spinning back up into the next hit." },
-    ProgramInfo { "nested loops", "Left to right: loop the bar you're in, half a bar, or a beat. Up: the loop folds into shorter loops of its first hit toward the end of every phrase." },
-    ProgramInfo { "rolls", "Left to right: rolls that drag, slowing and falling, to rolls that rush, speeding up and rising into the bar line. Up: from a roll on the last beat to one that fills the bar." },
+// What the pad does in each program.
+constexpr std::array<const char*, engine::padProgramCount> programTooltips {
+    "Left to right: 8ths to 32nds with more repeats. Up: from the break as it is to a full re-edit.",
+    "Left to right: more triplet bounce, with halftime bars at the far right. Up: ratchets climb faster and higher.",
+    "Left to right: faster repeats that get crunchier as they speed up. Up: each repeat steps from falling to rising pitch.",
+    "Left to right: the band slides from lows to highs. Up: it squeezes narrower and sings, breathing with every cut.",
+    "Left to right: the filter opens from dark to bright. Up: it rings, and every roll ends on a tuned note that ducks under the hits.",
+    "Left to right: stops from half a beat to four beats long. Up: from a stop every four bars to one on every beat, each spinning back up into the next hit.",
+    "Left to right: loop the bar you're in, half a bar, or a beat. Up: the loop folds into shorter loops of its first hit toward the end of every phrase.",
+    "Left to right: rolls that drag, slowing and falling, to rolls that rush, speeding up and rising into the bar line. Up: from a roll on the last beat to one that fills the bar.",
 };
 
 juce::RangedAudioParameter& parameter (juce::AudioProcessorValueTreeState& state, const char* id)
@@ -56,55 +53,64 @@ juce::AudioParameterChoice& choice (juce::AudioProcessorValueTreeState& state, c
 }
 } // namespace
 
-PadPage::ProgramButton::ProgramButton (const juce::String& name, const juce::String& captionText)
-    : juce::Button (name), caption (captionText)
+TabColours tabColours (juce::Colour colour, TabState state, float lit)
+{
+    const auto face = [colour] (float filled) { return palette::well.interpolatedWith (colour, filled); };
+
+    switch (state)
+    {
+        case TabState::resting: return { face (0.0f), colour };
+        case TabState::hovered: return { face (hoveredFill), colour };
+        case TabState::pressed: return { face (pressedFill), palette::ink };
+        case TabState::waiting: return { face (waitingFill + (waitingLitFill - waitingFill) * lit), palette::ink };
+        case TabState::playing: return { colour, palette::onColour };
+    }
+
+    jassertfalse;
+    return {};
+}
+
+PadPage::ProgramButton::ProgramButton (const juce::String& name, juce::Colour tabColour)
+    : juce::Button (name), colour (tabColour)
 {
 }
 
-void PadPage::ProgramButton::setPending (bool next, const juce::String& when)
+void PadPage::ProgramButton::setPending (bool next, float beat)
 {
-    if (pending == next && pendingText == when)
-    {
-        if (pending)
-            repaint(); // keeps the pulse moving
+    // Lit on the beat, and fading until the next.
+    const auto nowLit = next ? std::pow (1.0f - (beat - std::floor (beat)), 2.0f) : 0.0f;
 
+    if (pending == next && juce::approximatelyEqual (lit, nowLit))
         return;
-    }
 
     pending = next;
-    pendingText = when;
+    lit = nowLit;
     repaint();
 }
 
 void PadPage::ProgramButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    const auto lit = getToggleState();
-    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-    const auto face = bounds.withTrimmedBottom (2.0f);
+    const auto playing = getToggleState();
+    const auto colours = tabColours (colour, playing ? TabState::playing : pending ? TabState::waiting : down ? TabState::pressed
+                                                     : highlighted ? TabState::hovered : TabState::resting, lit);
+    const auto resting = getLocalBounds().toFloat().withTrimmedTop (static_cast<float> (restingTabInset));
+    const auto face = playing ? getLocalBounds().toFloat() : resting;
 
-    // A key with a visible edge, lit like a small LCD while its program plays.
-    g.setColour (palette::track);
-    g.fillRoundedRectangle (face.translated (0.0f, 2.0f), 5.0f);
-    g.setColour (lit ? palette::lcd : down ? palette::track : highlighted ? palette::well : palette::panel.brighter (0.3f));
-    g.fillRoundedRectangle (face, 5.0f);
-    g.setColour (palette::ink);
-    g.drawRoundedRectangle (face, 5.0f, 1.0f);
+    juce::Path tab;
+    tab.addRoundedRectangle (face.getX(), face.getY(), face.getWidth(), face.getHeight(), tabRadius, tabRadius, true, true, false, false);
+    g.setColour (colours.face);
+    g.fillPath (tab);
 
-    if (lit || pending)
+    // Every name sits on the same line, whether or not its tab stands taller.
+    g.setColour (colours.name);
+    g.setFont (uiFont (14.0f, playing ? weight::bold : weight::medium));
+    g.drawText (getButtonText(), resting, juce::Justification::centred);
+
+    if (hasKeyboardFocus (false))
     {
-        const auto pulse = pending ? 0.45f + 0.55f * static_cast<float> (0.5 + 0.5 * std::sin (juce::Time::getMillisecondCounterHiRes() * 0.006))
-                                   : 1.0f;
-        g.setColour (palette::lcdOn.withAlpha (pulse));
-        g.drawRoundedRectangle (face.reduced (2.5f), 3.5f, 2.0f);
+        g.setColour (playing ? palette::onColour : palette::ink);
+        g.drawRoundedRectangle (face.reduced (2.0f), tabRadius - 2.0f, 1.5f);
     }
-
-    auto text = face.toNearestInt().reduced (4, 7);
-    g.setColour (lit ? palette::lcdOn : palette::ink);
-    g.setFont (uiFont (14.0f, true));
-    g.drawText (getButtonText(), text.removeFromTop (text.getHeight() / 2 + 3), juce::Justification::centredBottom);
-    g.setColour (lit ? palette::lcdOn.withAlpha (0.7f) : palette::inkMuted);
-    g.setFont (uiFont (11.0f));
-    g.drawText (pending ? pendingText : caption, text, juce::Justification::centredTop);
 }
 
 PadPage::PadPage (juce::AudioProcessorValueTreeState& s)
@@ -118,7 +124,7 @@ PadPage::PadPage (juce::AudioProcessorValueTreeState& s)
       hold (parameter (s, ids::padHold), "Hold"),
       straight (parameter (s, ids::padStraight), "Straight"),
       quantize (choice (s, ids::padQuantize)),
-      mix (parameter (s, ids::wet), "Mix")
+      mix (parameter (s, ids::wet), "Mix", SliderRow::Layout::oneLine)
 {
     addAndMakeVisible (pad);
 
@@ -128,11 +134,10 @@ PadPage::PadPage (juce::AudioProcessorValueTreeState& s)
 
     for (int i = 0; i < programParameter.choices.size(); ++i)
     {
-        const auto& info = programInfo[static_cast<std::size_t> (i)];
-        auto* button = programs.add (std::make_unique<ProgramButton> (programParameter.choices[i], info.caption));
+        auto* button = programs.add (std::make_unique<ProgramButton> (programParameter.choices[i], programColour (i)));
         button->setComponentID ("program" + juce::String (i));
         button->setTitle (programParameter.choices[i]);
-        button->setTooltip (info.tooltip);
+        button->setTooltip (programTooltips[static_cast<std::size_t> (i)]);
         button->onClick = [this, i] { programAttachment.setValueAsCompleteGesture (static_cast<float> (i)); };
         programRow.addAndMakeVisible (button);
     }
@@ -180,24 +185,36 @@ bool PadPage::landsOnBar() const
 
 juce::String PadPage::programName (int index) const
 {
-    return programParameter.choices[index].toUpperCase();
+    return programParameter.choices[index];
 }
 
 void PadPage::refresh (const DisplayState& display)
 {
-    const auto playing = playingProgram (display);
+    const auto playing = static_cast<int> (playingProgram (display));
     const auto pending = display.padPendingProgram.load();
-    const juce::String when = landsOnBar() ? "next bar" : "next beat";
 
     for (int i = 0; i < programs.size(); ++i)
     {
-        programs[i]->setToggleState (i == static_cast<int> (playing), juce::dontSendNotification);
-        programs[i]->setPending (i == pending, when);
+        programs[i]->setToggleState (i == playing, juce::dontSendNotification);
+        programs[i]->setPending (i == pending, pad.artMotion().beat);
     }
 
-    const auto captions = engine::padCaptions (playing);
+    const auto captions = engine::padCaptions (static_cast<engine::PadProgram> (playing));
     pad.setCaptions (captions.x, captions.y);
+    pad.setProgram (playing);
     pad.showEngaged (display.padEngaged.load());
+
+    // While it cuts, the art keeps the host's own beat: its place in quarter notes, not a count from where the
+    // phrase began, which in a metre such as 7/8 starts half way between two of them as often as not.
+    const auto cutting = display.status.load() == DisplayState::Status::cutting;
+    pad.followBeat (cutting ? std::optional (HostBeat { display.beat.load(), display.bpm.load() / 60.0 }) : std::nullopt);
+
+    // The pad answers each block of cuts that starts while it plays. An editor opened mid-block has seen none start.
+    const auto blockStart = display.blockStart.load();
+    if (cutting && display.padEngaged.load() && lastBlockStart.has_value() && ! juce::exactlyEqual (blockStart, *lastBlockStart))
+        pad.pulse();
+
+    lastBlockStart = blockStart;
 }
 
 juce::String PadPage::headline (const DisplayState& display, const juce::String& status) const
@@ -206,42 +223,53 @@ juce::String PadPage::headline (const DisplayState& display, const juce::String&
 
     if (pending >= 0)
         return programName (display.padActiveProgram.load()) + " " + rightArrow + " " + programName (pending)
-             + (landsOnBar() ? " ON THE BAR" : " ON THE BEAT");
-
-    const auto line = programName (static_cast<int> (playingProgram (display))) + " " + middleDot + " ";
+             + (landsOnBar() ? " on the bar" : " on the beat");
 
     // Playing but not cutting: nothing starts until a touch, and a touch waits for the next unit.
     if (display.status.load() == DisplayState::Status::startingSoon)
-        return line + (display.padEngaged.load() ? "STARTING" : "PRESS THE PAD TO PLAY");
+        return display.padEngaged.load() ? "Starting" : "Press the pad to play";
 
-    return line + status.toUpperCase();
+    return status;
 }
 
 void PadPage::resized()
 {
     auto area = getLocalBounds();
-    pad.setBounds (area.removeFromTop (padHeight));
-    area.removeFromTop (gapAbovePrograms);
-    programRow.setBounds (area.removeFromTop (keyHeight));
+    programRow.setBounds (area.removeFromTop (tabHeight));
 
+    // The gaps between tabs absorb the rounding, so the row is exactly as wide as the sheet.
     const auto count = programs.size();
-    const auto keyWidth = (programRow.getWidth() - (count - 1) * keyGap) / count;
+    const auto tabWidth = static_cast<float> (programRow.getWidth() - (count - 1) * tabGap) / static_cast<float> (count);
 
     for (int i = 0; i < count; ++i)
-        programs[i]->setBounds (i * (keyWidth + keyGap), 0, keyWidth, programRow.getHeight());
+    {
+        const auto left = juce::roundToInt (static_cast<float> (i) * (tabWidth + static_cast<float> (tabGap)));
+        const auto right = juce::roundToInt (static_cast<float> (i) * (tabWidth + static_cast<float> (tabGap)) + tabWidth);
+        programs[i]->setBounds (left, 0, right - left, tabHeight);
+    }
 
-    area.removeFromTop (gapBelowPrograms);
-    auto row = area.removeFromTop (rowHeight);
-    mix.setBounds (row.removeFromRight (240));
-    hold.setBounds (row.getX(), row.getY() + 6, 90, 28);
-    straight.setBounds (row.getX() + 104, row.getY() + 6, 90, 28);
-    quantize.setBounds (row.getX() + 208, row.getY() + 5, 150, 30);
+    // Everything in the bottom row sits on one centre line.
+    auto row = area.removeFromBottom (rowHeight);
+    area.removeFromBottom (gap);
+    pad.setBounds (area);
+
+    mix.setBounds (row.removeFromRight (280));
+    hold.setBounds (row.removeFromLeft (76));
+    row.removeFromLeft (controlGap);
+    straight.setBounds (row.removeFromLeft (104));
+    row.removeFromLeft (controlGap);
+    quantize.setBounds (row.removeFromLeft (128).reduced (0, 2));
 }
 
 void PadPage::visibilityChanged()
 {
+    // Out of sight the pad lets go, and goes back to its own slow pulse.
     if (! isVisible())
+    {
         pad.endInteraction();
+        pad.showEngaged (false);
+        pad.followBeat (std::nullopt);
+    }
 }
 
 } // namespace livecut::ui

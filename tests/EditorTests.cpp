@@ -34,38 +34,6 @@ void collectIds (juce::Component& component, std::set<juce::String>& ids)
         collectIds (*child, ids);
 }
 
-juce::Component* findById (juce::Component& component, const juce::String& id)
-{
-    if (component.getComponentID() == id)
-        return &component;
-
-    for (auto* child : component.getChildren())
-        if (auto* found = findById (*child, id))
-            return found;
-
-    return nullptr;
-}
-
-template <typename Control>
-Control* findControl (juce::Component& component)
-{
-    if (auto* found = dynamic_cast<Control*> (&component))
-        return found;
-    for (auto* child : component.getChildren())
-        if (auto* found = findControl<Control> (*child))
-            return found;
-    return nullptr;
-}
-
-bool isShowing (juce::Component& component, juce::Component& root)
-{
-    for (auto* c = &component; c != nullptr && c != &root; c = c->getParentComponent())
-        if (! c->isVisible())
-            return false;
-
-    return true;
-}
-
 struct GestureCounter final : juce::AudioProcessorListener
 {
     void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}

@@ -13,6 +13,41 @@ inline void useClassicSurface (LivecutAudioProcessor& processor)
     processor.getParameterState ().getParameter (livecut::ids::surface)->setValueNotifyingHost (1.0f);
 }
 
+// The component with this ID, anywhere beneath `component`.
+inline juce::Component* findById (juce::Component& component, const juce::String& id)
+{
+    if (component.getComponentID() == id)
+        return &component;
+
+    for (auto* child : component.getChildren())
+        if (auto* found = findById (*child, id))
+            return found;
+
+    return nullptr;
+}
+
+// The first component of this type at or beneath `component`.
+template <typename Control>
+Control* findControl (juce::Component& component)
+{
+    if (auto* found = dynamic_cast<Control*> (&component))
+        return found;
+    for (auto* child : component.getChildren())
+        if (auto* found = findControl<Control> (*child))
+            return found;
+    return nullptr;
+}
+
+// Whether `component` and everything between it and `root` is visible.
+inline bool isShowing (juce::Component& component, juce::Component& root)
+{
+    for (auto* c = &component; c != nullptr && c != &root; c = c->getParentComponent())
+        if (! c->isVisible())
+            return false;
+
+    return true;
+}
+
 // Where the hidden [.screenshot] cases write their PNGs. Without the variable
 // they skip, so a tag filter that reaches them leaves nothing in the repo root.
 inline juce::File screenshotDirectory()

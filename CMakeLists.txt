@@ -68,6 +68,7 @@ juce_add_plugin(Livecut
     COMPANY_NAME "Human Being Music"
     COMPANY_WEBSITE "https://github.com/seandearnaley/livecut"
     BUNDLE_ID "com.humanbeingmusic.livecutredux"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
     PLUGIN_MANUFACTURER_CODE Sdrn
     PLUGIN_CODE Lvct
     FORMATS VST3 AU Standalone
@@ -85,6 +86,13 @@ target_compile_definitions(Livecut
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
+
+# The skin's typeface, embedded in the binary.
+juce_add_binary_data(LivecutAssets
+    HEADER_NAME LivecutAssets.h
+    NAMESPACE livecut::assets
+    SOURCES
+        assets/fonts/BricolageGrotesque.ttf)
 
 # Plugin sources live in an INTERFACE library so the test runner can compile
 # the same code without linking against a plugin wrapper.
@@ -108,20 +116,27 @@ target_sources(LivecutCode
         src/PluginEditor.h
         src/PluginProcessor.cpp
         src/PluginProcessor.h
+        src/ui/AboutSheet.cpp
+        src/ui/AboutSheet.h
         src/ui/Controls.cpp
         src/ui/Controls.h
+        src/ui/FrameClock.h
         src/ui/LivecutLookAndFeel.cpp
         src/ui/LivecutLookAndFeel.h
+        src/ui/PadArt.cpp
+        src/ui/PadArt.h
         src/ui/PadPage.cpp
         src/ui/PadPage.h
         src/ui/PhraseRuler.cpp
         src/ui/PhraseRuler.h
         src/ui/RangeSlider.cpp
         src/ui/RangeSlider.h
+        src/ui/Theme.cpp
+        src/ui/Theme.h
         src/ui/XYPad.cpp
         src/ui/XYPad.h)
 target_include_directories(LivecutCode INTERFACE src)
-target_link_libraries(LivecutCode INTERFACE LivecutEngine LivecutSpectral juce::juce_audio_utils)
+target_link_libraries(LivecutCode INTERFACE LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils)
 
 target_link_libraries(Livecut
     PRIVATE
@@ -160,7 +175,8 @@ if(LIVECUT_BUILD_TESTS)
         tests/FractureProcessorTests.cpp
         tests/ImpactStateTests.cpp
         tests/ImpactProcessorTests.cpp
-        tests/RecutProcessorTests.cpp)
+        tests/RecutProcessorTests.cpp
+        tests/SkinTests.cpp)
     livecut_build_for_host_only(LivecutTests)
     # The JucePlugin_* definitions only exist on the plugin target, so copy them.
     target_compile_definitions(LivecutTests PRIVATE $<TARGET_PROPERTY:Livecut,COMPILE_DEFINITIONS>)

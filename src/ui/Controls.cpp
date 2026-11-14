@@ -9,8 +9,9 @@
 namespace livecut::ui
 {
 
-SliderRow::SliderRow (juce::RangedAudioParameter& p, const juce::String& captionText)
+SliderRow::SliderRow (juce::RangedAudioParameter& p, const juce::String& captionText, Layout rowLayout)
     : parameter (p),
+      layout (rowLayout),
       attachment (p, slider)
 {
     setComponentID (parameter.getParameterID());
@@ -36,9 +37,23 @@ void SliderRow::showValue()
 
 void SliderRow::resized()
 {
-    // Caption and value on one line, the slider full width beneath, so narrow columns still get a usable slider.
     auto area = getLocalBounds();
-    auto top = area.removeFromTop (18);
+
+    if (layout == Layout::oneLine)
+    {
+        // The caption as wide as its word, the widest value at the far end, and the slider between them.
+        const auto width = [this] (const juce::String& text)
+        {
+            return juce::roundToInt (std::ceil (juce::GlyphArrangement::getStringWidth (getLookAndFeel().getLabelFont (caption), text)));
+        };
+        caption.setBounds (area.removeFromLeft (width (caption.getText())));
+        readout.setBounds (area.removeFromRight (width ("100%")));
+        slider.setBounds (area.reduced (12, 0));
+        return;
+    }
+
+    // Caption and value on one line, the slider full width beneath, so narrow columns still get a usable slider.
+    auto top = area.removeFromTop (captionHeight);
     caption.setBounds (top.removeFromLeft (top.getWidth() / 2));
     readout.setBounds (top);
     slider.setBounds (area);
@@ -98,11 +113,19 @@ ProcedureSwitch::ProcedureSwitch (juce::AudioParameterChoice& parameter)
     {
         auto* button = buttons.add (std::make_unique<juce::TextButton> (parameter.choices[i]));
         button->setTitle (parameter.choices[i]);
+        button->setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
         button->onClick = [this, i] { attachment.setValueAsCompleteGesture (static_cast<float> (i)); };
         addAndMakeVisible (button);
     }
 
     attachment.sendInitialUpdate();
+}
+
+void ProcedureSwitch::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (0.75f);
+    g.setColour (palette::rule);
+    g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.5f);
 }
 
 void ProcedureSwitch::select (int index)
@@ -120,7 +143,7 @@ void ProcedureSwitch::resized()
     const auto width = area.getWidth() / juce::jmax (1, buttons.size());
 
     for (auto* button : buttons)
-        button->setBounds (area.removeFromLeft (width).reduced (2, 0));
+        button->setBounds (area.removeFromLeft (width));
 }
 
 } // namespace livecut::ui
