@@ -1,9 +1,9 @@
-# Livecut
+# Livecut Redux
 
-Livecut is a live beat slicer. Instead of chopping audio into equal slices, it
-builds *phrases* out of *blocks* of *cuts* whose length and number of repeats
-depend on the cutting procedure, the way a jungle or drum & bass producer would
-re-edit a break. It is based on Nick Collins'
+Livecut Redux, by Human Being Music, is a live beat slicer. Instead of chopping
+audio into equal slices, it builds *phrases* out of *blocks* of *cuts* whose
+length and number of repeats depend on the cutting procedure, the way a jungle
+or drum & bass producer would re-edit a break. It is based on Nick Collins'
 [BBCut](https://composerprogrammer.com/bbcut2.html) library for SuperCollider.
 
 CutProc11, WarpCut and SQPusher come from BBCut. Bounce is new to this port.
@@ -11,16 +11,17 @@ It cuts the way 2020s club music does: triplet bounces against a straight beat,
 a ratchet that climbs in semitones to close each phrase, and the odd halftime
 bar.
 
-This repository is a ground-up port of the original plugin to
+This repository is a ground-up port of Remy Muller's original Livecut plugin to
 [JUCE 9](https://juce.com) as a native 64-bit **VST3**, **AU** and
 **Standalone** app, for current DAWs (Ableton Live 12, Logic, Reaper, Bitwig…)
-on Apple Silicon, Intel Macs and Windows.
+on Apple Silicon, Intel Macs and Windows. Up to 1.0.0-beta.1 it was called
+Livecut; Livecut Redux opens sessions saved with those versions.
 
-![Livecut's editor: an LCD phrase ruler above the phrase, cut and procedure controls](docs/editor.png)
+![Livecut Redux's editor: an LCD phrase ruler above the phrase, cut and procedure controls](docs/editor.png)
 
 The LCD across the top shows the phrase being cut: its bars and units, the
-block playing now and the playhead. Livecut follows the host's transport; while
-the host is stopped, dry audio passes through the output trim.
+block playing now and the playhead. Livecut Redux follows the host's
+transport; while the host is stopped, dry audio passes through the output trim.
 
 ## Status
 
@@ -93,7 +94,8 @@ cmake --build build --config Release --parallel
 ctest --test-dir build --build-config Release --output-on-failure
 ```
 
-The plugins end up in `build/Livecut_artefacts/Release/{VST3,AU,Standalone}`.
+The plugins end up in `build/Livecut_artefacts/Release/{VST3,AU,Standalone}`,
+as `Livecut Redux.vst3`, `Livecut Redux.component` and `Livecut Redux.app`.
 
 Useful options:
 
@@ -118,22 +120,30 @@ installer's layout locally without signing it:
 packaging/macos/make-installer.sh build/Livecut_artefacts/Release 0.1.0 dist --unsigned
 ```
 
+That builds `dist/Livecut-Redux-0.1.0.pkg`. Before it installs, the installer
+removes Livecut 0.1.0 to 1.0.0-beta.1 from `/Library/Audio/Plug-Ins` and
+`/Applications`, since Livecut Redux has the same plug-in IDs and hosts would
+otherwise list it twice. Anything else called Livecut, such as the original
+2004 Livecut, stays.
+
 ## Credits
 
 - **Remy Muller** (mdsp @ Smartelectronix) wrote the original Livecut
   (2003–2004).
 - **Nick Collins** designed the BBCut algorithms Livecut implements.
 - Livecut-GUI 0.1, a JUCE 6 fork, exposed every parameter in a GUI.
+- Livecut Redux is this project's ground-up rewrite, published by
+  **Human Being Music**.
 
 ## License
 
-Livecut is free software: you can redistribute it and/or modify it under the
-terms of the GNU General Public License as published by the Free Software
+Livecut Redux is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See [LICENSE](LICENSE). The original Livecut was released under the
 GPL v2 or later.
 
-Livecut builds on [JUCE](https://github.com/juce-framework/JUCE), which is
-dual-licensed under the AGPLv3 and a commercial JUCE licence; this project uses
-it under the AGPLv3. Distributing a closed-source build would require a
+Livecut Redux builds on [JUCE](https://github.com/juce-framework/JUCE), which
+is dual-licensed under the AGPLv3 and a commercial JUCE licence; this project
+uses it under the AGPLv3. Distributing a closed-source build would require a
 commercial JUCE licence. The VST3 SDK is MIT-licensed.
