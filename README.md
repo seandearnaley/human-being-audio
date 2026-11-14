@@ -22,8 +22,8 @@ Livecut; Livecut Redux opens sessions saved with those versions.
 
 Press the pad to cut and let go to stop on the next beat or bar; drag to play
 two settings of the program at once. Each of the eight programs has its own
-colour and its own picture, drawn in pieces of that colour, which moves with
-the pad and answers every cut. The strip across the top is the phrase, cut
+colour and its own picture, drawn in pieces of that colour, which keeps time
+with the host, moves with the pad and answers every cut. The strip across the top is the phrase, cut
 into its bars: the block playing now is in the program's colour, and the line
 is the playhead. Livecut Redux
 follows the host's transport; while the host is stopped, dry audio passes
