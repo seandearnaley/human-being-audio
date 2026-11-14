@@ -173,25 +173,56 @@ TEST_CASE ("Processor cuts in time with a playing host", "[processor][audio]")
     CHECK (processor.getCutter().phraseStartBar() == 0);
 }
 
-TEST_CASE ("Processor tells the display the host's tempo and bar length", "[processor][display]")
+TEST_CASE ("Processor tells the display the host's tempo and its place in quarter notes", "[processor][display]")
 {
     LivecutAudioProcessor processor;
     useClassicSurface (processor);
+    for (const auto* id : { livecut::ids::minPhraseBars, livecut::ids::maxPhraseBars })
+    {
+        auto* bars = processor.getParameterState().getParameter (id);
+        bars->setValueNotifyingHost (bars->convertTo0to1 (1.0f)); // one bar to the phrase
+    }
+
+    // 7/8 at 150 beats a minute, from the start of the fourth bar. A bar is three and a half quarter notes, so
+    // the phrase starts again on the host's beat and then half way between two of them, by turns.
+    constexpr auto bpm = 150.0, quartersPerBar = 3.5, sampleRate = 48000.0;
+    constexpr int blockSize = 512;
     TestPlayHead playHead;
-    playFromBarOne (playHead);
-    playHead.info.setBpm (150.0);
+    playHead.info.setIsPlaying (true);
+    playHead.info.setBpm (bpm);
     playHead.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 7, 8 });
     processor.setPlayHead (&playHead);
-    processor.prepareToPlay (48000.0, 512);
+    processor.prepareToPlay (sampleRate, blockSize);
+    const auto& display = processor.getDisplayState();
 
-    juce::AudioBuffer<float> buffer (2, 512);
-    buffer.clear();
+    juce::AudioBuffer<float> buffer (2, blockSize);
     juce::MidiBuffer midi;
-    processor.processBlock (buffer, midi);
+    auto ppq = 3 * quartersPerBar;
+    auto lastPosition = 0.0;
+    int phrasesStarted = 0;
 
-    // Seven eighth notes are three and a half of the quarter notes the tempo counts.
-    CHECK (juce::exactlyEqual (processor.getDisplayState().bpm.load(), 150.0));
-    CHECK (juce::exactlyEqual (processor.getDisplayState().beatsPerBar.load(), 3.5));
+    // Three bars and a little more.
+    for (int block = 0; block < 420; ++block)
+    {
+        const auto bar = std::floor (ppq / quartersPerBar);
+        playHead.info.setPpqPosition (ppq);
+        playHead.info.setPpqPositionOfLastBarStart (bar * quartersPerBar);
+        playHead.info.setBarCount (static_cast<std::int64_t> (bar));
+        buffer.clear();
+        processor.processBlock (buffer, midi);
+        ppq += blockSize * bpm / 60.0 / sampleRate;
+
+        // Wherever the phrase is, the display has the host's place at the end of the block.
+        REQUIRE (std::abs (display.beat.load() - ppq) < 1.0e-6);
+
+        if (display.position.load() < lastPosition)
+            ++phrasesStarted;
+
+        lastPosition = display.position.load();
+    }
+
+    CHECK (phrasesStarted >= 3);
+    CHECK (juce::exactlyEqual (display.bpm.load(), bpm));
 }
 
 TEST_CASE ("Processor applies parameter changes to the cutter", "[processor][parameters]")

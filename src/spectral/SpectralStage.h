@@ -79,7 +79,7 @@ struct OutputContext
 struct DisplaySnapshot
 {
     std::uint64_t transformEligible = 0, attackApplied = 0, reverseApplied = 0, transformIneligible = 0;
-    double blockStart = 0, blockEnd = 0, position = 0, fractureTapeSpeed = 0;
+    double blockStart = 0, blockEnd = 0, position = 0, beat = 0, fractureTapeSpeed = 0;
     int phraseBars = 0, unitsPerBar = 8, transformReason = 0, cutterError = 0;
     int fractureFamily = 0, fractureState = 0, fractureVoices = 0;
     int resonatorState = 0, effectRoute = 0, requestedEffectRoute = 0;
