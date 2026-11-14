@@ -102,7 +102,8 @@ juce::StringArray AboutSheet::story()
         "The original's three cut procedures, CutProc11, WarpCut and SQPusher, are all here, ported from its "
         "source and checked against it. The pad and its eight programs are new.",
 
-        "Made by Human Being Music. Free software under the GNU General Public License, version 3 or later.",
+        "Made by Sean Dearnaley and published by Human Being Music. Free software under the GNU General Public "
+        "License, version 3 or later.",
     };
 }
 

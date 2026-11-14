@@ -398,7 +398,8 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
 
     for (const auto* fact : { "Remy Muller", "Smartelectronix", "2003 and 2004", "Nick Collins", "BBCut", "32-bit",
                               "ground-up rewrite", "VST3", "Apple Silicon", "Windows", "CutProc11", "WarpCut", "SQPusher",
-                              "Human Being Music", "GNU General Public License, version 3 or later" })
+                              "Made by Sean Dearnaley", "published by Human Being Music",
+                              "GNU General Public License, version 3 or later" })
     {
         INFO (fact);
         CHECK (story.contains (fact));
