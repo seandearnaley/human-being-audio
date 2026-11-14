@@ -4,6 +4,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "ProcessorTestSupport.h"
+#include "ui/AboutSheet.h"
 #include "ui/LivecutLookAndFeel.h"
 #include "ui/PadPage.h"
 #include "ui/PhraseRuler.h"
@@ -566,9 +567,15 @@ TEST_CASE ("Render the pad editor for design review", "[.screenshot][pad]")
     LivecutAudioProcessor processor;
     LivecutAudioProcessorEditor editor (processor);
     auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+    auto* pad = dynamic_cast<livecut::ui::XYPad*> (findById (editor, "padTouch"));
+    auto* about = dynamic_cast<livecut::ui::AboutSheet*> (findById (editor, "aboutSheet"));
+    REQUIRE (pad != nullptr);
+    REQUIRE (about != nullptr);
     const auto save = [&] (const juce::String& name)
     {
         editor.refreshDisplay();
+        pad->animate (1.0); // let a change of program, or the sheet's fade, finish
+        about->animate (1.0);
         saveScreenshot (editor, directory, name.toRawUTF8());
     };
 
@@ -591,8 +598,6 @@ TEST_CASE ("Render the pad editor for design review", "[.screenshot][pad]")
     }
 
     // Cut, pressed and held, with a switch to Filter waiting for the beat.
-    auto* pad = dynamic_cast<livecut::ui::XYPad*> (findById (editor, "padTouch"));
-    REQUIRE (pad != nullptr);
     const auto area = pad->padBounds();
     set (processor, livecut::ids::padProgram, 4);
     set (processor, livecut::ids::padHold, 1.0f);

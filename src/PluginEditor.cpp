@@ -541,6 +541,7 @@ public:
         addChildComponent (padPage);
         addAndMakeVisible (wordmark);
         wordmark.onClick = [this] { about.open(); };
+        about.onClosed = [this] { wordmark.grabKeyboardFocus(); };
         addChildComponent (about);
         addAndMakeVisible (surfaceButton);
         surfaceButton.setComponentID ("surface");
@@ -954,7 +955,7 @@ private:
     void placeRuler()
     {
         ruler.setBounds (surface == livecut::Surface::classic ? juce::Rectangle<int> (margin, 62, baseWidth - 2 * margin, 88)
-                                                              : juce::Rectangle<int> (144, 22, 616, 26));
+                                                              : juce::Rectangle<int> (144, 19, 616, 32));
     }
 
     void chooseSaveFile()

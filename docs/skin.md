@@ -11,7 +11,8 @@ except one thing: the pad, a sheet of coloured card with a picture laid on it
 in pieces of the same card. Each program has its own colour and its own
 picture, so you can tell what is playing from across the room. The picture is
 drawn in code, as vectors, every frame: it shows what the program does, the
-pad's two axes move it the way they move the sound, and it answers every cut.
+pad's two axes move it the way they move the sound, and it answers every new
+block of cuts.
 
 The original Livecut (2004) was a white panel with orange controls. The paper
 and Cut's orange come from it.
@@ -29,9 +30,10 @@ and Cut's orange come from it.
 - **Status takes the tape's place.** With no phrase to show, the header says
   what to do next where the tape would be.
 - **Motion is quiet, and means something.** At rest the art drifts slowly;
-  while the pad plays it runs faster; each cut kicks it, and it settles in
-  0.6 s. A program change crossfades the pad (180 ms), each cut sends a ring
-  out from the pointer mark (320 ms) and the About sheet fades (160 ms).
+  while the pad plays it runs faster; each new block of cuts kicks it, and it
+  settles in 0.6 s. A program change crossfades the pad (180 ms), each new
+  block sends a ring out from the pointer mark (320 ms) and the About sheet
+  fades (160 ms).
 - **No pictures in files.** Everything on screen is drawn in code from the
   values in `Theme.h`, so it stays sharp at any size and there is nothing to
   regenerate. The only binary assets are the font and the app icon, which
@@ -49,7 +51,7 @@ and Cut's orange come from it.
 | `inkMuted` | ink at 60% | Values and secondary status |
 | `accent` | `#FF6B1A` | Cut's colour, and the Classic pages' block |
 
-| Program | Colour | Its picture | X | Y | A cut |
+| Program | Colour | Its picture | X | Y | A new block |
 |---|---|---|---|---|---|
 | Cut | `#FF6B1A` | Strips of tape, cut on the diagonal | More pieces | Pieces slide further out of place | Re-edits the pieces |
 | Bounce | `#FA6E8C` | A ball's hops | More hops | Hops climb instead of dying away | Squashes the ball |
@@ -63,7 +65,7 @@ and Cut's orange come from it.
 Each colour is light enough for ink to read on it, and the art is drawn in
 tones of it alone. `tests/SkinTests.cpp` checks both: a 4.5:1 contrast with
 ink, and that the art's average hue matches. It also checks that every
-picture moves with time, with each axis and at a cut.
+picture moves with time, with each axis and at a new block.
 
 ## Type
 
@@ -89,12 +91,17 @@ each axis.
 ## Art
 
 `src/ui/PadArt.cpp` has one function per program. Each is a pure function of
-an `ArtMotion` (a clock, the two axes, and the state of the last cut), so the
-same motion always draws the same picture and a test can step it. `lay` puts a
-piece of card down on its own shadow; `sink` shows the next piece through a
-hole. The pad advances the motion on the display's refresh: 30 times a second
-at rest and 60 while it plays. The slowest picture takes about 3 ms to draw
-at Retina size in JUCE's software renderer (`LivecutTests "[.benchmark]" -s`).
+an `ArtMotion` (a clock, the two axes, and the state of the last block), so
+the same motion always draws the same picture and a test can step it. `lay`
+puts a piece of card down on its own shadow.
+
+The pad moves the motion on from the display's refresh, through a
+`FrameClock`: 30 frames a second at rest, and 60 while it plays or something
+on it is changing. It draws the art in software into an image and copies that
+to the screen, because the platform renderers take several times longer to
+draw it themselves. With both axes at their busiest a frame costs 1.8 to
+4.4 ms that way at Retina size, against up to 8 ms drawn directly on macOS
+(`LivecutTests "[.benchmark]" -s`).
 
 To add a program: give it a colour in `Theme.cpp` and a scene in `PadArt.cpp`.
 Its tab follows from the Pad Program parameter's choices.

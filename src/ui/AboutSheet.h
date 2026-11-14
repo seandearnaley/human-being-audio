@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include <juce_animation/juce_animation.h>
+#include "ui/FrameClock.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
@@ -22,14 +23,21 @@ public:
 // A sheet of paper over the whole editor that says what the original Livecut
 // was, why this rewrite exists and who made each, beside a pair of scissors
 // that snip slowly at a strip of tape. Close, Escape or a click on the paper
-// puts it away.
+// puts it away. While it is open the keyboard stays inside it.
 class AboutSheet final : public juce::Component
 {
 public:
     AboutSheet();
 
+    // Fades the sheet in and gives the keyboard to its Close button.
     void open();
+
+    // Fades it out. Once it has gone, onClosed is called.
     void close();
+    std::function<void()> onClosed;
+
+    // Moves the fade and the scissors on by this many seconds. The display's refresh calls it.
+    void animate (double seconds);
 
     // What the sheet says, paragraph by paragraph.
     static juce::StringArray story();
@@ -40,15 +48,22 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
 private:
+    // The link to the source, with a ring when it has the keyboard.
+    struct Link final : juce::HyperlinkButton
+    {
+        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+    };
+
     juce::Rectangle<float> scissorsArea() const;
 
     juce::TextButton closeButton { "Close" };
-    juce::HyperlinkButton source;
+    Link source;
+    juce::TextLayout text;
+    float shown = 0.0f; // how far the sheet has faded in
+    float snip = 0.0f;  // the scissors' slow open and shut, as a phase
     bool closing = false;
-    float snip = 0.0f; // the scissors' slow open and shut, as a phase
 
-    juce::VBlankAnimatorUpdater animations { this };
-    juce::Animator fade;
+    FrameClock clock;
     juce::VBlankAttachment frames;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AboutSheet)

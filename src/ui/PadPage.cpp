@@ -80,7 +80,7 @@ void PadPage::ProgramButton::paintButton (juce::Graphics& g, bool highlighted, b
     g.setColour (palette::paper.interpolatedWith (colour, strength));
     g.fillPath (tab);
 
-    g.setColour (playing ? palette::ink : palette::ink.withAlpha (0.72f));
+    g.setColour (palette::ink);
     g.setFont (uiFont (14.0f, playing ? weight::bold : weight::medium));
     g.drawText (getButtonText(), face, juce::Justification::centred);
 
@@ -182,10 +182,10 @@ void PadPage::refresh (const DisplayState& display)
     pad.setProgram (playing);
     pad.showEngaged (display.padEngaged.load());
 
-    // Each block the cutter starts is a new cut.
+    // The pad answers each block of cuts that starts while it plays. An editor opened mid-block has seen none start.
     const auto blockStart = display.blockStart.load();
     if (display.status.load() == DisplayState::Status::cutting && display.padEngaged.load()
-        && ! juce::exactlyEqual (blockStart, lastBlockStart))
+        && lastBlockStart.has_value() && ! juce::exactlyEqual (blockStart, *lastBlockStart))
         pad.pulse();
 
     lastBlockStart = blockStart;

@@ -9,6 +9,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <optional>
+
 namespace livecut::ui
 {
 
@@ -69,7 +71,7 @@ private:
     ProcedureSwitch quantize;
     SliderRow mix;
     int chosen = 0;
-    double lastBlockStart = 0.0;
+    std::optional<double> lastBlockStart; // nothing until the first look at the display
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadPage)
 };

@@ -23,22 +23,19 @@ constexpr float markRadius = 10.0f;
 constexpr float pressedRing = 22.0f;
 constexpr float cutRingTravel = 30.0f;
 
-constexpr float kickSeconds = 0.6f;       // how long the art takes to settle after a cut
+constexpr float kickSeconds = 0.6f;       // how long the art takes to settle after a new block
+constexpr float changeSeconds = 0.18f;    // how long one program's sheet takes to become another's
+constexpr float ringSeconds = 0.32f;      // how long the ring from the pointer mark lasts
 constexpr float restingPace = 0.45f;      // the art's clock at rest, against 1 while the pad plays
-constexpr double restingFrame = 1.0 / 30; // the art is redrawn this often at rest,
-constexpr double playingFrame = 1.0 / 60; // and this often while the pad plays
+constexpr double restingFrame = 1.0 / 30; // the pad is redrawn this often at rest,
+constexpr double movingFrame = 1.0 / 60;  // and this often while it plays or something on it is changing
+constexpr float sharpest = 2.0f;          // the art is drawn at up to this many pixels a point
 
 juce::Font captionFont() { return uiFont (13.0f, weight::semibold); }
 juce::Font readoutFont() { return numberFont (13.0f); }
 
-juce::Animator fade (double milliseconds, std::function<void (float)> onChange)
-{
-    return juce::ValueAnimatorBuilder {}
-        .withDurationMs (milliseconds)
-        .withEasing (juce::Easings::createEaseOut())
-        .withValueChangedCallback (std::move (onChange))
-        .build();
-}
+// Quick at first, then gentle.
+float easedOut (float progress) { return 1.0f - juce::square (1.0f - progress); }
 } // namespace
 
 XYPad::AxisSlider::AxisSlider (XYPad& pad, bool horizontalAxis)
@@ -68,7 +65,6 @@ XYPad::Tag::Tag (XYPad& pad, bool horizontalAxis) : owner (pad), horizontal (hor
     setInterceptsMouseClicks (false, false);
     caption.setFont (captionFont());
     readout.setFont (readoutFont());
-    readout.setColour (juce::Label::textColourId, palette::ink.withAlpha (0.7f));
 
     for (auto* label : { &caption, &readout })
     {
@@ -121,27 +117,7 @@ XYPad::XYPad (juce::RangedAudioParameter& xParameter, juce::RangedAudioParameter
     : x (*this, xParameter, true),
       y (*this, yParameter, false),
       touchAttachment (touchParameter, [] (float) {}),
-      programFade (fade (180.0, [this] (float progress)
-      {
-          blend = progress;
-          repaint();
-      })),
-      ringFade (fade (320.0, [this] (float progress)
-      {
-          ring = progress;
-          repaint();
-      })),
-      frames (this, [this] (double now)
-      {
-          // A long gap means the pad was off screen: start again rather than leap.
-          const auto elapsed = now - lastFrame;
-
-          if (elapsed < (liveliness > 0.01f ? playingFrame : restingFrame))
-              return;
-
-          lastFrame = now;
-          animate (juce::jmin (elapsed, 0.1));
-      })
+      frames (this, [this] (double now) { displayRefreshed (now); })
 {
     setComponentID (touchParameter.getParameterID());
     setTitle ("Pad");
@@ -162,8 +138,8 @@ XYPad::XYPad (juce::RangedAudioParameter& xParameter, juce::RangedAudioParameter
         addAndMakeVisible (a->slider);
     }
 
-    animations.addAnimator (programFade);
-    animations.addAnimator (ringFade);
+    x.slider.setExplicitFocusOrder (1); // left/right before up/down, though the Y slider sits higher
+    y.slider.setExplicitFocusOrder (2);
     x.attachment.sendInitialUpdate();
     y.attachment.sendInitialUpdate();
     motion.x = x.value;
@@ -186,27 +162,16 @@ void XYPad::setCaptions (juce::String xCaption, juce::String yCaption)
     layoutTags();
 }
 
-void XYPad::setProgram (int program)
+void XYPad::setProgram (int next)
 {
-    if (programTo == program)
+    if (program == next)
         return;
 
-    // A change that lands mid-fade starts from whichever program showed more.
-    programFrom = blend >= 0.5f ? programTo : programFrom;
-    programTo = program;
-
-    // Off screen there is no display refresh to drive a fade, so the new program is simply shown.
-    if (isShowing())
-    {
-        blend = 0.0f;
-        programFade.start();
-    }
-    else
-    {
-        programFade.complete();
-        blend = 1.0f;
-    }
-
+    // A change that lands mid-change starts from whichever program showed more.
+    programBefore = change >= 0.5f ? program : programBefore;
+    program = next;
+    change = 0.0f;
+    artStale = true;
     repaint();
 }
 
@@ -223,9 +188,18 @@ void XYPad::pulse()
 {
     motion.kick = 1.0f;
     ++motion.cuts;
+    ring = 0.0f;
+}
 
-    if (isShowing())
-        ringFade.start();
+bool XYPad::displayRefreshed (double now)
+{
+    const auto moving = liveliness > 0.01f || change < 1.0f || ring < 1.0f;
+    const auto elapsed = clock.tick (now, moving ? movingFrame : restingFrame);
+
+    if (elapsed.has_value())
+        animate (*elapsed);
+
+    return elapsed.has_value();
 }
 
 void XYPad::animate (double seconds)
@@ -233,6 +207,8 @@ void XYPad::animate (double seconds)
     const auto elapsed = static_cast<float> (seconds);
     const auto towards = [elapsed] (float from, float to, float rate) { return from + (to - from) * juce::jmin (1.0f, elapsed * rate); };
 
+    change = juce::jmin (1.0f, change + elapsed / changeSeconds);
+    ring = juce::jmin (1.0f, ring + elapsed / ringSeconds);
     liveliness = towards (liveliness, engaged ? 1.0f : 0.0f, 5.0f);
     motion.kick = juce::jmax (0.0f, motion.kick - elapsed / kickSeconds);
     motion.x = towards (motion.x, x.value, 14.0f);
@@ -241,12 +217,13 @@ void XYPad::animate (double seconds)
     const auto pace = restingPace + (1.0f - restingPace) * liveliness;
     motion.time += elapsed * pace;
     motion.spin += elapsed * pace * juce::square (1.0f - motion.kick);
+    artStale = true;
     repaint();
 }
 
 juce::Colour XYPad::sheetColour() const
 {
-    return programColour (programFrom).interpolatedWith (programColour (programTo), blend);
+    return programColour (programBefore).interpolatedWith (programColour (program), easedOut (change));
 }
 
 juce::Rectangle<float> XYPad::padBounds() const
@@ -277,6 +254,7 @@ void XYPad::resized()
     y.slider.setBounds (area.getRight(), area.getY() - 1, rail, area.getHeight() + 2);
     layoutTags();
     endInteraction();
+    artStale = true;
 }
 
 void XYPad::paint (juce::Graphics& g)
@@ -289,23 +267,42 @@ void XYPad::paint (juce::Graphics& g)
     g.setColour (sheetColour());
     g.fillPath (sheet);
 
+    // The art is drawn in software and copied across, which costs a fraction of
+    // what the platform's renderers take to draw it themselves.
     const auto area = padBounds();
+    const auto density = juce::jmin (sharpest, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const auto width = juce::roundToInt (area.getWidth() * density), height = juce::roundToInt (area.getHeight() * density);
+
+    if (width <= 0 || height <= 0)
+        return;
+
+    const auto draw = [&] (juce::Image& canvas, int scene)
+    {
+        if (canvas.getWidth() != width || canvas.getHeight() != height)
+            canvas = juce::Image (juce::Image::RGB, width, height, false, juce::SoftwareImageType());
+        else if (! artStale)
+            return;
+
+        juce::Graphics art (canvas);
+        art.addTransform (juce::AffineTransform::scale (density));
+        drawProgramArt (art, scene, area.withZeroOrigin(), motion);
+    };
+
     juce::Path shape;
     shape.addRoundedRectangle (area, artRadius);
     const juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (shape);
 
-    if (blend < 1.0f)
+    if (change < 1.0f)
     {
-        drawProgramArt (g, programFrom, area, motion);
-        g.beginTransparencyLayer (blend);
-        drawProgramArt (g, programTo, area, motion);
-        g.endTransparencyLayer();
+        draw (canvasBefore, programBefore);
+        g.drawImage (canvasBefore, area);
     }
-    else
-    {
-        drawProgramArt (g, programTo, area, motion);
-    }
+
+    draw (canvas, program);
+    g.setOpacity (easedOut (change));
+    g.drawImage (canvas, area);
+    artStale = false;
 }
 
 void XYPad::paintOverChildren (juce::Graphics& g)
@@ -325,9 +322,9 @@ void XYPad::paintOverChildren (juce::Graphics& g)
 
         if (ring < 1.0f)
         {
-            // A cut: a ring leaves the mark and fades.
+            // A new block: a ring leaves the mark and fades.
             g.setColour (palette::paper.withAlpha (1.0f - ring));
-            g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (markRadius + ring * cutRingTravel), 2.0f);
+            g.drawEllipse (juce::Rectangle<float>().withCentre (at).expanded (markRadius + easedOut (ring) * cutRingTravel), 2.0f);
         }
 
         if (dragging)

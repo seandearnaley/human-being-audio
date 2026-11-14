@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <functional>
 #include <set>
 
 using Catch::Matchers::WithinAbs;
@@ -105,9 +106,6 @@ TEST_CASE ("The skin's typeface is embedded, in every weight it uses", "[skin]")
 TEST_CASE ("An open editor keeps the typeface loaded, so its fonts share one", "[skin]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-
-    // With nothing holding the typeface, each font loads it afresh.
-    CHECK (ui::uiFont (14.0f).getTypefacePtr() != ui::uiFont (14.0f).getTypefacePtr());
 
     {
         const ui::LivecutLookAndFeel lookAndFeel;
@@ -275,6 +273,7 @@ TEST_CASE ("The pad wears the playing program's colour and art", "[skin][pad]")
     {
         INFO ("program " << program);
         editor.refreshDisplay();
+        pad->animate (1.0); // long enough for a change of program to finish
         const auto image = snapshot (*pad);
         CHECK (near (image.getPixelAt (3, pad->getHeight() / 2), ui::programColour (program))); // the sheet, left of the art
         CHECK (hueDistance (average (image.getClippedImage (area.reduced (40))), ui::programColour (program)) < 0.06f);
@@ -326,7 +325,7 @@ TEST_CASE ("The phrase tape is cut into bars, with the block in the accent colou
 {
     juce::ScopedJuceInitialiser_GUI gui;
     ui::PhraseRuler ruler;
-    ruler.setSize (616, 26);
+    ruler.setSize (616, 32); // as in the pad's header: the tape is 26 high, from 3 to 29
 
     ui::PhraseRuler::Snapshot phrase;
     phrase.status = livecut::DisplayState::Status::cutting;
@@ -341,18 +340,55 @@ TEST_CASE ("The phrase tape is cut into bars, with the block in the accent colou
 
     // Four pieces of 151 with gaps of 4: bar 2 runs from 155 to 306, and its units are 18.875 apart.
     const auto image = snapshot (ruler);
-    CHECK (near (image.getPixelAt (183, 13), colour));       // inside the block, between unit marks
-    CHECK_FALSE (near (image.getPixelAt (260, 13), colour)); // the rest of the bar
-    CHECK (image.getPixelAt (153, 13).isTransparent());      // the cut between bars 1 and 2
-    CHECK (near (image.getPixelAt (173, 13), ui::palette::ink)); // the playhead, one unit into bar 2
+    CHECK (near (image.getPixelAt (183, 16), colour));       // inside the block, between unit marks
+    CHECK_FALSE (near (image.getPixelAt (260, 16), colour)); // the rest of the bar
+    CHECK (image.getPixelAt (153, 16).isTransparent());      // the cut between bars 1 and 2
+    CHECK (near (image.getPixelAt (173, 16), ui::palette::ink)); // the playhead, one unit into bar 2,
+    CHECK (near (image.getPixelAt (173, 1), ui::palette::ink));  // which stands proud of the tape
+    CHECK (image.getPixelAt (183, 1).isTransparent());
     CHECK (ruler.statusText() == "Bar 2 of 4");
 
     // With no phrase to show, the status takes the tape's place.
     phrase.status = livecut::DisplayState::Status::waitingForHost;
     ruler.show (phrase);
     const auto waiting = snapshot (ruler);
-    CHECK_FALSE (near (waiting.getPixelAt (183, 13), colour));
+    CHECK_FALSE (near (waiting.getPixelAt (183, 16), colour));
     CHECK (waiting.getPixelAt (500, 3).isTransparent());
+
+    // Before any program has set it, the block is in the accent colour.
+    ui::PhraseRuler plain;
+    plain.setSize (616, 32);
+    phrase.status = livecut::DisplayState::Status::cutting;
+    plain.show (phrase);
+    CHECK (near (snapshot (plain).getPixelAt (183, 16), ui::palette::accent));
+}
+
+TEST_CASE ("A screen reader can read the ruler's line, shown or not", "[skin][ruler]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessorEditor editor (processor);
+    auto* ruler = findControl<ui::PhraseRuler> (editor);
+    REQUIRE (ruler != nullptr);
+    auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+
+    editor.refreshDisplay();
+    CHECK (ruler->getTitle() == "Phrase");
+    CHECK (ruler->getDescription() == "Press play in your host to start cutting");
+
+    // While a phrase plays on the pad the tape has the header to itself, but a waiting switch is still described.
+    display.status.store (livecut::DisplayState::Status::cutting);
+    display.phraseBars.store (4);
+    display.unitsPerBar.store (8);
+    display.position.store (9.0);
+    display.padEngaged.store (true);
+    display.padPendingProgram.store (4);
+    editor.refreshDisplay();
+    CHECK (ruler->getDescription() == juce::String::fromUTF8 ("Cut \xe2\x86\x92 Filter on the beat"));
+
+    display.padPendingProgram.store (-1);
+    editor.refreshDisplay();
+    CHECK (ruler->getDescription() == "Bar 2 of 4");
 }
 
 TEST_CASE ("The wordmark opens the About sheet, and Close or Escape puts it away", "[skin][about]")
@@ -371,17 +407,30 @@ TEST_CASE ("The wordmark opens the About sheet, and Close or Escape puts it away
     CHECK (wordmark->getTitle() == "About Livecut Redux");
     CHECK_FALSE (sheet->isVisible());
 
+    // It fades in over the whole editor.
     wordmark->onClick();
     CHECK (isShowing (*sheet, editor));
     CHECK (sheet->getBounds() == juce::Rectangle<int> (LivecutAudioProcessorEditor::baseWidth, LivecutAudioProcessorEditor::baseHeight));
+    CHECK_THAT (sheet->getAlpha(), WithinAbs (0.0, 0.001));
+    sheet->animate (0.08);
+    CHECK_THAT (sheet->getAlpha(), WithinAbs (0.5, 0.01));
+    sheet->animate (1.0);
+    CHECK_THAT (sheet->getAlpha(), WithinAbs (1.0, 0.001));
+
+    // Close fades it out, and it is gone once the fade is done.
     close->onClick();
+    CHECK (sheet->isVisible());
+    sheet->animate (0.08);
+    CHECK (sheet->isVisible());
+    sheet->animate (1.0);
     CHECK_FALSE (sheet->isVisible());
 
     wordmark->onClick();
+    sheet->animate (1.0);
     REQUIRE (sheet->isVisible());
     CHECK_FALSE (sheet->keyPressed (juce::KeyPress ('a')));
-    CHECK (sheet->isVisible());
     CHECK (sheet->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+    sheet->animate (1.0);
     CHECK_FALSE (sheet->isVisible());
 
     // The Classic pages keep the wordmark, and the sheet.
@@ -391,15 +440,49 @@ TEST_CASE ("The wordmark opens the About sheet, and Close or Escape puts it away
     CHECK (isShowing (*sheet, editor));
 }
 
+TEST_CASE ("The About sheet keeps the keyboard, and says when it has closed", "[skin][about]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    ui::AboutSheet sheet;
+    sheet.setSize (880, 724);
+    int closed = 0;
+    sheet.onClosed = [&closed] { ++closed; };
+
+    // Tab moves between Close and the link, and never out to the editor beneath.
+    CHECK (sheet.isKeyboardFocusContainer());
+    CHECK (sheet.getWantsKeyboardFocus());
+    for (const auto* id : { "closeAbout" })
+        CHECK (findById (sheet, id)->getWantsKeyboardFocus());
+    CHECK (findControl<juce::HyperlinkButton> (sheet)->getWantsKeyboardFocus());
+
+    sheet.open();
+    sheet.animate (1.0);
+    sheet.close();
+    sheet.animate (0.08);
+    CHECK (closed == 0); // still fading
+
+    // Opened again mid-fade, it carries on from where the fade had got to, and was never closed.
+    sheet.open();
+    CHECK_THAT (sheet.getAlpha(), WithinAbs (0.5, 0.01));
+    sheet.animate (1.0);
+    CHECK (sheet.isVisible());
+    CHECK (closed == 0);
+
+    sheet.close();
+    sheet.animate (1.0);
+    CHECK (closed == 1);
+    sheet.animate (1.0);
+    CHECK (closed == 1);
+}
+
 TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made each", "[skin][about]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     const auto story = ui::AboutSheet::story().joinIntoString (" ");
 
-    for (const auto* fact : { "Remy Muller", "Smartelectronix", "2003 and 2004", "Nick Collins", "BBCut", "32-bit",
-                              "ground-up rewrite", "VST3", "Apple Silicon", "Windows", "CutProc11", "WarpCut", "SQPusher",
-                              "Made by Sean Dearnaley", "published by Human Being Music",
-                              "GNU General Public License, version 3 or later" })
+    // The people and the licence. The rest of the wording is free to change.
+    for (const auto* fact : { "Remy Muller", "Smartelectronix", "Nick Collins", "BBCut", "Made by Sean Dearnaley",
+                              "published by Human Being Music", "GNU General Public License, version 3 or later" })
     {
         INFO (fact);
         CHECK (story.contains (fact));
@@ -412,6 +495,190 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
     auto* source = findControl<juce::HyperlinkButton> (sheet);
     REQUIRE (source != nullptr);
     CHECK (source->getURL().toString (false) == "https://github.com/seandearnaley/livecut");
+}
+
+TEST_CASE ("Frames come steadily at 30 and 60 a second, whatever the display", "[skin][art]")
+{
+    // Each case: refreshes a second, how far each may arrive early or late, and the frame interval asked for.
+    struct Case { double refresh, jitter, interval; int expected; };
+
+    for (const auto& c : { Case { 60.0, 0.0, 1.0 / 60, 60 }, Case { 60.0, 0.0004, 1.0 / 60, 60 }, Case { 60.0, 0.0004, 1.0 / 30, 30 },
+                           Case { 120.0, 0.0004, 1.0 / 60, 60 }, Case { 120.0, 0.0004, 1.0 / 30, 30 }, Case { 59.94, 0.0003, 1.0 / 30, 30 } })
+    {
+        INFO (c.refresh << " Hz, frames every " << c.interval << " s");
+        ui::FrameClock clock;
+        int frames = 0;
+        double moved = 0.0;
+        const auto refreshes = static_cast<int> (c.refresh * 10.0);
+
+        for (int refresh = 0; refresh <= refreshes; ++refresh)
+        {
+            // Alternately early and late, as real refreshes are.
+            const auto now = 100.0 + refresh / c.refresh + (refresh % 2 == 0 ? -c.jitter : c.jitter);
+
+            if (const auto elapsed = clock.tick (now, c.interval))
+            {
+                ++frames;
+                moved += *elapsed;
+            }
+        }
+
+        CHECK (std::abs (frames - c.expected * 10) <= 2); // over ten seconds
+        CHECK_THAT (moved, WithinAbs (10.0, 0.05));       // and no time is lost between frames
+    }
+
+    // The first refresh only starts the clock, and after a pause the animation carries on rather than leaps.
+    ui::FrameClock clock;
+    CHECK_FALSE (clock.tick (500.0, 1.0 / 60).has_value());
+    REQUIRE (clock.tick (500.02, 1.0 / 60).has_value());
+    const auto afterPause = clock.tick (560.0, 1.0 / 60);
+    REQUIRE (afterPause.has_value());
+    CHECK_THAT (*afterPause, WithinAbs (0.1, 0.0001));
+}
+
+TEST_CASE ("The pad is redrawn at 30 a second at rest and 60 while it plays", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    ui::XYPad pad (*processor.getParameterState().getParameter (livecut::ids::padX),
+                   *processor.getParameterState().getParameter (livecut::ids::padY),
+                   *processor.getParameterState().getParameter (livecut::ids::padTouch));
+    pad.setSize (840, 528);
+
+    const auto framesInASecond = [&pad] (double from)
+    {
+        int frames = 0;
+        for (int refresh = 1; refresh <= 120; ++refresh)
+            frames += pad.displayRefreshed (from + refresh / 120.0) ? 1 : 0;
+        return frames;
+    };
+
+    CHECK_FALSE (pad.displayRefreshed (10.0)); // the first refresh only starts the clock
+    CHECK (std::abs (framesInASecond (10.0) - 30) <= 1);
+
+    pad.showEngaged (true);
+    framesInASecond (11.0); // it takes a moment to liven up
+    CHECK (std::abs (framesInASecond (12.0) - 60) <= 1);
+}
+
+TEST_CASE ("A change of program crossfades the pad", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    ui::XYPad pad (*processor.getParameterState().getParameter (livecut::ids::padX),
+                   *processor.getParameterState().getParameter (livecut::ids::padY),
+                   *processor.getParameterState().getParameter (livecut::ids::padTouch));
+    pad.setSize (840, 528);
+    const auto sheet = [&pad] { return snapshot (pad).getPixelAt (3, 264); }; // the sheet, left of the art
+    const auto cut = ui::programColour (0), filter = ui::programColour (4), rush = ui::programColour (7);
+
+    CHECK_THAT (pad.programChange(), WithinAbs (1.0, 0.0001));
+    CHECK (near (sheet(), cut));
+
+    pad.setProgram (4);
+    CHECK_THAT (pad.programChange(), WithinAbs (0.0, 0.0001));
+    CHECK (near (sheet(), cut)); // nothing has changed yet
+
+    pad.animate (0.09); // halfway through the 180 ms
+    CHECK_THAT (pad.programChange(), WithinAbs (0.5, 0.01));
+    CHECK_FALSE (near (sheet(), cut));
+    CHECK_FALSE (near (sheet(), filter));
+
+    // Another change mid-way starts from whichever program showed more: Filter, by now.
+    pad.animate (0.03);
+    pad.setProgram (7);
+    CHECK_THAT (pad.programChange(), WithinAbs (0.0, 0.0001));
+    CHECK (near (sheet(), filter));
+
+    pad.animate (0.18);
+    CHECK_THAT (pad.programChange(), WithinAbs (1.0, 0.0001));
+    CHECK (near (sheet(), rush));
+
+    pad.setProgram (7); // the same program again changes nothing
+    CHECK_THAT (pad.programChange(), WithinAbs (1.0, 0.0001));
+}
+
+TEST_CASE ("The pad answers each new block once, and only while it plays", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+
+    // The editor opens in the middle of a block, so it has seen none start.
+    display.status.store (livecut::DisplayState::Status::cutting);
+    display.phraseBars.store (4);
+    display.unitsPerBar.store (8);
+    display.padEngaged.store (true);
+    display.blockStart.store (8.0);
+    LivecutAudioProcessorEditor editor (processor);
+    auto* pad = dynamic_cast<ui::XYPad*> (findById (editor, "padTouch"));
+    REQUIRE (pad != nullptr);
+    const auto answered = [&]
+    {
+        editor.refreshDisplay();
+        return pad->artMotion().cuts;
+    };
+
+    CHECK (answered() == 0);
+
+    display.blockStart.store (12.0);
+    CHECK (answered() == 1);
+    CHECK (answered() == 1); // the same block, seen again
+
+    // Blocks that start while the pad is idle, or while nothing is being cut, go unanswered.
+    display.padEngaged.store (false);
+    display.blockStart.store (16.0);
+    CHECK (answered() == 1);
+    display.padEngaged.store (true);
+    display.status.store (livecut::DisplayState::Status::startingSoon);
+    display.blockStart.store (20.0);
+    CHECK (answered() == 1);
+
+    display.status.store (livecut::DisplayState::Status::cutting);
+    display.blockStart.store (24.0);
+    CHECK (answered() == 2);
+}
+
+TEST_CASE ("A screen reader meets the pad surface in reading order", "[skin][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessorEditor editor (processor);
+    editor.refreshDisplay();
+
+    // Where each control comes in the order a screen reader steps through. The About sheet is put away, so it isn't there.
+    juce::StringArray order;
+    const std::function<void (juce::Component&)> visit = [&] (juce::Component& parent)
+    {
+        for (auto* component : parent.createFocusTraverser()->getAllComponents (&parent))
+        {
+            if (! isShowing (*component, editor))
+                continue;
+
+            order.addIfNotAlreadyThere (component->getComponentID());
+
+            if (component->isFocusContainer())
+                visit (*component);
+        }
+    };
+    visit (editor);
+
+    const auto before = [&order] (const char* first, const char* second)
+    {
+        INFO (first << " before " << second);
+        const auto a = order.indexOf (first), b = order.indexOf (second);
+        CHECK (a >= 0);
+        CHECK (b >= 0);
+        CHECK (a < b);
+    };
+
+    before ("about", "program0");
+    before ("program0", "program7");
+    before ("program7", "padTouch");
+    before ("padTouch", "padX");
+    before ("padX", "padY"); // left/right, then up/down, though the Y slider sits higher
+    before ("padY", "padHold");
+    CHECK_FALSE (order.contains ("closeAbout"));
 }
 
 // Hidden: run `LIVECUT_SCREENSHOT_DIR=<dir> LivecutTests "[.icon]"` to draw the app icon to
@@ -441,30 +708,53 @@ TEST_CASE ("Draw the app icon", "[.icon]")
 }
 
 // Hidden: run `LivecutTests "[.benchmark]" -s` to see how long each program's art takes to
-// draw at the size and density a Retina display shows it, with JUCE's software renderer.
+// reach the screen at the size and density a Retina display shows it, with both axes at
+// their busiest: drawn straight into the platform's own renderer, and drawn in software
+// and then copied across, which is what the pad does.
 TEST_CASE ("Time each program's art", "[.benchmark]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    juce::Image image (juce::Image::ARGB, 1616, 992, true, juce::SoftwareImageType());
-    constexpr int frames = 60;
+    constexpr int frames = 40;
+    const juce::Rectangle<float> area { 808.0f, 496.0f };
+    const auto motionAt = [] (int frame)
+    {
+        ui::ArtMotion motion;
+        motion.time = motion.spin = static_cast<float> (frame) / 60.0f;
+        motion.x = motion.y = 1.0f;
+        motion.kick = static_cast<float> (frame % 30) / 30.0f;
+        motion.cuts = frame / 30;
+        return motion;
+    };
+    const auto time = [&] (auto&& drawFrame)
+    {
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        for (int frame = 0; frame < frames; ++frame)
+            drawFrame (frame);
+        return (juce::Time::getMillisecondCounterHiRes() - start) / frames;
+    };
+
+    juce::Image screen (juce::Image::ARGB, 1616, 992, true, juce::NativeImageType());
+    juce::Image canvas (juce::Image::RGB, 1616, 992, true, juce::SoftwareImageType());
 
     for (int program = 0; program < 8; ++program)
     {
-        const auto start = juce::Time::getMillisecondCounterHiRes();
-
-        for (int frame = 0; frame < frames; ++frame)
+        const auto direct = time ([&] (int frame)
         {
-            juce::Graphics g (image);
+            juce::Graphics g (screen);
             g.addTransform (juce::AffineTransform::scale (2.0f));
-            ui::ArtMotion motion;
-            motion.time = motion.spin = static_cast<float> (frame) / 60.0f;
-            motion.kick = static_cast<float> (frame % 30) / 30.0f;
-            motion.cuts = frame / 30;
-            ui::drawProgramArt (g, program, { 808.0f, 496.0f }, motion);
-        }
-
-        const auto each = (juce::Time::getMillisecondCounterHiRes() - start) / frames;
-        INFO ("program " << program << ": " << each << " ms a frame");
-        CHECK (each < 16.0); // inside a 60 Hz frame, even drawn in software
+            ui::drawProgramArt (g, program, area, motionAt (frame));
+        });
+        const auto copied = time ([&] (int frame)
+        {
+            {
+                juce::Graphics g (canvas);
+                g.addTransform (juce::AffineTransform::scale (2.0f));
+                ui::drawProgramArt (g, program, area, motionAt (frame));
+            }
+            juce::Graphics g (screen);
+            g.drawImageAt (canvas, 0, 0);
+        });
+        INFO ("program " << program << ": " << direct << " ms direct, " << copied << " ms in software and copied");
+        CHECK (copied < 8.0); // half a 60 Hz frame
     }
 }

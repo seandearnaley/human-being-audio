@@ -2,9 +2,9 @@
 
 #pragma once
 
+#include "ui/FrameClock.h"
 #include "ui/PadArt.h"
 
-#include <juce_animation/juce_animation.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 namespace livecut::ui
@@ -12,8 +12,8 @@ namespace livecut::ui
 
 // The pad: a sheet of card in a program's colour, with that program's art
 // laid on it. The art is drawn afresh each frame, so it drifts at rest, glides
-// after the pointer mark and answers every cut. It plays two parameters at
-// once, with the mouse button as the third. Pressing sets Pad Touch and letting go clears it, and the X and Y
+// after the pointer mark and answers every new block of cuts. It plays two
+// parameters at once, with the mouse button as the third. Pressing sets Pad Touch and letting go clears it, and the X and Y
 // gestures open and close together, so a host records one drag as one
 // automation pass on each. Each axis has a tag in a corner of the art, naming
 // it and giving its value, and a native slider along the art's edge, under a
@@ -34,12 +34,20 @@ public:
     // Fills the pointer mark, and quickens the art, while the pad is playing, pressed or held.
     void showEngaged (bool engaged);
 
-    // A new cut: a ring leaves the pointer mark and the art answers.
+    // A new block of cuts: a ring leaves the pointer mark and the art answers.
     void pulse();
 
-    // Moves the art on by this many seconds. The display's refresh calls it while the pad is on screen.
+    // The display refreshed at this time, in seconds. Moves the pad on if a
+    // frame is due, 30 times a second at rest and 60 while anything on it is
+    // moving, and says whether it did.
+    bool displayRefreshed (double now);
+
+    // Moves everything that moves on by this many seconds: the art, a change of program and the ring.
     void animate (double seconds);
     const ArtMotion& artMotion() const { return motion; }
+
+    // How far the sheet has changed to the latest program: 0 just after the change, 1 once it's done.
+    float programChange() const { return change; }
 
     // The surface that responds to the pointer, in local coordinates.
     juce::Rectangle<float> padBounds() const;
@@ -123,15 +131,15 @@ private:
     juce::ParameterAttachment touchAttachment;
     juce::Point<float> dragOrigin, dragValues;
     ArtMotion motion;
-    int programFrom = 0, programTo = 0;
-    float blend = 1.0f;   // how far the sheet has changed from one program to the other
-    float ring = 1.0f;    // how far the cut ring has travelled: 1 is gone
-    float liveliness = 0; // eases to 1 while the pad plays, and sets the art's pace
-    double lastFrame = 0.0;
+    juce::Image canvas, canvasBefore; // the art as last drawn: the program showing and, mid-change, the one before
+    int program = 0, programBefore = 0;
+    float change = 1.0f;     // how far the sheet has changed from the program before: 1 is done
+    float ring = 1.0f;       // how far the ring has travelled from the pointer mark: 1 is gone
+    float liveliness = 0.0f; // eases to 1 while the pad plays, and sets the art's pace
+    bool artStale = true;    // whether the art has moved since it was last drawn
     bool dragging = false, fineDragging = false, touching = false, engaged = false;
 
-    juce::VBlankAnimatorUpdater animations { this };
-    juce::Animator programFade, ringFade;
+    FrameClock clock;
     juce::VBlankAttachment frames;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XYPad)

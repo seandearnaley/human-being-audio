@@ -120,6 +120,7 @@ target_sources(LivecutCode
         src/ui/AboutSheet.h
         src/ui/Controls.cpp
         src/ui/Controls.h
+        src/ui/FrameClock.h
         src/ui/LivecutLookAndFeel.cpp
         src/ui/LivecutLookAndFeel.h
         src/ui/PadArt.cpp
@@ -135,7 +136,7 @@ target_sources(LivecutCode
         src/ui/XYPad.cpp
         src/ui/XYPad.h)
 target_include_directories(LivecutCode INTERFACE src)
-target_link_libraries(LivecutCode INTERFACE LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils juce::juce_animation)
+target_link_libraries(LivecutCode INTERFACE LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils)
 
 target_link_libraries(Livecut
     PRIVATE

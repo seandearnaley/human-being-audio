@@ -39,6 +39,7 @@ void PhraseRuler::show (const Snapshot& snapshot)
         return;
 
     current = snapshot;
+    describeForScreenReaders();
     repaint();
 }
 
@@ -48,7 +49,14 @@ void PhraseRuler::setHeadline (const juce::String& text)
         return;
 
     headline = text;
+    describeForScreenReaders();
     repaint();
+}
+
+void PhraseRuler::describeForScreenReaders()
+{
+    setTitle ("Phrase");
+    setDescription (headline.isNotEmpty() ? headline : describe (current));
 }
 
 juce::String PhraseRuler::describe (const Snapshot& snapshot)
@@ -133,7 +141,7 @@ void PhraseRuler::paint (juce::Graphics& g)
         g.fillRect (piece);
 
         // The block being cut, where it crosses this bar.
-        g.setColour (accent.isTransparent() ? palette::accent : accent);
+        g.setColour (accent);
         g.fillRect (juce::Rectangle<float>::leftTopRightBottom (xFor (current.blockStart, bar), piece.getY(),
                                                                 xFor (current.blockEnd, bar), piece.getBottom()));
 

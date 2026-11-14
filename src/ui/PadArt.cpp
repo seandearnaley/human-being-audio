@@ -48,17 +48,6 @@ void lay (juce::Graphics& g, const juce::Path& piece, juce::Colour colour, float
     g.fillPath (piece);
 }
 
-// Shows the next piece of card down through a hole, in the shadow of the hole's upper edge.
-void sink (juce::Graphics& g, const juce::Path& hole, juce::Colour colour, float depth = 4.0f)
-{
-    g.setColour (colour.interpolatedWith (juce::Colours::black, 0.28f));
-    g.fillPath (hole);
-    const juce::Graphics::ScopedSaveState state (g);
-    g.reduceClipRegion (hole);
-    g.setColour (colour);
-    g.fillPath (hole, juce::AffineTransform::translation (depth * 0.4f, depth));
-}
-
 juce::Path disc (juce::Point<float> centre, float radiusX, float radiusY)
 {
     juce::Path path;
@@ -231,7 +220,15 @@ void drawSuction (juce::Graphics& g, juce::Rectangle<float> area, const Card& ca
         const auto depth = (static_cast<float> (ring) - flow) / static_cast<float> (rings); // 0 at the mouth's centre
         const auto radius = reach * std::pow (depth, 1.7f);
         const auto centre = mouth + (area.getCentre() - mouth) * juce::jmin (1.0f, depth) * 0.55f;
-        sink (g, disc (centre, radius, radius * squeeze), card.tone (mix (-1.0f, 0.42f, std::pow (juce::jmin (1.0f, depth), 0.65f))), 5.0f);
+        const auto colour = card.tone (mix (-1.0f, 0.42f, std::pow (juce::jmin (1.0f, depth), 0.65f)));
+
+        // Each ring is the next piece of card down, seen through a hole and in the shadow of the hole's upper edge.
+        constexpr auto drop = 5.0f;
+        g.setColour (colour.interpolatedWith (juce::Colours::black, 0.28f));
+        g.fillEllipse (juce::Rectangle<float>().withCentre (centre).expanded (radius, radius * squeeze));
+        g.setColour (colour);
+        g.fillEllipse (juce::Rectangle<float>().withCentre (centre.translated (drop * 0.3f, drop * 0.7f))
+                           .expanded (juce::jmax (0.0f, radius - drop), juce::jmax (0.0f, radius * squeeze - drop)));
     }
 }
 
@@ -250,21 +247,36 @@ void drawFilter (juce::Graphics& g, juce::Rectangle<float> area, const Card& car
         const auto cutoff = mix (0.16f, 0.84f, m.x) + depth * 0.03f;
         const auto level = area.getY() + height * (0.3f + 0.09f * static_cast<float> (layer));
 
-        juce::Path response;
-        response.startNewSubPath (area.getX(), area.getBottom() + 8.0f);
+        juce::Path edge;
+        edge.preallocateSpace (3 * 90);
 
-        for (auto x = 0.0f; x <= 1.0f; x += 0.006f)
+        for (int step = 0; step <= 84; ++step)
         {
+            const auto x = static_cast<float> (step) / 84.0f;
+
             // The magnitude of a two-pole low-pass, seven octaves across the art.
             const auto ratio = std::pow (2.0f, (x - cutoff) * 7.0f);
             const auto magnitude = 1.0f / std::sqrt (juce::square (1.0f - ratio * ratio) + juce::square (ratio / resonance));
             const auto decibels = juce::jlimit (-60.0f, 30.0f, 20.0f * std::log10 (magnitude));
-            response.lineTo (area.getX() + x * width, level - decibels * height * 0.0085f);
+            const juce::Point<float> point { area.getX() + x * width, level - decibels * height * 0.0085f };
+
+            if (step == 0)
+                edge.startNewSubPath (point);
+            else
+                edge.lineTo (point);
         }
 
-        response.lineTo (area.getRight(), area.getBottom() + 8.0f);
+        // The layer's shadow falls on the one behind, along its upper edge.
+        g.setColour (juce::Colours::black.withAlpha (0.16f));
+        g.strokePath (edge, juce::PathStrokeType (6.0f), juce::AffineTransform::translation (0.0f, -1.5f));
+
+        auto response = edge;
+        response.lineTo (area.getRight() + 8.0f, edge.getCurrentPosition().y);
+        response.lineTo (area.getRight() + 8.0f, area.getBottom() + 8.0f);
+        response.lineTo (area.getX(), area.getBottom() + 8.0f);
         response.closeSubPath();
-        lay (g, response, card.tone (mix (0.25f, -0.9f, depth)), -3.0f);
+        g.setColour (card.tone (mix (0.25f, -0.9f, depth)));
+        g.fillPath (response);
     }
 }
 

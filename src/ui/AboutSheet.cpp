@@ -16,17 +16,9 @@ constexpr int margin = 56;
 constexpr int textWidth = 420;
 constexpr int storyTop = 256;
 constexpr float bodyHeight = 16.0f;
-
-juce::TextLayout storyLayout()
-{
-    juce::AttributedString text;
-    text.setLineSpacing (bodyHeight * 0.25f);
-    text.append (AboutSheet::story().joinIntoString ("\n\n"), uiFont (bodyHeight), palette::ink);
-
-    juce::TextLayout layout;
-    layout.createLayout (text, static_cast<float> (textWidth));
-    return layout;
-}
+constexpr float fadeSeconds = 0.16f;
+constexpr int linkPadding = 6;     // room around the link's words for its focus ring
+constexpr double frame = 1.0 / 30; // the scissors are redrawn this often
 } // namespace
 
 Wordmark::Wordmark() : juce::Button ("About Livecut Redux")
@@ -45,33 +37,37 @@ void Wordmark::paintButton (juce::Graphics& g, bool highlighted, bool down)
     g.drawText ("Redux", area.translated (1.0f, 0.0f), juce::Justification::topLeft);
 
     if (hasKeyboardFocus (false))
-        g.drawRoundedRectangle (getLocalBounds().toFloat().expanded (3.0f), 4.0f, 1.5f);
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
+}
+
+void AboutSheet::Link::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    g.setColour (palette::ink.withAlpha (down ? 0.5f : highlighted ? 0.7f : 1.0f));
+    g.setFont (uiFont (bodyHeight, weight::medium));
+    g.drawText (getButtonText(), getLocalBounds().reduced (linkPadding, 0), juce::Justification::centredLeft);
+
+    if (hasKeyboardFocus (false))
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
 }
 
 AboutSheet::AboutSheet()
-    : fade (juce::ValueAnimatorBuilder {}
-                .withDurationMs (160.0)
-                .withEasing (juce::Easings::createEaseOut())
-                .withValueChangedCallback ([this] (float progress) { setAlpha (closing ? 1.0f - progress : progress); })
-                .withOnCompleteCallback ([this]
-                {
-                    if (closing)
-                        setVisible (false);
-                })
-                .build()),
-      frames (this, [this]
+    : frames (this, [this] (double now)
       {
-          if (! isVisible())
-              return;
-
-          snip += 0.012f;
-          repaint (scissorsArea().toNearestInt());
+          if (const auto elapsed = clock.tick (now, frame))
+              animate (*elapsed);
       })
 {
     setComponentID ("aboutSheet");
     setTitle ("About Livecut Redux");
     setDescription (story().joinIntoString (" "));
     setWantsKeyboardFocus (true);
+    setFocusContainerType (FocusContainerType::keyboardFocusContainer);
+    setAlpha (0.0f);
+
+    juce::AttributedString words;
+    words.setLineSpacing (bodyHeight * 0.25f);
+    words.append (story().joinIntoString ("\n\n"), uiFont (bodyHeight), palette::ink);
+    text.createLayout (words, static_cast<float> (textWidth));
 
     closeButton.setComponentID ("closeAbout");
     closeButton.setTitle ("Close");
@@ -81,11 +77,7 @@ AboutSheet::AboutSheet()
     source.setButtonText ("github.com/seandearnaley/livecut");
     source.setURL (juce::URL ("https://github.com/seandearnaley/livecut"));
     source.setTitle ("Source code on GitHub");
-    source.setFont (uiFont (bodyHeight, weight::medium), false, juce::Justification::centredLeft);
-    source.setColour (juce::HyperlinkButton::textColourId, palette::ink);
     addAndMakeVisible (source);
-
-    animations.addAnimator (fade);
 }
 
 juce::StringArray AboutSheet::story()
@@ -95,12 +87,12 @@ juce::StringArray AboutSheet::story()
         "It chops the audio passing through it into phrases of cuts and repeats, using the algorithms of "
         "Nick Collins' BBCut library.",
 
-        "It was never updated beyond 32-bit, so the hosts and computers people use now can't load it. "
-        "Livecut Redux is a ground-up rewrite that can: a 64-bit VST3, Audio Unit and standalone app for "
+        "It was only ever released as a 32-bit plug-in, so the hosts and computers people use now can't load it. "
+        "Livecut Redux is a ground-up rewrite for them: a 64-bit VST3, Audio Unit and standalone app for "
         "Apple Silicon, Intel Macs and Windows.",
 
         "The original's three cut procedures, CutProc11, WarpCut and SQPusher, are all here, ported from its "
-        "source and checked against it. The pad and its eight programs are new.",
+        "source with its bugs fixed against BBCut. The pad and its eight programs are new.",
 
         "Made by Sean Dearnaley and published by Human Being Music. Free software under the GNU General Public "
         "License, version 3 or later.",
@@ -111,28 +103,36 @@ void AboutSheet::open()
 {
     closing = false;
     setVisible (true);
-    toFront (true);
-
-    // Off screen there is no display refresh to drive the fade.
-    if (isShowing())
-    {
-        setAlpha (0.0f);
-        fade.start();
-    }
-    else
-    {
-        setAlpha (1.0f);
-    }
+    toFront (false);
+    closeButton.grabKeyboardFocus();
 }
 
 void AboutSheet::close()
 {
     closing = true;
+}
 
-    if (isShowing())
-        fade.start();
-    else
+void AboutSheet::animate (double seconds)
+{
+    if (! isVisible())
+        return;
+
+    const auto elapsed = static_cast<float> (seconds);
+    shown = juce::jlimit (0.0f, 1.0f, shown + (closing ? -elapsed : elapsed) / fadeSeconds);
+    setAlpha (shown);
+
+    if (closing && shown <= 0.0f)
+    {
         setVisible (false);
+
+        if (onClosed)
+            onClosed();
+
+        return;
+    }
+
+    snip += elapsed * 1.4f;
+    repaint (scissorsArea().toNearestInt());
 }
 
 juce::Rectangle<float> AboutSheet::scissorsArea() const
@@ -144,7 +144,6 @@ juce::Rectangle<float> AboutSheet::scissorsArea() const
 void AboutSheet::paint (juce::Graphics& g)
 {
     g.fillAll (palette::paper);
-
     drawScissors (g, scissorsArea(), 0.5f + 0.5f * std::sin (snip));
 
     const auto left = static_cast<float> (margin);
@@ -156,13 +155,13 @@ void AboutSheet::paint (juce::Graphics& g)
     g.setFont (numberFont (bodyHeight));
     g.drawText (JucePlugin_VersionString, juce::Rectangle<float> (left + 118.0f, 186.0f, 200.0f, 30.0f), juce::Justification::centredLeft);
 
-    storyLayout().draw (g, { left, static_cast<float> (storyTop), static_cast<float> (textWidth), static_cast<float> (getHeight() - storyTop) });
+    text.draw (g, { left, static_cast<float> (storyTop), static_cast<float> (textWidth), static_cast<float> (getHeight() - storyTop) });
 }
 
 void AboutSheet::resized()
 {
     closeButton.setBounds (getWidth() - 20 - 72, 20, 72, 30);
-    source.setBounds (margin, storyTop + juce::roundToInt (std::ceil (storyLayout().getHeight())) + 14, 280, 26);
+    source.setBounds (margin - linkPadding, storyTop + juce::roundToInt (std::ceil (text.getHeight())) + 10, 260, 30);
 }
 
 void AboutSheet::mouseUp (const juce::MouseEvent&)

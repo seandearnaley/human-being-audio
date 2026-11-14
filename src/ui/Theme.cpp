@@ -17,12 +17,15 @@ struct Typefaces
 {
     juce::Typeface::Ptr instance (float wght, float wdth, float opsz) const
     {
+        if (family == nullptr)
+            return {};
+
+        // Windows before 10 1709 can't make instances of a variable font. There every style is the font as it comes.
         const std::array settings { juce::FontVariableSetting { "wght", wght },
                                     juce::FontVariableSetting { "wdth", wdth },
                                     juce::FontVariableSetting { "opsz", opsz } };
-        auto face = family->cloneWithVariableSettings (settings);
-        jassert (face != nullptr);
-        return face;
+        const auto face = family->cloneWithVariableSettings (settings);
+        return face != nullptr ? face : family;
     }
 
     juce::Typeface::Ptr family = juce::Typeface::createSystemTypefaceFor (assets::BricolageGrotesque_ttf,
@@ -40,11 +43,17 @@ std::size_t programIndex (int program)
     return static_cast<std::size_t> (juce::jlimit (0, programCount - 1, program));
 }
 
+// If the system won't load the font at all, as a policy against fonts from memory can make it, text is set in the system's own.
+juce::FontOptions options (const juce::Typeface::Ptr& face, float height)
+{
+    return face != nullptr ? juce::FontOptions (face).withHeight (height) : juce::FontOptions (height);
+}
+
 juce::FontOptions textOptions (float height, float weight)
 {
     const juce::SharedResourcePointer<Typefaces> faces;
     const auto index = juce::jlimit (0, 3, juce::roundToInt ((weight - weight::regular) / 100.0f));
-    return juce::FontOptions (faces->text[static_cast<std::size_t> (index)]).withHeight (height);
+    return options (faces->text[static_cast<std::size_t> (index)], height);
 }
 
 } // namespace
@@ -62,7 +71,7 @@ juce::Font numberFont (float height)
 juce::Font displayFont (float height)
 {
     const juce::SharedResourcePointer<Typefaces> faces;
-    return juce::Font (juce::FontOptions (faces->display).withHeight (height));
+    return juce::Font (options (faces->display, height));
 }
 
 std::shared_ptr<void> keepTypeface()
@@ -73,7 +82,7 @@ std::shared_ptr<void> keepTypeface()
 bool isSkinFont (const juce::Font& font)
 {
     const juce::SharedResourcePointer<Typefaces> faces;
-    return font.getTypefaceName() == faces->family->getName();
+    return faces->family != nullptr && font.getTypefaceName() == faces->family->getName();
 }
 
 juce::Colour programColour (int program)
