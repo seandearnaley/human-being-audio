@@ -23,75 +23,72 @@ Livecut; Livecut Redux opens sessions saved with those versions.
 Press the pad to cut and let go to stop on the next beat or bar; drag to play
 two settings of the program at once. Each of the eight programs has its own
 colour and its own picture, drawn in pieces of that colour, which keeps time
-with the host, moves with the pad and answers every cut. The strip across the top is the phrase, cut
-into its bars: the block playing now is in the program's colour, and the line
-is the playhead. Livecut Redux
-follows the host's transport; while the host is stopped, dry audio passes
-through the output trim.
+with the host, moves with the pad and answers every cut. The strip across the
+top is the phrase, cut into its bars: the block playing now is in the
+program's colour, and the line is the playhead. Livecut Redux follows the
+host's transport; while the host is stopped, dry audio passes through the
+output trim.
 
 ![The eight programs: Cut, Bounce, Glitch, Suction, Filter, Tape, Loops and Rush](docs/programs.jpg)
 
 The wordmark opens an About sheet with the plug-in's story. [docs/skin.md](docs/skin.md)
 has the editor's design rules.
 
-## Status
+## Install
 
-Work in progress, landing as a stack of small pull requests:
+Download the [latest release](https://github.com/seandearnaley/livecut/releases/latest):
 
-1. **Scaffold**: CMake build, universal macOS + Windows CI, plugin validation.
-2. **Engine**: a per-instance random generator and the CutProc11, WarpCut and
-   SQPusher cut procedures, in a dependency-free C++20 core, with the original
-   bugs fixed against BBCut's reference implementation.
-3. **Player**: the live player and the cutter that follows the host's bars.
-4. **Effects**: the BitCrusher and Comb, driven by the cuts.
-5. **Plugin**: parameters, saved state and host-synced processing.
-6. **Editor**: the user interface.
-7. **Release**: signed and notarised installers.
-8. **0.2.0 / Bounce**: a fourth cut procedure, with triplet bounces, climbing
-   ratchets and halftime bars.
-9. **0.3.0 / Capture**: keep the last completed phrase, save stereo float WAV,
-   and blend dry/wet audio with a smoothed output trim.
+- **macOS** 11 or later, Apple Silicon and Intel: `Livecut-Redux-<version>.pkg`,
+  signed and notarised. It installs the VST3, the Audio Unit and the
+  standalone app.
+- **Windows** 10 or later, x64: `Livecut-Redux-<version>-windows-x64.zip`. Copy
+  `Livecut Redux.vst3` to `C:\Program Files\Common Files\VST3`. The Windows
+  builds are not code-signed.
 
-See [the 0.3.0 release notes](docs/releases/0.3.0.md) for capture behavior,
-capacity, memory use and compatibility.
+[The 1.0.0 release notes](docs/releases/1.0.0.md) have the details, what
+changed, and the known limits.
 
-**0.4.0 / Perform** adds audio Hold, 50–75% Swing and deterministic Accent.
-Hold uses a complete wet phrase and follows tempo by varispeed, so tempo changes
-change pitch. See [the 0.4.0 release notes](docs/releases/0.4.0.md) for operation,
-compatibility and the complete capture/history memory budget.
+## The pad
 
-**0.5.1 / Recut** adds Attack Align and deterministic Reverse Chance. Live keeps
-zero added latency; Studio buffers 500 ms, including dry audio and plug-in bypass,
-so more cuts have complete source audio available. Select a requested mode on
-the Recut page and Apply after the host supplies a stopped callback. Missing
-transport information leaves Apply pending; normal host preparation can apply
-a saved request. The editor keeps its 880 × 724 layout with Pattern/Recut pages.
-See [the 0.5.1 release notes](docs/releases/0.5.1.md) for the corrected host lifecycle and [the feature guide](docs/releases/0.5.0.md) for source eligibility,
-transport behavior, memory and validation limits.
+New instances open on the pad. Eight programs sit above it: Cut, Bounce,
+Glitch, Suction, Filter, Tape, Loops and Rush.
 
-**0.6 / Impact** adds a Slice Filter, Drive / Wavefold and a Transient Shaper, each following the cuts through a shared cut envelope. See [the 0.6.0 release notes](docs/releases/0.6.0.md).
+- **Cut**, **Bounce** and **Glitch** play the cut procedures: from the break
+  nearly as it is to busy jungle editing, triplet bounces with climbing
+  ratchets, and fast repeats through a crusher.
+- **Suction** squeezes the cuts into a narrow, singing band that bursts open on
+  every cut and sucks shut behind it.
+- **Filter** sweeps a resonant low-pass from dark to open and rings each roll
+  out on a tuned note that ducks under the hits.
+- **Tape** lets the track play and brakes it to a halt on the grid, from once
+  every four bars to every beat, then spins it back up into the next hit.
+- **Loops** lets the track play a bar, half a bar or a beat, then loops it,
+  folding into shorter and shorter loops of its first hit before it catches
+  the track again.
+- **Rush** lets the track play and rolls the last beats of every bar into the
+  next downbeat: evenly, rushing and rising, or dragging and falling.
 
-**0.7 / Fracture** adds the GrainCut and TapeCut readers and a Ring / Frequency Shift effect. See [the 0.7.0 release notes](docs/releases/0.7.0.md).
+Hold keeps cutting after you let go, Mix blends the input with the program,
+and Straight keeps every cut on even divisions of the beat, so a program
+plays no triplets.
 
-**0.8 / Resonance** adds a four-voice tuned resonator, a choice of effect order and a Spectral Freeze / Smear stage. See [the 0.8.0 release notes](docs/releases/0.8.0.md).
+## Classic
 
-**Livecut 1.0 / the pad** (1.0.0-beta.1, see [the release notes](docs/releases/1.0.0-beta.1.md)). New instances open on a pad instead of
-the pages. Press it to cut and let go to stop on the next beat or bar; drag to
-play two settings of the chosen program at once. Eight programs sit beneath
-it: Cut, Bounce, Glitch, Suction, Filter, Tape, Loops and Rush. Suction
-squeezes the cuts into a narrow, singing band that bursts open on every cut
-and sucks shut behind it. Filter sweeps a resonant low-pass from dark to open
-and rings each roll out on a tuned note that ducks under the hits. Tape lets
-the track play and brakes it to a halt on the grid, from once every four bars
-to every beat, then spins it back up into the next hit. Loops lets the track
-play a bar, half a bar or a beat, then loops it, folding into shorter and
-shorter loops of its first hit before it catches the track again. Rush lets
-the track play and rolls the last beats of every bar into the next downbeat,
-evenly, or rushing and rising, or dragging and falling. Hold keeps cutting
-after you let go, Mix blends the input with the program, and Straight keeps
-every cut on even divisions of the beat, so a program plays no triplets.
-Classic keeps the original pages, and sessions saved before the pad open on
-them.
+The Classic surface keeps the four cut procedures with every one of their
+controls. Sessions saved before the pad open on it. It also holds everything
+built between 0.2.0 and the pad:
+
+- **Capture**: keep the last complete phrase and save it as a stereo float WAV
+  ([notes](docs/releases/0.3.0.md)).
+- **Perform**: Audio Hold, Swing and Accent ([notes](docs/releases/0.4.0.md)).
+- **Recut**: Studio's 500 ms look-ahead, Attack Align and Reverse
+  ([notes](docs/releases/0.5.1.md), [guide](docs/releases/0.5.0.md)).
+- **Impact**: Slice Filter, Drive / Wavefold and a Transient Shaper
+  ([notes](docs/releases/0.6.0.md)).
+- **Fracture**: the GrainCut and TapeCut readers, and Ring / Frequency Shift
+  ([notes](docs/releases/0.7.0.md)).
+- **Resonance**: a four-voice tuned resonator, a choice of effect order, and
+  Spectral Freeze / Smear ([notes](docs/releases/0.8.0.md)).
 
 ## Building
 
