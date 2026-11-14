@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <memory>
+
 namespace livecut::ui
 {
 
@@ -37,6 +39,11 @@ juce::Font displayFont (float height);
 
 // Whether a font is one of the three above.
 bool isSkinFont (const juce::Font&);
+
+// The typeface is loaded while anything holds one of these, and unloaded when
+// the last is let go. The look and feel holds one, so an open editor makes
+// its fonts from a typeface that is already there.
+std::shared_ptr<void> keepTypeface();
 
 // A pad program's colour, by its index in the Pad Program parameter.
 juce::Colour programColour (int program);

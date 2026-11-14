@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "ProcessorTestSupport.h"
 #include "ui/AboutSheet.h"
+#include "ui/LivecutLookAndFeel.h"
 #include "ui/PadArt.h"
 #include "ui/PhraseRuler.h"
 #include "ui/Theme.h"
@@ -99,6 +100,25 @@ TEST_CASE ("The skin's typeface is embedded, in every weight it uses", "[skin]")
 
     // The wordmark's face is heavier still, and condensed.
     CHECK (width (ui::displayFont (14.0f)) < width (ui::uiFont (14.0f, ui::weight::bold)));
+}
+
+TEST_CASE ("An open editor keeps the typeface loaded, so its fonts share one", "[skin]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+
+    // With nothing holding the typeface, each font loads it afresh.
+    CHECK (ui::uiFont (14.0f).getTypefacePtr() != ui::uiFont (14.0f).getTypefacePtr());
+
+    {
+        const ui::LivecutLookAndFeel lookAndFeel;
+        const auto held = ui::uiFont (14.0f).getTypefacePtr();
+        CHECK (ui::uiFont (20.0f).getTypefacePtr() == held);
+        CHECK (ui::numberFont (14.0f).getTypefacePtr() == held);
+        CHECK (ui::uiFont (14.0f, ui::weight::bold).getTypefacePtr() != held);
+    }
+
+    const auto hold = ui::keepTypeface();
+    CHECK (ui::displayFont (24.0f).getTypefacePtr() == ui::displayFont (48.0f).getTypefacePtr());
 }
 
 // A program's art, drawn 404 by 248: half the size the pad shows it.

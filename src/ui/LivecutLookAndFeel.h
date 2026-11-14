@@ -38,6 +38,9 @@ public:
 
     juce::Rectangle<int> getTooltipBounds (const juce::String& text, juce::Point<int> screenPosition, juce::Rectangle<int> parentArea) override;
     void drawTooltip (juce::Graphics&, const juce::String& text, int width, int height) override;
+
+private:
+    std::shared_ptr<void> typeface = keepTypeface();
 };
 
 } // namespace livecut::ui

@@ -65,6 +65,11 @@ juce::Font displayFont (float height)
     return juce::Font (juce::FontOptions (faces->display).withHeight (height));
 }
 
+std::shared_ptr<void> keepTypeface()
+{
+    return std::make_shared<juce::SharedResourcePointer<Typefaces>>();
+}
+
 bool isSkinFont (const juce::Font& font)
 {
     const juce::SharedResourcePointer<Typefaces> faces;
