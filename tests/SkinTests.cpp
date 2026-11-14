@@ -8,6 +8,7 @@
 #include "ui/Controls.h"
 #include "ui/LivecutLookAndFeel.h"
 #include "ui/PadArt.h"
+#include "ui/PadPage.h"
 #include "ui/PhraseRuler.h"
 #include "ui/RangeSlider.h"
 #include "ui/Theme.h"
@@ -225,14 +226,14 @@ TEST_CASE ("The pad's art keeps a slow pulse at rest, and the host's beat while 
         for (int frame = 0; frame < juce::roundToInt (seconds * 60.0); ++frame)
         {
             if (frame % 2 == 0)
-                pad.followBeat (host);
+                pad.followBeat (ui::HostBeat { host, tempo });
 
             pad.animate (1.0 / 60);
             host += tempo / 60.0;
         }
     };
 
-    run (1.5); // long enough to learn the tempo and be drawn onto the beat
+    run (1.5); // long enough to be drawn onto the beat
     const auto phaseError = [&]
     {
         const auto error = static_cast<float> (host - std::floor (host)) - beatPhase();
@@ -257,6 +258,55 @@ TEST_CASE ("The pad's art keeps a slow pulse at rest, and the host's beat while 
     const auto resting = pad.artMotion().beat;
     pad.animate (1.0);
     CHECK_THAT (pad.artMotion().beat - resting, WithinAbs (0.5, 0.001));
+}
+
+TEST_CASE ("The pad stays on the beat when the host's place arrives in large blocks", "[skin][art][pad]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    ui::XYPad pad (*processor.getParameterState().getParameter (livecut::ids::padX),
+                   *processor.getParameterState().getParameter (livecut::ids::padY),
+                   *processor.getParameterState().getParameter (livecut::ids::padTouch));
+    pad.setSize (840, 528);
+
+    // 174 beats a minute through a 4096-sample buffer at 44.1 kHz. The host's place moves on only every 93 ms,
+    // so the editor, looking 30 times a second, often sees the same place twice.
+    constexpr auto tempo = 2.9, block = 4096.0 / 44100.0;
+    auto time = 0.0, worst = 0.0;
+
+    for (int frame = 0; frame < 60 * 8; ++frame)
+    {
+        if (frame % 2 == 0)
+            pad.followBeat (ui::HostBeat { std::floor (time / block) * block * tempo, tempo });
+
+        pad.animate (1.0 / 60);
+        time += 1.0 / 60;
+
+        if (frame > 60) // once it has been drawn onto the beat
+        {
+            const auto error = time * tempo - static_cast<double> (pad.artMotion().beat);
+            worst = std::max (worst, std::abs (error - std::round (error)));
+        }
+    }
+
+    // It can only know the host's place to within one look, a tenth of a beat here.
+    CHECK (worst < 0.12);
+}
+
+TEST_CASE ("The art's count of beats wraps where no picture shows it", "[skin][art]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+
+    for (int program = 0; program < 8; ++program)
+        for (const auto axis : { 0.0f, 0.4f, 0.7f, 1.0f }) // Bounce's three, four, five and six hops among them
+        {
+            INFO ("program " << program << " with its axes at " << axis);
+            ui::ArtMotion early, late;
+            early.x = early.y = late.x = late.y = axis;
+            early.beat = early.spin = 1.25f;
+            late.beat = late.spin = ui::ArtMotion::beatsBeforeWrap + 1.25f;
+            CHECK (difference (art (program, early), art (program, late)) <= 2);
+        }
 }
 
 TEST_CASE ("A new block kicks the art, which glides after the pointer mark", "[skin][art][pad]")
@@ -315,13 +365,55 @@ TEST_CASE ("The pad follows the host's beat only while it cuts", "[skin][art][pa
     // Stopped: the pad's own slow pulse, whatever the display's stale position says.
     CHECK_THAT (beatsInASecond(), WithinAbs (0.5, 0.01));
 
-    // Cutting, sixteen units to the bar: four beats to those sixteen units.
+    // Cutting in 4/4 at 180 beats a minute, sixteen units to the bar.
     display.status.store (livecut::DisplayState::Status::cutting);
     display.phraseBars.store (4);
     display.unitsPerBar.store (16);
+    display.bpm.store (180.0);
     display.padEngaged.store (true);
     beatsInASecond();
     CHECK_THAT (beatsInASecond(), WithinAbs (3.0, 0.1));
+
+    // In 3/4 the beat is still the host's quarter note: three of them to the bar's sixteen units.
+    display.beatsPerBar.store (3.0);
+    display.position.store (0.0);
+
+    for (int frame = 0; frame < 100; ++frame)
+    {
+        editor.refreshDisplay();
+        pad->animate (1.0 / 60);
+        display.position.store (display.position.load() + 16.0 / 60.0); // a bar a second
+    }
+
+    // A second and two thirds in, the host is on its sixth quarter note, and so is the art.
+    CHECK_THAT (pad->artMotion().beat - std::round (pad->artMotion().beat), WithinAbs (0.0, 0.05));
+
+    // Away on the Classic pages the pad is not shown, and goes back to its own slow pulse.
+    useClassicSurface (processor);
+    editor.refreshDisplay();
+    const auto before = pad->artMotion().beat;
+    pad->animate (1.0);
+    CHECK_THAT (pad->artMotion().beat - before, WithinAbs (0.5, 0.01));
+}
+
+TEST_CASE ("A tab's name reads on its face, whatever the tab is doing", "[skin][pad]")
+{
+    using State = ui::TabState;
+
+    for (int program = 0; program < 8; ++program)
+        for (const auto state : { State::resting, State::hovered, State::pressed, State::waiting, State::playing })
+            for (const auto lit : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f }) // a waiting tab's light, from the beat to the next
+            {
+                INFO ("program " << program << ", state " << static_cast<int> (state) << ", lit " << lit);
+                const auto colours = ui::tabColours (ui::programColour (program), state, lit);
+                CHECK (contrast (colours.face, colours.name) >= 4.5);
+            }
+
+    // A waiting tab is brightest on the beat, and never as bright as the tab that is playing.
+    const auto orange = ui::programColour (0);
+    const auto onTheBeat = ui::tabColours (orange, State::waiting, 1.0f).face, before = ui::tabColours (orange, State::waiting, 0.0f).face;
+    CHECK (luminance (onTheBeat) > luminance (before));
+    CHECK (luminance (onTheBeat) < luminance (ui::tabColours (orange, State::playing, 0.0f).face));
 }
 
 TEST_CASE ("The scissors are cut from the accent colour, and open", "[skin][art]")
@@ -846,7 +938,7 @@ TEST_CASE ("The wordmark makes its cut again at each new block", "[skin][wordmar
     // CUT drops under the blade while LIVE and Redux stay put, and then it springs back.
     wordmark.cut();
     const auto dropped = snapshot (wordmark);
-    CHECK (changed (resting, dropped, 0, width / 4) == 0);
+    CHECK (changed (resting, dropped, 0, 30) == 0); // LIVE ends at 33
     CHECK (changed (resting, dropped, width / 2, width) > 40);
     wordmark.animate (0.1);
     const auto rising = snapshot (wordmark);
@@ -986,6 +1078,16 @@ TEST_CASE ("The Classic pages are laid out on one grid", "[skin][classic]")
     {
         INFO (tab);
         dynamic_cast<juce::TextButton*> (findById (editor, tab))->onClick();
+        checkSliders (editor);
+    }
+
+    // Each procedure brings its own controls to the Pattern page.
+    dynamic_cast<juce::TextButton*> (findById (editor, "patternTab"))->onClick();
+
+    for (int procedure = 0; procedure < 4; ++procedure)
+    {
+        INFO ("procedure " << procedure);
+        set (processor, livecut::ids::procedure, static_cast<float> (procedure));
         checkSliders (editor);
     }
 

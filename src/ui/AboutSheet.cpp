@@ -188,7 +188,7 @@ void AboutSheet::paint (juce::Graphics& g)
 
 void AboutSheet::resized()
 {
-    closeButton.setBounds (getWidth() - 20 - 96, 23, 96, 30); // where the surface switch is
+    closeButton.setBounds (getWidth() - 20 - 96, 23, 96, 30); // where the pad's surface switch is
     source.setBounds (margin - linkPadding, storyTop + juce::roundToInt (std::ceil (text.getHeight())) + 10, 260, 30);
 }
 

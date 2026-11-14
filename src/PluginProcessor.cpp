@@ -575,6 +575,8 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
             }
             processingBeatsPerSample = context.timing.bpm / 60.0 / processingSampleRate;
             processingBeatsPerBar = context.timing.beatsPerBar;
+            display.bpm = context.timing.bpm;
+            display.beatsPerBar = context.timing.beatsPerBar;
             if (!resources.spectral && context.resetHold)
                 wetHold.interrupt ();
             applyRenderSettings (context.settings);

@@ -21,6 +21,9 @@ constexpr int rowHeight = 36;
 constexpr int gap = 20;            // between the pad and the row beneath, as between everything on the surface
 constexpr int controlGap = 24;     // between the controls in that row
 
+// How much of its colour a tab's face takes on. A waiting tab stops at as much as white still reads on.
+constexpr float hoveredFill = 0.12f, pressedFill = 0.3f, waitingFill = 0.2f, waitingLitFill = 0.5f;
+
 const juce::String rightArrow = juce::CharPointer_UTF8 ("\xe2\x86\x92"); // →
 
 // What the pad does in each program.
@@ -50,6 +53,23 @@ juce::AudioParameterChoice& choice (juce::AudioProcessorValueTreeState& state, c
 }
 } // namespace
 
+TabColours tabColours (juce::Colour colour, TabState state, float lit)
+{
+    const auto face = [colour] (float filled) { return palette::well.interpolatedWith (colour, filled); };
+
+    switch (state)
+    {
+        case TabState::resting: return { face (0.0f), colour };
+        case TabState::hovered: return { face (hoveredFill), colour };
+        case TabState::pressed: return { face (pressedFill), palette::ink };
+        case TabState::waiting: return { face (waitingFill + (waitingLitFill - waitingFill) * lit), palette::ink };
+        case TabState::playing: return { colour, palette::onColour };
+    }
+
+    jassertfalse;
+    return {};
+}
+
 PadPage::ProgramButton::ProgramButton (const juce::String& name, juce::Colour tabColour)
     : juce::Button (name), colour (tabColour)
 {
@@ -57,8 +77,8 @@ PadPage::ProgramButton::ProgramButton (const juce::String& name, juce::Colour ta
 
 void PadPage::ProgramButton::setPending (bool next, float beat)
 {
-    // Lit on the beat, and half as bright by the next.
-    const auto nowLit = next ? 0.45f + 0.55f * std::pow (1.0f - (beat - std::floor (beat)), 2.0f) : 0.0f;
+    // Lit on the beat, and fading until the next.
+    const auto nowLit = next ? std::pow (1.0f - (beat - std::floor (beat)), 2.0f) : 0.0f;
 
     if (pending == next && juce::approximatelyEqual (lit, nowLit))
         return;
@@ -70,19 +90,19 @@ void PadPage::ProgramButton::setPending (bool next, float beat)
 
 void PadPage::ProgramButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    // At rest a tab is dark, with its name in its colour. Playing, it is its colour, with its name in black.
     const auto playing = getToggleState();
-    const auto filled = playing ? 1.0f : pending ? lit : down ? 0.3f : highlighted ? 0.16f : 0.0f;
+    const auto colours = tabColours (colour, playing ? TabState::playing : pending ? TabState::waiting : down ? TabState::pressed
+                                                     : highlighted ? TabState::hovered : TabState::resting, lit);
     const auto resting = getLocalBounds().toFloat().withTrimmedTop (static_cast<float> (restingTabInset));
     const auto face = playing ? getLocalBounds().toFloat() : resting;
 
     juce::Path tab;
     tab.addRoundedRectangle (face.getX(), face.getY(), face.getWidth(), face.getHeight(), tabRadius, tabRadius, true, true, false, false);
-    g.setColour (palette::well.interpolatedWith (colour, filled));
+    g.setColour (colours.face);
     g.fillPath (tab);
 
     // Every name sits on the same line, whether or not its tab stands taller.
-    g.setColour (filled > 0.4f ? palette::onColour : colour);
+    g.setColour (colours.name);
     g.setFont (uiFont (14.0f, playing ? weight::bold : weight::medium));
     g.drawText (getButtonText(), resting, juce::Justification::centred);
 
@@ -184,9 +204,12 @@ void PadPage::refresh (const DisplayState& display)
     pad.setProgram (playing);
     pad.showEngaged (display.padEngaged.load());
 
-    // While it cuts, the host is so many units into the phrase. Four beats to the bar is near enough for a picture.
-    const auto cutting = display.status.load() == DisplayState::Status::cutting && display.unitsPerBar.load() > 0;
-    pad.followBeat (cutting ? std::optional<double> (4.0 * display.position.load() / display.unitsPerBar.load()) : std::nullopt);
+    // While it cuts, the host is so many units into the phrase, and a bar's units are so many of its beats.
+    const auto unitsPerBar = display.unitsPerBar.load();
+    const auto cutting = display.status.load() == DisplayState::Status::cutting && unitsPerBar > 0;
+    pad.followBeat (cutting ? std::optional (HostBeat { display.position.load() * display.beatsPerBar.load() / unitsPerBar,
+                                                        display.bpm.load() / 60.0 })
+                            : std::nullopt);
 
     // The pad answers each block of cuts that starts while it plays. An editor opened mid-block has seen none start.
     const auto blockStart = display.blockStart.load();
@@ -242,8 +265,13 @@ void PadPage::resized()
 
 void PadPage::visibilityChanged()
 {
+    // Out of sight the pad lets go, and goes back to its own slow pulse.
     if (! isVisible())
+    {
         pad.endInteraction();
+        pad.showEngaged (false);
+        pad.followBeat (std::nullopt);
+    }
 }
 
 } // namespace livecut::ui

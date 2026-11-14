@@ -173,6 +173,27 @@ TEST_CASE ("Processor cuts in time with a playing host", "[processor][audio]")
     CHECK (processor.getCutter().phraseStartBar() == 0);
 }
 
+TEST_CASE ("Processor tells the display the host's tempo and bar length", "[processor][display]")
+{
+    LivecutAudioProcessor processor;
+    useClassicSurface (processor);
+    TestPlayHead playHead;
+    playFromBarOne (playHead);
+    playHead.info.setBpm (150.0);
+    playHead.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 7, 8 });
+    processor.setPlayHead (&playHead);
+    processor.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    processor.processBlock (buffer, midi);
+
+    // Seven eighth notes are three and a half of the quarter notes the tempo counts.
+    CHECK (juce::exactlyEqual (processor.getDisplayState().bpm.load(), 150.0));
+    CHECK (juce::exactlyEqual (processor.getDisplayState().beatsPerBar.load(), 3.5));
+}
+
 TEST_CASE ("Processor applies parameter changes to the cutter", "[processor][parameters]")
 {
     LivecutAudioProcessor processor;

@@ -39,6 +39,8 @@ struct DisplayState
     std::atomic<double> blockStart { 0.0 }; // units into the phrase
     std::atomic<double> blockEnd { 0.0 };
     std::atomic<double> position { 0.0 };
+    std::atomic<double> bpm { 120.0 };       // the host's tempo, in quarter notes a minute,
+    std::atomic<double> beatsPerBar { 4.0 }; // and how many of them make a bar
     using TransformReason = engine::Cutter::TransformReason;
     std::atomic<TransformReason> transformReason { TransformReason::off };
     std::atomic<std::uint64_t> transformEligible { 0 }, attackApplied { 0 }, reverseApplied { 0 }, transformIneligible { 0 };

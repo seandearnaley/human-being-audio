@@ -17,6 +17,19 @@ namespace livecut::ui
 // The pad surface: eight program tabs, the pad they open onto, then Hold,
 // Straight, Beat / Bar and Mix. Where a control owns a parameter, its
 // component ID is the parameter's ID. Mix is the Wet parameter under its own ID.
+enum class TabState { resting, hovered, pressed, waiting, playing };
+
+// A tab's face, and its name on it.
+struct TabColours
+{
+    juce::Colour face, name;
+};
+
+// At rest a tab is dark, with its name in its program's colour. Playing, it
+// is that colour, with its name in black. Waiting for the grid it glows with
+// the colour under its name in white: `lit` is 1 on the beat and 0 by the next.
+TabColours tabColours (juce::Colour programColour, TabState state, float lit);
+
 class PadPage final : public juce::Component
 {
 public:
@@ -37,7 +50,7 @@ public:
 
     private:
         juce::Colour colour;
-        float lit = 0.0f; // how brightly a waiting tab is lit just now
+        float lit = 0.0f; // how brightly a waiting tab glows just now: 1 on the beat
         bool pending = false;
     };
 

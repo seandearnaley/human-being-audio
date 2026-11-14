@@ -28,7 +28,6 @@ constexpr float kickSeconds = 0.6f;       // how long the art takes to settle af
 constexpr float changeSeconds = 0.18f;    // how long one program's sheet takes to become another's
 constexpr float ringSeconds = 0.32f;      // how long the ring from the pointer mark lasts
 constexpr float restingTempo = 0.5f;      // beats a second, when there is no host beat to keep
-constexpr float slowest = 0.5f, fastest = 8.0f; // the host tempos the art will keep, in beats a second
 constexpr double restingFrame = 1.0 / 30; // the pad is redrawn this often at rest,
 constexpr double movingFrame = 1.0 / 60;  // and this often while it plays or something on it is changing
 constexpr float sharpest = 2.0f;          // the art is drawn at up to this many pixels a point
@@ -197,24 +196,23 @@ void XYPad::pulse()
     ring = 0.0f;
 }
 
-void XYPad::followBeat (std::optional<double> beats)
+void XYPad::followBeat (std::optional<HostBeat> reported)
 {
-    // Between two looks at the host, how fast it ran. A phrase starting again counts backwards, and says nothing.
-    if (beats.has_value() && hostBeat.has_value())
+    // The host's place moves on once for each block of audio, and the editor may look more often than that. The
+    // same place seen again says nothing new about when the host was there, so only its tempo is taken.
+    if (reported.has_value() && host.has_value() && juce::exactlyEqual (reported->beats, host->beats))
     {
-        const auto moved = *beats - *hostBeat, took = runSeconds - hostBeatAt;
-
-        if (moved > 0.0 && took > 0.02)
-            tempo += (juce::jlimit (slowest, fastest, static_cast<float> (moved / took)) - tempo) * 0.35f;
+        host->perSecond = reported->perSecond;
+        return;
     }
 
-    hostBeat = beats;
-    hostBeatAt = runSeconds;
+    host = reported;
+    hostAt = runSeconds;
 }
 
 bool XYPad::displayRefreshed (double now)
 {
-    const auto moving = engaged || hostBeat.has_value() || change < 1.0f || ring < 1.0f;
+    const auto moving = engaged || host.has_value() || change < 1.0f || ring < 1.0f;
     const auto elapsed = clock.tick (now, moving ? movingFrame : restingFrame);
 
     if (elapsed.has_value())
@@ -237,11 +235,12 @@ void XYPad::animate (double seconds)
 
     auto beats = elapsed * restingTempo;
 
-    if (hostBeat.has_value())
+    if (host.has_value())
     {
         // The art's beat runs at the host's tempo. Whatever it is then out by, it makes up the shorter way round.
-        const auto host = static_cast<float> (*hostBeat + (runSeconds - hostBeatAt) * static_cast<double> (tempo));
-        auto out = fraction (host) - fraction (motion.beat + elapsed * tempo);
+        const auto tempo = static_cast<float> (host->perSecond);
+        const auto there = host->beats + (runSeconds - hostAt) * host->perSecond;
+        auto out = static_cast<float> (there - std::floor (there)) - fraction (motion.beat + elapsed * tempo);
         out -= std::round (out);
         beats = juce::jmax (0.0f, elapsed * tempo + out * juce::jmin (1.0f, elapsed * 10.0f));
     }
@@ -307,14 +306,14 @@ void XYPad::paint (juce::Graphics& g)
     if (width <= 0 || height <= 0)
         return;
 
-    const auto draw = [&] (juce::Image& canvas, int scene)
+    const auto draw = [&] (juce::Image& image, int scene)
     {
-        if (canvas.getWidth() != width || canvas.getHeight() != height)
-            canvas = juce::Image (juce::Image::RGB, width, height, false, juce::SoftwareImageType());
+        if (image.getWidth() != width || image.getHeight() != height)
+            image = juce::Image (juce::Image::RGB, width, height, false, juce::SoftwareImageType());
         else if (! artStale)
             return;
 
-        juce::Graphics art (canvas);
+        juce::Graphics art (image);
         art.addTransform (juce::AffineTransform::scale (density));
         drawProgramArt (art, scene, area.withZeroOrigin(), motion);
     };
@@ -367,7 +366,7 @@ void XYPad::paintOverChildren (juce::Graphics& g)
         }
 
         // The pointer mark: a white dot that turns black while the pad plays, and swells on the host's beat.
-        const auto swell = hostBeat.has_value() ? std::pow (1.0f - fraction (motion.beat), 3.0f) : 0.0f;
+        const auto swell = host.has_value() ? std::pow (1.0f - fraction (motion.beat), 3.0f) : 0.0f;
         const auto dot = juce::Rectangle<float>().withCentre (at).expanded (markRadius * (1.0f + 0.18f * swell));
         juce::Path disc;
         disc.addEllipse (dot);

@@ -11,8 +11,9 @@ namespace livecut::ui
 // from nothing else, so the same motion always draws the same picture.
 struct ArtMotion
 {
-    // Everything in a picture repeats within this many beats, so the count can wrap here unseen.
-    static constexpr float beatsBeforeWrap = 4096.0f;
+    // Every picture repeats within a number of beats that divides this one (three to six for Bounce's hops;
+    // two, four, eight, sixteen and thirty-two elsewhere), so the count can wrap here unseen.
+    static constexpr float beatsBeforeWrap = 3840.0f;
 
     float beat = 0.0f;        // beats so far: the host's while the pad cuts, a slow pulse of the pad's own at rest
     float spin = 0.0f;        // the same count, but it brakes to a stop at each new block and runs back up

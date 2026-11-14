@@ -18,8 +18,12 @@ float mix (float a, float b, float t) { return a + (b - a) * t; }
 float ease (float t) { return t * t * (3.0f - 2.0f * t); }
 float fraction (float value) { return value - std::floor (value); }
 
+// How far through a turn that takes `beats` beats: from 0 to 1, or back from 1 for a turn the other way. The
+// count is brought within one turn before anything scales it up, so a long count loses none of its precision.
+float turn (float beat, float beats) { return fraction (beat / beats); }
+
 // A sine that repeats every `beats` beats.
-float sway (float beat, float beats, float offset = 0.0f) { return std::sin (2.0f * pi * beat / beats + offset); }
+float sway (float beat, float beats, float offset = 0.0f) { return std::sin (2.0f * pi * turn (beat, beats) + offset); }
 
 // 1 on each beat, falling away quickly before the next.
 float pulse (float beat) { return std::pow (1.0f - fraction (beat), 3.0f); }
@@ -208,7 +212,7 @@ void drawGlitch (juce::Graphics& g, juce::Rectangle<float> area, const Card& car
     const auto tile = area.getWidth() / static_cast<float> (columns);
     const auto rows = static_cast<int> (std::ceil (area.getHeight() / tile)) + 2;
     const auto settled = ease (juce::jmin (1.0f, (1.0f - m.kick) * 3.0f)); // slips are sudden
-    const auto sixteenth = static_cast<int> (m.beat * 4.0f);
+    const auto sixteenth = static_cast<int> (m.beat * 4.0f) % 64; // the pattern of lit tiles comes round every four bars
     const auto glow = pulse (m.beat * 4.0f);
 
     for (int row = -1; row < rows; ++row)
@@ -342,7 +346,8 @@ void drawTape (juce::Graphics& g, juce::Rectangle<float> area, const Card& card,
     for (std::size_t reel = 0; reel < hubs.size(); ++reel)
     {
         const auto hub = hubs[reel];
-        const auto angle = m.spin * 2.0f * pi / 3.0f + static_cast<float> (reel) * 0.4f;
+        // A third of a turn brings the next window round to where the last one was, so one beat is the whole picture.
+        const auto angle = 2.0f * pi / 3.0f * turn (m.spin, 1.0f) + static_cast<float> (reel) * 0.4f;
         lay (g, disc (hub, radius * (reel == 0 ? 0.93f : 0.86f)), card.tone (-0.72f)); // the tape wound on it
 
         juce::Path flange;
@@ -358,13 +363,14 @@ void drawTape (juce::Graphics& g, juce::Rectangle<float> area, const Card& card,
     }
 }
 
-// Rings inside rings. The outermost turns once a bar, and each ring twice as
-// fast as the one around it. X shrinks the loop, and Y nests more loops in it.
+// Rings inside rings. The outermost turns every four beats, and each ring
+// twice as fast as the one around it. X shrinks the loop, and Y nests more loops in it.
 void drawLoops (juce::Graphics& g, juce::Rectangle<float> area, const Card& card, const ArtMotion& m)
 {
     g.fillAll (card.tone (-0.92f));
     const auto height = area.getHeight();
-    const auto nest = [&] (juce::Point<float> centre, float outer, int levels, float turn)
+    // `beats` is how long the outermost ring takes to turn once: less than nothing turns it the other way.
+    const auto nest = [&] (juce::Point<float> centre, float outer, int levels, float beats)
     {
         for (int level = 0; level < levels; ++level)
         {
@@ -372,7 +378,7 @@ void drawLoops (juce::Graphics& g, juce::Rectangle<float> area, const Card& card
             lay (g, disc (centre, radius), card.tone (mix (-0.6f, 0.45f, static_cast<float> (level) / 5.0f)), 4.0f);
 
             // A slot cut in each ring marks where its loop begins.
-            const auto angle = turn * std::pow (2.0f, static_cast<float> (level)) + static_cast<float> (level) * 0.9f;
+            const auto angle = 2.0f * pi * turn (m.beat, beats / std::pow (2.0f, static_cast<float> (level))) + static_cast<float> (level) * 0.9f;
             juce::Path slot;
             slot.addPieSegment (juce::Rectangle<float>().withCentre (centre).expanded (radius * 0.97f), angle - 0.09f, angle + 0.09f, 0.76f);
             g.setColour (card.tone (-1.0f));
@@ -380,16 +386,15 @@ void drawLoops (juce::Graphics& g, juce::Rectangle<float> area, const Card& card
         }
     };
 
-    const auto bar = 2.0f * pi * m.beat / 4.0f;
     const auto levels = 2 + juce::roundToInt (m.y * 4.0f);
-    nest ({ area.getX() + area.getWidth() * 0.9f, area.getY() + height * 0.14f }, height * 0.34f, 4, -bar * 0.25f);
-    nest ({ area.getX() + area.getWidth() * 0.1f, area.getBottom() - height * 0.08f }, height * 0.42f, 4, bar * 0.125f);
-    nest (area.getCentre().translated (area.getWidth() * 0.02f, 0.0f), height * mix (0.6f, 0.4f, m.x), levels, bar);
+    nest ({ area.getX() + area.getWidth() * 0.9f, area.getY() + height * 0.14f }, height * 0.34f, 4, -16.0f);
+    nest ({ area.getX() + area.getWidth() * 0.1f, area.getBottom() - height * 0.08f }, height * 0.42f, 4, 32.0f);
+    nest (area.getCentre().translated (area.getWidth() * 0.02f, 0.0f), height * mix (0.6f, 0.4f, m.x), levels, 4.0f);
 }
 
 // Wedges racing to one point. X lifts the point from a falling drag to a
 // rising rush, and Y lets the fan start further back. A dart runs down each
-// seam once a bar, and each new block lands on the point.
+// seam every four beats, and each new block lands on the point.
 void drawRush (juce::Graphics& g, juce::Rectangle<float> area, const Card& card, const ArtMotion& m)
 {
     g.fillAll (card.tone (-0.92f));
@@ -413,7 +418,7 @@ void drawRush (juce::Graphics& g, juce::Rectangle<float> area, const Card& card,
     // Darts along the seams, gathering speed as they close on the point.
     for (int seam = 1; seam < wedges; ++seam)
     {
-        const auto along = std::pow (fraction (m.beat * 0.25f + chance (seam, 9)), 2.4f);
+        const auto along = std::pow (fraction (turn (m.beat, 4.0f) + chance (seam, 9)), 2.4f);
         const auto from = rimAt (seam), at = from + (point - from) * along;
         const auto tail = from + (point - from) * juce::jmax (0.0f, along - 0.05f * (1.0f - along) - 0.01f);
         g.setColour (card.tone (1.0f).withAlpha (juce::jmin (1.0f, 4.0f * along) * (1.0f - along)));

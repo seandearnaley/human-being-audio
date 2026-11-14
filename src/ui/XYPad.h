@@ -21,6 +21,14 @@ namespace livecut::ui
 // it and giving its value. Markers on all four sides follow the pointer
 // mark; under the bottom and right ones are native sliders, for precise
 // keyboard and screen-reader editing.
+class XYPad;
+
+// Where the host is, in beats, and how fast it is going, in beats a second.
+struct HostBeat
+{
+    double beats = 0.0, perSecond = 0.0;
+};
+
 class XYPad final : public juce::Component, private juce::Timer
 {
 public:
@@ -39,9 +47,9 @@ public:
     // A new block of cuts: a ring leaves the pointer mark and the art answers.
     void pulse();
 
-    // Where the host is, in beats, while it has a beat to keep; nothing when it
-    // hasn't. The art keeps time with it, and with a slow pulse of its own otherwise.
-    void followBeat (std::optional<double> beats);
+    // The host's beat while it has one to keep; nothing when it hasn't. The art
+    // keeps time with it, and with a slow pulse of its own otherwise.
+    void followBeat (std::optional<HostBeat> host);
 
     // The display refreshed at this time, in seconds. Moves the pad on if a
     // frame is due, 30 times a second at rest and 60 while it plays or
@@ -141,10 +149,9 @@ private:
     int program = 0, programBefore = 0;
     float change = 1.0f;     // how far the sheet has changed from the program before: 1 is done
     float ring = 1.0f;       // how far the ring has travelled from the pointer mark: 1 is gone
-    std::optional<double> hostBeat; // where the host last was, in beats
-    double hostBeatAt = 0.0;        // and when, on the pad's own clock
-    double runSeconds = 0.0;        // that clock: how long the pad has been animated for
-    float tempo = 2.0f;             // the host's, in beats a second, as last measured
+    std::optional<HostBeat> host; // the host's beat, as last reported
+    double hostAt = 0.0;          // when it first reported being there, on the pad's own clock
+    double runSeconds = 0.0;      // that clock: how long the pad has been animated for
     bool artStale = true;    // whether the art has moved since it was last drawn
     bool dragging = false, fineDragging = false, touching = false, engaged = false;
 

@@ -31,9 +31,9 @@ orange comes from it.
 - **Status takes the tape's place.** With no phrase to show, the editor says
   what to do next where the tape would be. On the Classic pages a control's
   status sits beside that control.
-- **Motion keeps time.** While the pad cuts, its art follows the host's beat,
-  the pointer mark swells on each beat, and a tab that is waiting for its
-  switch lights on each beat. Each new block of cuts kicks the art, which
+- **Motion keeps time.** While the pad cuts, its art follows the host's beat
+  (its quarter note, in any metre), the pointer mark swells on each beat, and
+  a tab that is waiting for its switch glows on each beat. Each new block of cuts kicks the art, which
   settles in 0.6 s, sends a ring out from the pointer mark (320 ms), and
   drops CUT in the wordmark under its blade, to spring back (300 ms). At rest
   the art keeps a slow pulse of its own, a beat every two seconds. A program
@@ -64,15 +64,17 @@ orange comes from it.
 | Suction | `#AB70F0` | A tunnel, drawing inward | Slides it left to right | Squeezes it narrower | A ring every two beats | Bursts it open |
 | Filter | `#48A4F2` | A low-pass response, layer on layer | Moves the cutoff | Raises the resonant peak | The peak swells | Rings the peak |
 | Tape | `#34C9C5` | Two reels and the tape between | Slacker tape | More loops of it | Reels turn a third of the way round | Brakes the reels |
-| Loops | `#6CD04F` | Rings inside rings, each turning twice as fast | A smaller loop | More loops nested inside | The outer ring turns once a bar | Swells the rings |
-| Rush | `#FCD21C` | Wedges racing to one point | Lifts the point, from drag to rush | Starts the fan further back | A dart down each seam once a bar | Lands on the point |
+| Loops | `#6CD04F` | Rings inside rings, each turning twice as fast | A smaller loop | More loops nested inside | The outer ring turns every four beats | Swells the rings |
+| Rush | `#FCD21C` | Wedges racing to one point | Lifts the point, from drag to rush | Starts the fan further back | A dart down each seam every four beats | Lands on the point |
 
 Each colour is light enough for black to read on it, and for its tab's name
-to read on a resting tab. The art's bright tones are the colour itself; its
-deep tones lean toward red or blue on their way to black, so the warm colours
-never pass through brown. `tests/SkinTests.cpp` checks the contrast (4.5:1
-both ways), that the art's bright card matches its colour, and that every
-picture moves with the beat, with each axis and at a new block.
+to read on a resting tab. A waiting tab glows with as much of its colour as
+its name still reads on in white. The art's bright tones are the colour
+itself; its deep tones lean toward red or blue on their way to black, so the
+warm colours never pass through brown. `tests/SkinTests.cpp` checks that a
+tab's name has 4.5:1 against its face whatever the tab is doing, that the
+art's bright card matches its colour, and that every picture moves with the
+beat, with each axis and at a new block.
 
 ## Type
 
@@ -81,8 +83,9 @@ One family, [Bricolage Grotesque](https://github.com/ateliertriay/bricolage)
 text at 400, 500, 600 or 700; `numberFont` adds tabular figures for values
 that change; `displayFont` is the wordmark's condensed 800.
 
-Sizes: 14 for controls and card titles, 13 on the pad's tags, 12 for status
-and advice, and 16 for the About sheet's body. Where lines of different sizes
+Sizes: 14 for controls, card titles and the tape's status line, 13 on the
+pad's tags, 12 for status and advice on the Classic pages, and 16 for the
+About sheet's body. Where lines of different sizes
 are stacked, each is set from its first letter's own edge (`sideBearing`), so
 they share one.
 
@@ -117,9 +120,14 @@ an `ArtMotion` (a count of beats, the two axes, and the state of the last
 block), so the same motion always draws the same picture and a test can step
 it. `lay` puts a piece of card down on its own shadow.
 
-While the pad cuts, the count of beats is the host's: the pad measures the
-tempo from the phrase position and corrects its phase a little each frame, so
-the picture stays on the beat without jumping. The pad moves the motion on
+While the pad cuts, the count of beats is the host's. The processor publishes
+the host's tempo and bar length beside the phrase position; the pad runs its
+count at that tempo and corrects its phase a little each frame, so the picture
+stays on the beat without jumping. The host's place moves on once for each
+block of audio, so the pad takes a place it has already seen as no news. Every
+picture repeats within a number of beats that divides 3840, where the count
+wraps, and each scene brings the count within its own period before scaling
+it, so a long session loses no precision. The pad moves the motion on
 from the display's refresh, through a `FrameClock`: 30 frames a second at
 rest, and 60 while it plays or something on it is changing. It draws the art
 in software into an image and copies that to the screen, because the platform

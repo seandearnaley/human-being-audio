@@ -574,8 +574,9 @@ TEST_CASE ("Render the pad editor for design review", "[.screenshot][pad]")
     const auto save = [&] (const juce::String& name)
     {
         editor.refreshDisplay();
-        pad->animate (1.0); // let a change of program, or the sheet's fade, finish
+        pad->animate (1.0); // let a change of program, the sheet's fade and the wordmark's cut finish
         about->animate (1.0);
+        dynamic_cast<livecut::ui::Wordmark*> (findById (editor, "about"))->animate (1.0);
         saveScreenshot (editor, directory, name.toRawUTF8());
     };
 
