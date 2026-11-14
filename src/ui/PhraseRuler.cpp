@@ -3,7 +3,7 @@
 #include "ui/PhraseRuler.h"
 
 #include "engine/Cutter.h"
-#include "ui/LivecutLookAndFeel.h"
+#include "ui/Theme.h"
 
 #include <bit>
 #include <cmath>
@@ -80,56 +80,71 @@ juce::String PhraseRuler::describe (const Snapshot& snapshot)
     return {};
 }
 
-void PhraseRuler::paint (juce::Graphics& g)
+void PhraseRuler::setAccent (juce::Colour colour)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    g.setColour (palette::lcd);
-    g.fillRoundedRectangle (bounds, 6.0f);
-
-    auto inner = bounds.reduced (16.0f, 12.0f);
-    auto textLine = inner.removeFromTop (20.0f);
-    const auto cutting = current.status == DisplayState::Status::cutting;
-
-    g.setFont (lcdFont (15.0f));
-    g.setColour (palette::lcdOn);
-    g.drawText (headline.isNotEmpty() ? headline : describe (current), textLine, juce::Justification::centredLeft);
-
-    if (cutting)
-    {
-        g.setColour (palette::lcdDim.brighter (0.6f));
-        g.drawText (juce::String (current.unitsPerBar) + " units per bar", textLine, juce::Justification::centredRight);
-    }
-
-    inner.removeFromTop (10.0f);
-    const auto ruler = inner;
-    g.setColour (palette::lcdDim);
-    g.fillRect (ruler.withTop (ruler.getBottom() - 1.0f));
-
-    if (! cutting || current.phraseBars < 1 || current.unitsPerBar < 1)
+    if (accent == colour)
         return;
 
-    const auto totalUnits = static_cast<double> (current.phraseBars * current.unitsPerBar);
-    const auto xFor = [&] (double units)
-    {
-        return ruler.getX() + static_cast<float> (units / totalUnits) * ruler.getWidth();
-    };
+    accent = colour;
+    repaint();
+}
 
-    // The block being cut, lit behind the grid.
-    g.setColour (palette::lcdOn.withAlpha (0.28f));
-    g.fillRect (juce::Rectangle<float>::leftTopRightBottom (xFor (current.blockStart), ruler.getY(),
-                                                            xFor (current.blockEnd), ruler.getBottom()));
+void PhraseRuler::paint (juce::Graphics& g)
+{
+    constexpr auto tapeHeight = 26.0f, lineHeight = 22.0f, lineGap = 10.0f, barGap = 4.0f;
+    auto area = getLocalBounds().toFloat();
+    const auto hasPhrase = current.status == DisplayState::Status::cutting && current.phraseBars >= 1 && current.unitsPerBar >= 1;
+    const auto roomForLine = area.getHeight() >= tapeHeight + lineHeight;
 
-    for (int unit = 0; unit <= current.phraseBars * current.unitsPerBar; ++unit)
+    if (roomForLine || ! hasPhrase)
     {
-        const auto isBarLine = unit % current.unitsPerBar == 0;
-        const auto x = xFor (unit);
-        g.setColour (isBarLine ? palette::lcdOn.withAlpha (0.7f) : palette::lcdDim);
-        g.fillRect (juce::Rectangle<float> (x - 0.5f, isBarLine ? ruler.getY() : ruler.getBottom() - 7.0f,
-                                            1.0f, isBarLine ? ruler.getHeight() : 7.0f));
+        g.setColour (palette::ink);
+        g.setFont (uiFont (14.0f, weight::medium));
+        g.drawText (headline.isNotEmpty() ? headline : describe (current),
+                    roomForLine ? area.removeFromTop (lineHeight) : area, juce::Justification::centredLeft);
     }
 
-    g.setColour (palette::lcdOn);
-    g.fillRect (juce::Rectangle<float> (xFor (current.position) - 1.0f, ruler.getY(), 2.0f, ruler.getHeight()));
+    if (! hasPhrase)
+        return;
+
+    if (roomForLine)
+        area.removeFromTop (lineGap);
+
+    const auto tape = roomForLine ? area.removeFromTop (tapeHeight) : area.withSizeKeepingCentre (area.getWidth(), tapeHeight);
+    const auto barWidth = (tape.getWidth() - barGap * static_cast<float> (current.phraseBars - 1)) / static_cast<float> (current.phraseBars);
+    const auto units = static_cast<double> (current.unitsPerBar);
+
+    // Where a position in units falls along the tape, within the bar that holds it.
+    const auto xFor = [&] (double position, int bar)
+    {
+        const auto within = juce::jlimit (0.0, units, position - bar * units);
+        return tape.getX() + static_cast<float> (bar) * (barWidth + barGap) + static_cast<float> (within / units) * barWidth;
+    };
+
+    for (int bar = 0; bar < current.phraseBars; ++bar)
+    {
+        const auto piece = juce::Rectangle<float> (xFor (bar * units, bar), tape.getY(), barWidth, tape.getHeight());
+        juce::Path shape;
+        shape.addRoundedRectangle (piece, 3.0f);
+        const juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (shape);
+
+        g.setColour (palette::rule.withMultipliedAlpha (0.55f));
+        g.fillRect (piece);
+
+        // The block being cut, where it crosses this bar.
+        g.setColour (accent.isTransparent() ? palette::accent : accent);
+        g.fillRect (juce::Rectangle<float>::leftTopRightBottom (xFor (current.blockStart, bar), piece.getY(),
+                                                                xFor (current.blockEnd, bar), piece.getBottom()));
+
+        g.setColour (palette::rule);
+        for (int unit = 1; unit < current.unitsPerBar; ++unit)
+            g.fillRect (juce::Rectangle<float> (xFor (bar * units + unit, bar) - 0.5f, piece.getY(), 1.0f, piece.getHeight()));
+    }
+
+    const auto bar = juce::jlimit (0, current.phraseBars - 1, static_cast<int> (std::floor (current.position / units)));
+    g.setColour (palette::ink);
+    g.fillRoundedRectangle (juce::Rectangle<float> (xFor (current.position, bar) - 1.0f, tape.getY() - 3.0f, 2.0f, tape.getHeight() + 6.0f), 1.0f);
 }
 
 } // namespace livecut::ui

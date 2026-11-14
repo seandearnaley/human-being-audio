@@ -98,11 +98,19 @@ ProcedureSwitch::ProcedureSwitch (juce::AudioParameterChoice& parameter)
     {
         auto* button = buttons.add (std::make_unique<juce::TextButton> (parameter.choices[i]));
         button->setTitle (parameter.choices[i]);
+        button->setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
         button->onClick = [this, i] { attachment.setValueAsCompleteGesture (static_cast<float> (i)); };
         addAndMakeVisible (button);
     }
 
     attachment.sendInitialUpdate();
+}
+
+void ProcedureSwitch::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (0.75f);
+    g.setColour (palette::rule);
+    g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.5f);
 }
 
 void ProcedureSwitch::select (int index)
@@ -120,7 +128,7 @@ void ProcedureSwitch::resized()
     const auto width = area.getWidth() / juce::jmax (1, buttons.size());
 
     for (auto* button : buttons)
-        button->setBounds (area.removeFromLeft (width).reduced (2, 0));
+        button->setBounds (area.removeFromLeft (width));
 }
 
 } // namespace livecut::ui

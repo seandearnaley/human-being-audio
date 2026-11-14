@@ -3,6 +3,7 @@
 #include "PluginEditor.h"
 
 #include "Parameters.h"
+#include "ui/AboutSheet.h"
 #include "ui/Controls.h"
 #include "ui/PadPage.h"
 #include "ui/PhraseRuler.h"
@@ -138,7 +139,7 @@ public:
         for (int col = 0; col < 3; ++col)
             g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 84, width, getHeight() - 84).toFloat(), 4.0f);
         g.setColour (ui::palette::ink);
-        g.setFont (ui::uiFont (14.0f, true));
+        g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
         g.drawFittedText ("Filter / drive\nenvelope", { sectionPadding, 8, 140, 40 }, juce::Justification::centredLeft, 2);
     }
 
@@ -288,7 +289,7 @@ public:
             g.setColour (ui::palette::well);
             g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 0, width, getHeight() - 30).toFloat(), 4.0f);
             g.setColour (ui::palette::ink);
-            g.setFont (ui::uiFont (14.0f, true));
+            g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
             g.drawText (titles[static_cast<std::size_t> (col)], juce::Rectangle<int> { col * (width + gap) + sectionPadding, 8, width - 2 * sectionPadding, 22 }, juce::Justification::centredLeft);
         }
     }
@@ -428,7 +429,7 @@ public:
         for (int col = 0; col < 3; ++col)
             g.fillRoundedRectangle (juce::Rectangle<int> (col * (width + gap), 84, width, getHeight() - 84).toFloat(), 4.0f);
         g.setColour (ui::palette::ink);
-        g.setFont (ui::uiFont (14.0f, true));
+        g.setFont (ui::uiFont (14.0f, ui::weight::semibold));
         g.drawText ("GrainCut", juce::Rectangle<int> (sectionPadding, 94, width - 24, 22), juce::Justification::centredLeft);
         g.drawText ("TapeCut", juce::Rectangle<int> (width + gap + sectionPadding, 94, width - 24, 22), juce::Justification::centredLeft);
     }
@@ -538,6 +539,9 @@ public:
         addChildComponent (fractureControls);
         addChildComponent (resonanceControls);
         addChildComponent (padPage);
+        addAndMakeVisible (wordmark);
+        wordmark.onClick = [this] { about.open(); };
+        addChildComponent (about);
         addAndMakeVisible (surfaceButton);
         surfaceButton.setComponentID ("surface");
         surfaceButton.setTitle ("Surface");
@@ -670,6 +674,7 @@ public:
         surfaceButton.setButtonText (classic ? "Pad" : "Classic");
         surfaceButton.setTooltip (classic ? "Play the pad" : "Show the Classic pages");
         placeSurfaceButton();
+        placeRuler();
         showPage (selectedPage);
         refreshRuler (hostProcessor.getDisplayState());
     }
@@ -762,13 +767,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (ui::palette::panel);
-
-        g.setColour (ui::palette::ink);
-        g.setFont (ui::uiFont (25.0f, true));
-        g.drawText ("Livecut", juce::Rectangle<int> (margin, 7, 100, 31), juce::Justification::centredLeft);
-        g.setFont (ui::uiFont (12.0f));
-        g.drawText (JucePlugin_VersionString, juce::Rectangle<int> (margin, 36, 100, 18), juce::Justification::centredLeft);
+        g.fillAll (ui::palette::paper);
 
         const auto classicSurface = surface == livecut::Surface::classic;
 
@@ -782,7 +781,7 @@ public:
         const auto title = [&] (const juce::String& text, juce::Rectangle<int> section)
         {
             g.setColour (ui::palette::ink);
-            g.setFont (ui::uiFont (16.0f, true));
+            g.setFont (ui::uiFont (16.0f, ui::weight::semibold));
             g.drawText (text, section.reduced (sectionPadding).removeFromTop (22), juce::Justification::centredLeft);
         };
 
@@ -814,11 +813,6 @@ public:
             g.drawFittedText (classic ? info.description : "Classic procedure controls are inactive. Edit the reader on the Fracture page.",
                               procedureSection.reduced (sectionPadding).withTrimmedTop (24).removeFromTop (34), juce::Justification::topLeft, 2);
         }
-
-        g.setFont (ui::uiFont (12.0f));
-        g.drawText ("Ported from Livecut by Remy Muller. CutProc11, WarpCut and SQPusher from Nick Collins' BBCut.",
-                    juce::Rectangle<int> (margin, baseHeight - 26, baseWidth - 2 * margin, 16),
-                    juce::Justification::centredLeft);
     }
 
     void resized() override
@@ -829,12 +823,14 @@ public:
         fractureTab.setBounds (304, 20, 70, 30);
         resonanceTab.setBounds (378, 20, 82, 30);
         procedureSwitch.setBounds (466, 20, 350, 30);
+        wordmark.setBounds (margin, 14, 96, 44);
+        about.setBounds (getLocalBounds());
         placeSurfaceButton();
+        placeRuler();
         resonanceControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
         fractureControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
         impactControls.setBounds (margin, 166, baseWidth - 2 * margin, 384);
-        padPage.setBounds (margin, 166, baseWidth - 2 * margin, baseHeight - 26 - 166);
-        ruler.setBounds (margin, 62, baseWidth - 2 * margin, 88);
+        padPage.setBounds (margin, 78, baseWidth - 2 * margin, baseHeight - 24 - 78);
 
         const auto middleTop = 166;
         const auto middleHeight = 276;
@@ -921,10 +917,12 @@ public:
         {
             padPage.refresh (display);
             ruler.setHeadline (padPage.headline (display, ui::PhraseRuler::describe (snapshot)));
+            ruler.setAccent (ui::programColour (static_cast<int> (padPage.playingProgram (display))));
         }
         else
         {
             ruler.setHeadline ({});
+            ruler.setAccent (ui::palette::accent);
         }
 
         ruler.show (snapshot);
@@ -949,7 +947,14 @@ private:
     void placeSurfaceButton()
     {
         surfaceButton.setBounds (surface == livecut::Surface::classic ? juce::Rectangle<int> (824, 20, 36, 30)
-                                                                      : juce::Rectangle<int> (796, 20, 64, 30));
+                                                                      : juce::Rectangle<int> (784, 20, 76, 30));
+    }
+
+    // On the pad the tape runs along the header; the Classic pages give it a status line too.
+    void placeRuler()
+    {
+        ruler.setBounds (surface == livecut::Surface::classic ? juce::Rectangle<int> (margin, 62, baseWidth - 2 * margin, 88)
+                                                              : juce::Rectangle<int> (144, 22, 616, 26));
     }
 
     void chooseSaveFile()
@@ -1019,6 +1024,8 @@ private:
     int activeProcedure = 0;
     Page selectedPage = Page::pattern;
     ui::PadPage padPage;
+    ui::Wordmark wordmark;
+    ui::AboutSheet about;
     juce::TextButton surfaceButton;
     juce::ParameterAttachment surfaceAttachment;
     livecut::Surface surface = livecut::Surface::pad;
@@ -1049,7 +1056,7 @@ LivecutAudioProcessorEditor::~LivecutAudioProcessorEditor()
 
 void LivecutAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (livecut::ui::palette::panel);
+    g.fillAll (livecut::ui::palette::paper);
 }
 
 void LivecutAudioProcessorEditor::resized()

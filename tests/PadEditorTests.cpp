@@ -19,38 +19,6 @@ using Catch::Matchers::WithinAbs;
 
 namespace
 {
-juce::Component* findById (juce::Component& component, const juce::String& id)
-{
-    if (component.getComponentID() == id)
-        return &component;
-
-    for (auto* child : component.getChildren())
-        if (auto* found = findById (*child, id))
-            return found;
-
-    return nullptr;
-}
-
-template <typename Control>
-Control* findControl (juce::Component& component)
-{
-    if (auto* found = dynamic_cast<Control*> (&component))
-        return found;
-    for (auto* child : component.getChildren())
-        if (auto* found = findControl<Control> (*child))
-            return found;
-    return nullptr;
-}
-
-bool isShowing (juce::Component& component, juce::Component& root)
-{
-    for (auto* c = &component; c != nullptr && c != &root; c = c->getParentComponent())
-        if (! c->isVisible())
-            return false;
-
-    return true;
-}
-
 juce::Component& required (juce::Component& root, const char* id)
 {
     auto* found = findById (root, id);
@@ -188,7 +156,7 @@ TEST_CASE ("New instances open on the pad page at 880 by 724", "[pad][editor]")
         CHECK (isShowing (control, editor));
         CHECK (control.getTitle().isNotEmpty());
     }
-    checkNoOverlaps (editor, { "surface", "padTouch", "program0", "program1", "program2", "program3", "program4",
+    checkNoOverlaps (editor, { "about", "surface", "padTouch", "program0", "program1", "program2", "program3", "program4",
                                "program5", "program6", "program7", "padHold", "padQuantize", "padMix",
                                "padStraight" });
 
@@ -283,15 +251,14 @@ TEST_CASE ("The pad's words describe the sound", "[pad][editor]")
     LivecutAudioProcessor processor;
     LivecutAudioProcessorEditor editor (processor);
 
-    // One short noun under each key, fitting its key with room to spare.
-    const juce::StringArray captions { "re-edits", "triplets", "repeats", "squeeze", "resonance", "stops", "nested loops", "rolls" };
-    for (int i = 0; i < captions.size(); ++i)
+    // A tab carries its program's name and nothing else, with room to spare at its boldest.
+    for (int i = 0; i < 8; ++i)
     {
-        INFO (captions[i]);
-        auto* key = dynamic_cast<livecut::ui::PadPage::ProgramButton*> (findById (editor, "program" + juce::String (i)));
-        REQUIRE (key != nullptr);
-        CHECK (key->captionText() == captions[i]);
-        CHECK (juce::GlyphArrangement::getStringWidth (livecut::ui::uiFont (11.0f), key->captionText()) <= static_cast<float> (key->getWidth() - 12));
+        auto* tab = dynamic_cast<livecut::ui::PadPage::ProgramButton*> (findById (editor, "program" + juce::String (i)));
+        REQUIRE (tab != nullptr);
+        INFO (tab->getButtonText());
+        CHECK (juce::GlyphArrangement::getStringWidth (livecut::ui::uiFont (14.0f, livecut::ui::weight::bold), tab->getButtonText())
+               <= static_cast<float> (tab->getWidth() - 24));
     }
 
     int quantizeButtons = 0;
@@ -313,10 +280,15 @@ TEST_CASE ("The pad's words describe the sound", "[pad][editor]")
     CHECK (loopsKey->getTooltip().startsWith ("Left to right: loop the bar you're in"));
     CHECK (loopsKey->getTooltip().contains ("Up:"));
 
-    auto* pad = dynamic_cast<juce::TooltipClient*> (findById (editor, "padTouch"));
+    // The pad is played, not read: its instructions are help for a screen reader, and
+    // nothing pops up over the art while the pointer rests on it.
+    auto* pad = dynamic_cast<livecut::ui::XYPad*> (findById (editor, "padTouch"));
     REQUIRE (pad != nullptr);
-    CHECK (pad->getTooltip().startsWith ("Press to cut; let go to stop on the grid."));
-    CHECK_FALSE (pad->getTooltip().containsIgnoreCase ("axes"));
+    CHECK (pad->getHelpText().startsWith ("Press to cut; let go to stop on the grid."));
+    CHECK_FALSE (pad->getHelpText().containsIgnoreCase ("axes"));
+    CHECK (dynamic_cast<juce::TooltipClient*> (pad) == nullptr);
+    CHECK (pad->xControl().getTooltip().isEmpty());
+    CHECK (pad->yControl().getTooltip().isEmpty());
 }
 
 TEST_CASE ("Pressing the pad sets Pad Touch and releasing clears it, with paired gestures", "[pad][editor][xy]")
@@ -449,7 +421,7 @@ TEST_CASE ("The Classic switch shows the legacy pages and sets Surface", "[pad][
         INFO (id);
         CHECK_FALSE (isShowing (required (editor, id), editor));
     }
-    checkNoOverlaps (editor, { "patternTab", "recutTab", "impactTab", "fractureTab", "resonanceTab", "procedure", "surface" });
+    checkNoOverlaps (editor, { "about", "patternTab", "recutTab", "impactTab", "fractureTab", "resonanceTab", "procedure", "surface" });
 
     surface->onClick();
     CHECK (index (processor, livecut::ids::surface) == 0);
@@ -529,7 +501,7 @@ TEST_CASE ("The bottom row holds Hold, Straight, Beat/Bar and Mix without overla
     CHECK (straight.getWidth() >= hold.getWidth());
 }
 
-TEST_CASE ("The ruler headline names the program and any pending switch", "[pad][editor]")
+TEST_CASE ("The ruler headline gives the status, the next step or a pending switch", "[pad][editor]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     LivecutAudioProcessor processor;
@@ -540,16 +512,16 @@ TEST_CASE ("The ruler headline names the program and any pending switch", "[pad]
     auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
 
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT · PRESS PLAY IN YOUR HOST TO START CUTTING"));
+    CHECK (ruler->headlineText() == "Press play in your host to start cutting");
     CHECK (editor.statusText() == "Press play in your host to start cutting");
 
     // Playing, nothing starts until a touch; touched, the cuts wait for the next unit.
     display.status.store (livecut::DisplayState::Status::startingSoon);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT · PRESS THE PAD TO PLAY"));
+    CHECK (ruler->headlineText() == "Press the pad to play");
     display.padEngaged.store (true);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT · STARTING"));
+    CHECK (ruler->headlineText() == "Starting");
     display.padEngaged.store (false);
 
     display.status.store (livecut::DisplayState::Status::cutting);
@@ -559,27 +531,24 @@ TEST_CASE ("The ruler headline names the program and any pending switch", "[pad]
     display.padEngaged.store (true);
     display.padActiveProgram.store (0);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT · BAR 2 OF 4"));
+    CHECK (ruler->headlineText() == "Bar 2 of 4");
     CHECK (editor.statusText() == "Bar 2 of 4");
 
     display.padPendingProgram.store (2);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT → GLITCH ON THE BEAT"));
+    CHECK (ruler->headlineText() == utf8 ("Cut → Glitch on the beat"));
 
     set (processor, livecut::ids::padQuantize, 1);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("CUT → GLITCH ON THE BAR"));
+    CHECK (ruler->headlineText() == utf8 ("Cut → Glitch on the bar"));
 
     display.padPendingProgram.store (-1);
 
-    // Idle, the chosen program is the one that will play.
+    // The program's name is on its tab, so the headline is the status alone.
     display.padEngaged.store (false);
     set (processor, livecut::ids::padProgram, 6);
     editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("LOOPS · BAR 2 OF 4"));
-    set (processor, livecut::ids::padProgram, 1);
-    editor.refreshDisplay();
-    CHECK (ruler->headlineText() == utf8 ("BOUNCE · BAR 2 OF 4"));
+    CHECK (ruler->headlineText() == "Bar 2 of 4");
 
     useClassicSurface (processor);
     editor.refreshDisplay();
@@ -588,7 +557,8 @@ TEST_CASE ("The ruler headline names the program and any pending switch", "[pad]
 }
 
 // Hidden: run `LIVECUT_SCREENSHOT_DIR=<dir> LivecutTests "[.screenshot][pad]"` to render the
-// pad page mid-performance to editor-pad.png in that directory, for reviewing the design.
+// editor into that directory for reviewing the design: stopped, at rest in each program,
+// mid-performance (editor-pad.png), on the Classic pages and under the About sheet.
 TEST_CASE ("Render the pad editor for design review", "[.screenshot][pad]")
 {
     const auto directory = screenshotDirectory();
@@ -596,33 +566,48 @@ TEST_CASE ("Render the pad editor for design review", "[.screenshot][pad]")
     LivecutAudioProcessor processor;
     LivecutAudioProcessorEditor editor (processor);
     auto& display = const_cast<livecut::DisplayState&> (processor.getDisplayState());
+    const auto save = [&] (const juce::String& name)
+    {
+        editor.refreshDisplay();
+        saveScreenshot (editor, directory, name.toRawUTF8());
+    };
+
+    save ("editor-pad-stopped.png"); // a new instance, before the host plays
+
+    // Every program at rest, mid-phrase.
     display.status.store (livecut::DisplayState::Status::cutting);
     display.phraseBars.store (4);
     display.unitsPerBar.store (16);
     display.blockStart.store (40.0);
     display.blockEnd.store (44.0);
     display.position.store (41.5);
-    display.padEngaged.store (true);
-    display.padActiveProgram.store (2);
-    display.padPendingProgram.store (1);
-    set (processor, livecut::ids::padProgram, 1);
     set (processor, livecut::ids::padX, .68f);
     set (processor, livecut::ids::padY, .66f);
-    set (processor, livecut::ids::padHold, 1.0f);
-    const auto save = [&] (const char* name)
+    const auto& programs = dynamic_cast<juce::AudioParameterChoice*> (processor.getParameterState().getParameter (livecut::ids::padProgram))->choices;
+    for (int program = 0; program < programs.size(); ++program)
     {
-        editor.refreshDisplay();
-        saveScreenshot (editor, directory, name);
-    };
+        set (processor, livecut::ids::padProgram, static_cast<float> (program));
+        save ("editor-pad-" + programs[program].toLowerCase() + ".png");
+    }
+
+    // Cut, pressed and held, with a switch to Filter waiting for the beat.
     auto* pad = dynamic_cast<livecut::ui::XYPad*> (findById (editor, "padTouch"));
     REQUIRE (pad != nullptr);
     const auto area = pad->padBounds();
+    set (processor, livecut::ids::padProgram, 4);
+    set (processor, livecut::ids::padHold, 1.0f);
+    display.padEngaged.store (true);
+    display.padActiveProgram.store (0);
+    display.padPendingProgram.store (4);
     pad->mouseDown (pointerAt (*pad, { area.getX() + area.getWidth() * .68f, area.getBottom() - area.getHeight() * .66f }, true));
     save ("editor-pad.png");
     pad->endInteraction();
-    display.padEngaged.store (false);
-    display.padPendingProgram.store (-1);
-    save ("editor-pad-idle.png");
+
     useClassicSurface (processor);
     save ("editor-pad-classic.png");
+
+    auto* wordmark = dynamic_cast<juce::Button*> (findById (editor, "about"));
+    REQUIRE (wordmark != nullptr);
+    wordmark->onClick();
+    save ("editor-about.png");
 }

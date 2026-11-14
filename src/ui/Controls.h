@@ -62,7 +62,7 @@ private:
     juce::ButtonParameterAttachment attachment;
 };
 
-// One button per cut procedure, so switching is a single click while playing.
+// One button per choice, as segments of one pill, so switching is a single click while playing.
 class ProcedureSwitch final : public juce::Component
 {
 public:
@@ -71,6 +71,7 @@ public:
     // Called with the selected procedure's index whenever it changes, from any source.
     std::function<void (int)> onChange;
 
+    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
