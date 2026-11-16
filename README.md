@@ -26,13 +26,14 @@ Needs CMake 3.25+, Ninja and the Xcode Command Line Tools. Dependencies are
 fetched and pinned by CMake.
 
 ```sh
-cmake --preset dev -DTF_INSTALL_PLUGIN=ON
+cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
+tools/scripts/install.sh
 ```
 
-That builds everything, runs the tests and copies the VST3 and AU into
-`~/Library/Audio/Plug-Ins`. For work on the sound alone, the `engine` preset
+That builds everything, runs the tests, and copies the VST3 and AU into
+`~/Library/Audio/Plug-Ins` with a fresh signature. For work on the sound alone, the `engine` preset
 builds and tests the DSP in seconds without JUCE or Visage.
 
 The design is in [docs/superpowers/specs](docs/superpowers/specs/2026-11-15-tract-form-design.md);

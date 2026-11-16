@@ -28,7 +28,9 @@ cmake --preset dev && cmake --build --preset dev && ctest --preset dev          
 ```
 
 Plugins land in `build/dev/plugin/TractForm_artefacts/RelWithDebInfo/{VST3,AU,Standalone}`.
-Add `-DTF_INSTALL_PLUGIN=ON` to copy them into `~/Library/Audio/Plug-Ins`.
+Builds do not install themselves. To put a build in `~/Library/Audio/Plug-Ins`, run
+`tools/scripts/install.sh`, which copies, re-signs and tells you how to validate. Only install a
+build whose tests and pluginval pass: someone may be listening to what is in that folder.
 
 ## Checking work without ears or eyes
 
