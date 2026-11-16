@@ -57,8 +57,9 @@ Oversampled domain (`M` = 2, 4 or 8 live; 16 offline), everything stereo:
    between `vowelA` and `vowelB` at `morph`. Output
    `(1−t)·x + t·comp·Σ`, `t = tract`, `comp` a per-vowel loudness constant.
 6. **Fold**: `x' = g·x + 0.5·asym`, `g = 10^(drive·30/20)`. Shapers: triangle
-   fold, sine fold, `tanh`. First-order antiderivative anti-aliasing. DC blocker
-   at 10 Hz. Output `(1−w)·x + w·f(x')`, `w = warp`.
+   fold, sine fold, `tanh`. First-order antiderivative anti-aliasing, and the
+   shaper itself always runs at 16×: at 4× the triangle fold only reached −48 dB.
+   DC blocker at 10 Hz. Output `(1−w)·x + w·f(x')`, `w = warp`.
 7. **Decimate** by `M` with polyphase IIR half-bands (HIIR). The sub sine is
    generated at the oversampled rate and passes an identical decimator, so the
    two paths are sample-aligned by construction.
@@ -73,7 +74,8 @@ Base rate:
 11. Sum, amp gate (2 ms attack, 30 ms release), soft clip, look-ahead limiter
     (1.5 ms, true-peak detection at 4×) to `ceiling`.
 
-Latency reported to the host is the decimator group delay plus the look-ahead.
+Latency reported to the host is the decimator group delay, the look-ahead and
+the true-peak detector: 106 samples at 48 kHz.
 
 ## Notes and timing
 
@@ -84,7 +86,8 @@ Latency reported to the host is the decimator group delay plus the look-ahead.
 - Pitch bend ±2 semitones. Velocity is ignored.
 - Movement lanes read the host position: lane phase is
   `frac(ppq / lengthInQuarters + phase/360)`. When the host is stopped, the clock
-  runs from note-on at the host tempo.
+  runs from note-on at the host tempo. The shapes are defined once, in
+  `core/include/tf/lanes.h`; the engine plays them and the interface draws them.
 
 ## Parameters
 
@@ -129,14 +132,15 @@ an empty device panel above 64.
 | `lane{1..4}Shape` | Shape | Sine, Triangle, Ramp up, Ramp down, Square, Steps | Sine |
 
 Lane rates: 8 bars, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16,
-1/16T, 1/32. `Steps` is a deterministic hash of the step index, so it repeats
-identically on every pass.
+1/16T, 1/32. `Steps` holds eight values per cycle from a fixed hash of the lane
+and step index, so each lane has its own pattern and it repeats identically on
+every pass.
 
 Lane targets, each scaled by `motion`:
 
 | Lane | Target | Full depth |
 |---|---|---|
-| 1 Phase | A and B phase offsets, opposite directions | ±90° each |
+| 1 Phase | A and B phase offsets, opposite directions; wraps | ±90° each |
 | 2 Tract | `morph` | ±0.5 |
 | 3 Fold | `drive` | ±0.5 |
 | 4 Detune | `beat` | ±0.5 |
@@ -176,42 +180,55 @@ One screen, no tabs, 16:9, resizable with a fixed aspect ratio. Default
 
 No taglines, legends or helper text. Everything is drawn as vectors; no bitmaps.
 
-`ui` reads and writes through `UiModel`: normalised get/set with gesture begin
-and end, formatted value text, preset operations, and a `Visuals` snapshot
-(scope buffers, spectrum, levels, gain reduction, lane phases, current note).
-A fake model drives headless rendering for snapshot tests.
+`ui` reads and writes through `ui::Model`: real-valued get/set with gesture
+begin and end, preset operations, Resample, and a `Visuals` snapshot (a scope
+phase-locked to the master, stereo field, spectrum, levels, gain reduction, lane
+state, current note). `FakeModel` drives headless rendering.
 
 ## Resample
 
-Renders the current patch offline at 16× for the loop length at the host tempo
+Renders the current patch offline at 16× for exactly four bars at the host tempo
 and the last played note, writes 32-bit float WAV to
-`~/Music/Tract Form/Resamples/`, and offers the file as a drag source.
+`~/Music/Tract Form/Resamples/`, and turns the button into a drag source for
+that file.
 
 ## Presets
 
 One flat JSON object per file: parameter id to value in real units, plus `name`
 and `category`. Missing ids take the default. Factory presets are embedded in the
-binary; user presets live in `~/Music/Tract Form/Presets/`.
+binary; user presets live in `~/Music/Tract Form/Presets/`. `quality` is a
+machine setting and is not restored by a preset. Categories, in menu order:
+Reese, Neuro, Talk, Sub, Motion, then User.
 
 ## Verification
 
 Engine properties, each a Catch2 test:
 
-- **Sub stability**: output low-passed at `subFreq`, 50 ms RMS varies by less
-  than 0.5 dB while all lanes run at full depth.
-- **Mono low end**: side energy below `xover` is under −60 dB relative to mid.
-- **Block independence**: block sizes 1, 7, 64 and 512 give identical output.
-- **Ceiling**: 4× true peak never exceeds `ceiling` with `limit` on.
-- **Aliasing**: at 4×, inharmonic energy is at least 70 dB below the harmonics
-  for a 1 kHz note with `drive` and `coupling` at 1 and detune at 0.
+- **Sub stability**: output low-passed at `subFreq`, 50 ms Hann-weighted RMS
+  varies by less than 0.5 dB while all lanes run at full depth. (A rectangular
+  50 ms window over a pure 44 Hz sine already varies by 0.58 dB.)
+- **Mono low end**: side energy one octave below `xover` is under −60 dB relative
+  to mid. At the crossover itself an LR4 is only 6 dB down.
+- **Block independence**: block sizes 1, 7, 64 and 512 give bit-identical output.
+- **Ceiling**: 4× true peak never exceeds `ceiling` by more than 0.1 dB.
+- **Aliasing**: at 4×, inharmonic energy between 20 Hz and 20 kHz is at least
+  70 dB below the harmonics for a 1 kHz note with `drive` and `coupling` at 1 and
+  detune at 0. Half-band filters pass some aliases just under Nyquist.
 - **Path alignment**: sub and growl paths have equal latency to the sample.
 - **Fuzz**: random parameters and note streams produce only finite samples.
 - **Determinism**: the same input twice gives identical output.
+- **Factory presets**: every preset parses, renders finite, and keeps the sub
+  stable.
+
+Plugin: a note sounds and decays to silence; the interface sees the right note,
+a phase-locked scope and the sub in the spectrum; state round-trips; every
+factory preset loads; host parameters map exactly like the core table.
 
 Compile time: the audio path is `[[clang::nonblocking]]` and built with
 `-Wfunction-effects -Werror=function-effects`.
 
 Hosts: pluginval at strictness 10, `auval -v aumu Trfm Hbmu`.
 
-Interface: headless PNG snapshots of the full editor and each component against
-a fake model.
+Interface: `tf-ui-snapshot` renders the editor headlessly against `FakeModel`;
+`tf-plugin-snapshot` plays a note through the real processor and renders the
+interface from the real analysis, with no host or audio device.
