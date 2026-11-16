@@ -17,6 +17,9 @@ public:
 
     const Visuals& visuals() override;
 
+    Curve laneCurve(int lane) const override { return curves_[static_cast<std::size_t>(lane)]; }
+    void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
+
     std::string presetName() const override { return "Coupled Reese 01"; }
     std::vector<PresetInfo> presets() const override {
         return { { "Coupled Reese 01", "Reese" }, { "Talking Sub", "Talk" }, { "Glass Jaw", "Neuro" } };
@@ -31,6 +34,7 @@ public:
 
 private:
     Params params_ = Params::defaults();
+    LaneCurves curves_ = defaultLaneCurves();
     Visuals visuals_;
     double time_;
 };

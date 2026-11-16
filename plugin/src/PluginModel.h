@@ -21,6 +21,9 @@ public:
 
     const ui::Visuals& visuals() override;
 
+    Curve laneCurve(int lane) const override;
+    void setLaneCurve(int lane, const Curve& curve) override;
+
     std::string presetName() const override;
     std::vector<ui::PresetInfo> presets() const override;
     void loadPreset(int index) override;

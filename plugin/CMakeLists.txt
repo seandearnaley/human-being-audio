@@ -24,6 +24,8 @@ add_library(TractFormCode INTERFACE)
 target_sources(TractFormCode INTERFACE
     src/Analysis.cpp
     src/Analysis.h
+    src/CurveStore.cpp
+    src/CurveStore.h
     src/Parameters.cpp
     src/Parameters.h
     src/PluginEditor.cpp

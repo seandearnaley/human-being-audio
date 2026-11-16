@@ -20,7 +20,7 @@ juce::File Presets::userDirectory() {
     return juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile("Tract Form").getChildFile("Presets");
 }
 
-Presets::Presets(juce::AudioProcessorValueTreeState& state) : state_(state) { scan(); }
+Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves) : state_(state), curves_(curves) { scan(); }
 
 void Presets::scan() {
     presets_.clear();
@@ -77,6 +77,7 @@ void Presets::load(int index) {
         if (auto* parameter = state_.getParameter(toJuce(kParams[i].key)))
             parameter->setValueNotifyingHost(parameter->convertTo0to1(preset.params.values[i]));
     }
+    curves_.setAll(preset.curves);
     setCurrentName(preset.name);
 }
 
@@ -97,6 +98,7 @@ bool Presets::save(const juce::String& name) {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         if (auto* parameter = state_.getParameter(toJuce(kParams[i].key)))
             preset.params.values[i] = parameter->convertFrom0to1(parameter->getValue());
+    preset.curves = curves_.all();
 
     const auto directory = userDirectory();
     if (!directory.createDirectory()) return false;

@@ -16,6 +16,7 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
 
     Engine engine;
     engine.prepare(sampleRate, kBlock, request.oversampling);
+    engine.setLaneCurves(request.curves);
     const int latency = engine.latencySamples();
 
     const double heldSeconds = std::max(0.0, request.bars) * 4.0 * 60.0 / bpm;

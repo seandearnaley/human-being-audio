@@ -213,6 +213,7 @@ struct Engine::Impl {
     float clipDb = 0.0f, clipMeanDb = 0.0f;  // growl clipper over the last block
     double clipMaxDb = 0.0, clipSumDb = 0.0;
     std::array<float, kLaneCount> uiPhase {}, uiValue {};
+    LaneCurves laneCurves = defaultLaneCurves();
     double uiPpq = 0.0;  // the lane clock, host position or free-running
 
     void prepare(double sampleRate, int oversampling) {
@@ -941,6 +942,8 @@ int Engine::oversamplingFactor() const noexcept TF_NONBLOCKING { return impl_->f
 void Engine::noteOn(int midiNote) noexcept TF_NONBLOCKING { impl_->noteOn(midiNote); }
 void Engine::noteOff(int midiNote) noexcept TF_NONBLOCKING { impl_->noteOff(midiNote); }
 void Engine::allNotesOff() noexcept TF_NONBLOCKING { impl_->allNotesOff(); }
+void Engine::setLaneCurves(const LaneCurves& curves) noexcept TF_NONBLOCKING { impl_->laneCurves = curves; }
+
 void Engine::pitchBend(float semitones) noexcept TF_NONBLOCKING {
     impl_->bendTarget = std::clamp(static_cast<double>(semitones), -kBendRange, kBendRange);
 }

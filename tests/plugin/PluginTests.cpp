@@ -143,3 +143,25 @@ TEST_CASE("the parameter the host sees maps exactly like the core table") {
         CHECK(model.get(id) == Approx(kParams[i].min).margin(1e-3));
     }
 }
+
+TEST_CASE("a drawn curve is saved with the session and with a preset's lane") {
+    Host host;
+    PluginModel model(host.processor);
+    const Curve drawn = curves::make({ { 0.0f, -1.0f, 0.4f, Segment::line }, { 0.5f, 1.0f, 0.0f, Segment::hold } });
+    model.set(laneParam(2, LaneField::shape), static_cast<float>(LaneShape::custom));
+    model.setLaneCurve(2, drawn);
+    CHECK(model.laneCurve(2) == drawn);
+
+    juce::MemoryBlock saved;
+    host.processor.getStateInformation(saved);
+
+    Host restored;
+    restored.processor.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+    PluginModel restoredModel(restored.processor);
+    CHECK(restoredModel.laneCurve(2) == drawn);
+    CHECK(restoredModel.laneCurve(0) == defaultLaneCurves()[0]);
+
+    // Loading a factory preset replaces the drawn curve with that preset's.
+    restoredModel.loadPreset(0);
+    CHECK(restoredModel.laneCurve(2) == defaultLaneCurves()[2]);
+}

@@ -17,7 +17,8 @@ int noteForHz(float hz) {
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       state(*this, nullptr, "TractForm", makeParameterLayout()),
-      presets(state),
+      curves(state),
+      presets(state, curves),
       values_(state) {
     state.addParameterListener(kQualityId, this);
 }
@@ -94,6 +95,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float* right = buffer.getWritePointer(1);
 
     const Params params = values_.snapshot();
+    if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
     const Transport blockStart = readTransport();
     lastBpm_.store(blockStart.bpm, std::memory_order_relaxed);
     const double quartersPerSample = blockStart.bpm / 60.0 / sampleRate_;
@@ -140,7 +142,10 @@ void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
 
 void PluginProcessor::setStateInformation(const void* data, int size) {
     if (const auto xml = getXmlFromBinary(data, size))
-        if (xml->hasTagName(state.state.getType())) state.replaceState(juce::ValueTree::fromXml(*xml));
+        if (xml->hasTagName(state.state.getType())) {
+            state.replaceState(juce::ValueTree::fromXml(*xml));
+            curves.reloadFromState();
+        }
 }
 
 }

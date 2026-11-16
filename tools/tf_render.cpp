@@ -135,6 +135,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         request.params = preset->params;
+        request.curves = preset->curves;
     }
     for (const auto& assignment : sets) {
         if (!applySet(request.params, assignment)) {

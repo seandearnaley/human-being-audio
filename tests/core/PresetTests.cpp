@@ -51,3 +51,29 @@ TEST_CASE("bad presets are rejected with a reason") {
     CHECK(error == "bad value for \"vowelA\"");
     CHECK_FALSE(parsePreset("not json", &error).has_value());
 }
+
+TEST_CASE("a drawn curve travels with a preset whose lane plays it") {
+    Preset preset;
+    preset.name = "Drawn";
+    preset.params[laneParam(1, LaneField::shape)] = static_cast<float>(LaneShape::custom);
+    preset.curves[1] = curves::make({ { 0.0f, -1.0f, 0.5f, Segment::line },
+                                      { 0.25f, 0.5f, 0.0f, Segment::hold },
+                                      { 0.6f, 1.0f, 0.0f, Segment::smooth } });
+
+    const auto json = serialisePreset(preset);
+    CHECK(json.find("lane2Curve") != std::string::npos);
+    CHECK(json.find("lane1Curve") == std::string::npos);  // lane 1 is not Custom
+
+    const auto parsed = parsePreset(json);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->curves[1] == preset.curves[1]);
+    CHECK(parsed->curves[0] == defaultLaneCurves()[0]);
+}
+
+TEST_CASE("a malformed curve is rejected with a reason") {
+    std::string error;
+    CHECK_FALSE(parsePreset(R"({"lane1Curve":[[0,0,0,"wavy"]]})", &error).has_value());
+    CHECK(error == "bad value for \"lane1Curve\"");
+    CHECK_FALSE(parsePreset(R"({"lane1Curve":[[0,0]]})", &error).has_value());
+    CHECK_FALSE(parsePreset(R"({"lane1Curve":[]})", &error).has_value());
+}

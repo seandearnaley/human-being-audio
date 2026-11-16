@@ -33,6 +33,9 @@ const ui::Visuals& PluginModel::visuals() {
     return visuals_;
 }
 
+Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
+void PluginModel::setLaneCurve(int lane, const Curve& curve) { processor_.curves.set(lane, curve); }
+
 std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
 std::vector<ui::PresetInfo> PluginModel::presets() const {
     std::vector<ui::PresetInfo> result;
@@ -60,6 +63,7 @@ void PluginModel::resample() {
     const auto performance = processor_.lastPerformance();
     RenderRequest request;
     request.params = processor_.currentParams();
+    request.curves = processor_.curves.all();
     request.note = performance.note;
     request.bpm = performance.bpm;
     request.sampleRate = processor_.getSampleRate() > 0.0 ? processor_.getSampleRate() : 48000.0;

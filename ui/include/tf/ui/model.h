@@ -2,6 +2,7 @@
 // it over JUCE; tests implement it with canned data.
 #pragma once
 
+#include "tf/lanes.h"
 #include "tf/params.h"
 
 #include <array>
@@ -62,6 +63,10 @@ public:
     virtual void end(ParamId id) = 0;
 
     virtual const Visuals& visuals() = 0;
+
+    // A lane's drawn curve, played when its shape is Custom.
+    virtual Curve laneCurve(int lane) const = 0;
+    virtual void setLaneCurve(int lane, const Curve& curve) = 0;
 
     virtual std::string presetName() const = 0;
     // In menu order: grouped by category.

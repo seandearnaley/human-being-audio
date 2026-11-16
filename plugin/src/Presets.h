@@ -1,6 +1,7 @@
 // Factory presets (embedded) and user presets (~/Music/Tract Form/Presets).
 #pragma once
 
+#include "CurveStore.h"
 #include "Parameters.h"
 #include "tf/preset.h"
 
@@ -11,7 +12,7 @@ namespace tf {
 
 class Presets {
 public:
-    explicit Presets(juce::AudioProcessorValueTreeState& state);
+    Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves);
 
     const std::vector<Preset>& all() const { return presets_; }
     std::string currentName() const;
@@ -29,6 +30,7 @@ private:
     void setCurrentName(const std::string& name);
 
     juce::AudioProcessorValueTreeState& state_;
+    CurveStore& curves_;
     std::vector<Preset> presets_;
 };
 

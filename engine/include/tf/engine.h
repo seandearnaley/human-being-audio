@@ -8,6 +8,7 @@
 #pragma once
 
 #include "tf/nonblocking.h"
+#include "tf/lanes.h"
 #include "tf/params.h"
 
 #include <array>
@@ -50,6 +51,10 @@ public:
     void noteOff(int midiNote) noexcept TF_NONBLOCKING;
     void allNotesOff() noexcept TF_NONBLOCKING;
     void pitchBend(float semitones) noexcept TF_NONBLOCKING;
+
+    // The lanes' drawn curves, played by any lane whose shape is Custom. A plain
+    // copy: safe to call from the audio thread between blocks.
+    void setLaneCurves(const LaneCurves& curves) noexcept TF_NONBLOCKING;
 
     // `transport.ppq` is the position of the block's first sample.
     void process(const Params& params, const Transport& transport,

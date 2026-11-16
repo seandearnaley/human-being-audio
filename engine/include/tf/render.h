@@ -1,6 +1,7 @@
 // Offline rendering: one held note through the engine with the transport playing.
 #pragma once
 
+#include "tf/lanes.h"
 #include "tf/params.h"
 
 #include <vector>
@@ -9,6 +10,7 @@ namespace tf {
 
 struct RenderRequest {
     Params params = Params::defaults();
+    LaneCurves curves = defaultLaneCurves();
     int note = 29;            // F1
     double bpm = 174.0;
     double bars = 4.0;        // 4/4; note held for the whole length

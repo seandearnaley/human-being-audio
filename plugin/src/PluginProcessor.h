@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Analysis.h"
+#include "CurveStore.h"
 #include "Parameters.h"
 #include "Presets.h"
 #include "Resampler.h"
@@ -48,6 +49,7 @@ public:
     Params currentParams() const noexcept { return values_.snapshot(); }
 
     juce::AudioProcessorValueTreeState state;
+    CurveStore curves;
     Presets presets;
     Analysis analysis;
     Resampler resampler;
@@ -63,6 +65,7 @@ private:
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
     std::vector<float> masterTap_, growlTap_;
+    LaneCurves audioCurves_ = defaultLaneCurves();
 
     std::atomic<int> lastNote_ { 29 };
     std::atomic<double> lastBpm_ { 174.0 };
