@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
-project(TractForm VERSION 0.1.0 LANGUAGES C CXX)
+project(TractForm VERSION 0.2.0 LANGUAGES C CXX)
 if(APPLE)
     # Visage's and JUCE's macOS sources are Objective-C++.
     enable_language(OBJC OBJCXX)

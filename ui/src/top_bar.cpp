@@ -1,5 +1,9 @@
 #include "top_bar.h"
 
+#include <embedded/tf_brand.h>
+
+#include <cmath>
+
 #include "tf/feel.h"
 
 #include <algorithm>
@@ -79,9 +83,14 @@ void TopBar::showPresetMenu() {
     menu.show(&name_);
 }
 
+// The logotype is the brand asset itself, drawn as a vector at any size.
 void TopBar::draw(visage::Canvas& canvas) {
-    drawLabel(canvas, context_, "Tract Form", 0.0f, 0.0f, context_.px(160.0f), height(), colour::text,
-              visage::Font::kLeft, type::wordmark, Weight::semibold);
+    constexpr float aspect = 1908.0f / 334.0f;  // the logotype's ink box
+    const float logoHeight = context_.px(26.0f);
+    const float logoWidth = logoHeight * aspect;
+    visage::Svg logotype(brand::tract_form_logotype_on_dark_svg);
+    logotype.setDimensions(static_cast<int>(std::ceil(logoWidth)), static_cast<int>(std::ceil(logoHeight)), canvas.dpiScale());
+    canvas.svg(logotype, 0.0f, (height() - logoHeight) * 0.5f, logoWidth, logoHeight);
 }
 
 void TopBar::resized() {

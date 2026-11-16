@@ -1,12 +1,19 @@
-# Tract Form
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo/tract-form-logotype-on-dark.svg">
+    <img src="brand/logo/tract-form-logotype-on-light.svg" alt="Tract Form" width="420">
+  </picture>
+</p>
 
 A monophonic bass synthesizer for neurofunk drum & bass, by Human Being Music.
+
+![Tract Form's interface](press/screenshots/tract-form-interface.png)
 
 One master sine drives everything. It phase-modulates two detuned reese voices,
 and it also becomes a clean, mono, phase-locked sub that bypasses all processing.
 The growl can be as violent as you like and the sub never moves.
 
-VST3, AU and Standalone for macOS. Beta 0.1.
+VST3, AU and Standalone for macOS. Beta 0.2.
 
 ## What it does
 
@@ -35,6 +42,9 @@ tools/scripts/install.sh
 That builds everything, runs the tests, and copies the VST3 and AU into
 `~/Library/Audio/Plug-Ins` with a fresh signature. For work on the sound alone, the `engine` preset
 builds and tests the DSP in seconds without JUCE or Visage.
+
+Logos, the app icon and usage rules are in [brand/](brand); screenshots, a fact
+sheet and ready-to-use copy are in [press/](press).
 
 The design is in [docs/superpowers/specs](docs/superpowers/specs/2026-11-15-tract-form-design.md);
 [AGENTS.md](AGENTS.md) describes the layout and how to check work by measurement.

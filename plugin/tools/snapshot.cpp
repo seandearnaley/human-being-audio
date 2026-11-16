@@ -1,4 +1,4 @@
-// tf-plugin-snapshot <out.png> [width height] [note] [seconds]
+// tf-plugin-snapshot <out.png> [width height] [note] [seconds] [preset name]
 // The whole stack without a host or an audio device: plays a note through the
 // real processor, then renders the interface from the real analysis data.
 #include "PluginModel.h"
@@ -7,10 +7,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: tf-plugin-snapshot <out.png> [width height] [note] [seconds]\n");
+        std::fprintf(stderr, "usage: tf-plugin-snapshot <out.png> [width height] [note] [seconds] [preset name]\n");
         return 2;
     }
     const int width = argc > 3 ? std::atoi(argv[2]) : tf::ui::kDefaultWidth;
@@ -26,6 +27,19 @@ int main(int argc, char** argv) {
     processor.setPlayConfigDetails(0, 2, sampleRate, block);
     processor.prepareToPlay(sampleRate, block);
     tf::PluginModel model(processor);
+
+    if (argc > 6) {
+        const std::string wanted = argv[6];
+        const auto presets = model.presets();
+        int index = -1;
+        for (std::size_t i = 0; i < presets.size(); ++i)
+            if (presets[i].name == wanted) index = static_cast<int>(i);
+        if (index < 0) {
+            std::fprintf(stderr, "no preset named \"%s\"\n", wanted.c_str());
+            return 1;
+        }
+        model.loadPreset(index);
+    }
 
     juce::AudioBuffer<float> buffer(2, block);
     const int blocks = static_cast<int>(seconds * sampleRate / block);

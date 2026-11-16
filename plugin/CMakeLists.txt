@@ -12,6 +12,7 @@ juce_add_plugin(TractForm
     NEEDS_MIDI_OUTPUT FALSE
     VST3_CATEGORIES Instrument Synth
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
+    ICON_BIG "${PROJECT_SOURCE_DIR}/brand/icon/png/icon-1024.png"
     COPY_PLUGIN_AFTER_BUILD ${TF_INSTALL_PLUGIN})
 
 # Factory presets are embedded in the binary.
