@@ -180,7 +180,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::ranged("subSplit", "Sub split", 1.5f, 6.0f, 2.75f, Unit::harmonic, 0.0f),
     detail::ranged("fit", "Fit", 0.0f, 360.0f, 0.0f, Unit::degrees),
     detail::amount("subLevel", "Sub", 0.5f),
-    detail::amount("growlLevel", "Growl", 0.76f),
+    detail::amount("growlLevel", "Growl", 1.0f),
     detail::amount("squash", "Squash", 0.3f),
     detail::toggle("limit", "Limit", true),
     detail::ranged("ceiling", "Ceiling", -12.0f, 0.0f, -0.3f, Unit::dB),

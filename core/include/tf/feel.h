@@ -61,3 +61,17 @@ inline float feedbackRadians(float amount) {
 }
 
 }
+
+namespace tf {
+
+// The sub/growl split in Hz: Sub split (a harmonic number) times the note, kept
+// within 30..400 Hz. The engine uses it for the sub's low-pass, the growl's
+// high-passes, Weight's pivot and Fit; the interface colours the spectrum at it;
+// tf-render and the tests measure the sub band at it.
+inline constexpr double kSubSplitMinHz = 30.0;
+inline constexpr double kSubSplitMaxHz = 400.0;
+inline double subSplitHz(double subSplit, double f0) noexcept {
+    return subSplit * f0 < kSubSplitMinHz ? kSubSplitMinHz : subSplit * f0 > kSubSplitMaxHz ? kSubSplitMaxHz : subSplit * f0;
+}
+
+}

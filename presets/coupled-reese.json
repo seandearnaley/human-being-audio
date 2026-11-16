@@ -30,7 +30,7 @@
   "xover": 100.0,
   "subSplit": 2.75,
   "subLevel": 0.5,
-  "growlLevel": 0.76,
+  "growlLevel": 1.0,
   "squash": 0.3,
   "limit": true,
   "ceiling": -0.3,

@@ -1,5 +1,7 @@
 #include "panels.h"
 
+#include "tf/feel.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -139,9 +141,12 @@ private:
                       colour::textFaint, visage::Font::kCenter, type::small);
         }
 
-        // One curve, drawn twice and clipped at the sub low-pass frequency: the
-        // two colours meet at exactly the same point on the line.
-        const float subHz = std::clamp(context_.model.get(ParamId::subFreq), kMinHz, kMaxHz);
+        // One curve, drawn twice and clipped at the sub split: the two colours
+        // meet at exactly the same point on the line. The split follows the note;
+        // between notes it stays where the last one left it.
+        if (visuals.hz > 0.0f) splitNoteHz_ = visuals.hz;
+        const float subHz = std::clamp(
+            static_cast<float>(subSplitHz(context_.model.get(ParamId::subSplit), splitNoteHz_)), kMinHz, kMaxHz);
         const float split = std::round(x + w * hzToPosition(subHz));
         const std::span<const float> bands = visuals.spectrumDb;
 
@@ -155,6 +160,8 @@ private:
         curve(canvas, bands, x, y, w, plotHeight, colour::growl, kFloorDb, 0.0f, 0.12f, kFloorDb);
         canvas.restoreState();
     }
+
+    float splitNoteHz_ = 43.65f;  // the last note played, so the split holds between notes
 };
 }
 

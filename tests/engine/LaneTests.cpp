@@ -98,7 +98,7 @@ TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[en
     // (Updated for the sub split following the note and Growl as a level
     // after the growl's ceiling stage: both change the output by design.)
     Setup a;
-    CHECK(hashOutput(render(a, held(29), 24000)) == 0x6154257838135bfcULL);
+    CHECK(hashOutput(render(a, held(29), 24000)) == 0xd6bbcf9a9b7ff560ULL);
     Setup b;
     b.params[ParamId::motion] = 1.0f;
     for (int i = 0; i < kLaneCount; ++i) {
@@ -106,7 +106,7 @@ TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[en
         b.params[laneParam(i, LaneField::depth)] = 1.0f;
         b.params[laneParam(i, LaneField::shape)] = static_cast<float>(i + 1);
     }
-    CHECK(hashOutput(render(b, held(29), 24000)) == 0x964545b64a4c5dbcULL);
+    CHECK(hashOutput(render(b, held(29), 24000)) == 0x89f7ad505b11fe61ULL);
 }
 
 // ---- Retargeting -----------------------------------------------------------------------

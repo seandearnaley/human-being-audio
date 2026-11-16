@@ -463,7 +463,7 @@ public:
         // Sub lock
         const float subRowY = kSubLock.midY() - metric::row * 0.5f;
         const float subRowX = kSubLock.x + kSubLockRowX;
-        place<Row>({ subRowX, subRowY, kLowPassWidth, metric::row }, ParamId::subFreq, colour::master, "Low-pass");
+        place<Row>({ subRowX, subRowY, kLowPassWidth, metric::row }, ParamId::subSplit, colour::master, "Split");
         place<Row>({ subRowX + kLowPassWidth + kSubLockGap, subRowY, kFitWidth, metric::row }, ParamId::fit,
                    colour::master, "Fit");
 
