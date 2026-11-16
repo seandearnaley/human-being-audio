@@ -433,7 +433,7 @@ public:
         place<Chip>({ sculptTitle.right() - kCountChipWidth, sculptTitle.midY() - kCountChipHeight * 0.5f,
                       kCountChipWidth, kCountChipHeight },
                     ParamId::sculptCount, colour::growl);
-        place<Row>(nodeRow(kSculpt, 0), ParamId::sculptDepth, colour::growl, "Depth");
+        place<Row>(nodeRow(kSculpt, 0), ParamId::sculptDepth, colour::growl, "Depth", true);
         place<Row>(nodeRow(kSculpt, 1), ParamId::sculptSpread, colour::growl, "Spread");
         place<Row>(nodeRow(kSculpt, 2), ParamId::sculptRes, colour::growl, "Resonance");
 

@@ -221,8 +221,12 @@ void Row::paint(visage::Canvas& canvas) {
         const float thickness = context_.px(2.0f);
         canvas.setColor(colour::track);
         canvas.roundedRectangle(0.0f, h - thickness, w, thickness, thickness * 0.5f);
+        // A two-way value grows from the centre; a one-way value from the left.
+        const float origin = spec().min < 0.0f ? 0.5f : 0.0f;
+        const float from = std::min(origin, normalised());
+        const float to = std::max(origin, normalised());
         canvas.setColor(accent_);
-        canvas.roundedRectangle(0.0f, h - thickness, w * normalised(), thickness, thickness * 0.5f);
+        canvas.roundedRectangle(w * from, h - thickness, w * (to - from), thickness, thickness * 0.5f);
     }
 }
 

@@ -88,7 +88,8 @@ private:
 };
 
 // "Label ......... value". Toggles draw a switch, choices a chevron. With `bar`
-// set, a thin fill under the row shows the position.
+// set, a thin fill under the row shows the position: from the left, or from the
+// centre for a value that runs below zero.
 class Row final : public ParamFrame {
 public:
     Row(Context& context, ParamId id, unsigned accent, std::string label = {}, bool bar = false);
