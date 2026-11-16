@@ -29,7 +29,7 @@
   "sideGain": 2.0,
   "xover": 100.0,
   "subFreq": 120.0,
-  "subLevel": 0.42,
+  "subLevel": 0.4,
   "growlLevel": 1.0,
   "squash": 0.7,
   "limit": true,

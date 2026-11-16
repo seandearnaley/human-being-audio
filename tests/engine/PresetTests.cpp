@@ -70,6 +70,23 @@ TEST_CASE("every factory preset parses, is named and complete") {
     }
 }
 
+TEST_CASE("the Coupled Reese preset is the parameter defaults") {
+    // The plugin starts on the defaults and names them Coupled Reese, so the
+    // file must match the table exactly.
+    bool found = false;
+    for (const auto& file : presetFiles()) {
+        const auto preset = parsePreset(file.text);
+        if (!preset || preset->name != "Coupled Reese") continue;
+        found = true;
+        const auto defaults = Params::defaults();
+        for (std::size_t i = 0; i < kParams.size(); ++i) {
+            CAPTURE(kParams[i].key);
+            CHECK(preset->params.values[i] == defaults.values[i]);
+        }
+    }
+    CHECK(found);
+}
+
 TEST_CASE("every factory preset renders with a steady sub under the ceiling") {
     constexpr double kRate = 48000.0;
     for (const auto& file : presetFiles()) {
@@ -97,7 +114,7 @@ TEST_CASE("every factory preset renders with a steady sub under the ceiling") {
         q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
         const auto m = analysis::computeMetrics(audio, q);
         CAPTURE(m.subRmsRangeDb, m.truePeakDb, m.rmsDb);
-        CHECK(m.subRmsRangeDb <= 0.5);
+        CHECK(m.subRmsRangeDb <= 0.2);
         CHECK(m.truePeakDb <= preset->params[ParamId::ceiling] + 0.1);
     }
 }
