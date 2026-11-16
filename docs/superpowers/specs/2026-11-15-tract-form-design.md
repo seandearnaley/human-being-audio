@@ -101,7 +101,7 @@ the true-peak detector: 106 samples at 48 kHz.
 
 ## Parameters
 
-Stable string ids. 58 parameters, 57 automatable (`quality` is not); Live shows
+Stable string ids, 79 in all. In 0.1 there were 54, 53 automatable (`quality` is not); Live shows
 an empty device panel above 64.
 
 | Id | Name | Range | Default |
@@ -328,7 +328,43 @@ peaks up to +15 dB, zero bypasses the stage) and `sculptRes` their width
 | `sculptSpread` | Sculpt spread | 1.2–4, log | 2 |
 | `sculptRes` | Sculpt resonance | 0–1 | 0.5 |
 
-### Still to come in 0.2
+### Movement
 
-**Movement**: drawn curves, lanes that follow other lanes at a ratio, phase or
-inversion, and assignable targets.
+The four lanes keep their timing rule (phase from the host position) and gain
+three things.
+
+**Targets.** A lane moves one of ten parameters, chosen by `lane{n}Target`:
+
+| Target | Full depth moves it by |
+|---|---|
+| Phase | ±90° on the two voices, opposite ways; wraps |
+| Morph, Drive, Beat, Coupling, Weight, Width | ±0.5 |
+| Reach, Sculpt | ±2 octaves (they are harmonic numbers, so they move by ratio) |
+| Fit | ±180°; wraps |
+
+Lanes aimed at the same target add. The defaults are the four fixed lanes of 0.1.
+
+**Following.** With `lane{n}Follow` set to another lane, this lane plays that
+lane's shape or curve at `lane{n}Ratio` (÷4 … ×4) times its rate, with its own
+phase, depth and target. One drawn gesture can then drive several parameters in
+step, out of step or inverted. Chains resolve to their end; a loop falls back to
+the lane's own shape.
+
+**Drawn curves.** With `lane{n}Shape` set to Custom the lane plays its `Curve`:
+up to 32 breakpoints over one cycle, each leaving by a line (bent by a tension),
+a smooth half-cosine or a hold. The built-in shapes are also the starting curves:
+editing a Sine lane converts it to the two-point curve that is exactly a sine.
+Curves are not host parameters. They live in the session state, travel in a
+preset as `lane{n}Curve` when the lane plays them, and reach the audio thread as
+a plain copy.
+
+Only a lane's on switch, phase and depth are automatable; the rest shapes the
+lane rather than performs it. That leaves 54 automatable parameters.
+
+`core/include/tf/lanes.h` holds all of this once: the engine plays a lane with
+`laneSend` and the interface draws it with the same call.
+
+**Editing.** One lane is selected and expanded; the others stay compact. In the
+selected lane: click to add a point, drag to move it (snapping to sixteenths,
+Alt to free it), double-click to remove it, drag a segment to bend it, and
+right-click a point for line, smooth or hold.
