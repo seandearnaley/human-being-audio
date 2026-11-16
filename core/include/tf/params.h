@@ -13,13 +13,16 @@
 namespace tf {
 
 enum class ParamId : std::uint8_t {
-    coupling, beat, reach, tract, warp, motion,
+    // The eight macros come first, in knob order: hosts and controllers map a
+    // plugin's first eight parameters to their first bank.
+    coupling, beat, reach, tract, warp, sculpt, motion, width,
     glide, phaseReset, beatLock,
     aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm,
     fbTime, fbAmount,
     vowelA, vowelB, morph,
     foldType, drive, asym, weight,
-    midGain, sideGain, xover, width,
+    sculptDepth, sculptCount, sculptSpread, sculptRes,
+    midGain, sideGain, xover,
     subFreq, fit, subLevel, growlLevel, squash,
     limit, ceiling, quality,
     lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape,
@@ -71,6 +74,7 @@ inline constexpr std::array<std::string_view, 9> beatLock {
 };
 inline constexpr std::array<std::string_view, 6> vowel { "a", "æ", "e", "i", "o", "u" };
 inline constexpr std::array<std::string_view, 3> foldType { "Fold", "Sine", "Tube" };
+inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
 inline constexpr std::array<std::string_view, 12> laneRate {
     "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
@@ -129,7 +133,9 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::ranged("reach", "Reach", 2.0f, 64.0f, 16.0f, Unit::harmonic, 0.0f),
     detail::amount("tract", "Tract", 0.61f),
     detail::amount("warp", "Warp", 0.46f),
+    detail::ranged("sculpt", "Sculpt", 1.5f, 48.0f, 6.0f, Unit::harmonic, 0.0f),
     detail::amount("motion", "Motion", 0.78f),
+    detail::amount("width", "Width", 0.64f),
     detail::ranged("glide", "Glide", 0.0f, 500.0f, 12.5f, Unit::ms, 3.0f),
     detail::toggle("phaseReset", "Phase reset", true),
     detail::toggle("beatLock", "Beat lock", false),
@@ -150,10 +156,13 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::amount("drive", "Drive", 0.42f),
     detail::amount("asym", "Asym", 0.18f),
     detail::amount("weight", "Weight", 0.5f),
+    detail::bipolar("sculptDepth", "Sculpt depth", -0.5f),
+    detail::choice("sculptCount", "Sculpt bands", choices::sculptCount, 2),
+    detail::ranged("sculptSpread", "Sculpt spread", 1.2f, 4.0f, 2.0f, Unit::ratio, 0.0f),
+    detail::amount("sculptRes", "Sculpt resonance", 0.5f),
     detail::ranged("midGain", "Mid", -12.0f, 12.0f, 0.0f, Unit::dB),
     detail::ranged("sideGain", "Side", -12.0f, 12.0f, 4.2f, Unit::dB),
     detail::ranged("xover", "Crossover", 60.0f, 300.0f, 100.0f, Unit::hz, 0.0f),
-    detail::amount("width", "Width", 0.64f),
     detail::ranged("subFreq", "Sub low-pass", 40.0f, 200.0f, 120.0f, Unit::hz, 0.0f),
     detail::ranged("fit", "Fit", 0.0f, 360.0f, 0.0f, Unit::degrees),
     detail::amount("subLevel", "Sub", 0.5f),
@@ -197,6 +206,8 @@ static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
 static_assert(spec(ParamId::reach).key == "reach" && spec(ParamId::beatLock).key == "beatLock", "kParams order");
 static_assert(spec(ParamId::weight).key == "weight" && spec(ParamId::width).key == "width", "kParams order");
+static_assert(spec(ParamId::sculpt).key == "sculpt" && spec(ParamId::sculptRes).key == "sculptRes", "kParams order");
+static_assert(static_cast<int>(ParamId::width) == 7, "the eight macros are the first eight parameters");
 static_assert(spec(ParamId::fit).key == "fit" && spec(ParamId::glide).key == "glide", "kParams order");
 static_assert(kFbTimeLengths.size() == choices::fbTime.size());
 static_assert(kBeatLockQuarters.size() == choices::beatLock.size());

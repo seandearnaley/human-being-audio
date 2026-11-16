@@ -1,5 +1,8 @@
 #include "tf/params.h"
 
+#include <array>
+#include <string_view>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -52,4 +55,13 @@ TEST_CASE("values are formatted for display") {
     CHECK(formatValue(spec(ParamId::limit), 1.0f) == "On");
     CHECK(formatValue(spec(ParamId::reach), 16.0f) == "\u00d716");
     CHECK(formatValue(spec(ParamId::fbTime), 2.0f) == "1 cyc");
+    CHECK(formatValue(spec(ParamId::sculpt), 6.0f) == "\u00d76.0");
+}
+
+TEST_CASE("the eight macros are the first eight parameters, in knob order") {
+    const std::array<std::string_view, 8> macros { "coupling", "beat", "reach", "tract", "warp", "sculpt", "motion", "width" };
+    for (std::size_t i = 0; i < macros.size(); ++i) {
+        CHECK(kParams[i].key == macros[i]);
+        CHECK(kParams[i].automatable);
+    }
 }

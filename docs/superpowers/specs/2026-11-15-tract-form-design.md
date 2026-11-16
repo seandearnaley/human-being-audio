@@ -287,7 +287,8 @@ the growl's harmonics are bounded and weighted to the bottom.**
   with its sign.
 
 There are eight macros, in signal order: Coupling, Beat, Reach, Tract, Warp,
-Sculpt, Motion, Width. Sculpt's knob arrives with the Sculpt stage.
+Sculpt, Motion, Width. They are the first eight parameters the plugin exposes,
+in that order, so a controller's first bank is the macro row.
 
 ### Measuring noise
 
@@ -302,8 +303,25 @@ to targets with the lanes off:
 | Neuro | −9 to −4 | under −25 dB |
 | Talk, Motion | −10 to −5 | under −25 dB |
 
+### Sculpt
+
+Movement by subtraction: a bank of `sculptCount` (1–6) bell filters after Reach
+and Weight, per channel, at the oversampled rate. Band `i` sits at harmonic
+`sculpt · sculptSpread^i` of the note, so the bank tracks pitch, glide and bend;
+bands above 0.45 of the sample rate are skipped. `sculptDepth` sets every band's
+gain (`feel::sculptGainDb`: negative cuts notches down to −30 dB, positive lifts
+peaks up to +15 dB, zero bypasses the stage) and `sculptRes` their width
+(`feel::sculptQ`). Sweeping `sculpt`, the macro, moves the whole bank.
+
+| Id | Name | Range | Default |
+|---|---|---|---|
+| `sculpt` | Sculpt | ×1.5–×48, log | ×6 |
+| `sculptDepth` | Sculpt depth | −1–1 | −0.5 |
+| `sculptCount` | Sculpt bands | 1–6 | 3 |
+| `sculptSpread` | Sculpt spread | 1.2–4, log | 2 |
+| `sculptRes` | Sculpt resonance | 0–1 | 0.5 |
+
 ### Still to come in 0.2
 
-**Sculpt**: a pitch-tracked bank of notches, peaks or combs placed at harmonic
-numbers, after Reach. **Movement**: drawn curves, lanes that follow other lanes
-at a ratio, phase or inversion, and assignable targets.
+**Movement**: drawn curves, lanes that follow other lanes at a ratio, phase or
+inversion, and assignable targets.

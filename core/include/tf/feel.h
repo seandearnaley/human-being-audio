@@ -31,6 +31,21 @@ inline float weightSlopeDb(float weight) {
     return -weight * maxSlopeDb;
 }
 
+// Gain of each Sculpt band in dB for Sculpt depth (-1..1): negative cuts
+// notches, positive lifts peaks. Cuts go deeper than lifts, as the ear expects.
+inline float sculptGainDb(float depth) {
+    constexpr float maxCutDb = 30.0f;
+    constexpr float maxLiftDb = 15.0f;
+    return depth < 0.0f ? depth * maxCutDb : depth * maxLiftDb;
+}
+
+// Quality factor of each Sculpt band for Sculpt resonance (0..1): broad to needle-thin.
+inline float sculptQ(float resonance) {
+    constexpr float minQ = 1.5f;
+    constexpr float maxQ = 24.0f;
+    return minQ * std::pow(maxQ / minQ, resonance);
+}
+
 // Which Beat lock division the Beat macro (0..1) selects.
 inline int beatLockIndex(float beat, int divisions) {
     const int index = static_cast<int>(beat * static_cast<float>(divisions - 1) + 0.5f);

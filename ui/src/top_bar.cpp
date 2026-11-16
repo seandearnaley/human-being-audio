@@ -13,14 +13,15 @@ struct Macro {
 };
 
 // The performance controls, in signal order. Coupling and Beat act on the
-// master/voice relationship; Reach, Tract and Warp on the growl; Motion on the
-// lanes; Width on the stereo field.
-constexpr std::array<Macro, 7> kMacros { {
+// master/voice relationship; Reach, Tract, Warp and Sculpt on the growl; Motion on the
+// lanes; Width on the stereo field. Same order as the first eight parameters.
+constexpr std::array<Macro, 8> kMacros { {
     { ParamId::coupling, colour::master },
     { ParamId::beat, colour::master },
     { ParamId::reach, colour::growl },
     { ParamId::tract, colour::growl },
     { ParamId::warp, colour::growl },
+    { ParamId::sculpt, colour::growl },
     { ParamId::motion, colour::motion },
     { ParamId::width, colour::text },
 } };

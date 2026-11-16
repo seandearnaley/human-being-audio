@@ -56,7 +56,7 @@ std::string formatValue(const ParamSpec& spec, float real) {
         case Unit::dB:      return print(isSigned ? "%+.1f dB" : "%.1f dB", real);
         case Unit::hz:      return print("%.0f Hz", real);
         case Unit::ratio:   return print("%.3f", real);
-        case Unit::harmonic: return print("\u00d7%.0f", real);
+        case Unit::harmonic: return print(real < 10.0f ? "\u00d7%.1f" : "\u00d7%.0f", real);
         case Unit::none:    break;
     }
     return print("%.2f", real);

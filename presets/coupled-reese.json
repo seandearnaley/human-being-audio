@@ -57,5 +57,10 @@
   "reach": 16.0,
   "weight": 0.5,
   "fit": 0.0,
-  "beatLock": false
+  "beatLock": false,
+  "sculpt": 6.0,
+  "sculptDepth": -0.5,
+  "sculptCount": "3",
+  "sculptSpread": 2.0,
+  "sculptRes": 0.5
 }
