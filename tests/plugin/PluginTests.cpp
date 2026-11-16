@@ -161,7 +161,18 @@ TEST_CASE("a drawn curve is saved with the session and with a preset's lane") {
     CHECK(restoredModel.laneCurve(2) == drawn);
     CHECK(restoredModel.laneCurve(0) == defaultLaneCurves()[0]);
 
-    // Loading a factory preset replaces the drawn curve with that preset's.
-    restoredModel.loadPreset(0);
+    // Loading a factory preset replaces the drawn curve with that preset's:
+    // its own where it draws one, the default where it does not.
+    const auto presets = restoredModel.presets();
+    const auto load = [&](const std::string& name) {
+        const auto found = std::find_if(presets.begin(), presets.end(), [&](const auto& preset) { return preset.name == name; });
+        REQUIRE(found != presets.end());
+        restoredModel.loadPreset(static_cast<int>(found - presets.begin()));
+    };
+    load("Braided Cable");
+    CHECK(restoredModel.get(laneParam(2, LaneField::shape)) == static_cast<float>(LaneShape::custom));
+    CHECK_FALSE(restoredModel.laneCurve(2) == drawn);
+    CHECK_FALSE(restoredModel.laneCurve(2) == defaultLaneCurves()[2]);
+    load("Coupled Reese");
     CHECK(restoredModel.laneCurve(2) == defaultLaneCurves()[2]);
 }
