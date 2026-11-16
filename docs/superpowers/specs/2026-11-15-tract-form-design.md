@@ -66,17 +66,17 @@ Oversampled domain (`M` = 2, 4 or 8 live; 16 offline), everything stereo:
 
 Base rate:
 
-8. **Growl path**: LR4 high-pass at `subFreq`, then **Squash** (three bands
+8. **Growl path**: LR4 high-pass at the sub split, then **Squash** (three bands
    split at 200 Hz and 2.5 kHz, upward and downward compression, make-up that
    never lowers the level), times `growlLevel`.
 9. **Mid/side**: side high-passed with LR4 at `xover`; `midGain`, `sideGain`.
 10. **Growl ceiling**: the sub is a sine, so its peak is known exactly. The growl
     gets what is left, `ceiling − subPeak`, as a static ceiling: a linked soft
-    clipper, a high-pass at `subFreq` to remove the low frequencies clipping
+    clipper, a high-pass at the sub split to remove the low frequencies clipping
     regenerates, then a look-ahead true-peak limiter whose release is slower than
     a cycle of the note. Nothing here follows the sub's waveform: a gain that
     moves at the note's rate would put growl energy on the fundamental.
-11. **Sub lock**: master sine, LR4 low-pass at `subFreq`, mono, times `subLevel`,
+11. **Sub lock**: master sine, LR4 low-pass at the sub split, mono, times `subLevel`,
     delayed to match and added after the growl limiter. It is never processed.
 12. Amp gate (2 ms attack, 30 ms release), then a linked soft clip at 0 dBFS as
     a safety net. With `limit` off only that clip bounds the output.
@@ -132,7 +132,7 @@ an empty device panel above 64.
 | `midGain` | Mid | −12–12 dB | 0 |
 | `sideGain` | Side | −12–12 dB | +4.2 |
 | `xover` | Crossover | 60–300 Hz | 100 |
-| `subFreq` | Sub low-pass | 40–200 Hz | 120 |
+| `subSplit` | Sub split | ×1.5–×6, log | ×2.75 |
 | `subLevel` | Sub | 0–1 | 0.5 |
 | `growlLevel` | Growl | 0–1 | 0.76 |
 | `squash` | Squash | 0–1 | 0.3 |
@@ -218,7 +218,7 @@ Reese, Neuro, Talk, Sub, Motion, then User.
 
 Engine properties, each a Catch2 test:
 
-- **Sub stability**: output low-passed at `subFreq`, 50 ms Hann-weighted RMS
+- **Sub stability**: output low-passed at the sub split, 50 ms Hann-weighted RMS
   varies by less than 0.15 dB while all lanes run at full depth. (A rectangular
   50 ms window over a pure 44 Hz sine already varies by 0.58 dB.)
 - **Mono low end**: side energy one octave below `xover` is under −60 dB relative
@@ -272,7 +272,7 @@ the growl's harmonics are bounded and weighted to the bottom.**
   a ceiling to pull down, not a wall: at the default it sits near 4 kHz on F1.
 - **Weight** (`weight`, default 0.3): extra slope, from 0 to −12 dB per octave
   (`feel::weightSlopeDb`), by blending in one and then two one-pole low-passes.
-  The pivot is `max(3 · f0, 1.5 · subFreq)` and the octave above it keeps its
+  The pivot is `max(3, 1.5 · subSplit) · f0` and the octave above it keeps its
   level, so Weight leans the spectrum without lowering it. The fold is already
   bottom-weighted (about −14 dB per octave at default drive), so a little goes a
   long way.
@@ -368,3 +368,20 @@ lane rather than performs it. That leaves 54 automatable parameters.
 selected lane: click to add a point, drag to move it (snapping to sixteenths,
 Alt to free it), double-click to remove it, drag a segment to bend it, and
 right-click a point for line, smooth or hold.
+
+### Growl level and the sub split
+
+Two corrections from re-voicing the bank on 0.2.
+
+**Growl is a level.** `growlLevel` is applied after the growl's clipper and
+limiter, just before the sub is added. In the first 0.2 build it sat before the
+clipper, so once the growl was clipping it changed the tone (tilt rose by up to
+3 dB per octave) and barely changed the loudness. The clipper is now driven only
+by the patch, and the growl never exceeds its ceiling at any setting.
+
+**The split follows the note.** `subSplit` replaces the fixed `subFreq`: the sub
+is kept below `subSplit · f0` and the growl above it, so the split is a harmonic
+number like Reach and Sculpt. With a fixed 120 Hz split the growl came out 3 to
+4 dB hotter at A1 than at E1; now a bassline keeps its balance as it moves. The
+default, ×2.75, is 120 Hz at F1. The mid/side crossover stays in Hz, because
+keeping the low end mono is about speakers and rooms, not the note.
