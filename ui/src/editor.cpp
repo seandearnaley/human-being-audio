@@ -1,58 +1,88 @@
 #include "tf/ui/editor.h"
 
-#include <embedded/tf_fonts.h>
-#include <visage/app.h>
+#include "panels.h"
+#include "top_bar.h"
 
-#include <cmath>
+#include <visage/app.h>
 
 namespace tf::ui {
 
-struct Editor::Impl {
+namespace {
+// Design-space rectangles at 1280x720.
+struct Rect {
+    float x, y, width, height;
+};
+constexpr float kMargin = metric::margin;
+constexpr float kContentWidth = kDefaultWidth - 2.0f * kMargin;
+constexpr Rect kTopBar { kMargin, 12.0f, kContentWidth, 64.0f };
+constexpr Rect kGraph { kMargin, 84.0f, kContentWidth, 292.0f };
+constexpr Rect kAnalysis { kMargin, 388.0f, kContentWidth, 132.0f };
+constexpr float kOutputWidth = 304.0f;
+constexpr Rect kMovement { kMargin, 532.0f, kContentWidth - kOutputWidth - kMargin, 176.0f };
+constexpr Rect kOutput { kDefaultWidth - kMargin - kOutputWidth, 532.0f, kOutputWidth, 176.0f };
+}
+
+struct Editor::Impl final : visage::EventTimer {
+    explicit Impl(Model& model)
+        : context(model), topBar(context), graph(makeGraphPanel(context)), analysis(makeAnalysisPanel(context)),
+          movement(makeMovementPanel(context)), output(makeOutputPanel(context)) {
+        window.onDraw() = [this](visage::Canvas& canvas) {
+            canvas.setColor(colour::window);
+            canvas.fill(0, 0, window.width(), window.height());
+        };
+        // Add to Visage's own resize handler rather than replacing it.
+        window.onResize() += [this] { layout(); };
+        for (visage::Frame* child : children()) window.addChild(child);
+    }
+
+    std::array<visage::Frame*, 5> children() {
+        return { &topBar, graph.get(), analysis.get(), movement.get(), output.get() };
+    }
+
+    void layout() {
+        context.scale = window.width() / static_cast<float>(kDefaultWidth);
+        const auto place = [this](visage::Frame& frame, const Rect& r) {
+            frame.setBounds(context.px(r.x), context.px(r.y), context.px(r.width), context.px(r.height));
+        };
+        place(topBar, kTopBar);
+        place(*graph, kGraph);
+        place(*analysis, kAnalysis);
+        place(*movement, kMovement);
+        place(*output, kOutput);
+        window.redrawAll();
+    }
+
+    void timerCallback() override {
+        // Controls may add or remove themselves while ticking, so walk a copy.
+        const auto live = context.live;
+        for (Live* frame : live) frame->tick();
+    }
+
+    Context context;
     visage::ApplicationWindow window;
-
-    Impl() {
-        window.onDraw() = [this](visage::Canvas& canvas) { draw(canvas); };
-    }
-
-    void draw(visage::Canvas& canvas) {
-        const float w = window.width();
-        const float h = window.height();
-
-        canvas.setColor(0xff0b0e13);
-        canvas.fill(0, 0, w, h);
-
-        const float radius = h * 0.18f;
-        const float sweep = 1.2f + 0.9f * std::sin(static_cast<float>(canvas.time()) * 1.5f);
-        canvas.setColor(0xff1a222c);
-        canvas.ring(w * 0.5f - radius, h * 0.5f - radius, 2.0f * radius, 6.0f);
-        canvas.setColor(0xff35d6e6);
-        canvas.roundedArc(w * 0.5f - radius, h * 0.5f - radius, 2.0f * radius, 6.0f,
-                          static_cast<float>(canvas.time()) * 2.0f, sweep);
-
-        canvas.setColor(0xffe8edf2);
-        const visage::Font font(28.0f, fonts::Inter_Medium_ttf);
-        canvas.text("Tract Form", font, visage::Font::kCenter, 0, h * 0.5f - 20.0f, w, 40.0f);
-
-        window.redraw();
-    }
+    TopBar topBar;
+    std::unique_ptr<Panel> graph, analysis, movement, output;
 };
 
-Editor::Editor() : impl_(std::make_unique<Impl>()) {}
+Editor::Editor(Model& model) : impl_(std::make_unique<Impl>(model)) {}
 
 Editor::~Editor() { detach(); }
 
 void Editor::attach(void* parentView, int width, int height) {
     impl_->window.setWindowDimensions(static_cast<float>(width), static_cast<float>(height));
     impl_->window.show(parentView);
+    impl_->startTimer(16);
 }
 
 void Editor::detach() {
+    impl_->stopTimer();
     if (impl_->window.isShowing()) impl_->window.close();
 }
 
 void Editor::setSize(int width, int height) { impl_->window.setWindowDimensionsFromHost(width, height); }
 
 void Editor::renderToPng(const std::string& path, int width, int height) {
+    impl_->timerCallback();
     impl_->window.setWindowless(width, height);
     impl_->window.takeScreenshot().save(path);
 }

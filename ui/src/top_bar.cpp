@@ -1,0 +1,89 @@
+#include "top_bar.h"
+
+#include <algorithm>
+
+namespace tf::ui {
+
+namespace {
+struct Macro {
+    ParamId id;
+    unsigned accent;
+};
+
+// Coupling and Beat act on the master/voice relationship, Tract and Warp on the
+// growl, Motion on the lanes. Width is neutral.
+constexpr std::array<Macro, 6> kMacros { {
+    { ParamId::coupling, colour::master },
+    { ParamId::beat, colour::master },
+    { ParamId::tract, colour::growl },
+    { ParamId::warp, colour::growl },
+    { ParamId::motion, colour::motion },
+    { ParamId::width, colour::text },
+} };
+}
+
+TopBar::TopBar(Context& context)
+    : context_(context),
+      previous_(context, "‹", [this] { context_.model.stepPreset(-1); }),
+      name_(context, "", [this] { showPresetMenu(); }),
+      next_(context, "›", [this] { context_.model.stepPreset(1); }),
+      save_(context, "Save", [this] { context_.model.savePreset(); }) {
+    for (auto* button : { &previous_, &name_, &next_, &save_ }) addChild(button);
+    save_.setAccent(colour::textDim);
+    for (std::size_t i = 0; i < kMacros.size(); ++i) {
+        macros_[i] = std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent);
+        addChild(macros_[i].get());
+    }
+    context_.live.push_back(this);
+    tick();
+}
+
+TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
+
+void TopBar::tick() {
+    auto current = context_.model.presetName();
+    if (current == shownPreset_) return;
+    shownPreset_ = std::move(current);
+    name_.setLabel(shownPreset_);
+}
+
+void TopBar::showPresetMenu() {
+    visage::PopupMenu menu;
+    const auto names = context_.model.presetNames();
+    for (std::size_t i = 0; i < names.size(); ++i) menu.addOption(static_cast<int>(i), names[i]);
+    menu.onSelection() = [this](int index) { context_.model.loadPreset(index); };
+    menu.show(&name_);
+}
+
+void TopBar::draw(visage::Canvas& canvas) {
+    drawLabel(canvas, context_, "Tract Form", 0.0f, 0.0f, context_.px(160.0f), height(), colour::text,
+              visage::Font::kLeft, type::wordmark, Weight::semibold);
+}
+
+void TopBar::resized() {
+    const auto px = [this](float v) { return context_.px(v); };
+    const float buttonHeight = px(28.0f);
+    const float y = (height() - buttonHeight) * 0.5f;
+    const float arrow = px(28.0f);
+    const float gap = px(4.0f);
+
+    float x = px(168.0f);
+    previous_.setBounds(x, y, arrow, buttonHeight);
+    x += arrow + gap;
+    name_.setBounds(x, y, px(220.0f), buttonHeight);
+    x += px(220.0f) + gap;
+    next_.setBounds(x, y, arrow, buttonHeight);
+    x += arrow + px(metric::gap);
+    save_.setBounds(x, y, px(52.0f), buttonHeight);
+
+    const float knobWidth = px(64.0f);
+    const float knobHeight = px(60.0f);
+    const float knobY = (height() - knobHeight) * 0.5f;
+    float knobX = width() - knobWidth * static_cast<float>(macros_.size());
+    for (auto& knob : macros_) {
+        knob->setBounds(knobX, knobY, knobWidth, knobHeight);
+        knobX += knobWidth;
+    }
+}
+
+}

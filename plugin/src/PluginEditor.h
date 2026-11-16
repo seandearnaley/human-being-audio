@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PluginProcessor.h"
+#include "PluginModel.h"
 #include "tf/ui/editor.h"
 
 namespace tf {
@@ -19,6 +19,7 @@ public:
 private:
     void attachWhenOnScreen();
 
+    PluginModel model_;
     ui::Editor view_;
     void* attachedTo_ = nullptr;
 

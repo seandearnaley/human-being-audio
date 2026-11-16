@@ -19,6 +19,8 @@ target_sources(TractForm PRIVATE
     src/Parameters.h
     src/PluginEditor.cpp
     src/PluginEditor.h
+    src/PluginModel.cpp
+    src/PluginModel.h
     src/PluginProcessor.cpp
     src/PluginProcessor.h)
 

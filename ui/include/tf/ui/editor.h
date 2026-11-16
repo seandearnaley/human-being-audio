@@ -2,6 +2,8 @@
 // attaches it to a native view; tests render it headlessly to a PNG.
 #pragma once
 
+#include "tf/ui/model.h"
+
 #include <memory>
 #include <string>
 
@@ -14,7 +16,7 @@ inline constexpr int kMinHeight = 540;
 
 class Editor {
 public:
-    Editor();
+    explicit Editor(Model& model);
     ~Editor();
 
     // `parentView` is the host's native view (an NSView* on macOS).

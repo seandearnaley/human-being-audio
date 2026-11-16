@@ -1,5 +1,6 @@
 add_library(tf_core STATIC
     include/tf/feel.h
+    include/tf/lanes.h
     include/tf/params.h
     include/tf/preset.h
     include/tf/vowels.h

@@ -2,7 +2,8 @@
 
 namespace tf {
 
-PluginEditor::PluginEditor(PluginProcessor& processor) : AudioProcessorEditor(processor) {
+PluginEditor::PluginEditor(PluginProcessor& processor)
+    : AudioProcessorEditor(processor), model_(processor), view_(model_) {
     setOpaque(true);
     setResizable(true, true);
     setResizeLimits(ui::kMinWidth, ui::kMinHeight, ui::kDefaultWidth * 2, ui::kDefaultHeight * 2);

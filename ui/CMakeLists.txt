@@ -4,7 +4,21 @@ add_embedded_resources(tf_ui_fonts "tf_fonts.h" "tf::ui::fonts"
 
 add_library(tf_ui STATIC
     include/tf/ui/editor.h
-    src/editor.cpp)
+    include/tf/ui/fake_model.h
+    include/tf/ui/model.h
+    src/analysis_panel.cpp
+    src/controls.cpp
+    src/controls.h
+    src/editor.cpp
+    src/fake_model.cpp
+    src/graph_panel.cpp
+    src/movement_panel.cpp
+    src/output_panel.cpp
+    src/panel.cpp
+    src/panels.h
+    src/theme.h
+    src/top_bar.cpp
+    src/top_bar.h)
 target_include_directories(tf_ui PUBLIC include)
 target_compile_features(tf_ui PUBLIC cxx_std_20)
 target_link_libraries(tf_ui PUBLIC tf_core PRIVATE visage tf_ui_fonts tf_warnings)
