@@ -187,10 +187,11 @@ void Row::paint(visage::Canvas& canvas) {
 
     float valueRight = w;
     if (spec().kind == ParamKind::choice) {
-        const float chevron = context_.px(6.0f);
+        // triangleDown takes the half-width: the triangle is 2 * half wide and half tall.
+        const float half = context_.px(3.0f);
         canvas.setColor(active() ? colour::text : colour::textFaint);
-        canvas.triangleDown(w - chevron, (h - chevron * 0.5f) * 0.5f, chevron);
-        valueRight = w - chevron - context_.px(5.0f);
+        canvas.triangleDown(w - 2.0f * half, (h - half) * 0.5f, half);
+        valueRight = w - 2.0f * half - context_.px(5.0f);
     }
     drawLabel(canvas, context_, text(), 0.0f, 0.0f, valueRight, h, colour::text, visage::Font::kRight, type::label,
               Weight::regular);
