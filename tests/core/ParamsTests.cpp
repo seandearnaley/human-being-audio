@@ -39,6 +39,13 @@ TEST_CASE("defaults match the design") {
     CHECK(p.on(ParamId::phaseReset));
     CHECK(choices::vowel[static_cast<std::size_t>(p.choice(ParamId::vowelA))] == "æ");
     CHECK(kLaneRateQuarters[static_cast<std::size_t>(p.choice(ParamId::lane2Rate))] == 1.0);
+    // 0.2: Reach wide open by default, a light Weight, feedback in cycles only.
+    CHECK(p[ParamId::reach] == Approx(96.0f));
+    CHECK(spec(ParamId::reach).min == Approx(2.0f));
+    CHECK(spec(ParamId::reach).max == Approx(256.0f));
+    CHECK(p[ParamId::weight] == Approx(0.3f));
+    CHECK(spec(ParamId::fbTime).choices.size() == 5);
+    CHECK(kFbCycles[static_cast<std::size_t>(p.choice(ParamId::fbTime))] == 1.0);
 }
 
 TEST_CASE("values are formatted for display") {
@@ -53,8 +60,9 @@ TEST_CASE("values are formatted for display") {
     CHECK(formatValue(spec(ParamId::bPhase), 180.0f) == "180°");
     CHECK(formatValue(spec(ParamId::vowelB), 5.0f) == "u");
     CHECK(formatValue(spec(ParamId::limit), 1.0f) == "On");
-    CHECK(formatValue(spec(ParamId::reach), 16.0f) == "\u00d716");
+    CHECK(formatValue(spec(ParamId::reach), 96.0f) == "\u00d796");
     CHECK(formatValue(spec(ParamId::fbTime), 2.0f) == "1 cyc");
+    CHECK(formatValue(spec(ParamId::fbTime), 4.0f) == "4 cyc");
     CHECK(formatValue(spec(ParamId::sculpt), 6.0f) == "\u00d76.0");
 }
 

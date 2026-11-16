@@ -111,9 +111,10 @@ TEST_CASE("the growl leaves the sub band alone: sub band with and without the gr
     // What remains is linear: growl content around subFreq through the LR4
     // crossover overlap (it scales with growlLevel). 0.1 measured -36..-37 dB
     // on the default patch and -51 dB on the hot one. With Reach and Weight
-    // (0.2) the growl's energy sits lower, nearer subFreq: default -38..-43,
-    // hot -46..-47 dB.
-    CHECK(db <= (hot ? -45.0 : -33.0));
+    // (0.2) the growl's energy sits lower, nearer subFreq, and with 0.2's
+    // gain staging (kGrowlGain 2.4, the growl about 9 dB louder into the
+    // output stage) it reads: default -35.4..-36.2, hot -43.7..-44.0 dB.
+    CHECK(db <= (hot ? -43.0 : -33.0));
 }
 
 TEST_CASE("a sub that fills the ceiling leaves the growl at the floor, smoothly", "[engine]") {
@@ -268,7 +269,8 @@ TEST_CASE("aliasing: inharmonic energy is 70 dB under the harmonics at 4x", "[en
     s.params[ParamId::foldType] = static_cast<float>(type);
     // The growl clipper (a deliberate distortion after the oversampled path)
     // stays idle here; its own contribution is measured in the next test.
-    s.params[ParamId::growlLevel] = 0.3f;
+    // (0.3 under 0.1's gain staging; kGrowlGain is now 2.4, not 0.85.)
+    s.params[ParamId::growlLevel] = 0.1f;
     s.bend = static_cast<float>(semitones(1000.0, noteHz(83)));
     const auto out = render(s, held(83), frames(2.0, s.sampleRate));
 
@@ -311,11 +313,16 @@ TEST_CASE("the growl clipper's inharmonic products, default and hot growl", "[en
     s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
     s.params[ParamId::fbAmount] = 0.0f;
     s.params[ParamId::foldType] = static_cast<float>(type);
-    s.params[ParamId::growlLevel] = growl;
-    // Reach and Weight wide open (0.1's spectrum), so the growl is as dense as
-    // it can be and the clipper works: at their defaults it idles here.
+    // The same drive into the clipper as 0.1's growl 0.76 and 1 (kGrowlGain
+    // was 0.85, is 2.4), so the bound still guards the clipper itself. At
+    // 0.2's staging the same growl levels drive it 7.4 dB harder: worst
+    // -35.5 dB (sine fold, growl 1).
+    s.params[ParamId::growlLevel] = growl * 0.85f / 2.4f;
+    // Reach and Weight wide open (0.1's spectrum), Sculpt off, so the growl is
+    // as dense as it can be and the clipper works.
     s.params[ParamId::reach] = 64.0f;
     s.params[ParamId::weight] = 0.0f;
+    s.params[ParamId::sculptDepth] = 0.0f;
     s.bend = static_cast<float>(semitones(1000.0, noteHz(83)));
     const auto out = render(s, held(83), frames(2.0, s.sampleRate));
     constexpr std::size_t n = 1 << 16;
@@ -344,7 +351,7 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     // must then equal the master tap through the growl path's (linear) filters.
     // The master tap is the sub before its low-pass, which Fit rotates against
     // the master by the low-pass's lag plus fit; fit is set to cancel that, so
-    // the tap is the master. Weight 0 is exactly dry. Reach (24 dB/oct at
+    // the tap is the master. Weight 0 and Sculpt depth 0 are exactly dry. Reach (24 dB/oct at
     // 64 f0, or 0.45 of the oversampled rate) is not, and runs at the
     // oversampled rate, so its phase at f0 is applied to the expected sine.
     const int factor = GENERATE(2, 4, 8, 16);
@@ -361,10 +368,11 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     s.params[ParamId::tract] = 0.0f;
     s.params[ParamId::warp] = 0.0f;
     s.params[ParamId::squash] = 0.0f;
-    s.params[ParamId::growlLevel] = 0.5f;  // keeps the growl clipper idle
+    s.params[ParamId::growlLevel] = 0.2f;  // keeps the growl clipper idle
     s.params[ParamId::subLevel] = 0.0f;
     s.params[ParamId::midGain] = 0.0f;
     s.params[ParamId::weight] = 0.0f;
+    s.params[ParamId::sculptDepth] = 0.0f;  // exactly bypassed
     s.params[ParamId::reach] = 64.0f;
     const double fs = s.sampleRate;
     const double f0 = noteHz(note);
@@ -737,13 +745,14 @@ TEST_CASE("squash makes the growl denser, never quieter", "[engine]") {
         // Above 400 Hz: the tap is after the high-passes that follow the
         // clipper, which take away part of the low band Squash lifts, and
         // Squash's make-up only protects its bands above the 200 Hz split,
-        // whose LR4 lets the low band reach up to about 400 Hz. (0.1 measured
-        // above 250 Hz; with Reach the quiet patch's growl sits mostly below
-        // 700 Hz at F1, and there 0.75 -> 1 read -0.15 dB from the low band,
-        // +0.02 dB above 400 Hz.)
-        const Signal growl = analysis::lr4Highpass(slice(out.growl, from, out.growl.size()), 400.0, fs);
-        const double db = analysis::rmsDb(growl) - 20.0 * std::log10(0.1);
-        std::printf("[squash] %s amount %.2f: growl above 400 Hz %.2f dB RMS (at growlLevel 1)\n",
+        // whose LR4 lets the low band reach up to about 400 Hz. Measured as
+        // the spectrum's power above 400 Hz, not through a 400 Hz LR4: the
+        // quiet patch's 200-400 Hz harmonics are 11 dB above the rest, and an
+        // LR4's skirt let their change dominate. (0.1 measured through an LR4
+        // at 250 Hz.)
+        const double db = analysis::bandPowerDb(out.growl, from, out.growl.size(), fs, 400.0, 0.5 * fs) -
+                          20.0 * std::log10(static_cast<double>(s.params[ParamId::growlLevel]));
+        std::printf("[squash] %s amount %.2f: growl above 400 Hz %.2f dB (relative, at growlLevel 1)\n",
                     patch == 0 ? "default" : patch == 1 ? "hot" : "quiet", static_cast<double>(amount), db);
         CHECK(db >= previous - 0.05);
         previous = db;

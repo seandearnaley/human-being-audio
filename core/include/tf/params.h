@@ -64,10 +64,8 @@ struct ParamSpec {
 
 namespace choices {
 inline constexpr std::array<std::string_view, 2> offOn { "Off", "On" };
-// Feedback delay: in cycles of the note (a comb on its harmonics), or in beats.
-inline constexpr std::array<std::string_view, 12> fbTime {
-    "1/4 cyc", "1/2 cyc", "1 cyc", "2 cyc", "4 cyc", "1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"
-};
+// Feedback delay in cycles of the note: the loop is a comb on its harmonics.
+inline constexpr std::array<std::string_view, 5> fbTime { "1/4 cyc", "1/2 cyc", "1 cyc", "2 cyc", "4 cyc" };
 // What the Beat macro selects while Beat lock is on: one roll per this length.
 inline constexpr std::array<std::string_view, 9> beatLock {
     "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/32"
@@ -82,12 +80,8 @@ inline constexpr std::array<std::string_view, 12> laneRate {
 inline constexpr std::array<std::string_view, 6> laneShape { "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps" };
 }
 
-// Feedback delay per choice: the first kFbCycleChoices are in cycles of the
-// note, the rest in quarter notes.
-inline constexpr int kFbCycleChoices = 5;
-inline constexpr std::array<double, 12> kFbTimeLengths {
-    0.25, 0.5, 1.0, 2.0, 4.0, 1.0 / 16, 1.0 / 8, 1.0 / 6, 1.0 / 4, 1.0 / 3, 1.0 / 2, 1.0
-};
+// Feedback delay per choice, in cycles of the note.
+inline constexpr std::array<double, 5> kFbCycles { 0.25, 0.5, 1.0, 2.0, 4.0 };
 // Quarter notes per roll for each Beat lock division.
 inline constexpr std::array<double, 9> kBeatLockQuarters { 32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
 inline constexpr std::array<double, 12> kLaneRateQuarters {
@@ -130,7 +124,7 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
 inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::amount("coupling", "Coupling", 0.72f),
     detail::amount("beat", "Beat", 0.38f),
-    detail::ranged("reach", "Reach", 2.0f, 64.0f, 16.0f, Unit::harmonic, 0.0f),
+    detail::ranged("reach", "Reach", 2.0f, 256.0f, 96.0f, Unit::harmonic, 0.0f),
     detail::amount("tract", "Tract", 0.61f),
     detail::amount("warp", "Warp", 0.46f),
     detail::ranged("sculpt", "Sculpt", 1.5f, 48.0f, 6.0f, Unit::harmonic, 0.0f),
@@ -155,7 +149,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::choice("foldType", "Fold type", choices::foldType, 0),
     detail::amount("drive", "Drive", 0.42f),
     detail::amount("asym", "Asym", 0.18f),
-    detail::amount("weight", "Weight", 0.5f),
+    detail::amount("weight", "Weight", 0.3f),
     detail::bipolar("sculptDepth", "Sculpt depth", -0.5f),
     detail::choice("sculptCount", "Sculpt bands", choices::sculptCount, 2),
     detail::ranged("sculptSpread", "Sculpt spread", 1.2f, 4.0f, 2.0f, Unit::ratio, 0.0f),
@@ -209,7 +203,7 @@ static_assert(spec(ParamId::weight).key == "weight" && spec(ParamId::width).key 
 static_assert(spec(ParamId::sculpt).key == "sculpt" && spec(ParamId::sculptRes).key == "sculptRes", "kParams order");
 static_assert(static_cast<int>(ParamId::width) == 7, "the eight macros are the first eight parameters");
 static_assert(spec(ParamId::fit).key == "fit" && spec(ParamId::glide).key == "glide", "kParams order");
-static_assert(kFbTimeLengths.size() == choices::fbTime.size());
+static_assert(kFbCycles.size() == choices::fbTime.size());
 static_assert(kBeatLockQuarters.size() == choices::beatLock.size());
 static_assert(kLaneRateQuarters.size() == choices::laneRate.size());
 

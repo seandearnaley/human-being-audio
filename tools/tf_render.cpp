@@ -13,6 +13,8 @@
 // frame centroids. sideBelowXoverDb is side/mid energy below the preset's
 // crossover. sumCrestDb is the crest factor of the whole output over the held
 // part. tiltDbPerOct and offHarmonicDb are defined in tools/analysis/analysis.h;
+// tilt is read from 500 Hz to min(0.8 x reach x f0, 16 kHz), and is null when
+// that is under two octaves;
 // the off-harmonic tolerance is max(5 Hz, 1.5 x the larger voice offset from
 // f0 x ratio) for the parameters as set (lanes not included), and is printed
 // as harmonicToleranceHz. Four extra fields report the limiter's and the growl
@@ -152,6 +154,7 @@ int main(int argc, char** argv) {
         q.steadyBegin = static_cast<std::size_t>(std::lround(0.25 * request.sampleRate));
         q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
         q.f0 = 440.0 * std::exp2((request.note - 69) / 12.0);
+        q.tiltUpperHz = 0.8 * request.params[tf::ParamId::reach] * q.f0;
         const auto offsets = tf::voiceOffsetsHz(request.params, q.f0, request.bpm);
         q.harmonicToleranceHz = tf::analysis::harmonicToleranceHz(offsets.a, offsets.b);
         auto m = tf::analysis::computeMetrics(tf::analysis::deinterleave(audio), q);

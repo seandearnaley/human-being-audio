@@ -284,17 +284,21 @@ Signal steadySpectrum(const Signal& x, std::size_t begin, std::size_t end, std::
 }
 }
 
-double tiltDbPerOct(const Signal& x, std::size_t begin, std::size_t end, double sampleRate) {
+std::optional<double> tiltDbPerOct(const Signal& x, std::size_t begin, std::size_t end, double sampleRate,
+                                   double upperHz) {
+    constexpr double kLowHz = 500.0;
+    const double upper = std::min({ upperHz, 16000.0, 0.5 * sampleRate });
+    if (!(upper >= 4.0 * kLowHz)) return std::nullopt;
     std::size_t frame = 1;
     const Signal p = steadySpectrum(x, begin, end, frame);
-    if (frame < 256) return 0.0;
+    if (frame < 256) return std::nullopt;
     const double binHz = sampleRate / static_cast<double>(frame);
     // Least squares over (octave index, band energy in dB).
     double sx = 0, sy = 0, sxx = 0, sxy = 0;
     int bands = 0;
     for (int octave = 0; octave < 5; ++octave) {
-        const double lo = 500.0 * std::exp2(octave), hi = 2.0 * lo;
-        if (hi > 0.5 * sampleRate) break;
+        const double lo = kLowHz * std::exp2(octave), hi = 2.0 * lo;
+        if (hi > upper * (1.0 + 1e-9)) break;
         double sum = 0;
         int count = 0;
         for (std::size_t i = 1; i < p.size(); ++i) {
@@ -313,7 +317,7 @@ double tiltDbPerOct(const Signal& x, std::size_t begin, std::size_t end, double 
         sxy += xo * y;
         ++bands;
     }
-    if (bands < 2) return 0.0;
+    if (bands < 2) return std::nullopt;
     const double n = bands;
     return (n * sxy - sx * sy) / (n * sxx - sx * sx);
 }
@@ -392,21 +396,23 @@ Metrics computeMetrics(const Stereo& audio, const MetricsRequest& q) {
     double steadyPeak = 0;
     for (std::size_t i = begin; i < end; ++i) steadyPeak = std::max({ steadyPeak, std::abs(audio.left[i]), std::abs(audio.right[i]) });
     m.sumCrestDb = toDb(steadyPeak) - m.rmsDb;
-    m.tiltDbPerOct = tiltDbPerOct(mono, begin, end, q.sampleRate);
+    m.tiltDbPerOct = tiltDbPerOct(mono, begin, end, q.sampleRate, q.tiltUpperHz);
     m.harmonicToleranceHz = q.harmonicToleranceHz;
     m.offHarmonicDb = offHarmonicDb(mono, begin, end, q.sampleRate, q.f0, q.harmonicToleranceHz);
     return m;
 }
 
 std::string toJson(const Metrics& m) {
+    char tilt[32] = "null";
+    if (m.tiltDbPerOct) std::snprintf(tilt, sizeof tilt, "%.2f", *m.tiltDbPerOct);
     char buf[1024];
     std::snprintf(buf, sizeof buf,
                   "{\"peakDb\": %.2f, \"truePeakDb\": %.2f, \"rmsDb\": %.2f, \"crestDb\": %.2f, \"subRmsDb\": %.2f, "
                   "\"subRmsRangeDb\": %.3f, \"sideBelowXoverDb\": %.2f, \"correlation\": %.4f, \"centroidHz\": %.1f, "
-                  "\"centroidRangeHz\": %.1f, \"growlRmsDb\": %.2f, \"sumCrestDb\": %.2f, \"tiltDbPerOct\": %.2f, "
+                  "\"centroidRangeHz\": %.1f, \"growlRmsDb\": %.2f, \"sumCrestDb\": %.2f, \"tiltDbPerOct\": %s, "
                   "\"offHarmonicDb\": %.1f, \"harmonicToleranceHz\": %.2f}",
                   m.peakDb, m.truePeakDb, m.rmsDb, m.crestDb, m.subRmsDb, m.subRmsRangeDb, m.sideBelowXoverDb, m.correlation,
-                  m.centroidHz, m.centroidRangeHz, m.growlRmsDb, m.sumCrestDb, m.tiltDbPerOct, m.offHarmonicDb,
+                  m.centroidHz, m.centroidRangeHz, m.growlRmsDb, m.sumCrestDb, tilt, m.offHarmonicDb,
                   m.harmonicToleranceHz);
     return buf;
 }
