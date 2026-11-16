@@ -1,5 +1,5 @@
 // The signal graph: Master, the two Reese voices with their feedback loop, Tract,
-// Fold, Mid/side and Out, joined by wires, with the sub path underneath.
+// Fold, Sculpt, Mid/side and Out, joined by wires, with the sub path underneath.
 #include "panels.h"
 
 #include "tf/feel.h"
@@ -29,7 +29,7 @@ struct Box {
     constexpr float midY() const { return y + h * 0.5f; }
 };
 
-// Columns sit 28 apart; every node shares the same interior grid.
+// Seven columns, equally spaced; every node shares the same interior grid.
 constexpr float kInset = 10.0f;         // node edge to content
 constexpr float kTitleHeight = 16.0f;   // title band, from the top inset
 constexpr float kVisualTop = 36.0f;     // from the node top
@@ -39,16 +39,24 @@ constexpr float kReeseRowsTop = 30.0f;  // the Reese cards' 2x2 grid
 constexpr float kColumnGap = 20.0f;     // between the two columns of that grid
 constexpr float kSparkWidth = 90.0f;
 
-constexpr float kNodeTop = 12.0f;
+constexpr float kPanelWidth = 1256.0f;  // the editor gives the graph its full content width
+constexpr float kNodeTop = metric::pad;
 constexpr float kNodeHeight = 208.0f;
-constexpr Box kMaster { 12.0f, kNodeTop, 170.0f, kNodeHeight };
-constexpr Box kReeseA { 210.0f, kNodeTop, 250.0f, 84.0f };
-constexpr Box kReeseB { 210.0f, 104.0f, 250.0f, 84.0f };
-constexpr Box kFeedback { 210.0f, 196.0f, 250.0f, 24.0f };
-constexpr Box kTract { 488.0f, kNodeTop, 190.0f, kNodeHeight };
-constexpr Box kFold { 706.0f, kNodeTop, 170.0f, kNodeHeight };
-constexpr Box kMidSide { 904.0f, kNodeTop, 150.0f, kNodeHeight };
-constexpr Box kOut { 1082.0f, kNodeTop, 162.0f, kNodeHeight };
+constexpr float kGap = 22.0f;           // between columns
+constexpr float kReeseWidth = 240.0f;
+
+constexpr Box nextColumn(const Box& left, float width) { return { left.right() + kGap, kNodeTop, width, kNodeHeight }; }
+
+constexpr Box kMaster { metric::pad, kNodeTop, 140.0f, kNodeHeight };
+constexpr Box kReeseA { kMaster.right() + kGap, kNodeTop, kReeseWidth, 84.0f };
+constexpr Box kReeseB { kReeseA.x, 104.0f, kReeseWidth, 84.0f };
+constexpr Box kFeedback { kReeseA.x, 196.0f, kReeseWidth, 24.0f };
+constexpr Box kTract = nextColumn(kReeseA, 160.0f);
+constexpr Box kFold = nextColumn(kTract, 146.0f);
+constexpr Box kSculpt = nextColumn(kFold, 150.0f);
+constexpr Box kMidSide = nextColumn(kSculpt, 136.0f);
+constexpr Box kOut = nextColumn(kMidSide, 128.0f);
+static_assert(kOut.right() == kPanelWidth - metric::pad, "the columns fill the panel");
 
 constexpr float kSubY = 256.0f;
 constexpr float kCorner = 10.0f;
@@ -65,6 +73,8 @@ constexpr float kChipWidth = 52.0f;
 constexpr float kTimeChipWidth = 64.0f;  // "1/4 cyc"
 constexpr float kChipHeight = 20.0f;
 constexpr float kChipGap = 6.0f;
+constexpr float kCountChipWidth = 28.0f;   // Sculpt's band count, in its title band
+constexpr float kCountChipHeight = 18.0f;
 constexpr float kFeedbackLabelWidth = 58.0f;  // "Feedback" at label size
 constexpr float kLoopOut = 10.0f;             // the feedback loop's distance from the column
 
@@ -194,6 +204,42 @@ Curve<kShapePoints> foldTransfer(FoldType type, float drive, float asym, float e
     return values;
 }
 
+// The Sculpt bank's magnitude response in dB over harmonics ×1..×64 on a log
+// axis: `count` peaking bells at `sculpt · spread^i`, multiplied together.
+constexpr float kSculptTop = 64.0f;     // the highest harmonic shown
+constexpr float kSculptRangeDb = 30.0f;  // ± this fills the visual
+constexpr std::size_t kSculptPoints = 768;  // dense enough to catch the narrowest notch
+
+float harmonicPosition(float harmonic) { return std::log(harmonic) / std::log(kSculptTop); }
+
+Curve<kSculptPoints> sculptResponse(float sculpt, int count, float spread, float depth, float resonance) {
+    Curve<kSculptPoints> values {};
+    const float gainDb = feel::sculptGainDb(depth);
+    if (gainDb == 0.0f) return values;
+    // The analogue prototype of a peaking EQ: |H(jw)|² at w = f / f0.
+    const float a = std::pow(10.0f, gainDb / 40.0f);
+    const float q = feel::sculptQ(resonance);
+    std::vector<float> centres;
+    for (int i = 0; i < count; ++i) {
+        const float centre = sculpt * std::pow(spread, static_cast<float>(i));
+        if (centre > kSculptTop) break;
+        centres.push_back(centre);
+    }
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const float harmonic = std::pow(kSculptTop, static_cast<float>(i) / static_cast<float>(values.size() - 1));
+        float db = 0.0f;
+        for (const float centre : centres) {
+            const float w = harmonic / centre;
+            const float flat = (1.0f - w * w) * (1.0f - w * w);
+            const float num = flat + (w * a / q) * (w * a / q);
+            const float den = flat + (w / (a * q)) * (w / (a * q));
+            db += 10.0f * std::log10(num / den);
+        }
+        values[i] = db;
+    }
+    return values;
+}
+
 // ---------------------------------------------------------------------------
 // Wires, sampled into polylines in design pixels so dots can travel along them.
 
@@ -279,7 +325,8 @@ std::vector<std::pair<Wire, unsigned>> signalWires() {
     wires.emplace_back(link(kReeseA, kReeseA.midY(), kTract, mid), colour::growl);
     wires.emplace_back(link(kReeseB, kReeseB.midY(), kTract, mid), colour::growl);
     wires.emplace_back(link(kTract, mid, kFold, mid), colour::growl);
-    wires.emplace_back(link(kFold, mid, kMidSide, mid), colour::growl);
+    wires.emplace_back(link(kFold, mid, kSculpt, mid), colour::growl);
+    wires.emplace_back(link(kSculpt, mid, kMidSide, mid), colour::growl);
     wires.emplace_back(link(kMidSide, mid, kOut, mid), colour::growl);
 
     // The sub: down from Master, along the lane, up into Out.
@@ -380,6 +427,16 @@ public:
         place<Row>(nodeRow(kFold, 3), ParamId::weight, colour::growl, "Weight", true);
         driveMarker_ = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, 2);
 
+        // Sculpt. Its position is the macro in the top bar. Depth is bipolar and a
+        // row's bar fills from the left, so it has none.
+        const Box sculptTitle = nodeTitle(kSculpt);
+        place<Chip>({ sculptTitle.right() - kCountChipWidth, sculptTitle.midY() - kCountChipHeight * 0.5f,
+                      kCountChipWidth, kCountChipHeight },
+                    ParamId::sculptCount, colour::growl);
+        place<Row>(nodeRow(kSculpt, 0), ParamId::sculptDepth, colour::growl, "Depth");
+        place<Row>(nodeRow(kSculpt, 1), ParamId::sculptSpread, colour::growl, "Spread");
+        place<Row>(nodeRow(kSculpt, 2), ParamId::sculptRes, colour::growl, "Resonance");
+
         // Mid/side
         place<Row>(nodeRow(kMidSide, 0), ParamId::midGain, colour::text, "Mid");
         place<Row>(nodeRow(kMidSide, 1), ParamId::sideGain, colour::text, "Side");
@@ -427,7 +484,7 @@ public:
         const Visuals& visuals = context_.model.visuals();
         drawWires(canvas, visuals.gate);
 
-        for (const Box& node : { kMaster, kReeseA, kReeseB, kTract, kFold, kMidSide, kOut, kSubLock })
+        for (const Box& node : { kMaster, kReeseA, kReeseB, kTract, kFold, kSculpt, kMidSide, kOut, kSubLock })
             drawPanel(canvas, context_, px(node.x), px(node.y), px(node.w), px(node.h), colour::raised,
                       metric::radiusSmall);
 
@@ -437,6 +494,7 @@ public:
         drawFeedbackLabel(canvas);
         drawTract(canvas, visuals);
         drawFold(canvas, visuals);
+        drawSculpt(canvas);
         drawMidSide(canvas);
         drawOut(canvas, visuals);
         title(canvas, { kSubLock.x + kInset, kSubLock.midY() - kTitleHeight * 0.5f, kSubLockRowX, kTitleHeight },
@@ -448,7 +506,7 @@ private:
 
     // Everything the panel's own drawing depends on.
     struct Watched {
-        std::array<float, 16> params {};
+        std::array<float, 22> params {};
         std::array<float, 3> lanes {};
         float hz = 0.0f;
         int note = -1;
@@ -456,10 +514,12 @@ private:
         bool operator==(const Watched&) const = default;
     };
 
-    static constexpr std::array<ParamId, 16> kWatchedParams {
-        ParamId::coupling, ParamId::width,  ParamId::aRatio,   ParamId::aPhase,   ParamId::aPm,  ParamId::bRatio,
-        ParamId::bPhase,   ParamId::bPm,    ParamId::vowelA,   ParamId::vowelB,   ParamId::morph, ParamId::foldType,
-        ParamId::drive,    ParamId::asym,   ParamId::sideGain, ParamId::xover,
+    static constexpr std::array<ParamId, 22> kWatchedParams {
+        ParamId::coupling,    ParamId::width,       ParamId::aRatio,       ParamId::aPhase,    ParamId::aPm,
+        ParamId::bRatio,      ParamId::bPhase,      ParamId::bPm,          ParamId::vowelA,    ParamId::vowelB,
+        ParamId::morph,       ParamId::foldType,    ParamId::drive,        ParamId::asym,      ParamId::reach,
+        ParamId::sculpt,      ParamId::sculptDepth, ParamId::sculptCount,  ParamId::sculptSpread, ParamId::sculptRes,
+        ParamId::sideGain,    ParamId::xover,
     };
 
     Watched watch() {
@@ -609,6 +669,19 @@ private:
         const float drive = std::clamp(get(ParamId::drive) + kLaneDepth * visuals.laneValue[2], 0.0f, 1.0f);
         const auto type = static_cast<FoldType>(static_cast<int>(get(ParamId::foldType) + 0.5f));
         curve(canvas, foldTransfer(type, drive, get(ParamId::asym), kExtent), box, colour::growl, -kExtent, kExtent);
+    }
+
+    // The bank's response around the 0 dB line, with Reach marked where it cuts off.
+    void drawSculpt(visage::Canvas& canvas) {
+        title(canvas, nodeTitle(kSculpt), "Sculpt", colour::growl);
+        const Box box = nodeVisual(kSculpt, kSculpt.w - 2.0f * kInset);
+        const float reachX = box.x + box.w * harmonicPosition(get(ParamId::reach));
+        hairline(canvas, { reachX, box.y }, { reachX, box.bottom() }, colour::track);
+        hairline(canvas, { box.x, box.midY() }, { box.right(), box.midY() }, colour::track);
+        const auto values = sculptResponse(get(ParamId::sculpt), static_cast<int>(get(ParamId::sculptCount) + 0.5f) + 1,
+                                           get(ParamId::sculptSpread), get(ParamId::sculptDepth),
+                                           get(ParamId::sculptRes));
+        curve(canvas, values, box, colour::growl, -kSculptRangeDb, kSculptRangeDb, 0.12f);
     }
 
     // The sum that leaves the plugin: the same phase-locked output trace the scope shows.
