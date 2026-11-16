@@ -6,3 +6,6 @@ cmake-build-*/
 .idea/
 .vscode/
 .DS_Store
+
+# Local agent worktrees and settings
+.claude/

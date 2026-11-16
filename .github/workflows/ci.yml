@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGINVAL_VERSION: v1.0.4
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  ARTEFACTS: build/dev/plugin/TractForm_artefacts/RelWithDebInfo
+
+jobs:
+  engine:
+    name: Core and engine
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-engine-${{ hashFiles('CMakeLists.txt') }}
+      - run: cmake --preset engine -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset engine
+      - run: ctest --preset engine
+
+  plugin:
+    name: Plugin
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-plugin-${{ hashFiles('CMakeLists.txt') }}
+      - run: cmake --preset dev -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset dev
+      - run: ctest --preset dev
+
+      - name: Validate with pluginval
+        run: |
+          curl -fsSL -o pluginval.zip \
+            "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+          unzip -q pluginval.zip
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            --skip-gui-tests --timeout-ms 300000 --validate "$ARTEFACTS/VST3/Tract Form.vst3"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: TractForm-macOS
+          path: |
+            ${{ env.ARTEFACTS }}/VST3
+            ${{ env.ARTEFACTS }}/AU
+          if-no-files-found: error
