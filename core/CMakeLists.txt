@@ -1,4 +1,5 @@
 add_library(tf_core STATIC
+    include/tf/curve.h
     include/tf/feel.h
     include/tf/lanes.h
     include/tf/params.h
