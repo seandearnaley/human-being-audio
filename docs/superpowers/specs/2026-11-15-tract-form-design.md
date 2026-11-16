@@ -108,12 +108,12 @@ an empty device panel above 64.
 |---|---|---|---|
 | `coupling` | Coupling | 0–1 | 0.72 |
 | `beat` | Beat | 0–1 | 0.38 |
-| `reach` | Reach | 2–64 harmonics, log | 16 |
+| `reach` | Reach | 2–256 harmonics, log | 96 |
 | `tract` | Tract | 0–1 | 0.61 |
 | `warp` | Warp | 0–1 | 0.46 |
 | `motion` | Motion | 0–1 | 0.78 |
 | `width` | Width | 0–1 | 0.64 |
-| `weight` | Weight | 0–1 | 0.5 |
+| `weight` | Weight | 0–1 | 0.3 |
 | `fit` | Fit | 0–360° | 0 |
 | `beatLock` | Beat lock | off/on | off |
 | `glide` | Glide | 0–500 ms, skewed | 12.5 |
@@ -122,7 +122,7 @@ an empty device panel above 64.
 | `aRatio`, `bRatio` | Ratio | 0.25–8, skewed | 1.000 |
 | `aPhase`, `bPhase` | Phase | 0–360° | 0, 180 |
 | `aPm`, `bPm` | PM | −1–1 | +0.62, −0.48 |
-| `fbTime` | Feedback time | 1/4, 1/2, 1, 2, 4 cycles; 1/64 … 1/4 | 1 cyc |
+| `fbTime` | Feedback time | 1/4, 1/2, 1, 2, 4 cycles | 1 cyc |
 | `fbAmount` | Feedback | 0–1, squared | 0.49 |
 | `vowelA`, `vowelB` | Vowel | a, æ, e, i, o, u | æ, u |
 | `morph` | Morph | 0–1 | 0.63 |
@@ -267,19 +267,25 @@ the growl's harmonics are bounded and weighted to the bottom.**
 - **Per-voice distortion.** Reese A and Reese B each run through their own tract
   and fold. `width` mixes them afterwards (`L = (A + (1−w)·B) / (2−w)`, and the
   mirror for R), so detuned voices never intermodulate in a shared nonlinearity.
-- **Reach** (`reach`, 2–64, a harmonic number): a 24 dB per octave low-pass at
-  `reach · f0` after the fold. It follows pitch, glide and bend. The feedback
-  loop is low-passed at the same frequency.
-- **Weight** (`weight`): extra slope above the third harmonic, from 0 to
-  −12 dB per octave (`feel::weightSlopeDb`), by blending in one and then two
-  one-pole low-passes at `3 · f0`.
+- **Reach** (`reach`, 2–256, a harmonic number, default 96): a 24 dB per octave
+  low-pass at `reach · f0` after the fold. It follows pitch, glide and bend. It is
+  a ceiling to pull down, not a wall: at the default it sits near 4 kHz on F1.
+- **Weight** (`weight`, default 0.3): extra slope, from 0 to −12 dB per octave
+  (`feel::weightSlopeDb`), by blending in one and then two one-pole low-passes.
+  The pivot is `max(3 · f0, 1.5 · subFreq)` and the octave above it keeps its
+  level, so Weight leans the spectrum without lowering it. The fold is already
+  bottom-weighted (about −14 dB per octave at default drive), so a little goes a
+  long way.
 - **Fit** (`fit`, 0–360°): rotates the sub against the growl. At 0 the sub at
   the output is in phase with the master, with the sub low-pass's phase at `f0`
   compensated; `fit` adds to that. It changes how the two waveforms interleave,
   which shows as the crest factor of the sum.
-- **Feedback in cycles.** `fbTime` gains `1/4 cyc` … `4 cyc`: a delay of that
-  many cycles of the note, so the loop is a comb on the harmonics. The beat
-  divisions remain. The default is `1 cyc`.
+- **Feedback in cycles.** `fbTime` is `1/4 cyc` … `4 cyc`: a delay of that many
+  cycles of the note, so the loop is a comb on the harmonics. The beat-timed
+  delays of 0.1 are gone: a delay unrelated to the pitch is what turned the loop
+  chaotic. The loop is fed from undetuned copies of the voices, averages the taps
+  at n and 2n cycles, and is low-passed at `min(reach, 8) · f0`, so it thickens
+  the low harmonics and cannot bring noise back as Reach opens.
 - **Beat lock** (`beatLock`): the Beat macro then selects a division
   (`choices::beatLock`, via `feel::beatLockIndex`) and the two voices are offset
   by a constant frequency so their fundamentals beat exactly once per division.
@@ -292,8 +298,9 @@ in that order, so a controller's first bank is the macro row.
 
 ### Measuring noise
 
-`tf-render --metrics` adds `tiltDbPerOct` (octave bands from 500 Hz to 16 kHz)
-and `offHarmonicDb` (the share of 300 Hz–6 kHz energy further than a tolerance
+`tf-render --metrics` adds `tiltDbPerOct` (octave bands from 500 Hz up to
+`0.8 · reach · f0`, so the Reach cut-off is not counted as tilt) and
+`offHarmonicDb` (the share of 300 Hz–6 kHz energy further than a tolerance
 from any harmonic of the note; white noise reads about −1 dB). Presets are held
 to targets with the lanes off:
 
