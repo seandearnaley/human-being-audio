@@ -62,5 +62,17 @@
   "sculptDepth": 0.55,
   "sculptCount": "2",
   "sculptSpread": 2.4,
-  "sculptRes": 0.7
+  "sculptRes": 0.7,
+  "lane1Target": "Phase",
+  "lane1Follow": "Own",
+  "lane1Ratio": "×1",
+  "lane2Target": "Morph",
+  "lane2Follow": "Own",
+  "lane2Ratio": "×1",
+  "lane3Target": "Drive",
+  "lane3Follow": "Own",
+  "lane3Ratio": "×1",
+  "lane4Target": "Beat",
+  "lane4Follow": "Own",
+  "lane4Ratio": "×1"
 }
