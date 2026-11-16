@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace tf::test {
 
@@ -22,6 +23,7 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
     out.growl.resize(n);
     std::vector<float> l(static_cast<std::size_t>(setup.block)), r(l.size()), m(l.size()), g(l.size());
     engine.pitchBend(setup.bend);
+    engine.setLaneCurves(setup.curves);
 
     std::size_t next = 0;
     const double qps = setup.bpm / 60.0 / setup.sampleRate;
@@ -87,6 +89,36 @@ Params randomParams(std::mt19937& rng) {
         }
     }
     return p;
+}
+
+Curve randomCurve(std::mt19937& rng) {
+    Curve c;
+    const int n = std::uniform_int_distribution<int>(1, 8)(rng);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f), bipolar(-1.0f, 1.0f);
+    for (int i = 0; i < n; ++i) {
+        CurvePoint point;
+        point.x = unit(rng);
+        point.y = bipolar(rng);
+        point.tension = bipolar(rng);
+        point.segment = static_cast<Segment>(std::uniform_int_distribution<int>(0, 2)(rng));
+        addPoint(c, point);
+    }
+    return c;
+}
+
+std::uint64_t hashOutput(const Rendered& r) {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (const auto* sig : { &r.left, &r.right })
+        for (double v : *sig) {
+            const auto x = static_cast<float>(v);
+            std::uint32_t bits;
+            std::memcpy(&bits, &x, sizeof bits);
+            for (int b = 0; b < 4; ++b) {
+                h ^= (bits >> (8 * b)) & 0xffU;
+                h *= 1099511628211ULL;
+            }
+        }
+    return h;
 }
 
 double maxAbs(const Signal& x) {

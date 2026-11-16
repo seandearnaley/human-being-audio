@@ -4,6 +4,7 @@
 
 #include "analysis/analysis.h"
 #include "tf/engine.h"
+#include "tf/lanes.h"
 #include "tf/params.h"
 
 #include <cstdint>
@@ -31,6 +32,7 @@ struct Setup {
     bool playing = true;
     double ppqStart = 0.0;
     float bend = 0.0f;
+    LaneCurves curves = defaultLaneCurves();  // given to the engine before the first block
 };
 
 struct Rendered {
@@ -55,6 +57,12 @@ Params hotPatch();
 
 // Uniformly random value for every parameter.
 Params randomParams(std::mt19937& rng);
+
+// A random drawn curve: 1-8 points, random positions, values, tensions and segments.
+Curve randomCurve(std::mt19937& rng);
+
+// Hash (FNV-1a, 64 bit) of the float bits of the left and right outputs.
+std::uint64_t hashOutput(const Rendered& r);
 
 double maxAbs(const Signal& x);
 bool allFinite(const Signal& x);

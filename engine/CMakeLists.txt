@@ -10,7 +10,6 @@ add_library(tf_engine STATIC
     src/feedback_delay.h
     src/fold.h
     src/harmonic.h
-    src/lanes.h
     src/limiter.h
     src/squash.h
     src/svf.h

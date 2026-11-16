@@ -46,6 +46,7 @@ TEST_CASE("sub stability: the low-passed output varies < 0.5 dB with every lane 
     const bool hot = GENERATE(false, true);
     CAPTURE(note, depthSign, hot);
     Setup s;
+    s.oversampling = 2;  // the property is in the base band; the fold runs at 16x either way
     s.params = fullDepthLanes(hot ? hotPatch() : Params::defaults());
     for (int i = 0; i < kLaneCount; ++i) s.params[laneParam(i, LaneField::depth)] = depthSign;
     const double fs = s.sampleRate;
@@ -63,6 +64,7 @@ TEST_CASE("growl level never moves the sub: hot patch, growlLevel 0..1", "[engin
     const int note = GENERATE(29, 35);
     CAPTURE(note);
     Setup s;
+    s.oversampling = 2;  // the property is in the base band; the fold runs at 16x either way
     s.params = hotPatch();
     const double fs = s.sampleRate;
     std::vector<double> subDb;
@@ -96,6 +98,7 @@ TEST_CASE("the growl leaves the sub band alone: sub band with and without the gr
     const bool hot = GENERATE(false, true);
     CAPTURE(note, hot);
     Setup s;
+    s.oversampling = 2;  // the property is in the base band; the fold runs at 16x either way
     s.params = hot ? hotPatch() : Params::defaults();
     const double fs = s.sampleRate;
     const auto with = render(s, held(note), frames(3.0, fs));
@@ -156,6 +159,7 @@ TEST_CASE("mono low end: side energy an octave below the crossover is 60 dB unde
     const float growl = GENERATE(0.76f, 1.0f);
     CAPTURE(note, width, growl);
     Setup s;
+    s.oversampling = 2;  // the property is in the base band; the fold runs at 16x either way
     s.params[ParamId::width] = width;
     s.params[ParamId::growlLevel] = growl;
     const double fs = s.sampleRate;
@@ -182,12 +186,37 @@ TEST_CASE("mono low end: side energy an octave below the crossover is 60 dB unde
 
 // ---- Verification: block independence -------------------------------------
 
+namespace {
+// Lanes on 0.2's targets, one following another, two playing drawn curves.
+Setup movedLanes() {
+    Setup s;
+    std::mt19937 rng(77);
+    s.params[ParamId::motion] = 1.0f;
+    const LaneTarget targets[] = { LaneTarget::reach, LaneTarget::sculpt, LaneTarget::fit, LaneTarget::width };
+    for (int i = 0; i < kLaneCount; ++i) {
+        s.params[laneParam(i, LaneField::target)] = static_cast<float>(targets[i]);
+        s.params[laneParam(i, LaneField::depth)] = 0.8f;
+        s.curves[static_cast<std::size_t>(i)] = randomCurve(rng);
+    }
+    s.params[laneParam(0, LaneField::shape)] = static_cast<float>(LaneShape::custom);
+    s.params[laneParam(1, LaneField::shape)] = static_cast<float>(LaneShape::custom);
+    s.params[laneParam(2, LaneField::follow)] = 1.0f;  // lane 3 follows lane 1 at x3
+    s.params[laneParam(2, LaneField::ratio)] = 5.0f;
+    return s;
+}
+}
+
 TEST_CASE("block independence: block sizes 1, 7, 64 and 512 give identical output", "[engine][spec]") {
     // 3584 = 7 * 512: events on multiples of it fall on block boundaries for every size.
     const std::vector<NoteEvent> events { { 0, 29, true }, { 3584 * 4, 36, true }, { 3584 * 6, 36, false },
                                           { 3584 * 8, 29, false }, { 3584 * 9, 31, true } };
     const long long count = 3584 * 12;
+    // Also with the lanes moved: retargeted, one following another, two
+    // playing drawn curves.
+    const bool moved = GENERATE(false, true);
+    CAPTURE(moved);
     Setup s;
+    if (moved) s = movedLanes();
     s.block = 64;
     const auto reference = render(s, events, count);
     for (int block : { 1, 7, 512 }) {
@@ -209,6 +238,7 @@ TEST_CASE("ceiling: the 4x true peak never exceeds the ceiling with limit on", "
     std::mt19937 rng(static_cast<unsigned>(seed) * 7919u + 11u);
     Setup s;
     s.params = randomParams(rng);
+    for (auto& c : s.curves) c = randomCurve(rng);
     s.params[ParamId::limit] = 1.0f;
     s.params[ParamId::growlLevel] = std::max(0.6f, s.params[ParamId::growlLevel]);  // make it work
     s.params[ParamId::subLevel] = std::max(0.6f, s.params[ParamId::subLevel]);
@@ -465,6 +495,7 @@ TEST_CASE("fuzz: random parameters and note streams give finite, bounded output"
     for (int run = 0; run < 240; ++run) {
         Setup s;
         s.params = randomParams(rng);
+        for (auto& c : s.curves) c = randomCurve(rng);
         s.oversampling = std::uniform_int_distribution<int>(0, 2)(rng) == 0 ? 2 : 4;
         s.block = std::uniform_int_distribution<int>(1, 300)(rng);
         s.bpm = std::uniform_real_distribution<double>(60.0, 200.0)(rng);
@@ -504,7 +535,9 @@ TEST_CASE("fuzz: random parameters and note streams give finite, bounded output"
 
 TEST_CASE("determinism: the same input twice gives identical output", "[engine][spec]") {
     const std::vector<NoteEvent> events { { 0, 29, true }, { 9000, 33, true }, { 15000, 33, false }, { 30000, 29, false } };
-    Setup s;
+    const bool moved = GENERATE(false, true);  // and with retargeted, following and drawn lanes
+    CAPTURE(moved);
+    Setup s = moved ? movedLanes() : Setup {};
     const auto a = render(s, events, 40000);
     const auto b = render(s, events, 40000);
     CHECK(maxAbsDiff(a.left, b.left) == 0.0);
@@ -726,6 +759,7 @@ TEST_CASE("squash makes the growl denser, never quieter", "[engine]") {
     const int patch = GENERATE(0, 1, 2);
     CAPTURE(patch);
     Setup s;
+    s.oversampling = 2;  // the property is in the base band; the fold runs at 16x either way
     s.params = patch == 1 ? hotPatch() : Params::defaults();
     if (patch == 2) {
         s.params[ParamId::coupling] = 0.2f;

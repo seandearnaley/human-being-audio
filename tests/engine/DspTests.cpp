@@ -4,7 +4,7 @@
 #include "crossover.h"
 #include "decimator.h"
 #include "fold.h"
-#include "lanes.h"
+#include "tf/lanes.h"
 #include "limiter.h"
 #include "squash.h"
 #include "svf.h"
@@ -243,25 +243,25 @@ TEST_CASE("lane shapes", "[dsp][lanes]") {
     CHECK(laneShape(LaneShape::square, 0.7, 0) == -1.0);
     for (int lane = 0; lane < kLaneCount; ++lane) {
         double sum = 0;
-        for (int step = 0; step < kStepsPerCycle; ++step) {
-            const double v = laneShape(LaneShape::steps, (step + 0.5) / kStepsPerCycle, lane);
+        for (int step = 0; step < kLaneStepsPerCycle; ++step) {
+            const double v = laneShape(LaneShape::steps, (step + 0.5) / kLaneStepsPerCycle, lane);
             CHECK(v >= -1.0);
             CHECK(v <= 1.0);
-            CHECK(v == stepValue(lane, step));
+            CHECK(v == laneStepValue(lane, step));
             sum += std::abs(v);
         }
         CHECK(sum > 0.5);  // not all zero
     }
-    CHECK(stepValue(0, 0) != stepValue(1, 0));
+    CHECK(laneStepValue(0, 0) != laneStepValue(1, 0));
 }
 
 TEST_CASE("lane phase follows the host position", "[dsp][lanes]") {
     // 1/4 lane (index 5) with a 90 degree offset.
-    CHECK(lanePhase(0.0, 5, 90.0) == Catch::Approx(0.25));
-    CHECK(lanePhase(2.5, 5, 0.0) == Catch::Approx(0.5));
-    CHECK(lanePhase(-0.25, 5, 0.0) == Catch::Approx(0.75));
+    CHECK(lanePhase(0.0, kLaneRateQuarters[5], 90.0) == Catch::Approx(0.25));
+    CHECK(lanePhase(2.5, kLaneRateQuarters[5], 0.0) == Catch::Approx(0.5));
+    CHECK(lanePhase(-0.25, kLaneRateQuarters[5], 0.0) == Catch::Approx(0.75));
     // 8 bars = 32 quarters.
-    CHECK(lanePhase(16.0, 0, 0.0) == Catch::Approx(0.5));
+    CHECK(lanePhase(16.0, kLaneRateQuarters[0], 0.0) == Catch::Approx(0.5));
 }
 
 TEST_CASE("the note stack gives last-note priority", "[dsp][voice]") {

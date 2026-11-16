@@ -7,13 +7,13 @@
 #include "feedback_delay.h"
 #include "fold.h"
 #include "harmonic.h"
-#include "lanes.h"
 #include "limiter.h"
 #include "squash.h"
 #include "tract.h"
 #include "voice.h"
 
 #include "tf/feel.h"
+#include "tf/lanes.h"
 #include "tf/voice_pitch.h"
 
 #include <algorithm>
@@ -213,7 +213,10 @@ struct Engine::Impl {
     float clipDb = 0.0f, clipMeanDb = 0.0f;  // growl clipper over the last block
     double clipMaxDb = 0.0, clipSumDb = 0.0;
     std::array<float, kLaneCount> uiPhase {}, uiValue {};
+    // The lanes' drawn curves (setLaneCurves), and each target's movement: the
+    // sum of the smoothed sends of every lane aimed at it, in -1..1 per lane.
     LaneCurves laneCurves = defaultLaneCurves();
+    std::array<double, kLaneTargetCount> laneMove {};
     double uiPpq = 0.0;  // the lane clock, host position or free-running
 
     void prepare(double sampleRate, int oversampling) {
@@ -339,6 +342,7 @@ struct Engine::Impl {
         phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
         for (auto& s : smooth) s.reset();
         for (auto& s : laneSmooth) s.reset();
+        laneMove.fill(0.0);
         for (auto& s : formantSmooth) s.reset();
         cycleSmooth.reset();
         for (auto& g : sculptGainSmooth) g.reset();
@@ -425,7 +429,7 @@ struct Engine::Impl {
     // amount and the whole spectrum beats at one rate.
     void pitchIncrements(double& master, double& a, double& b) const noexcept TF_NONBLOCKING {
         const double f0 = noteToHz(glide.current() + sm(bend));
-        const double beatMod = std::clamp(sm(beat) + 0.5 * laneSmooth[3].value(), 0.0, 1.0);
+        const double beatMod = moved(LaneTarget::beat, sm(beat), 0.0, 1.0);
         master = f0 / fo;
         if (beatLockOn) {
             const double delta = beatLockHz(anchorBpmOrCurrent(), beatMod);
@@ -452,6 +456,52 @@ struct Engine::Impl {
         os[incLockB].snap(m * sm(bRatio));
     }
 
+    // ---- lanes -------------------------------------------------------------
+
+    // The lane clock at `samplesAhead` base samples from now: the host
+    // position while playing, else the time since the note started.
+    double lanePpqAhead(long long samplesAhead) const noexcept TF_NONBLOCKING {
+        return playing ? anchorPpq + static_cast<double>(sinceAnchor + samplesAhead) * qps
+                       : static_cast<double>(sinceNoteStart + samplesAhead) * qps;
+    }
+
+    // One control period of the lanes, at host position `ppq`: each lane's send
+    // (tf::laneSend, the function the interface draws with) through its
+    // smoother, then summed by target. The smoothing covers any step in a send
+    // (a curve swapped by setLaneCurves, a retarget, a lane switched on), and
+    // the same code runs while the DSP sleeps, so the interface sees the same
+    // values either way.
+    void laneTick(const Params& p, double ppq, double c) noexcept TF_NONBLOCKING {
+        uiPpq = ppq;
+        laneMove.fill(0.0);
+        for (int i = 0; i < kLaneCount; ++i) {
+            const auto lane = static_cast<std::size_t>(i);
+            const double v = laneSmooth[lane].step(laneSend(p, laneCurves, i, ppq), c);
+            uiPhase[lane] = static_cast<float>(lanePhase(ppq, laneLengthQuarters(p, i), p[laneParam(i, LaneField::phase)]));
+            uiValue[lane] = static_cast<float>(v);
+            // As tf::laneSum, in double: with one lane per target the sum is
+            // the lane's value exactly, so the default targets play as before.
+            laneMove[static_cast<std::size_t>(laneTargetOf(p, i))] += v;
+        }
+    }
+
+    // A target's value after movement, by kLaneSpans (as tf::laneApply, in
+    // double): additive in the parameter's own units, or by octaves for Reach
+    // and Sculpt, clamped to [lo, hi]. Phase and Fit wrap instead and are
+    // applied where they are used.
+    double moved(LaneTarget target, double value, double lo, double hi) const noexcept TF_NONBLOCKING {
+        const auto t = static_cast<std::size_t>(target);
+        const LaneSpan span = kLaneSpans[t];
+        const double amount = span.amount;
+        const double v = span.octaves ? value * std::exp2(amount * laneMove[t]) : value + amount * laneMove[t];
+        return std::clamp(v, lo, hi);
+    }
+    // A wrapping target's movement in cycles (its span is in degrees).
+    double movedCycles(LaneTarget target) const noexcept TF_NONBLOCKING {
+        const auto t = static_cast<std::size_t>(target);
+        return kLaneSpans[t].amount / 360.0 * laneMove[t];
+    }
+
     void controlTick(const Params& p) noexcept TF_NONBLOCKING {
         const bool snap = snapNext;
         snapNext = false;
@@ -459,23 +509,7 @@ struct Engine::Impl {
         const auto step = [&](Sm id, double target) { return smooth[id].step(target, c); };
 
         // Lanes, evaluated at the end of this control period.
-        const double ppqEnd = playing ? anchorPpq + static_cast<double>(sinceAnchor + controlBase) * qps
-                                      : static_cast<double>(sinceNoteStart + controlBase) * qps;
-        const double motion = p[ParamId::motion];
-        uiPpq = ppqEnd;
-        for (int i = 0; i < kLaneCount; ++i) {
-            const double theta = lanePhase(ppqEnd, p.choice(laneParam(i, LaneField::rate)), p[laneParam(i, LaneField::phase)]);
-            const double raw = p.on(laneParam(i, LaneField::on))
-                                   ? laneShape(static_cast<LaneShape>(p.choice(laneParam(i, LaneField::shape))), theta, i) *
-                                         p[laneParam(i, LaneField::depth)] * motion
-                                   : 0.0;
-            const double v = laneSmooth[static_cast<std::size_t>(i)].step(raw, c);
-            uiPhase[static_cast<std::size_t>(i)] = static_cast<float>(theta);
-            uiValue[static_cast<std::size_t>(i)] = static_cast<float>(v);
-        }
-        const double lanePhaseMod = laneSmooth[0].value();
-        const double laneMorph = laneSmooth[1].value();
-        const double laneDrive = laneSmooth[2].value();
+        laneTick(p, lanePpqAhead(controlBase), c);
 
         step(coupling, p[ParamId::coupling]);
         step(beat, p[ParamId::beat]);
@@ -532,10 +566,11 @@ struct Engine::Impl {
         t[incLockB] = incM * sm(bRatio);
         // Phase offsets in cycles, not wrapped (the oscillator wraps), so a ramp
         // never sweeps the long way round.
-        t[offA] = sm(aPhase) / 360.0 + 0.25 * lanePhaseMod;
-        t[offB] = sm(bPhase) / 360.0 - 0.25 * lanePhaseMod;
-        t[pmA] = feel::pmIndex(static_cast<float>(sm(aPm)), static_cast<float>(sm(coupling)));
-        t[pmB] = feel::pmIndex(static_cast<float>(sm(bPm)), static_cast<float>(sm(coupling)));
+        t[offA] = sm(aPhase) / 360.0 + movedCycles(LaneTarget::phase);
+        t[offB] = sm(bPhase) / 360.0 - movedCycles(LaneTarget::phase);
+        const double couplingMod = moved(LaneTarget::coupling, sm(coupling), 0.0, 1.0);
+        t[pmA] = feel::pmIndex(static_cast<float>(sm(aPm)), static_cast<float>(couplingMod));
+        t[pmB] = feel::pmIndex(static_cast<float>(sm(bPm)), static_cast<float>(couplingMod));
         t[fbGain] = feel::feedbackRadians(static_cast<float>(sm(fbAmount)));
         // In cycles of the note (incM is cycles per oversampled sample). The
         // count is smoothed and the delay follows the pitch exactly, so the comb
@@ -546,9 +581,9 @@ struct Engine::Impl {
             std::clamp(p.choice(ParamId::fbTime), 0, static_cast<int>(kFbCycles.size()) - 1));
         const double cycles = cycleSmooth.step(kFbCycles[fbChoice], snap ? 1.0 : delayTickCoef);
         t[fbDelay] = std::clamp(cycles / std::max(incM, 1e-9), 2.0, 0.5 * feedback.maxDelay());
-        t[width] = std::clamp(sm(width_), 0.0, 1.0);
+        t[width] = moved(LaneTarget::width, sm(width_), 0.0, 1.0);
         t[tractAmt] = std::clamp(sm(tract_), 0.0, 1.0);
-        const double driveMod = std::clamp(sm(drive_) + 0.5 * laneDrive, 0.0, 1.0);
+        const double driveMod = moved(LaneTarget::drive, sm(drive_), 0.0, 1.0);
         t[driveGain] = feel::driveGain(static_cast<float>(driveMod));
         t[asymOffset] = 0.5 * sm(asym_);
         t[warpAmt] = std::clamp(sm(warp_), 0.0, 1.0);
@@ -558,17 +593,18 @@ struct Engine::Impl {
         // phase with the master. The target is taken next to the current value
         // (whole cycles do not matter) so the ramp never sweeps the long way.
         const double f0 = incM * fo;
-        const double rotation = lr4LowpassLagCycles(f0, std::exp(sm(subFreqLog)), fs) + sm(fitCycles);
+        const double rotation = lr4LowpassLagCycles(f0, std::exp(sm(subFreqLog)), fs) + sm(fitCycles) + movedCycles(LaneTarget::fit);
         t[subRot] = snap ? rotation : os[subRot].value + wrapHalf(rotation - os[subRot].value);
 
         // Reach: 24 dB/oct at reach x f0, below 0.45 of the oversampled rate;
         // the loop's at min(reach, kLoopMaxHarmonic) x f0.
-        const double reachHarmonic = std::exp(sm(reachLog));
+        const double reachHarmonic =
+            moved(LaneTarget::reach, std::exp(sm(reachLog)), spec(ParamId::reach).min, spec(ParamId::reach).max);
         t[reachG] = SvfCoefs::prewarp(std::min(reachHarmonic * f0, kMaxFilterRatio * fo), fo);
         t[loopG] = SvfCoefs::prewarp(std::min(std::min(reachHarmonic, kLoopMaxHarmonic) * f0, kMaxFilterRatio * fo), fo);
         // Weight: dry -> one one-pole -> two at the pivot, level-matched over
         // the octave above it.
-        const auto blend = weightBlend(feel::weightSlopeDb(static_cast<float>(std::clamp(sm(weight_), 0.0, 1.0))),
+        const auto blend = weightBlend(feel::weightSlopeDb(static_cast<float>(moved(LaneTarget::weight, sm(weight_), 0.0, 1.0))),
                                        weightPivotHz(f0, std::exp(sm(subFreqLog))), fo);
         t[weightG] = blend.gain;
         t[weightDry] = blend.dry;
@@ -589,7 +625,9 @@ struct Engine::Impl {
             const int count = std::clamp(p.choice(ParamId::sculptCount), 0, kSculptMaxBands - 1) + 1;
             const double gainDb = feel::sculptGainDb(std::clamp(p[ParamId::sculptDepth], -1.0f, 1.0f));
             const double k = 1.0 / feel::sculptQ(static_cast<float>(std::clamp(sm(sculptRes_), 0.0, 1.0)));
-            const double first = std::exp(sm(sculptLog)), spread = std::exp(sm(spreadLog));
+            const double first = moved(LaneTarget::sculpt, std::exp(sm(sculptLog)), spec(ParamId::sculpt).min,
+                                       spec(ParamId::sculpt).max);
+            const double spread = std::exp(sm(spreadLog));
             double harmonic = first;
             for (int i = 0; i < kSculptMaxBands; ++i, harmonic *= spread) {
                 const double hzBand = harmonic * f0;
@@ -608,7 +646,7 @@ struct Engine::Impl {
         }
 
         // Tract.
-        const double morphMod = std::clamp(static_cast<double>(p[ParamId::morph]) + 0.5 * laneMorph, 0.0, 1.0);
+        const double morphMod = moved(LaneTarget::morph, static_cast<double>(p[ParamId::morph]), 0.0, 1.0);
         const auto vowels = mixVowels(p.choice(ParamId::vowelA), p.choice(ParamId::vowelB), morphMod, vowelComp);
         FormantTargets f;
         for (std::size_t i = 0; i < kFormantCount; ++i) {
@@ -905,26 +943,17 @@ struct Engine::Impl {
             std::fill_n(right + n, rest, 0.0f);
             if (taps.master != nullptr) std::fill_n(taps.master + n, rest, 0.0f);
             if (taps.growl != nullptr) std::fill_n(taps.growl + n, rest, 0.0f);
-            sinceAnchor += numSamples - n;
-            sinceNoteStart += numSamples - n;
             grDb = 0.0f;
-            idleLaneDisplay(p);
-        }
-    }
-
-    // Lane phases and values for the interface while the DSP sleeps.
-    void idleLaneDisplay(const Params& p) noexcept TF_NONBLOCKING {
-        const double ppq = playing ? anchorPpq + static_cast<double>(sinceAnchor) * qps
-                                   : static_cast<double>(sinceNoteStart) * qps;
-        uiPpq = ppq;
-        for (int i = 0; i < kLaneCount; ++i) {
-            const double theta = lanePhase(ppq, p.choice(laneParam(i, LaneField::rate)), p[laneParam(i, LaneField::phase)]);
-            const double v = p.on(laneParam(i, LaneField::on))
-                                 ? laneShape(static_cast<LaneShape>(p.choice(laneParam(i, LaneField::shape))), theta, i) *
-                                       p[laneParam(i, LaneField::depth)] * p[ParamId::motion]
-                                 : 0.0;
-            uiPhase[static_cast<std::size_t>(i)] = static_cast<float>(theta);
-            uiValue[static_cast<std::size_t>(i)] = static_cast<float>(v);
+            // The lanes keep their control periods while the DSP sleeps.
+            for (; n < numSamples; ++n) {
+                if (countdown == 0) {
+                    laneTick(p, lanePpqAhead(controlBase), tickCoef);
+                    countdown = controlBase;
+                }
+                --countdown;
+                ++sinceAnchor;
+                ++sinceNoteStart;
+            }
         }
     }
 };
