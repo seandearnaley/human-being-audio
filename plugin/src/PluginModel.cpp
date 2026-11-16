@@ -9,6 +9,8 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
     }
 }
 
+PluginModel::~PluginModel() = default;
+
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
     return parameter->convertFrom0to1(parameter->getValue());
@@ -23,13 +25,30 @@ void PluginModel::set(ParamId id, float real) {
 
 void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->endChangeGesture(); }
 
-const ui::Visuals& PluginModel::visuals() { return visuals_; }
+const ui::Visuals& PluginModel::visuals() {
+    const auto now = juce::Time::getHighResolutionTicks();
+    const double seconds = lastUpdateTicks_ == 0 ? 0.0 : juce::Time::highResolutionTicksToSeconds(now - lastUpdateTicks_);
+    lastUpdateTicks_ = now;
+    processor_.analysis.update(visuals_, static_cast<float>(std::min(seconds, 0.25)));
+    return visuals_;
+}
 
-std::string PluginModel::presetName() const { return "Init"; }
-std::vector<std::string> PluginModel::presetNames() const { return { "Init" }; }
-void PluginModel::loadPreset(int) {}
-void PluginModel::stepPreset(int) {}
-void PluginModel::savePreset() {}
+std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
+std::vector<std::string> PluginModel::presetNames() const { return processor_.presets.names(); }
+void PluginModel::loadPreset(int index) { processor_.presets.load(index); }
+void PluginModel::stepPreset(int delta) { processor_.presets.step(delta); }
+
+// The name is typed into a native dialog: text entry inside a plugin's own view
+// is unreliable in some hosts.
+void PluginModel::savePreset() {
+    saveDialog_ = std::make_unique<juce::AlertWindow>("Save preset", juce::String(), juce::MessageBoxIconType::NoIcon);
+    saveDialog_->addTextEditor("name", toJuce(processor_.presets.currentName()));
+    saveDialog_->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    saveDialog_->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this](int result) {
+        if (result == 1) processor_.presets.save(saveDialog_->getTextEditorContents("name"));
+    }));
+}
 
 ui::ResampleState PluginModel::resampleState() const { return ui::ResampleState::idle; }
 void PluginModel::resample() {}

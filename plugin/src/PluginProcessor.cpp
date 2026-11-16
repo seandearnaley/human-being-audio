@@ -7,6 +7,7 @@ namespace tf {
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       state(*this, nullptr, "TractForm", makeParameterLayout()),
+      presets(state),
       values_(state) {}
 
 void PluginProcessor::prepareToPlay(double, int) {}

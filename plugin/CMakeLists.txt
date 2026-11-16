@@ -14,7 +14,13 @@ juce_add_plugin(TractForm
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     COPY_PLUGIN_AFTER_BUILD ${TF_INSTALL_PLUGIN})
 
+# Factory presets are embedded in the binary.
+file(GLOB TF_PRESET_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/presets/*.json")
+juce_add_binary_data(TractFormPresets SOURCES ${TF_PRESET_FILES})
+
 target_sources(TractForm PRIVATE
+    src/Analysis.cpp
+    src/Analysis.h
     src/Parameters.cpp
     src/Parameters.h
     src/PluginEditor.cpp
@@ -22,7 +28,9 @@ target_sources(TractForm PRIVATE
     src/PluginModel.cpp
     src/PluginModel.h
     src/PluginProcessor.cpp
-    src/PluginProcessor.h)
+    src/PluginProcessor.h
+    src/Presets.cpp
+    src/Presets.h)
 
 target_compile_definitions(TractForm PUBLIC
     JUCE_WEB_BROWSER=0
@@ -34,7 +42,9 @@ target_link_libraries(TractForm
         tf_core
         tf_ui
         tf_warnings
+        TractFormPresets
         juce::juce_audio_utils
+        juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)

@@ -5,11 +5,14 @@
 #include "PluginProcessor.h"
 #include "tf/ui/model.h"
 
+#include <juce_gui_basics/juce_gui_basics.h>
+
 namespace tf {
 
 class PluginModel final : public ui::Model {
 public:
     explicit PluginModel(PluginProcessor& processor);
+    ~PluginModel() override;
 
     float get(ParamId id) const override;
     void begin(ParamId id) override;
@@ -32,6 +35,8 @@ private:
     PluginProcessor& processor_;
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_ {};
     ui::Visuals visuals_;
+    juce::int64 lastUpdateTicks_ = 0;
+    std::unique_ptr<juce::AlertWindow> saveDialog_;
 };
 
 }

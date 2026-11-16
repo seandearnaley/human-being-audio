@@ -1,6 +1,8 @@
 #pragma once
 
+#include "Analysis.h"
 #include "Parameters.h"
+#include "Presets.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -33,6 +35,8 @@ public:
     void setStateInformation(const void* data, int size) override;
 
     juce::AudioProcessorValueTreeState state;
+    Presets presets;
+    Analysis analysis;
 
 private:
     ParameterValues values_;
