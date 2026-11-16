@@ -23,7 +23,10 @@ PluginProcessor::PluginProcessor()
     state.addParameterListener(kQualityId, this);
 }
 
-PluginProcessor::~PluginProcessor() { state.removeParameterListener(kQualityId, this); }
+PluginProcessor::~PluginProcessor() {
+    state.removeParameterListener(kQualityId, this);
+    cancelPendingUpdate();
+}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate;
@@ -41,17 +44,20 @@ void PluginProcessor::prepareEngine() {
 }
 
 // Quality changes the oversampling factor, which reallocates. It is not
-// automatable, so this arrives from the interface or a restored session.
+// automatable, so this arrives from the interface or a restored session, and a
+// session may be restored on any thread. The update is cancelled with the
+// processor, so one still queued when the host unloads it never runs.
 void PluginProcessor::parameterChanged(const juce::String&, float) {
-    const auto reprepare = [this] {
-        suspendProcessing(true);
-        prepareEngine();
-        suspendProcessing(false);
-    };
     if (juce::MessageManager::getInstance()->isThisTheMessageThread())
-        reprepare();
+        handleAsyncUpdate();
     else
-        juce::MessageManager::callAsync(reprepare);
+        triggerAsyncUpdate();
+}
+
+void PluginProcessor::handleAsyncUpdate() {
+    suspendProcessing(true);
+    prepareEngine();
+    suspendProcessing(false);
 }
 
 bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -110,6 +116,9 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     };
     int cursor = 0;
     for (const auto metadata : midi) {
+        // Everything this synth plays fits in three bytes. A longer message
+        // (SysEx) would allocate when copied, so it is skipped unread.
+        if (metadata.numBytes > 3) continue;
         const int position = juce::jlimit(0, numSamples, metadata.samplePosition);
         render(cursor, position);
         cursor = std::max(cursor, position);

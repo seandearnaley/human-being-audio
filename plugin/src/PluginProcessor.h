@@ -13,7 +13,9 @@
 
 namespace tf {
 
-class PluginProcessor final : public juce::AudioProcessor, private juce::AudioProcessorValueTreeState::Listener {
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener,
+                              private juce::AsyncUpdater {
 public:
     PluginProcessor();
     ~PluginProcessor() override;
@@ -56,6 +58,7 @@ public:
 
 private:
     void parameterChanged(const juce::String& id, float value) override;
+    void handleAsyncUpdate() override;
     void prepareEngine();
     Transport readTransport() const;
     void handleMidi(const juce::MidiMessage& message) noexcept;

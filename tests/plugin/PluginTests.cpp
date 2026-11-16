@@ -4,8 +4,17 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <thread>
+#include <vector>
+
+// libmalloc calls this hook, when set, for every allocation and free. It is how
+// Apple's own memory tools watch a process, and it sees malloc as well as new.
+extern "C" void (*malloc_logger)(uint32_t type, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uint32_t);
 
 using Catch::Approx;
 using namespace tf;
@@ -37,6 +46,27 @@ struct Host {
         return peak;
     }
 };
+
+// Counts this thread's allocations while one is alive.
+class AllocationCount {
+public:
+    AllocationCount() {
+        count_ = 0;
+        malloc_logger = [](uint32_t type, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uint32_t) {
+            constexpr uint32_t allocation = 2;
+            if ((type & allocation) != 0) ++count_;
+        };
+    }
+    ~AllocationCount() { malloc_logger = nullptr; }
+    int get() const { return count_; }
+
+private:
+    static thread_local int count_;
+};
+thread_local int AllocationCount::count_ = 0;
+
+// Lets the message thread's queued callbacks run.
+void runMessageLoop() { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false); }
 
 float bandHz(int band) {
     return 20.0f * std::pow(1000.0f, (static_cast<float>(band) + 0.5f) / ui::Visuals::kSpectrumBands);
@@ -175,4 +205,52 @@ TEST_CASE("a drawn curve is saved with the session and with a preset's lane") {
     CHECK_FALSE(restoredModel.laneCurve(2) == defaultLaneCurves()[2]);
     load("Coupled Reese");
     CHECK(restoredModel.laneCurve(2) == defaultLaneCurves()[2]);
+}
+
+
+TEST_CASE("the audio callback does not allocate, whatever MIDI arrives") {
+    Host host;
+    const auto allocationsFor = [&](const juce::MidiMessage& message) {
+        juce::MidiBuffer midi;
+        midi.addEvent(message, 7);
+        host.buffer.clear();
+        const AllocationCount allocations;
+        host.processor.processBlock(host.buffer, midi);
+        return allocations.get();
+    };
+    const std::vector<juce::uint8> payload(200, 0x01);
+    const auto sysex = juce::MidiMessage::createSysExMessage(payload.data(), static_cast<int>(payload.size()));
+    {
+        // The counter does count: copying a long message is one allocation.
+        const AllocationCount allocations;
+        const juce::MidiMessage copy(sysex);
+        CHECK(allocations.get() == 1);
+    }
+    CHECK(allocationsFor(juce::MidiMessage::noteOn(1, 29, 1.0f)) == 0);
+    CHECK(allocationsFor(sysex) == 0);
+}
+
+TEST_CASE("Quality set from another thread takes effect on the message thread") {
+    const auto setQualityElsewhere = [](PluginProcessor& processor, float normalised) {
+        std::thread([&] { processor.state.getParameter("quality")->setValueNotifyingHost(normalised); }).join();
+    };
+    {
+        Host host;
+        const int before = host.processor.getLatencySamples();
+        setQualityElsewhere(host.processor, 0.0f);
+        CHECK(host.processor.getLatencySamples() == before);
+        runMessageLoop();
+        CHECK(host.processor.getLatencySamples() != before);
+    }
+    {
+        // A processor destroyed with a change still queued leaves nothing behind to run.
+        const juce::ScopedJuceInitialiser_GUI juce;
+        {
+            PluginProcessor processor;
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlock);
+            processor.prepareToPlay(kSampleRate, kBlock);
+            setQualityElsewhere(processor, 1.0f);
+        }
+        runMessageLoop();
+    }
 }
