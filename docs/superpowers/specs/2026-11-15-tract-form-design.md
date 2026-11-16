@@ -286,8 +286,8 @@ the growl's harmonics are bounded and weighted to the bottom.**
   Each voice keeps its share of the offset in proportion to its Detune setting,
   with its sign.
 
-The macros are now Coupling, Beat, Reach, Tract, Warp, Motion. Width lives in
-the Mid/side node.
+There are eight macros, in signal order: Coupling, Beat, Reach, Tract, Warp,
+Sculpt, Motion, Width. Sculpt's knob arrives with the Sculpt stage.
 
 ### Measuring noise
 

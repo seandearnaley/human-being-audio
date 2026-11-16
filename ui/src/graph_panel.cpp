@@ -384,7 +384,6 @@ public:
         place<Row>(nodeRow(kMidSide, 0), ParamId::midGain, colour::text, "Mid");
         place<Row>(nodeRow(kMidSide, 1), ParamId::sideGain, colour::text, "Side");
         place<Row>(nodeRow(kMidSide, 2), ParamId::xover, colour::text, "Crossover");
-        place<Row>(nodeRow(kMidSide, 3), ParamId::width, colour::text, "Width", true);
 
         // Out
         place<Row>(nodeRow(kOut, 0), ParamId::growlLevel, colour::growl, "Growl", true);

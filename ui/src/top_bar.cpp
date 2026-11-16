@@ -12,15 +12,17 @@ struct Macro {
     unsigned accent;
 };
 
-// Coupling and Beat act on the master/voice relationship; Reach, Tract and Warp
-// on the growl; Motion on the lanes.
-constexpr std::array<Macro, 6> kMacros { {
+// The performance controls, in signal order. Coupling and Beat act on the
+// master/voice relationship; Reach, Tract and Warp on the growl; Motion on the
+// lanes; Width on the stereo field.
+constexpr std::array<Macro, 7> kMacros { {
     { ParamId::coupling, colour::master },
     { ParamId::beat, colour::master },
     { ParamId::reach, colour::growl },
     { ParamId::tract, colour::growl },
     { ParamId::warp, colour::growl },
     { ParamId::motion, colour::motion },
+    { ParamId::width, colour::text },
 } };
 }
 
@@ -33,8 +35,8 @@ TopBar::TopBar(Context& context)
     for (auto* button : { &previous_, &name_, &next_, &save_ }) addChild(button);
     save_.setAccent(colour::textDim);
     for (std::size_t i = 0; i < kMacros.size(); ++i) {
-        macros_[i] = std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent);
-        addChild(macros_[i].get());
+        macros_.push_back(std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent));
+        addChild(macros_.back().get());
     }
     // With Beat lock on, Beat selects a division: show it, and snap the arc to it.
     for (auto& knob : macros_) {

@@ -1,10 +1,11 @@
-// Wordmark, preset navigation and the six macros.
+// Wordmark, preset navigation and the macros.
 #pragma once
 
 #include "controls.h"
 
 #include <array>
 #include <memory>
+#include <vector>
 
 namespace tf::ui {
 
@@ -25,7 +26,7 @@ private:
     Button name_;
     Button next_;
     Button save_;
-    std::array<std::unique_ptr<Knob>, 6> macros_;
+    std::vector<std::unique_ptr<Knob>> macros_;
     std::string shownPreset_;
 };
 
