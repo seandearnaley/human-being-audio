@@ -57,4 +57,14 @@ inline VoiceOffsets voiceOffsetsHz(const Params& p, double f0, double bpm) noexc
     return { offset(ParamId::aDetune, ParamId::aRatio), offset(ParamId::bDetune, ParamId::bRatio) };
 }
 
+// The sub/growl split in Hz: Sub split (a harmonic number) times the note,
+// kept within 30..400 Hz. The engine uses it for the sub's low-pass, the
+// growl's high-passes, Weight's pivot and Fit; tf-render and the tests measure
+// the sub band at the same frequency.
+inline constexpr double kSubSplitMinHz = 30.0;
+inline constexpr double kSubSplitMaxHz = 400.0;
+inline double subSplitHz(double subSplit, double f0) noexcept TF_NONBLOCKING {
+    return std::clamp(subSplit * f0, kSubSplitMinHz, kSubSplitMaxHz);
+}
+
 }

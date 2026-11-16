@@ -97,7 +97,9 @@ TEST_CASE("reach bounds the harmonics at reach x f0 and never dims what is below
     Setup s;
     s.params = lanesOff(hotPatch());
     s.params[ParamId::squash] = 0.0f;
-    s.params[ParamId::growlLevel] = 0.05f;
+    // The split at its lowest (1.5 x f0), so the band under reach x f0 is not
+    // the sub's: at the default 2.75 the growl's high-pass sits at 300 Hz on A2.
+    s.params[ParamId::subSplit] = 1.5f;
     s.oversampling = 2;  // Reach and the fold do not depend on it (the fold runs at 16x)
     const int note = 45;
     const double fs = s.sampleRate, f0 = noteHz(note);
@@ -107,10 +109,7 @@ TEST_CASE("reach bounds the harmonics at reach x f0 and never dims what is below
     for (float reach : { 4.0f, 8.0f, 16.0f, 32.0f, 64.0f }) {
         s.params[ParamId::reach] = reach;
         const auto out = render(s, held(note), frames(1.5, fs));
-        double clip = 0.0;
-        for (float c : out.growlClip) clip = std::max(clip, static_cast<double>(c));
-        REQUIRE(clip == 0.0);
-        const Signal& g = out.growl;
+        const Signal& g = out.growlPre;
         const double r = reach;
         const double under = band(g, 0.0, r * f0);
         const double above = band(g, 2.0 * r * f0, 0.5 * fs);
@@ -145,11 +144,7 @@ TEST_CASE("reach is a low-pass at reach x f0 that leaves the band below alone", 
     const auto from = static_cast<std::size_t>(kSteadyFrom * fs);
     const auto growlFor = [&](float reach) {
         s.params[ParamId::reach] = reach;
-        const auto out = render(s, held(note), frames(1.5, fs));
-        double clip = 0.0;
-        for (float c : out.growlClip) clip = std::max(clip, static_cast<double>(c));
-        REQUIRE(clip == 0.0);
-        return out.growl;
+        return render(s, held(note), frames(1.5, fs)).growlPre;
     };
     const Signal open = growlFor(256.0f);
     const auto band = [&](const Signal& x, double lo, double hi) { return analysis::bandPowerDb(x, from, x.size(), fs, lo, hi); };
@@ -170,35 +165,28 @@ TEST_CASE("reach is a low-pass at reach x f0 that leaves the band below alone", 
 
 namespace {
 // Weight 0, 0.25 ... 1 at F1 on the growl tap: the octave above the pivot
-// (max(3 f0, 1.5 subFreq)) keeps its level within 1 dB, and the tilt of the
-// output's mid, read up to 0.8 x reach x f0, falls. `linear` keeps what follows
-// Weight linear (Squash off, the growl clipper idle), so the sweep shows
-// Weight itself; otherwise the patch's own Squash and clipper react to it.
+// (max(3 f0, 1.5 x the split)) keeps its level within 1 dB, and the tilt of the
+// output's mid, read up to 0.8 x reach x f0, falls. `linear` reads both on the
+// growl before its clipper (Taps::growlPreClip) with Squash off, so the sweep
+// shows Weight itself; otherwise the patch's own Squash and clipper react to it.
 void weightSweep(const Params& patch, const char* name, bool linear) {
     Setup s;
     s.params = patch;
-    if (linear) {
-        s.params[ParamId::squash] = 0.0f;
-        s.params[ParamId::growlLevel] = 0.04f;
-    }
+    if (linear) s.params[ParamId::squash] = 0.0f;
     s.oversampling = 2;
     const int note = 29;
     const double fs = s.sampleRate, f0 = noteHz(note);
-    const double pivot = dsp::weightPivotHz(f0, s.params[ParamId::subFreq]);
+    const double pivot = dsp::weightPivotHz(f0, splitHz(s.params, note));
     const auto from = static_cast<std::size_t>(kSteadyFrom * fs);
     double previousTilt = 1e9, octave0 = 0.0;
     for (float weight : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f }) {
         s.params[ParamId::weight] = weight;
         const auto out = render(s, held(note), frames(1.5, fs));
-        if (linear) {
-            double clip = 0.0;
-            for (float c : out.growlClip) clip = std::max(clip, static_cast<double>(c));
-            REQUIRE(clip == 0.0);
-        }
-        const Signal m = mid(out);
+        const Signal m = linear ? out.growlPre : mid(out);
+        const Signal& g = linear ? out.growlPre : out.growl;
         const auto tilt = analysis::tiltDbPerOct(m, from, m.size(), fs, 0.8 * s.params[ParamId::reach] * f0);
         REQUIRE(tilt.has_value());
-        const double octave = analysis::bandPowerDb(out.growl, from, out.growl.size(), fs, pivot, 2.0 * pivot);
+        const double octave = analysis::bandPowerDb(g, from, g.size(), fs, pivot, 2.0 * pivot);
         if (weight == 0.0f) octave0 = octave;
         std::printf("[weight] %s, F1, weight %.2f: tilt %.2f dB/oct, growl in the octave above the pivot %+.2f dB re weight 0\n",
                     name, static_cast<double>(weight), *tilt, octave - octave0);
@@ -399,7 +387,7 @@ TEST_CASE("fit changes how the sub and growl interleave: the crest factor of the
         const auto out = render(s, held(note), frames(1.5, fs));
         analysis::MetricsRequest q;
         q.sampleRate = fs;
-        q.subFreq = s.params[ParamId::subFreq];
+        q.subFreq = splitHz(s.params, note);
         q.xover = s.params[ParamId::xover];
         q.steadyBegin = static_cast<std::size_t>(kSteadyFrom * fs);
         q.steadyEnd = out.left.size();
@@ -499,7 +487,7 @@ TEST_CASE("beat lock: each voice takes its share of the offset, with its sign", 
     s.params[ParamId::midGain] = s.params[ParamId::sideGain] = 0.0f;
     s.params[ParamId::xover] = 60.0f;
     s.params[ParamId::squash] = 0.0f;
-    s.params[ParamId::growlLevel] = 0.2f;  // the growl clipper idle
+    s.params[ParamId::midGain] = s.params[ParamId::sideGain] = -12.0f;  // the growl clipper about idle
     s.params[ParamId::subLevel] = 0.0f;
     s.oversampling = 2;
     const int note = 57;  // 220 Hz, well above the growl's high-pass
@@ -538,15 +526,13 @@ Params sculptProbe() {
 // Level (dB) of harmonic h in the growl tap: the power within f0 / 4 of it.
 double harmonicDb(const Rendered& out, double f0, double h, double fs) {
     const auto from = static_cast<std::size_t>(kSteadyFrom * fs);
-    return analysis::bandPowerDb(out.growl, from, out.growl.size(), fs, (h - 0.25) * f0, (h + 0.25) * f0);
+    return analysis::bandPowerDb(out.growlPre, from, out.growlPre.size(), fs, (h - 0.25) * f0, (h + 0.25) * f0);
 }
 
+// Measured on the growl before its clipper (harmonicDb), so what the clipper
+// does later does not enter.
 Rendered renderClipFree(const Setup& s, int note, double seconds) {
-    const auto out = render(s, held(note), frames(seconds, s.sampleRate));
-    double clip = 0.0;
-    for (float c : out.growlClip) clip = std::max(clip, static_cast<double>(c));
-    REQUIRE(clip == 0.0);
-    return out;
+    return render(s, held(note), frames(seconds, s.sampleRate));
 }
 
 }
@@ -630,7 +616,7 @@ TEST_CASE("sculpt: sweeping the bank does not click", "[engine][harmonic][sculpt
     double held = 0.0;
     for (float at : { 2.0f, 4.5f, 9.0f, 20.0f, 40.0f }) {
         s.params[ParamId::sculpt] = at;
-        held = std::max(held, maxStep(render(s, ::held(29), frames(0.8, fs)).growl));
+        held = std::max(held, maxStep(render(s, ::held(29), frames(0.8, fs)).growlPre));
     }
     Engine e;
     e.prepare(fs, s.block, s.oversampling);
@@ -640,7 +626,7 @@ TEST_CASE("sculpt: sweeping the bank does not click", "[engine][harmonic][sculpt
         const double t = std::clamp(static_cast<double>(pos - sweepStart) / static_cast<double>(sweepEnd - sweepStart), 0.0, 1.0);
         s.params[ParamId::sculpt] = static_cast<float>(2.0 * std::pow(20.0, t));
         const auto out = render(e, s, pos == 0 ? ::held(29) : std::vector<NoteEvent> {}, s.block, pos);
-        swept.insert(swept.end(), out.growl.begin(), out.growl.end());
+        swept.insert(swept.end(), out.growlPre.begin(), out.growlPre.end());
     }
     const double step = maxStep(swept);
     std::printf("[sculpt] sweep 2 -> 40 in 1 s: largest step %.4f, held bank anywhere on the way %.4f\n", step, held);

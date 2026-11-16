@@ -49,24 +49,27 @@ constexpr double kPpqTolerance = 1e-5;  // quarters; larger jumps re-anchor the 
 // exactly every control period, so the growl gets its own static ceiling
 // G = ceiling x margin - sub peak (lowered further only while the sub's own
 // transients rise above that peak). The growl path, in order:
-//   Squash -> growlLevel -> mid/side
+//   LR4 high-pass at the split -> Squash -> x kGrowlGain -> mid/side
 //   -> at 2x, kClipPasses times: linked soft clipper towards G, then LR4
-//      high-pass at subFreq on both channels (the clipper regenerates f0 and
+//      high-pass at the split on both channels (the clipper regenerates f0 and
 //      2 f0 from a harmonic growl; the high-pass keeps them out of the sub
 //      band but lifts the clipped peaks, which the next pass trims)
 //   -> look-ahead true-peak limiter on the growl alone, threshold G, slow
-//      release, catching what the clipper and high-pass overshoot.
+//      release, catching what the clipper and high-pass overshoot
+//   -> x growlLevel (linear), then the sub is added.
+// So the clipper is driven by the patch and kGrowlGain alone, and growlLevel
+// is a level: the growl reaches at most G x growlLevel <= G.
 // The sub and the master tap take the same 2x trip and the limiter's delay
 // and are never processed, so nothing the growl does modulates the sub band;
 // a second limiter touches the sub only if the sub alone exceeds the ceiling.
 // With limit on, sum peak <= G + sub peak <= ceiling. The final linked soft
 // clip at 0 dBFS is the safety net (the only bound with limit off). Latency is
-// unchanged. kGrowlGain sets where the clipper starts to bite: lightly on the
-// default patch, hard at growlLevel 1 on a dense one. With 0.2's defaults
-// (reach 96, weight 0.3, Sculpt -0.5), at F1, lanes off: default growl - sub
-// -6.8 dB, output RMS -8.4 dBFS, clipper 1.2 dB mean; coupling, drive, warp
-// and growl at 1 with squash 0.6: clipper 2.5 dB mean. (0.85 in 0.1, when the
-// growl carried every harmonic the fold made.)
+// unchanged. kGrowlGain sets how hard the clipper is driven: lightly on the
+// default patch, hard on a dense one. At F1, lanes off: the default patch's
+// clipper works 2.4 dB mean, the hot one's 2.1-2.5; the default's growl - sub
+// is -9.4 dB at growlLevel 0.76 and -7.0 at 1. (More gain does not raise it:
+// at 4 and 6 the clipped, limited growl at level 1 still reads -7.4 re sub,
+// because its peaks are held to G whatever drives them.)
 constexpr double kGrowlGain = 2.4;
 constexpr double kGrowlCeilingMargin = 0.96605;  // -0.3 dB, for inter-sample peaks
 constexpr double kGrowlCeilingFloor = 1e-3;      // -60 dBFS: a sub at or above the ceiling leaves the growl this
@@ -77,7 +80,7 @@ constexpr double kSubReleaseSeconds = 0.25;
 // trip). 4x measured the same (-51.8 dB inharmonic, tube fold, growl 1) and
 // costs a sample of latency.
 using ClipTrip = BaseRate2x;
-// Clip, high-pass at subFreq, and again: the high-pass removes the f0 and 2 f0
+// Clip, high-pass at the split, and again: the high-pass removes the f0 and 2 f0
 // the clip regenerates but lifts the clipped peaks; the second clip trims that
 // lift, regenerating far less, and its high-pass removes the rest. One pass left
 // the limiter 3.5 dB of average work on the default patch.
@@ -117,7 +120,7 @@ double lr4LowpassMagnitude(double hz, double cutoff, double sampleRate) noexcept
 // Smoothed raw parameters.
 enum Sm : std::size_t {
     coupling, beat, aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm, fbAmount, width_, tract_, drive_, asym_,
-    warp_, midGainDb, sideGainDb, xoverLog, subFreqLog, subLevel_, growlLevel_, squash_, ceilingDb, limitOn, bend,
+    warp_, midGainDb, sideGainDb, xoverLog, subSplitLog, subLevel_, growlLevel_, squash_, ceilingDb, limitOn, bend,
     reachLog, weight_, fitCycles,  // fitCycles is unwrapped: it moves the short way round
     sculptLog, spreadLog, sculptRes_,
     smCount
@@ -163,7 +166,8 @@ struct Engine::Impl {
     std::array<Ramp, osCount> os {};
 
     // Base rate.
-    Lr4Highpass growlHpL, growlHpR, sideHp;
+    Lr4Highpass growlHpL, growlHpR;
+    Lr4Highpass sideHp;
     // After each pass of the growl clipper, at the clipper's 2x rate, per channel.
     std::array<std::array<Lr4Highpass, 2>, kClipPasses> postClipHp {};
     Lr4Allpass midAp;
@@ -530,7 +534,8 @@ struct Engine::Impl {
         step(midGainDb, p[ParamId::midGain]);
         step(sideGainDb, p[ParamId::sideGain]);
         step(xoverLog, std::log(std::max(1.0f, p[ParamId::xover])));
-        step(subFreqLog, std::log(std::max(1.0f, p[ParamId::subFreq])));
+        step(subSplitLog,
+             std::log(std::clamp(p[ParamId::subSplit], spec(ParamId::subSplit).min, spec(ParamId::subSplit).max)));
         step(subLevel_, p[ParamId::subLevel]);
         step(growlLevel_, p[ParamId::growlLevel]);
         step(squash_, p[ParamId::squash]);
@@ -593,7 +598,12 @@ struct Engine::Impl {
         // phase with the master. The target is taken next to the current value
         // (whole cycles do not matter) so the ramp never sweeps the long way.
         const double f0 = incM * fo;
-        const double rotation = lr4LowpassLagCycles(f0, std::exp(sm(subFreqLog)), fs) + sm(fitCycles) + movedCycles(LaneTarget::fit);
+        // The sub/growl split follows the note: subSplit x f0 (smoothed,
+        // glided, bent pitch), within 30..400 Hz (tf::subSplitHz).
+        const double splitHz = subSplitHz(std::exp(sm(subSplitLog)), f0);
+        // The LR4's lag at f0 depends only on the ratio subSplit (and on the
+        // bilinear warp, a hair at bass pitches), except where the clamp holds.
+        const double rotation = lr4LowpassLagCycles(f0, splitHz, fs) + sm(fitCycles) + movedCycles(LaneTarget::fit);
         t[subRot] = snap ? rotation : os[subRot].value + wrapHalf(rotation - os[subRot].value);
 
         // Reach: 24 dB/oct at reach x f0, below 0.45 of the oversampled rate;
@@ -605,7 +615,7 @@ struct Engine::Impl {
         // Weight: dry -> one one-pole -> two at the pivot, level-matched over
         // the octave above it.
         const auto blend = weightBlend(feel::weightSlopeDb(static_cast<float>(moved(LaneTarget::weight, sm(weight_), 0.0, 1.0))),
-                                       weightPivotHz(f0, std::exp(sm(subFreqLog))), fo);
+                                       weightPivotHz(f0, splitHz), fo);
         t[weightG] = blend.gain;
         t[weightDry] = blend.dry;
         t[weightOne] = blend.one;
@@ -670,12 +680,14 @@ struct Engine::Impl {
         }
 
         // Base rate.
-        cSub = butterworth(std::exp(sm(subFreqLog)), fs);
-        cSubClip = butterworth(std::exp(sm(subFreqLog)), fs * ClipTrip::kFactor);
+        // The split's filters are recomputed every control period, so they
+        // follow glide and bend in steps of a few samples; the TPT form takes that.
+        cSub = butterworth(splitHz, fs);
+        cSubClip = butterworth(splitHz, fs * ClipTrip::kFactor);
         cXover = butterworth(std::exp(sm(xoverLog)), fs);
         std::array<double, baseCount> b {};
         b[subLevel] = std::clamp(sm(subLevel_), 0.0, 1.0);
-        b[growlLevel] = kGrowlGain * std::clamp(sm(growlLevel_), 0.0, 1.0);
+        b[growlLevel] = std::clamp(sm(growlLevel_), 0.0, 1.0);  // linear gain, after the growl's ceiling stage
         b[midGain] = dbToGain(sm(midGainDb));
         b[sideGain] = dbToGain(sm(sideGainDb));
         b[squashAmt] = std::clamp(sm(squash_), 0.0, 1.0);
@@ -684,7 +696,7 @@ struct Engine::Impl {
         // The sub is a sine, so its peak after the LR4 low-pass is exact:
         // level times the filter's magnitude at the current pitch. The growl
         // gets whatever is left under the ceiling.
-        const double subPeak = b[subLevel] * lr4LowpassMagnitude(incM * fo, std::exp(sm(subFreqLog)), fs);
+        const double subPeak = b[subLevel] * lr4LowpassMagnitude(f0, splitHz, fs);
         b[growlCeiling] = std::max(b[ceilingGain] * kGrowlCeilingMargin - subPeak, kGrowlCeilingFloor);
         for (std::size_t i = 0; i < baseCount; ++i) {
             if (snap) base[i].snap(b[i]);
@@ -836,12 +848,13 @@ struct Engine::Impl {
 
                 for (auto& ramp : base) ramp.next();
 
-                // Growl: high-pass at the sub frequency, squash, level.
+                // Growl: high-pass at the split, squash, the fixed gain into the
+                // growl's ceiling stage. (growlLevel comes after that stage.)
                 double gl = growlHpL.process(cSub, l);
                 double gr = growlHpR.process(cSub, r);
                 squash.process(gl, gr, base[squashAmt].value);
-                gl *= base[growlLevel].value;
-                gr *= base[growlLevel].value;
+                gl *= kGrowlGain;
+                gr *= kGrowlGain;
 
                 // Mid/side: the side is high-passed at the crossover; the mid gets
                 // the matching all-pass so both keep the same phase above it.
@@ -875,6 +888,7 @@ struct Engine::Impl {
                     std::min(base[growlCeiling].value, base[ceilingGain].value * kGrowlCeilingMargin - subEnvelope),
                     kGrowlCeilingFloor);
                 std::array<float, ClipTrip::kFactor> upL {}, upR {};
+                const double preClip = mid;  // (L + R) / 2
                 clip2xL.up(static_cast<float>(mid + side), upL.data());
                 clip2xR.up(static_cast<float>(mid - side), upR.data());
                 double clipDbNow = 0.0;
@@ -906,6 +920,14 @@ struct Engine::Impl {
                 double outL = gl * env, outR = gr * env;
                 std::array<double, 1> growlDelayed { 0.5 * (gl + gr) };
                 limiter.process(outL, outR, growlDelayed, ceilingG, base[limitAmt].value);
+                // Growl level: a plain linear gain (0..1) after the clipper, the
+                // high-passes and the limiter, so it sets loudness without
+                // changing how hard the growl is driven. The growl stays under
+                // G x growlLevel <= G, so the headroom sum still holds.
+                const double level = base[growlLevel].value;
+                outL *= level;
+                outR *= level;
+                growlDelayed[0] *= level;
                 double subL = subGated, subR = subGated;
                 std::array<double, 1> subDelayed { masterTap };
                 subLimiter.process(subL, subR, subDelayed, ceilingLin, base[limitAmt].value);
@@ -917,6 +939,7 @@ struct Engine::Impl {
                 right[n] = static_cast<float>(outR);
                 if (taps.master != nullptr) taps.master[n] = static_cast<float>(subDelayed[0]);
                 if (taps.growl != nullptr) taps.growl[n] = static_cast<float>(growlDelayed[0]);
+                if (taps.growlPreClip != nullptr) taps.growlPreClip[n] = static_cast<float>(preClip);
 
                 ++sinceAnchor;
                 ++sinceNoteStart;
@@ -943,6 +966,7 @@ struct Engine::Impl {
             std::fill_n(right + n, rest, 0.0f);
             if (taps.master != nullptr) std::fill_n(taps.master + n, rest, 0.0f);
             if (taps.growl != nullptr) std::fill_n(taps.growl + n, rest, 0.0f);
+            if (taps.growlPreClip != nullptr) std::fill_n(taps.growlPreClip + n, rest, 0.0f);
             grDb = 0.0f;
             // The lanes keep their control periods while the DSP sleeps.
             for (; n < numSamples; ++n) {

@@ -95,8 +95,10 @@ TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[en
     // one lane per target the summed movement is the lane's value exactly, and
     // the spans are 0.5 and 90/360, so the arithmetic is unchanged to the bit.
     // A deliberate change to the sound will change these: update them then.
+    // (Updated for the sub split following the note and Growl as a level
+    // after the growl's ceiling stage: both change the output by design.)
     Setup a;
-    CHECK(hashOutput(render(a, held(29), 24000)) == 0x151a0a26e15b9f06ULL);
+    CHECK(hashOutput(render(a, held(29), 24000)) == 0x6154257838135bfcULL);
     Setup b;
     b.params[ParamId::motion] = 1.0f;
     for (int i = 0; i < kLaneCount; ++i) {
@@ -104,7 +106,7 @@ TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[en
         b.params[laneParam(i, LaneField::depth)] = 1.0f;
         b.params[laneParam(i, LaneField::shape)] = static_cast<float>(i + 1);
     }
-    CHECK(hashOutput(render(b, held(29), 24000)) == 0x1b31358fe3ff7240ULL);
+    CHECK(hashOutput(render(b, held(29), 24000)) == 0x964545b64a4c5dbcULL);
 }
 
 // ---- Retargeting -----------------------------------------------------------------------
@@ -127,12 +129,12 @@ TEST_CASE("lanes: a ramp on Reach sweeps the growl's bandwidth two octaves each 
     const double fs = s.sampleRate;
     const double bar = quartersToSeconds(4.0);
     const auto still = render(s, held(note), frames(0.6, fs));
-    const double base = rolloffHz(still.growl, at(0.35, fs), at(0.6, fs), fs, 150.0);
+    const double base = rolloffHz(still.growlPre, at(0.35, fs), at(0.6, fs), fs, 150.0);
     setLane(s.params, 0, LaneTarget::reach, LaneShape::rampUp, kRateBar, 1.0f);
     const auto out = render(s, held(note), frames(2.0 * bar, fs));
     // The second cycle: its first and last 8 % (the ramp is within 0.16 of its ends).
-    const double low = rolloffHz(out.growl, at(bar + 0.015, fs), at(bar + 0.08 * bar, fs), fs, 150.0);
-    const double high = rolloffHz(out.growl, at(2.0 * bar - 0.08 * bar, fs), at(2.0 * bar - 0.005, fs), fs, 150.0);
+    const double low = rolloffHz(out.growlPre, at(bar + 0.015, fs), at(bar + 0.08 * bar, fs), fs, 150.0);
+    const double high = rolloffHz(out.growlPre, at(2.0 * bar - 0.08 * bar, fs), at(2.0 * bar - 0.005, fs), fs, 150.0);
     const double down = std::log2(low / base), up = std::log2(high / base);
     std::printf("[lanes] reach ramp: roll-off %.0f Hz still, %.0f at the ramp's start (%+.2f oct), %.0f at its end (%+.2f oct)\n",
                 base, low, down, high, up);
@@ -168,7 +170,7 @@ TEST_CASE("lanes: a square on Sculpt moves the notch by the span's ratio", "[eng
             const auto band = [&](const Signal& x) {
                 return analysis::bandPowerDb(x, at(from, fs), at(to, fs), fs, (h - 0.25) * f0, (h + 0.25) * f0);
             };
-            const double db = band(out.growl) - band(flat.growl);
+            const double db = band(out.growlPre) - band(flat.growlPre);
             if (db < bestDb) {
                 bestDb = db;
                 best = h;
@@ -470,11 +472,11 @@ TEST_CASE("lanes: lanePhases follows a leader at its ratio", "[engine][lanes]") 
 
 namespace {
 // The 50 ms Hann-weighted RMS range (dB), from 0.5 s, of the output
-// low-passed at subFreq, with the lanes as set.
+// low-passed at the split, with the lanes as set.
 double subRange(const Setup& s) {
     const double fs = s.sampleRate;
     const auto out = render(s, held(29), frames(2.5, fs));
-    const Signal sub = analysis::lr4Lowpass(mid(out), s.params[ParamId::subFreq], fs);
+    const Signal sub = analysis::lr4Lowpass(mid(out), splitHz(s.params, 29), fs);
     const Signal w = analysis::windowedRmsDb(sub, static_cast<std::size_t>(0.5 * fs), sub.size(), fs);
     return *std::max_element(w.begin(), w.end()) - *std::min_element(w.begin(), w.end());
 }

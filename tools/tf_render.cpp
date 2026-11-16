@@ -10,8 +10,11 @@
 // Metrics are computed on the held part of the note, skipping the first 250 ms
 // (attack, smoothing): rms, sub, side, correlation and centroid. Peaks cover the
 // whole file. centroidRangeHz is the 5th-95th percentile spread of 4096-sample
-// frame centroids. sideBelowXoverDb is side/mid energy below the preset's
-// crossover. sumCrestDb is the crest factor of the whole output over the held
+// frame centroids. subRmsDb (and subRmsRangeDb) is the mono output low-passed,
+// and growlRmsDb the output high-passed, at the engine's sub/growl split:
+// subSplit x the note's f0 (tf::subSplitHz, within 30..400 Hz), so a split
+// that follows the note is measured where it is. sideBelowXoverDb is side/mid
+// energy below the preset's crossover (in Hz). sumCrestDb is the crest factor of the whole output over the held
 // part. tiltDbPerOct and offHarmonicDb are defined in tools/analysis/analysis.h;
 // tilt is read from 500 Hz to min(0.8 x reach x f0, 16 kHz), and is null when
 // that is under two octaves;
@@ -155,7 +158,9 @@ int main(int argc, char** argv) {
     if (metrics) {
         tf::analysis::MetricsRequest q;
         q.sampleRate = request.sampleRate;
-        q.subFreq = request.params[tf::ParamId::subFreq];
+        // The sub band and growlRmsDb are split where the engine splits them:
+        // subSplit x f0 of the rendered note.
+        q.subFreq = tf::subSplitHz(request.params[tf::ParamId::subSplit], 440.0 * std::exp2((request.note - 69) / 12.0));
         q.xover = request.params[tf::ParamId::xover];
         q.steadyBegin = static_cast<std::size_t>(std::lround(0.25 * request.sampleRate));
         q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);

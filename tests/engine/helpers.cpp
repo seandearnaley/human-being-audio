@@ -1,5 +1,7 @@
 #include "helpers.h"
 
+#include "tf/voice_pitch.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -21,7 +23,8 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
     out.right.resize(n);
     out.master.resize(n);
     out.growl.resize(n);
-    std::vector<float> l(static_cast<std::size_t>(setup.block)), r(l.size()), m(l.size()), g(l.size());
+    out.growlPre.resize(n);
+    std::vector<float> l(static_cast<std::size_t>(setup.block)), r(l.size()), m(l.size()), g(l.size()), gp(l.size());
     engine.pitchBend(setup.bend);
     engine.setLaneCurves(setup.curves);
 
@@ -41,7 +44,7 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
         if (next < events.size()) end = std::min(end, std::max(pos + 1, events[next].frame));
         const int len = static_cast<int>(end - pos);
         transport.ppq = setup.ppqStart + static_cast<double>(pos + frameOffset) * qps;
-        engine.process(setup.params, transport, l.data(), r.data(), len, Taps { m.data(), g.data() });
+        engine.process(setup.params, transport, l.data(), r.data(), len, Taps { m.data(), g.data(), gp.data() });
         for (int i = 0; i < len; ++i) {
             const auto o = static_cast<std::size_t>(pos + i);
             const auto s = static_cast<std::size_t>(i);
@@ -49,6 +52,7 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
             out.right[o] = r[s];
             out.master[o] = m[s];
             out.growl[o] = g[s];
+            out.growlPre[o] = gp[s];
         }
         out.laneValues.push_back(engine.laneValues());
         out.hz.push_back(engine.currentHz());
@@ -156,6 +160,8 @@ Signal side(const Rendered& r) {
 }
 
 double noteHz(double note) { return 440.0 * std::exp2((note - 69.0) / 12.0); }
+
+double splitHz(const Params& params, int note) { return subSplitHz(params[ParamId::subSplit], noteHz(note)); }
 
 long long frames(double seconds, double sampleRate) { return std::llround(seconds * sampleRate); }
 

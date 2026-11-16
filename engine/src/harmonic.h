@@ -72,11 +72,12 @@ private:
 
 // ---- Weight ----------------------------------------------------------------
 
-// Weight's pivot: 3 f0, but never below 1.5 x the sub low-pass. Below that the
+// Weight's pivot: 3 f0, but never below 1.5 x the sub/growl split (in Hz,
+// subSplit x f0, so 1.5 x subSplit harmonics). Below that the
 // growl is high-passed away (it is the sub's band), so a pivot there would only
 // turn the audible growl down.
-inline double weightPivotHz(double f0, double subFreq) noexcept TF_NONBLOCKING {
-    return std::max(3.0 * f0, 1.5 * subFreq);
+inline double weightPivotHz(double f0, double splitHz) noexcept TF_NONBLOCKING {
+    return std::max(3.0 * f0, 1.5 * splitHz);
 }
 
 // Weight's coefficients: the one-poles' TPT gain and the blend of dry, one

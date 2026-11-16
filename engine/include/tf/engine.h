@@ -30,6 +30,10 @@ struct Taps {
     // the master).
     float* master = nullptr;
     float* growl = nullptr;   // the mono growl path just before it is summed with the sub
+    // The mono growl just before the growl clipper (after Squash, kGrowlGain
+    // and mid/side), for measurement: it runs ahead of the other taps by the
+    // clipper's 2x trip and the limiter's delay.
+    float* growlPreClip = nullptr;
 };
 
 class Engine {

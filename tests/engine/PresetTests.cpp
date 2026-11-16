@@ -104,7 +104,7 @@ std::vector<Rendered> renderBank(bool lanesOff) {
 
             analysis::MetricsRequest q;
             q.sampleRate = kRate;
-            q.subFreq = request.params[ParamId::subFreq];
+            q.subFreq = splitHz(request.params, request.note);
             q.xover = request.params[ParamId::xover];
             q.steadyBegin = static_cast<std::size_t>(frames(0.25, kRate));
             q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);

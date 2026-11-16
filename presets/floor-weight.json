@@ -28,7 +28,7 @@
   "midGain": 0.0,
   "sideGain": 0.0,
   "xover": 100.0,
-  "subFreq": 100.0,
+  "subSplit": 2.29,
   "subLevel": 0.54,
   "growlLevel": 0.2,
   "squash": 0.0,

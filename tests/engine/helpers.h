@@ -37,6 +37,7 @@ struct Setup {
 
 struct Rendered {
     Signal left, right, master, growl;
+    Signal growlPre;  // the growl before its clipper (Taps::growlPreClip): not time-aligned
     int latency = 0;
     std::vector<std::array<float, kLaneCount>> laneValues;  // after each block
     std::vector<float> hz;                                  // after each block
@@ -72,6 +73,8 @@ Signal mid(const Rendered& r);
 Signal side(const Rendered& r);
 
 double noteHz(double note);
+// The engine's sub/growl split for `note`, in Hz: subSplit x f0 (tf::subSplitHz).
+double splitHz(const Params& params, int note);
 long long frames(double seconds, double sampleRate);
 
 }

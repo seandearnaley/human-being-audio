@@ -46,6 +46,13 @@ TEST_CASE("defaults match the design") {
     CHECK(p[ParamId::weight] == Approx(0.3f));
     CHECK(spec(ParamId::fbTime).choices.size() == 5);
     CHECK(kFbCycles[static_cast<std::size_t>(p.choice(ParamId::fbTime))] == 1.0);
+    // The sub/growl split is a harmonic of the note: 2.75 is 120 Hz at F1.
+    CHECK(p[ParamId::subSplit] == Approx(2.75f));
+    CHECK(spec(ParamId::subSplit).min == Approx(1.5f));
+    CHECK(spec(ParamId::subSplit).max == Approx(6.0f));
+    CHECK(spec(ParamId::subSplit).unit == Unit::harmonic);
+    CHECK(findParam("subSplit") == ParamId::subSplit);
+    CHECK_FALSE(findParam("subFreq").has_value());
 }
 
 TEST_CASE("values are formatted for display") {
@@ -64,6 +71,7 @@ TEST_CASE("values are formatted for display") {
     CHECK(formatValue(spec(ParamId::fbTime), 2.0f) == "1 cyc");
     CHECK(formatValue(spec(ParamId::fbTime), 4.0f) == "4 cyc");
     CHECK(formatValue(spec(ParamId::sculpt), 6.0f) == "\u00d76.0");
+    CHECK(formatValue(spec(ParamId::subSplit), 4.0f) == "\u00d74.0");
 }
 
 TEST_CASE("the eight macros are the first eight parameters, in knob order") {

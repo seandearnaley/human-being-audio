@@ -70,7 +70,7 @@ struct Metrics {
 
 struct MetricsRequest {
     double sampleRate = 48000;
-    double subFreq = 120;
+    double subFreq = 120;         // Hz: where the sub band ends and the growl begins
     double xover = 100;
     std::size_t steadyBegin = 0;  // frames
     std::size_t steadyEnd = 0;    // frames, exclusive
