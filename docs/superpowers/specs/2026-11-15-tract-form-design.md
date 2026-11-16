@@ -101,7 +101,7 @@ the true-peak detector: 106 samples at 48 kHz.
 
 ## Parameters
 
-Stable string ids, 79 in all. In 0.1 there were 54, 53 automatable (`quality` is not); Live shows
+Stable string ids, 75 in all with 54 automatable. In 0.1 there were 54, 53 automatable (`quality` is not); Live shows
 an empty device panel above 64.
 
 | Id | Name | Range | Default |
