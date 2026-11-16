@@ -90,6 +90,11 @@ int main(int argc, char** argv) {
             }
             return argv[++i];
         };
+        // Every parameter at its default, as a preset: the reference for filling in new keys.
+        if (arg == "--dump-defaults") {
+            std::cout << tf::serialisePreset(tf::Preset {});
+            return 0;
+        }
         try {
             if (arg == "--preset") presetPath = value();
             else if (arg == "--note") request.note = std::stoi(value());

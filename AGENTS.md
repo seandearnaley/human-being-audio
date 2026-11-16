@@ -39,6 +39,16 @@ Add `-DTF_INSTALL_PLUGIN=ON` to copy them into `~/Library/Audio/Plug-Ins`.
 - **Host conformance**: `/Applications/pluginval.app/Contents/MacOS/pluginval --strictness-level 10
   --validate-in-process --validate "<path>.vst3"`.
 
+## Adding a parameter
+
+Add it to the table in `core/include/tf/params.h` (the compile-time checks will tell you if the
+order or ranges are wrong), then bring the presets up to date, since they write every key out:
+
+```sh
+build/engine/tools/tf-render --dump-defaults > defaults.json
+tools/scripts/fill_preset_keys.py defaults.json presets/*.json
+```
+
 ## Rules
 
 - A parameter is defined once, in `core/include/tf/params.h`. The engine, the host parameters and

@@ -1,5 +1,6 @@
 #include "tf/curve.h"
 #include "tf/lanes.h"
+#include "tf/params.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -116,4 +117,67 @@ TEST_CASE("editing keeps points sorted, in range and within capacity") {
     Curve one = curves::make({ { 0.2f, 0.3f } });
     removePoint(one, 0);
     CHECK(one.count == 1);
+}
+
+TEST_CASE("a lane follows another's shape at a ratio, and loops fall back") {
+    Params params = Params::defaults();
+    const LaneCurves curves = defaultLaneCurves();
+
+    // Lane 2 follows lane 1 at twice its rate.
+    params[laneParam(0, LaneField::rate)] = 3.0f;    // 1 bar
+    params[laneParam(0, LaneField::shape)] = static_cast<float>(LaneShape::rampUp);
+    params[laneParam(0, LaneField::phase)] = 0.0f;
+    params[laneParam(1, LaneField::follow)] = 1.0f;  // Lane 1
+    params[laneParam(1, LaneField::ratio)] = 4.0f;   // x2
+    params[laneParam(1, LaneField::phase)] = 0.0f;
+    params[laneParam(1, LaneField::shape)] = static_cast<float>(LaneShape::square);  // ignored while following
+
+    CHECK(laneSource(params, 1) == 0);
+    CHECK(laneLengthQuarters(params, 0) == 4.0);
+    CHECK(laneLengthQuarters(params, 1) == 2.0);
+    CHECK(laneOutput(params, curves, 0, 1.0) == Approx(-0.5));
+    CHECK(laneOutput(params, curves, 1, 1.0) == Approx(0.0));   // halfway through its own, shorter cycle
+    CHECK(laneOutput(params, curves, 1, 0.5) == Approx(laneOutput(params, curves, 0, 1.0)));
+
+    // A chain resolves to its end; a loop falls back to the lane itself.
+    params[laneParam(2, LaneField::follow)] = 2.0f;  // Lane 2, which follows Lane 1
+    CHECK(laneSource(params, 2) == 0);
+    params[laneParam(0, LaneField::follow)] = 3.0f;  // Lane 1 follows Lane 3: a loop
+    CHECK(laneSource(params, 0) == 0);
+    CHECK(laneSource(params, 2) == 2);
+}
+
+TEST_CASE("a Custom lane plays its drawn curve and sends depth times Motion") {
+    Params params = Params::defaults();
+    LaneCurves curves = defaultLaneCurves();
+    curves[2] = curves::make({ { 0.0f, 0.25f, 0.0f, Segment::hold }, { 0.5f, -0.75f, 0.0f, Segment::hold } });
+
+    params[laneParam(2, LaneField::shape)] = static_cast<float>(LaneShape::custom);
+    params[laneParam(2, LaneField::rate)] = 5.0f;   // 1/4
+    params[laneParam(2, LaneField::phase)] = 0.0f;
+    params[laneParam(2, LaneField::depth)] = -0.5f;
+    params[ParamId::motion] = 0.8f;
+
+    CHECK(laneOutput(params, curves, 2, 0.25) == Approx(0.25));
+    CHECK(laneOutput(params, curves, 2, 0.75) == Approx(-0.75));
+    CHECK(laneSend(params, curves, 2, 0.75) == Approx(-0.75 * -0.5 * 0.8));
+    params[laneParam(2, LaneField::on)] = 0.0f;
+    CHECK(laneSend(params, curves, 2, 0.75) == 0.0);
+}
+
+TEST_CASE("lanes aimed at one target add up, and Reach moves by ratio") {
+    Params params = Params::defaults();
+    params[laneParam(0, LaneField::target)] = static_cast<float>(LaneTarget::reach);
+    params[laneParam(1, LaneField::target)] = static_cast<float>(LaneTarget::reach);
+    params[laneParam(2, LaneField::target)] = static_cast<float>(LaneTarget::morph);
+    const std::array<float, kLaneCount> sends { 0.25f, 0.25f, -1.0f, 0.5f };
+
+    CHECK(laneSum(params, sends, LaneTarget::reach) == Approx(0.5f));
+    CHECK(laneSum(params, sends, LaneTarget::morph) == Approx(-1.0f));
+    CHECK(laneSum(params, sends, LaneTarget::fit) == 0.0f);
+
+    CHECK(laneApply(LaneTarget::reach, 16.0f, 0.5f) == Approx(32.0f));   // half of two octaves up
+    CHECK(laneApply(LaneTarget::reach, 16.0f, -1.0f) == Approx(4.0f));
+    CHECK(laneApply(LaneTarget::morph, 0.5f, -1.0f) == Approx(0.0f));
+    CHECK(laneApply(LaneTarget::fit, 90.0f, 0.5f) == Approx(180.0f));
 }

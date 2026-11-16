@@ -25,21 +25,25 @@ enum class ParamId : std::uint8_t {
     midGain, sideGain, xover,
     subFreq, fit, subLevel, growlLevel, squash,
     limit, ceiling, quality,
-    lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape,
-    lane2On, lane2Rate, lane2Phase, lane2Depth, lane2Shape,
-    lane3On, lane3Rate, lane3Phase, lane3Depth, lane3Shape,
-    lane4On, lane4Rate, lane4Phase, lane4Depth, lane4Shape,
+    lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape, lane1Target, lane1Follow, lane1Ratio,
+    lane2On, lane2Rate, lane2Phase, lane2Depth, lane2Shape, lane2Target, lane2Follow, lane2Ratio,
+    lane3On, lane3Rate, lane3Phase, lane3Depth, lane3Shape, lane3Target, lane3Follow, lane3Ratio,
+    lane4On, lane4Rate, lane4Phase, lane4Depth, lane4Shape, lane4Target, lane4Follow, lane4Ratio,
     count
 };
 
 inline constexpr int kParamCount = static_cast<int>(ParamId::count);
 inline constexpr int kLaneCount = 4;
 
-enum class LaneField : std::uint8_t { on, rate, phase, depth, shape };
-enum class LaneTarget : std::uint8_t { phase, tract, fold, detune };
+enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio };
+inline constexpr int kLaneFieldCount = 8;
+
+// What a lane moves. Order matches choices::laneTarget.
+enum class LaneTarget : std::uint8_t { phase, morph, drive, beat, coupling, reach, weight, sculpt, fit, width };
+inline constexpr int kLaneTargetCount = 10;
 
 constexpr ParamId laneParam(int lane, LaneField field) {
-    return static_cast<ParamId>(static_cast<int>(ParamId::lane1On) + lane * 5 + static_cast<int>(field));
+    return static_cast<ParamId>(static_cast<int>(ParamId::lane1On) + lane * kLaneFieldCount + static_cast<int>(field));
 }
 
 enum class ParamKind : std::uint8_t { continuous, toggle, choice };
@@ -77,7 +81,16 @@ inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" }
 inline constexpr std::array<std::string_view, 12> laneRate {
     "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
 };
-inline constexpr std::array<std::string_view, 6> laneShape { "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps" };
+// "Custom" plays the lane's drawn curve.
+inline constexpr std::array<std::string_view, 7> laneShape {
+    "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps", "Custom"
+};
+inline constexpr std::array<std::string_view, 10> laneTarget {
+    "Phase", "Morph", "Drive", "Beat", "Coupling", "Reach", "Weight", "Sculpt", "Fit", "Width"
+};
+// A lane plays its own shape, or follows another lane's shape at a ratio of its rate.
+inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
+inline constexpr std::array<std::string_view, 7> laneRatio { "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74" };
 }
 
 // Feedback delay per choice, in cycles of the note.
@@ -88,9 +101,11 @@ inline constexpr std::array<double, 12> kLaneRateQuarters {
     32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
 };
 inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
+// How many times faster than its leader a following lane runs.
+inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
 
 enum class FoldType : std::uint8_t { fold, sine, tube };
-enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps };
+enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def) {
@@ -113,12 +128,17 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
 }
 }
 
-#define TF_LANE(n, label, rate, phase, depth)                                                      \
-    detail::toggle("lane" #n "On", label " lane", true),                                           \
-    detail::choice("lane" #n "Rate", label " rate", choices::laneRate, rate),                      \
-    detail::ranged("lane" #n "Phase", label " phase", 0.0f, 360.0f, phase, Unit::degrees),         \
-    detail::bipolar("lane" #n "Depth", label " depth", depth),                                     \
-    detail::choice("lane" #n "Shape", label " shape", choices::laneShape, 0)
+// Only a lane's depth and phase are automatable: the rest shapes the lane rather
+// than performs it, and Live shows an empty device panel above 64 parameters.
+#define TF_LANE(n, target, rate, phase, depth)                                                                   \
+    detail::toggle("lane" #n "On", "Lane " #n, true),                                                            \
+    detail::choice("lane" #n "Rate", "Lane " #n " rate", choices::laneRate, rate, false),                        \
+    detail::ranged("lane" #n "Phase", "Lane " #n " phase", 0.0f, 360.0f, phase, Unit::degrees),                  \
+    detail::bipolar("lane" #n "Depth", "Lane " #n " depth", depth),                                              \
+    detail::choice("lane" #n "Shape", "Lane " #n " shape", choices::laneShape, 0, false),                        \
+    detail::choice("lane" #n "Target", "Lane " #n " target", choices::laneTarget, static_cast<int>(target), false), \
+    detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                     \
+    detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false)
 
 // Order must match ParamId.
 inline constexpr std::array<ParamSpec, kParamCount> kParams { {
@@ -165,10 +185,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::toggle("limit", "Limit", true),
     detail::ranged("ceiling", "Ceiling", -12.0f, 0.0f, -0.3f, Unit::dB),
     detail::choice("quality", "Quality", choices::quality, 1, false),
-    TF_LANE(1, "Phase", 7, 0.0f, 0.62f),
-    TF_LANE(2, "Tract", 5, 90.0f, 0.79f),
-    TF_LANE(3, "Fold", 7, 180.0f, 0.46f),
-    TF_LANE(4, "Detune", 4, 270.0f, 0.38f),
+    TF_LANE(1, LaneTarget::phase, 7, 0.0f, 0.62f),
+    TF_LANE(2, LaneTarget::morph, 5, 90.0f, 0.79f),
+    TF_LANE(3, LaneTarget::drive, 7, 180.0f, 0.46f),
+    TF_LANE(4, LaneTarget::beat, 4, 270.0f, 0.38f),
 } };
 
 #undef TF_LANE
@@ -197,6 +217,8 @@ constexpr bool tableIsValid() {
 }
 static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must match ParamId");
+static_assert(spec(ParamId::lane4Ratio).key == "lane4Ratio" && spec(laneParam(2, LaneField::target)).key == "lane3Target", "lane layout");
+static_assert(choices::laneTarget.size() == kLaneTargetCount && kLaneRatios.size() == choices::laneRatio.size());
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
 static_assert(spec(ParamId::reach).key == "reach" && spec(ParamId::beatLock).key == "beatLock", "kParams order");
 static_assert(spec(ParamId::weight).key == "weight" && spec(ParamId::width).key == "width", "kParams order");
