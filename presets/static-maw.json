@@ -25,8 +25,8 @@
   "foldType": "Sine",
   "drive": 0.5,
   "asym": 0.2,
-  "midGain": 0.0,
-  "sideGain": 2.0,
+  "midGain": -3.6,
+  "sideGain": -1.6,
   "xover": 100.0,
   "subSplit": 2.75,
   "subLevel": 0.4,
@@ -55,7 +55,7 @@
   "lane4Depth": 0.3,
   "lane4Shape": "Sine",
   "reach": 128.0,
-  "weight": 0.95,
+  "weight": 1.0,
   "fit": 270.0,
   "beatLock": false,
   "sculpt": 6.0,
@@ -73,6 +73,6 @@
   "lane3Follow": "Own",
   "lane3Ratio": "×1",
   "lane4Target": "Beat",
-  "lane4Follow": "Own",
-  "lane4Ratio": "×1"
+  "lane4Follow": "Lane 2",
+  "lane4Ratio": "÷2"
 }

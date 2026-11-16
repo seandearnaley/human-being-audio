@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -121,6 +122,36 @@ std::vector<Rendered> renderBank(bool lanesOff) {
     return out;
 }
 
+// The x of every point of "lane<n>Curve" in the file as written, in file order
+// (the parser sorts points, so order has to be read from the text), or nullopt
+// when the file has no such key. Points are [x, y, tension, "segment"].
+std::optional<std::vector<double>> writtenCurveXs(const std::string& text, int lane) {
+    const std::string key = "\"lane" + std::to_string(lane + 1) + "Curve\"";
+    auto pos = text.find(key);
+    if (pos == std::string::npos) return std::nullopt;
+    pos = text.find('[', pos + key.size());
+    std::vector<double> xs;
+    int depth = 0;
+    for (; pos < text.size(); ++pos) {
+        const char c = text[pos];
+        if (c == '[') {
+            ++depth;
+            if (depth == 2) xs.push_back(std::strtod(text.c_str() + pos + 1, nullptr));
+        } else if (c == ']') {
+            if (--depth == 0) break;
+        } else if (c == '"' && depth >= 1) {
+            pos = text.find('"', pos + 1);  // skip a segment name
+        }
+    }
+    return xs;
+}
+
+bool laneOn(const Params& p, int lane) {
+    return p.on(laneParam(lane, LaneField::on)) && p[laneParam(lane, LaneField::depth)] != 0.0f;
+}
+
+int followed(const Params& p, int lane) { return p.choice(laneParam(lane, LaneField::follow)) - 1; }  // -1: Own
+
 }
 
 TEST_CASE("every factory preset parses, is named and complete") {
@@ -161,8 +192,78 @@ TEST_CASE("the Coupled Reese preset is the parameter defaults") {
             CAPTURE(kParams[i].key);
             CHECK(preset->params.values[i] == defaults.values[i]);
         }
+        CHECK(file.text.find("Curve\"") == std::string::npos);  // no drawn curves either
     }
     CHECK(found);
+}
+
+TEST_CASE("every drawn curve belongs to a Custom lane and is well formed") {
+    for (const auto& file : presetFiles()) {
+        CAPTURE(file.path);
+        const auto preset = parsePreset(file.text);
+        REQUIRE(preset.has_value());
+        for (int lane = 0; lane < kLaneCount; ++lane) {
+            CAPTURE(lane + 1);
+            const auto xs = writtenCurveXs(file.text, lane);
+            if (!xs) continue;
+            CHECK(preset->params.choice(laneParam(lane, LaneField::shape)) == static_cast<int>(LaneShape::custom));
+            CHECK(xs->size() >= 2);
+            CHECK(xs->size() <= static_cast<std::size_t>(kMaxCurvePoints));
+            for (std::size_t i = 0; i < xs->size(); ++i) {
+                CAPTURE(i, (*xs)[i]);
+                CHECK((*xs)[i] >= 0.0);
+                CHECK((*xs)[i] < 1.0);
+                if (i > 0) CHECK((*xs)[i] > (*xs)[i - 1]);
+            }
+        }
+    }
+}
+
+TEST_CASE("no lane follows itself or a loop") {
+    for (const auto& file : presetFiles()) {
+        CAPTURE(file.path);
+        const auto preset = parsePreset(file.text);
+        REQUIRE(preset.has_value());
+        const auto& p = preset->params;
+        for (int lane = 0; lane < kLaneCount; ++lane) {
+            CAPTURE(lane + 1);
+            CHECK(followed(p, lane) != lane);
+            // Walking the chain must reach a lane that plays its own shape.
+            int at = lane;
+            std::set<int> seen { lane };
+            while (followed(p, at) >= 0) {
+                at = followed(p, at);
+                const bool fresh = seen.insert(at).second;
+                CHECK(fresh);
+                if (!fresh) break;
+            }
+        }
+    }
+}
+
+TEST_CASE("the bank shows the movement system") {
+    // The 0.2 movement showcase: lanes sweeping Sculpt (the notch bank in
+    // motion), drawn curves and linked lanes. Counted so a later edit cannot
+    // quietly remove it.
+    int sculpt = 0, custom = 0, following = 0;
+    for (const auto& file : presetFiles()) {
+        const auto preset = parsePreset(file.text);
+        REQUIRE(preset.has_value());
+        const auto& p = preset->params;
+        bool hasSculpt = false, hasCustom = false, hasFollow = false;
+        for (int lane = 0; lane < kLaneCount; ++lane) {
+            if (!laneOn(p, lane)) continue;
+            hasSculpt |= laneTargetOf(p, lane) == LaneTarget::sculpt && p[ParamId::sculptDepth] != 0.0f;
+            hasCustom |= p.choice(laneParam(lane, LaneField::shape)) == static_cast<int>(LaneShape::custom);
+            hasFollow |= followed(p, lane) >= 0 && laneOn(p, followed(p, lane));
+        }
+        sculpt += hasSculpt ? 1 : 0;
+        custom += hasCustom ? 1 : 0;
+        following += hasFollow ? 1 : 0;
+    }
+    CHECK(sculpt >= 6);
+    CHECK(custom >= 8);
+    CHECK(following >= 6);
 }
 
 TEST_CASE("every factory preset renders with a steady sub under the ceiling") {
