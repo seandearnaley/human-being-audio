@@ -185,7 +185,7 @@ One screen, no tabs, 16:9, resizable with a fixed aspect ratio. Default
 - **Top bar**: wordmark, preset name with previous/next and save, six macro
   knobs.
 - **Signal graph**: Master, Reese A, Reese B with the feedback loop, Tract, Fold,
-  Mid/side, Out. The sub path runs underneath from Master to Out. Each node draws
+  Sculpt, Mid/side, Out. The sub path runs underneath from Master to Out. Each node draws
   its own live shape and holds its own values, edited by dragging.
 - **Analysis**: scope (master, growl, output), phase correlation, spectrum.
 - **Movement**: four lanes with on, rate, phase, depth and shape, drawn with a
