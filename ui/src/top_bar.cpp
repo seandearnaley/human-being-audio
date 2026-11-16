@@ -1,5 +1,7 @@
 #include "top_bar.h"
 
+#include "tf/feel.h"
+
 #include <algorithm>
 
 namespace tf::ui {
@@ -33,6 +35,17 @@ TopBar::TopBar(Context& context)
     for (std::size_t i = 0; i < kMacros.size(); ++i) {
         macros_[i] = std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent);
         addChild(macros_[i].get());
+    }
+    // With Beat lock on, Beat selects a division: show it, and snap the arc to it.
+    for (auto& knob : macros_) {
+        if (knob->id() != ParamId::beat) continue;
+        knob->setFace([&model = context_.model](const Knob& beat) {
+            if (model.get(ParamId::beatLock) < 0.5f) return beat.valueFace();
+            constexpr int divisions = static_cast<int>(choices::beatLock.size());
+            const int index = feel::beatLockIndex(beat.value(), divisions);
+            return Knob::Face { std::string(choices::beatLock[static_cast<std::size_t>(index)]),
+                                static_cast<float>(index) / static_cast<float>(divisions - 1) };
+        });
     }
     context_.live.push_back(this);
     tick();

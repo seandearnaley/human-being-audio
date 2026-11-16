@@ -14,6 +14,12 @@ std::string withoutUnit(std::string text) {
     const auto space = text.find(' ');
     return space == std::string::npos ? text : text.substr(0, space);
 }
+
+// Characters, not bytes: "×16" is three.
+std::size_t codePoints(const std::string& text) {
+    return static_cast<std::size_t>(std::count_if(
+        text.begin(), text.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xc0u) != 0x80u; }));
+}
 }
 
 void drawLabel(visage::Canvas& canvas, const Context& context, const std::string& text, float x, float y, float width,
@@ -133,7 +139,20 @@ bool ParamFrame::mouseWheel(const visage::MouseEvent& e) {
     return true;
 }
 
+Knob::Face Knob::valueFace() const { return { withoutUnit(text()), normalised() }; }
+
+void Knob::setFace(FaceProvider provider) {
+    provider_ = std::move(provider);
+    redraw();
+}
+
+void Knob::tick() {
+    if (provider_ && face() != drawnFace_) redraw();
+    ParamFrame::tick();
+}
+
 void Knob::paint(visage::Canvas& canvas) {
+    drawnFace_ = face();
     const float labelHeight = context_.px(16.0f);
     const float diameter = std::min(width(), height() - labelHeight);
     const float x = (width() - diameter) * 0.5f;
@@ -142,7 +161,7 @@ void Knob::paint(visage::Canvas& canvas) {
     // A 270 degree sweep, open at the bottom.
     constexpr float sweep = 1.5f * kPi;
     constexpr float start = 0.75f * kPi;
-    const float position = normalised();
+    const float position = std::clamp(drawnFace_.position, 0.0f, 1.0f);
     const float origin = spec().min < 0.0f ? 0.5f : 0.0f;
     const float from = std::min(origin, position);
     const float to = std::max(origin, position);
@@ -155,8 +174,10 @@ void Knob::paint(visage::Canvas& canvas) {
                           sweep * (to - from) * 0.5f);
     }
 
-    drawLabel(canvas, context_, withoutUnit(text()), 0.0f, 0.0f, width(), diameter, colour::text, visage::Font::kCenter,
-              type::title, Weight::medium);
+    // Up to three characters sit at title size; longer ones ("2 bars") step down to clear the arc.
+    const float textSize = codePoints(drawnFace_.text) > 3 ? type::small : type::title;
+    drawLabel(canvas, context_, drawnFace_.text, 0.0f, 0.0f, width(), diameter, colour::text, visage::Font::kCenter,
+              textSize, Weight::medium);
     drawLabel(canvas, context_, std::string(spec().name), 0.0f, height() - labelHeight, width(), labelHeight,
               active() ? colour::text : colour::textDim, visage::Font::kCenter);
 }

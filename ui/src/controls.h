@@ -60,10 +60,31 @@ private:
 // A macro: an arc with the value inside and the name underneath.
 class Knob final : public ParamFrame {
 public:
+    // What the knob shows: the text inside the arc, and where along the arc (0..1) the fill ends.
+    struct Face {
+        std::string text;
+        float position = 0.0f;
+        bool operator==(const Face&) const = default;
+    };
+    using FaceProvider = std::function<Face(const Knob&)>;
+
     Knob(Context& context, ParamId id, unsigned accent) : ParamFrame(context, id, accent) {}
 
+    // The default face: the value without its unit, at the value's position.
+    Face valueFace() const;
+
+    // Replaces the default face. The provider may read other parameters; the
+    // knob repaints whenever the face it returns changes.
+    void setFace(FaceProvider provider);
+
+    void tick() override;
+
 private:
+    Face face() const { return provider_ ? provider_(*this) : valueFace(); }
     void paint(visage::Canvas& canvas) override;
+
+    FaceProvider provider_;
+    Face drawnFace_;
 };
 
 // "Label ......... value". Toggles draw a switch, choices a chevron. With `bar`

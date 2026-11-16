@@ -33,8 +33,8 @@ struct Box {
 constexpr float kInset = 10.0f;         // node edge to content
 constexpr float kTitleHeight = 16.0f;   // title band, from the top inset
 constexpr float kVisualTop = 36.0f;     // from the node top
-constexpr float kVisualHeight = 84.0f;
-constexpr float kRowsTop = 132.0f;      // three rows end on the bottom inset
+constexpr float kVisualHeight = 62.0f;
+constexpr float kRowsTop = 110.0f;      // four rows end on the bottom inset
 constexpr float kReeseRowsTop = 30.0f;  // the Reese cards' 2x2 grid
 constexpr float kColumnGap = 20.0f;     // between the two columns of that grid
 constexpr float kSparkWidth = 90.0f;
@@ -52,10 +52,17 @@ constexpr Box kOut { 1082.0f, kNodeTop, 162.0f, kNodeHeight };
 
 constexpr float kSubY = 256.0f;
 constexpr float kCorner = 10.0f;
-constexpr Box kSubLock { (kMaster.midX() + kOut.midX()) * 0.5f - 100.0f, kSubY - 18.0f, 200.0f, 36.0f };
+// One line: title, Low-pass, Fit. Each row is as wide as its longest label and
+// value ("200 Hz", "360°") plus the same 16 px the title leaves before Low-pass.
 constexpr float kSubLockRowX = 76.0f;  // from the card's left edge
+constexpr float kLowPassWidth = 108.0f;
+constexpr float kFitWidth = 60.0f;
+constexpr float kSubLockGap = 24.0f;   // between the two rows
+constexpr float kSubLockWidth = kSubLockRowX + kLowPassWidth + kSubLockGap + kFitWidth + kInset;
+constexpr Box kSubLock { (kMaster.midX() + kOut.midX() - kSubLockWidth) * 0.5f, kSubY - 18.0f, kSubLockWidth, 36.0f };
 
 constexpr float kChipWidth = 52.0f;
+constexpr float kTimeChipWidth = 64.0f;  // "1/4 cyc"
 constexpr float kChipHeight = 20.0f;
 constexpr float kChipGap = 6.0f;
 constexpr float kFeedbackLabelWidth = 58.0f;  // "Feedback" at label size
@@ -349,13 +356,15 @@ public:
         // Master
         place<Row>(nodeRow(kMaster, 1), ParamId::glide, colour::master, "Glide", true);
         place<Row>(nodeRow(kMaster, 2), ParamId::phaseReset, colour::master, "Phase reset");
+        place<Row>(nodeRow(kMaster, 3), ParamId::beatLock, colour::master, "Beat lock");
 
         // Reese A and B
         addVoice(kReeseA, ParamId::aDetune, ParamId::aRatio, ParamId::aPhase, ParamId::aPm);
         addVoice(kReeseB, ParamId::bDetune, ParamId::bRatio, ParamId::bPhase, ParamId::bPm);
         const float chipY = kFeedback.midY() - kChipHeight * 0.5f;
         const float amountX = kFeedback.right() - kInset - kChipWidth;
-        place<Chip>({ amountX - kChipGap - kChipWidth, chipY, kChipWidth, kChipHeight }, ParamId::fbTime, colour::growl);
+        place<Chip>({ amountX - kChipGap - kTimeChipWidth, chipY, kTimeChipWidth, kChipHeight }, ParamId::fbTime,
+                    colour::growl);
         place<Chip>({ amountX, chipY, kChipWidth, kChipHeight }, ParamId::fbAmount, colour::growl);
 
         // Tract
@@ -368,21 +377,25 @@ public:
         place<Row>(nodeRow(kFold, 0), ParamId::foldType, colour::growl, "Type");
         place<Row>(nodeRow(kFold, 1), ParamId::drive, colour::growl, "Drive", true);
         place<Row>(nodeRow(kFold, 2), ParamId::asym, colour::growl, "Asym");
+        place<Row>(nodeRow(kFold, 3), ParamId::weight, colour::growl, "Weight", true);
         driveMarker_ = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, 2);
 
         // Mid/side
         place<Row>(nodeRow(kMidSide, 0), ParamId::midGain, colour::text, "Mid");
         place<Row>(nodeRow(kMidSide, 1), ParamId::sideGain, colour::text, "Side");
         place<Row>(nodeRow(kMidSide, 2), ParamId::xover, colour::text, "Crossover");
+        place<Row>(nodeRow(kMidSide, 3), ParamId::width, colour::text, "Width", true);
 
         // Out
         place<Row>(nodeRow(kOut, 0), ParamId::growlLevel, colour::growl, "Growl", true);
         place<Row>(nodeRow(kOut, 1), ParamId::subLevel, colour::master, "Sub", true);
 
         // Sub lock
-        place<Row>({ kSubLock.x + kSubLockRowX, kSubLock.midY() - metric::row * 0.5f,
-                     kSubLock.w - kSubLockRowX - kInset, metric::row },
-                   ParamId::subFreq, colour::master, "Low-pass");
+        const float subRowY = kSubLock.midY() - metric::row * 0.5f;
+        const float subRowX = kSubLock.x + kSubLockRowX;
+        place<Row>({ subRowX, subRowY, kLowPassWidth, metric::row }, ParamId::subFreq, colour::master, "Low-pass");
+        place<Row>({ subRowX + kLowPassWidth + kSubLockGap, subRowY, kFitWidth, metric::row }, ParamId::fit,
+                   colour::master, "Fit");
 
         lastTick_ = Clock::now();
     }
@@ -571,7 +584,7 @@ private:
         // The loop runs behind the strip; clear it where the label and chips sit.
         const float pad = 6.0f;
         const float labelX = kFeedback.x + kInset;
-        const float chipsX = kFeedback.right() - kInset - 2.0f * kChipWidth - kChipGap;
+        const float chipsX = kFeedback.right() - kInset - kChipWidth - kChipGap - kTimeChipWidth;
         const float y = kFeedback.midY() - kChipHeight * 0.5f;
         canvas.setColor(colour::panel);
         canvas.rectangle(px(labelX - pad), px(y), px(kFeedbackLabelWidth + 2.0f * pad), px(kChipHeight));
