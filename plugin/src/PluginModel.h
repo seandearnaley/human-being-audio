@@ -22,7 +22,7 @@ public:
     const ui::Visuals& visuals() override;
 
     std::string presetName() const override;
-    std::vector<std::string> presetNames() const override;
+    std::vector<ui::PresetInfo> presets() const override;
     void loadPreset(int index) override;
     void stepPreset(int delta) override;
     void savePreset() override;

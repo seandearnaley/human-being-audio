@@ -47,10 +47,18 @@ void TopBar::tick() {
     name_.setLabel(shownPreset_);
 }
 
+// One submenu per category, in the order the model lists them.
 void TopBar::showPresetMenu() {
     visage::PopupMenu menu;
-    const auto names = context_.model.presetNames();
-    for (std::size_t i = 0; i < names.size(); ++i) menu.addOption(static_cast<int>(i), names[i]);
+    const auto presets = context_.model.presets();
+    std::size_t i = 0;
+    while (i < presets.size()) {
+        const std::string& category = presets[i].category;
+        visage::PopupMenu group(category);
+        for (; i < presets.size() && presets[i].category == category; ++i)
+            group.addOption(static_cast<int>(i), presets[i].name);
+        menu.addSubMenu(std::move(group));
+    }
     menu.onSelection() = [this](int index) { context_.model.loadPreset(index); };
     menu.show(&name_);
 }

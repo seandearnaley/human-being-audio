@@ -18,7 +18,9 @@ public:
     const Visuals& visuals() override;
 
     std::string presetName() const override { return "Coupled Reese 01"; }
-    std::vector<std::string> presetNames() const override { return { "Coupled Reese 01", "Talking Sub", "Glass Jaw" }; }
+    std::vector<PresetInfo> presets() const override {
+        return { { "Coupled Reese 01", "Reese" }, { "Talking Sub", "Talk" }, { "Glass Jaw", "Neuro" } };
+    }
     void loadPreset(int) override {}
     void stepPreset(int) override {}
     void savePreset() override {}

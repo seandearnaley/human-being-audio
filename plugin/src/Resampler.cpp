@@ -33,6 +33,7 @@ void Resampler::start(const RenderRequest& request, const juce::String& presetNa
         request_ = request;
         request_.oversampling = kOversampling;
         request_.bars = kBars;
+        request_.tailSeconds = 0.0;  // exactly four bars, so the file loops at the project tempo
         target_ = directory().getChildFile(name);
     }
     state_.store(ui::ResampleState::rendering);

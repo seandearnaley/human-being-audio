@@ -34,7 +34,11 @@ const ui::Visuals& PluginModel::visuals() {
 }
 
 std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
-std::vector<std::string> PluginModel::presetNames() const { return processor_.presets.names(); }
+std::vector<ui::PresetInfo> PluginModel::presets() const {
+    std::vector<ui::PresetInfo> result;
+    for (const auto& preset : processor_.presets.all()) result.push_back({ preset.name, preset.category });
+    return result;
+}
 void PluginModel::loadPreset(int index) { processor_.presets.load(index); }
 void PluginModel::stepPreset(int delta) { processor_.presets.step(delta); }
 

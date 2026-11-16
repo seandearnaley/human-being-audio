@@ -113,8 +113,9 @@ TEST_CASE("state survives a save and restore") {
 TEST_CASE("every factory preset loads") {
     Host host;
     PluginModel model(host.processor);
-    const auto names = model.presetNames();
-    REQUIRE_FALSE(names.empty());
+    std::vector<std::string> names;
+    for (const auto& preset : model.presets()) names.push_back(preset.name);
+    REQUIRE(names.size() >= 28);
 
     for (int i = 0; i < static_cast<int>(names.size()); ++i) {
         model.loadPreset(i);

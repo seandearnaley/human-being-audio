@@ -3,6 +3,9 @@
 #include <BinaryData.h>
 
 #include <algorithm>
+#include <array>
+#include <string_view>
+#include <tuple>
 
 namespace tf {
 
@@ -30,9 +33,13 @@ void Presets::scan() {
         else
             jassertfalse;  // a factory preset failed to parse
     }
-    // Factory presets keep their category grouping; order within a category is by name.
-    std::stable_sort(presets_.begin(), presets_.end(), [](const Preset& a, const Preset& b) {
-        return std::tie(a.category, a.name) < std::tie(b.category, b.name);
+    // Grouped by category in a deliberate order, then by name.
+    const auto rank = [](const std::string& category) {
+        static const std::array<std::string_view, 5> order { "Reese", "Neuro", "Talk", "Sub", "Motion" };
+        return std::find(order.begin(), order.end(), category) - order.begin();
+    };
+    std::stable_sort(presets_.begin(), presets_.end(), [&](const Preset& a, const Preset& b) {
+        return std::make_tuple(rank(a.category), std::string_view(a.name)) < std::make_tuple(rank(b.category), std::string_view(b.name));
     });
 
     std::vector<Preset> user;
@@ -45,13 +52,6 @@ void Presets::scan() {
     }
     std::sort(user.begin(), user.end(), [](const Preset& a, const Preset& b) { return a.name < b.name; });
     presets_.insert(presets_.end(), std::make_move_iterator(user.begin()), std::make_move_iterator(user.end()));
-}
-
-std::vector<std::string> Presets::names() const {
-    std::vector<std::string> result;
-    result.reserve(presets_.size());
-    for (const auto& preset : presets_) result.push_back(preset.name);
-    return result;
 }
 
 std::string Presets::currentName() const {

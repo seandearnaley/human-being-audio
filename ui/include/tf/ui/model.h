@@ -46,6 +46,11 @@ struct Visuals {
 
 enum class ResampleState { idle, rendering, ready };
 
+struct PresetInfo {
+    std::string name;
+    std::string category;
+};
+
 class Model {
 public:
     virtual ~Model() = default;
@@ -59,7 +64,8 @@ public:
     virtual const Visuals& visuals() = 0;
 
     virtual std::string presetName() const = 0;
-    virtual std::vector<std::string> presetNames() const = 0;
+    // In menu order: grouped by category.
+    virtual std::vector<PresetInfo> presets() const = 0;
     virtual void loadPreset(int index) = 0;
     virtual void stepPreset(int delta) = 0;
     virtual void savePreset() = 0;

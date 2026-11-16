@@ -13,7 +13,7 @@ class Presets {
 public:
     explicit Presets(juce::AudioProcessorValueTreeState& state);
 
-    std::vector<std::string> names() const;
+    const std::vector<Preset>& all() const { return presets_; }
     std::string currentName() const;
 
     void load(int index);
