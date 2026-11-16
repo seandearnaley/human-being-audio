@@ -4,6 +4,7 @@ add_executable(tf_engine_tests
     DspTests.cpp
     EngineTests.cpp
     BenchmarkTests.cpp
+    HarmonicTests.cpp
     PresetTests.cpp)
 target_link_libraries(tf_engine_tests PRIVATE tf_engine_internal tf_engine tf_core tf_analysis Catch2::Catch2WithMain
                       tf_warnings)

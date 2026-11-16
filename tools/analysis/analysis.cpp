@@ -255,6 +255,104 @@ double percentile(Signal values, double p) {
     return values[lo] + (values[hi] - values[lo]) * (pos - static_cast<double>(lo));
 }
 
+Signal welchBlackmanHarris(const Signal& x, std::size_t frame) {
+    const Signal w = blackmanHarris(frame);
+    Signal sum(frame / 2 + 1, 0.0);
+    int count = 0;
+    for (std::size_t start = 0; start + frame <= x.size(); start += frame / 2, ++count) {
+        const Signal p = powerSpectrum(x.data() + start, frame, w);
+        for (std::size_t i = 0; i < p.size(); ++i) sum[i] += p[i];
+    }
+    if (count > 0)
+        for (auto& v : sum) v /= count;
+    return sum;
+}
+
+std::size_t powerOfTwoAtMost(std::size_t n, std::size_t cap) {
+    std::size_t p = 1;
+    while (p * 2 <= std::min(n, cap)) p *= 2;
+    return p;
+}
+
+namespace {
+Signal steadySpectrum(const Signal& x, std::size_t begin, std::size_t end, std::size_t& frame) {
+    end = std::min(end, x.size());
+    begin = std::min(begin, end);
+    const Signal part(x.begin() + static_cast<long>(begin), x.begin() + static_cast<long>(end));
+    frame = powerOfTwoAtMost(part.size(), std::size_t { 1 } << 16);
+    return welchBlackmanHarris(part, frame);
+}
+}
+
+double tiltDbPerOct(const Signal& x, std::size_t begin, std::size_t end, double sampleRate) {
+    std::size_t frame = 1;
+    const Signal p = steadySpectrum(x, begin, end, frame);
+    if (frame < 256) return 0.0;
+    const double binHz = sampleRate / static_cast<double>(frame);
+    // Least squares over (octave index, band energy in dB).
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    int bands = 0;
+    for (int octave = 0; octave < 5; ++octave) {
+        const double lo = 500.0 * std::exp2(octave), hi = 2.0 * lo;
+        if (hi > 0.5 * sampleRate) break;
+        double sum = 0;
+        int count = 0;
+        for (std::size_t i = 1; i < p.size(); ++i) {
+            const double hz = static_cast<double>(i) * binHz;
+            if (hz < lo) continue;
+            if (hz >= hi) break;
+            sum += p[i];
+            ++count;
+        }
+        if (count == 0) continue;
+        const double y = 10.0 * std::log10(std::max(sum, 1e-300));
+        const double xo = octave;
+        sx += xo;
+        sy += y;
+        sxx += xo * xo;
+        sxy += xo * y;
+        ++bands;
+    }
+    if (bands < 2) return 0.0;
+    const double n = bands;
+    return (n * sxy - sx * sy) / (n * sxx - sx * sx);
+}
+
+double offHarmonicDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double f0,
+                     double toleranceHz) {
+    if (f0 <= 0.0) return 0.0;
+    std::size_t frame = 1;
+    const Signal p = steadySpectrum(x, begin, end, frame);
+    const double binHz = sampleRate / static_cast<double>(frame);
+    double total = 0, off = 0;
+    for (std::size_t i = 1; i < p.size(); ++i) {
+        const double hz = static_cast<double>(i) * binHz;
+        if (hz < 300.0) continue;
+        if (hz > 6000.0) break;
+        total += p[i];
+        const double k = std::max(1.0, std::round(hz / f0));
+        if (std::abs(hz - k * f0) > toleranceHz) off += p[i];
+    }
+    if (total <= 0) return -300.0;
+    return std::max(-300.0, 10.0 * std::log10(std::max(off, 1e-300) / total));
+}
+
+double harmonicToleranceHz(double voiceOffsetAHz, double voiceOffsetBHz) {
+    return std::max(kMinHarmonicToleranceHz, 1.5 * std::max(std::abs(voiceOffsetAHz), std::abs(voiceOffsetBHz)));
+}
+
+double bandPowerDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double lo, double hi) {
+    std::size_t frame = 1;
+    const Signal p = steadySpectrum(x, begin, end, frame);
+    const double binHz = sampleRate / static_cast<double>(frame);
+    double sum = 0;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        const double hz = static_cast<double>(i) * binHz;
+        if (hz >= lo && hz < hi) sum += p[i];
+    }
+    return 10.0 * std::log10(std::max(sum, 1e-300));
+}
+
 Metrics computeMetrics(const Stereo& audio, const MetricsRequest& q) {
     Metrics m;
     const std::size_t frames = audio.left.size();
@@ -290,6 +388,13 @@ Metrics computeMetrics(const Stereo& audio, const MetricsRequest& q) {
 
     const Signal hl = lr4Highpass(audio.left, q.subFreq, q.sampleRate), hr = lr4Highpass(audio.right, q.subFreq, q.sampleRate);
     m.growlRmsDb = toDb(std::sqrt(0.5 * (std::pow(rms(hl.data() + begin, n), 2) + std::pow(rms(hr.data() + begin, n), 2))));
+
+    double steadyPeak = 0;
+    for (std::size_t i = begin; i < end; ++i) steadyPeak = std::max({ steadyPeak, std::abs(audio.left[i]), std::abs(audio.right[i]) });
+    m.sumCrestDb = toDb(steadyPeak) - m.rmsDb;
+    m.tiltDbPerOct = tiltDbPerOct(mono, begin, end, q.sampleRate);
+    m.harmonicToleranceHz = q.harmonicToleranceHz;
+    m.offHarmonicDb = offHarmonicDb(mono, begin, end, q.sampleRate, q.f0, q.harmonicToleranceHz);
     return m;
 }
 
@@ -298,9 +403,11 @@ std::string toJson(const Metrics& m) {
     std::snprintf(buf, sizeof buf,
                   "{\"peakDb\": %.2f, \"truePeakDb\": %.2f, \"rmsDb\": %.2f, \"crestDb\": %.2f, \"subRmsDb\": %.2f, "
                   "\"subRmsRangeDb\": %.3f, \"sideBelowXoverDb\": %.2f, \"correlation\": %.4f, \"centroidHz\": %.1f, "
-                  "\"centroidRangeHz\": %.1f, \"growlRmsDb\": %.2f}",
+                  "\"centroidRangeHz\": %.1f, \"growlRmsDb\": %.2f, \"sumCrestDb\": %.2f, \"tiltDbPerOct\": %.2f, "
+                  "\"offHarmonicDb\": %.1f, \"harmonicToleranceHz\": %.2f}",
                   m.peakDb, m.truePeakDb, m.rmsDb, m.crestDb, m.subRmsDb, m.subRmsRangeDb, m.sideBelowXoverDb, m.correlation,
-                  m.centroidHz, m.centroidRangeHz, m.growlRmsDb);
+                  m.centroidHz, m.centroidRangeHz, m.growlRmsDb, m.sumCrestDb, m.tiltDbPerOct, m.offHarmonicDb,
+                  m.harmonicToleranceHz);
     return buf;
 }
 

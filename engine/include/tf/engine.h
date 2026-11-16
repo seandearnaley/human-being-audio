@@ -24,7 +24,10 @@ struct Transport {
 // Optional per-block taps for the interface, base rate, time-aligned with the output.
 // Either pointer may be null. Both are taken before the amp gate.
 struct Taps {
-    float* master = nullptr;  // the sub sine before its low-pass
+    // The sub sine before its low-pass: the master rotated by Fit (and ahead by
+    // the low-pass's lag at f0, so the sub at the output sits at fit against
+    // the master).
+    float* master = nullptr;
     float* growl = nullptr;   // the mono growl path just before it is summed with the sub
 };
 

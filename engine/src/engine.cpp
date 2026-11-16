@@ -6,6 +6,7 @@
 #include "denormals.h"
 #include "feedback_delay.h"
 #include "fold.h"
+#include "harmonic.h"
 #include "lanes.h"
 #include "limiter.h"
 #include "squash.h"
@@ -13,6 +14,7 @@
 #include "voice.h"
 
 #include "tf/feel.h"
+#include "tf/voice_pitch.h"
 
 #include <algorithm>
 #include <array>
@@ -31,7 +33,28 @@ constexpr int kControlPeriodOs = 16;
 constexpr double kSmoothSeconds = 0.010;
 constexpr double kDelaySmoothSeconds = 0.050;
 constexpr double kFoldCrossfadeSeconds = 0.010;
-constexpr double kMaxFeedbackDelaySeconds = 2.0;  // 1/4 at 30 bpm
+constexpr double kMaxFeedbackDelaySeconds = 2.0;  // 1/4 at 30 bpm; 2 x 4 cycles of an 8 Hz note
+// The voice path (spec, "Harmonic core"), per oversampled sample:
+//   master -> voices A, B (phase-modulated by the master and the feedback)
+//   -> each voice through its own tract, fold (at 16x), Reach and Weight
+//   -> Width mixes them -> decimation. The sub is the master rotated by Fit.
+// The feedback loop. It hears the voices locked to the master: the same
+// oscillators at exactly f0 x ratio, without detune or Beat lock offset, with
+// the same phase modulation and feedback. Their (A + B) / 2 is low-passed by
+// Reach with the voices' own 24 dB/oct filter, delayed, DC-blocked, saturated
+// and added to both voices' phases. So the feedback is periodic in f0 and each
+// voice stays a carrier at its own frequency modulated only by things locked
+// to the master; fed from the detuned voices themselves, the loop carried their
+// beat into both phases and the fold multiplied it (default patch at F2, lanes
+// off: -16.7 dB off-harmonic; -31.6 locked). Two poles of Reach on the loop
+// left the hot patch chaotic (-1.7 dB without detune; -75 dB with four). In
+// cycles of the note the loop reads n and 2n cycles back and averages them: a
+// comb that passes the harmonics and has its zeros on the half-harmonics, so
+// the period-doubling a one-cycle loop falls into above about 1.5 rad has
+// nowhere to go (at 1 cyc, lanes off, F1: Chrome Rasp -3 dB off-harmonic with
+// one tap, -25 with two; Shear Pin -2 and -26). The beat divisions keep the
+// single tap.
+constexpr double kFbSecondTap = 0.5;
 constexpr double kBendRange = 2.0;
 constexpr double kMinBpm = 20.0;
 constexpr double kMaxBpm = 999.0;
@@ -52,8 +75,11 @@ constexpr double kPpqTolerance = 1e-5;  // quarters; larger jumps re-anchor the 
 // a second limiter touches the sub only if the sub alone exceeds the ceiling.
 // With limit on, sum peak <= G + sub peak <= ceiling. The final linked soft
 // clip at 0 dBFS is the safety net (the only bound with limit off). Latency is
-// unchanged. kGrowlGain sets where the clipper starts to bite: lightly on the
-// default patch, hard at growlLevel 1 on a dense one.
+// unchanged. kGrowlGain sets where the clipper starts to bite. It was set in
+// 0.1 to bite lightly on the default patch; since 0.2 Reach (16 x f0 by
+// default) takes most of a dense growl's energy at F1, the default patch's
+// growl sits about 10 dB lower there and the clipper idles at F1 (it still
+// bites lightly at F2). Left as it was: the presets set Reach and the level.
 constexpr double kGrowlGain = 0.85;
 constexpr double kGrowlCeilingMargin = 0.96605;  // -0.3 dB, for inter-sample peaks
 constexpr double kGrowlCeilingFloor = 1e-3;      // -60 dBFS: a sub at or above the ceiling leaves the growl this
@@ -79,7 +105,16 @@ int effectiveOversampling(double sampleRate, int requested) {
 }
 
 // Oversampled-domain control values, ramped per oversampled sample.
-enum Os : std::size_t { incMaster, incA, incB, offA, offB, pmA, pmB, fbGain, fbDelay, width, tractAmt, driveGain, asymOffset, warpAmt, osCount };
+enum Os : std::size_t {
+    incMaster, incA, incB, offA, offB, pmA, pmB, fbGain, fbDelay, width, tractAmt, driveGain, asymOffset, warpAmt,
+    incLockA, incLockB,  // the voices at exactly f0 x ratio: what the feedback loop hears
+    fbSecond,   // weight of the feedback tap at twice the delay (cycles only)
+    subRot,     // the sub's phase against the master, cycles, unwrapped
+    reachG,     // Reach low-pass, pre-warped cutoff
+    weightG,    // Weight one-poles, TPT gain G = g / (1 + g)
+    weightDry, weightOne, weightTwo,  // Weight blend, level compensation included
+    osCount
+};
 // Base-rate control values, ramped per base sample.
 enum Base : std::size_t { subLevel, growlLevel, midGain, sideGain, squashAmt, ceilingGain, limitAmt, growlCeiling, baseCount };
 
@@ -96,6 +131,7 @@ double lr4LowpassMagnitude(double hz, double cutoff, double sampleRate) noexcept
 enum Sm : std::size_t {
     coupling, beat, aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm, fbAmount, width_, tract_, drive_, asym_,
     warp_, midGainDb, sideGainDb, xoverLog, subFreqLog, subLevel_, growlLevel_, squash_, ceilingDb, limitOn, bend,
+    reachLog, weight_, fitCycles,  // fitCycles is unwrapped: it moves the short way round
     smCount
 };
 
@@ -115,18 +151,23 @@ struct Engine::Impl {
     double tickCoef = 1.0, delayTickCoef = 1.0;
     std::array<double, kVowelCount> vowelComp {};
 
-    // Oversampled domain.
+    // Oversampled domain. Voice A runs through channel A's tract, fold, Reach
+    // and Weight, voice B through channel B's; Width mixes them after that.
     Decimator decSub, decL, decR;
-    LocalOversampler localSub, localL, localR;  // around the fold; the sub gets the same delay
+    LocalOversampler localSub, localA, localB;  // around the fold; the sub gets the same delay
     // Around the growl clipper; the sub and the master tap take the same trip.
     ClipTrip clip2xL, clip2xR, clip2xSub, clip2xMaster;
     std::array<float, kMaxOversampling> bufSub {}, bufL {}, bufR {}, bufLocal {};
     FeedbackDelay feedback;
     DcBlocker feedbackDc;
+    ReachFilter feedbackLp;  // Reach on the loop, the same 24 dB/oct as the voices
     TractCoefs tractCoefs;
-    TractChannel tractL, tractR;
-    Folder foldL, foldR;
+    TractChannel tractA, tractB;
+    Folder foldA, foldB;
+    ReachFilter reachA, reachB;
+    WeightFilter weightA, weightB;
     double phaseMaster = 0.0, phaseA = 0.0, phaseB = 0.0;
+    double phaseLockA = 0.0, phaseLockB = 0.0;
     FoldType foldFrom = FoldType::fold, foldTo = FoldType::fold;
     double foldMix = 1.0, foldMixStep = 1.0;
     std::array<Ramp, osCount> os {};
@@ -149,7 +190,10 @@ struct Engine::Impl {
     std::array<Smoother, smCount> smooth {};
     std::array<Smoother, kLaneCount> laneSmooth {};
     std::array<Smoother, kFormantCount * 3 + 1> formantSmooth {};
-    Smoother delaySmooth;
+    Smoother delaySmooth;  // feedback delay in samples, beat divisions
+    Smoother cycleSmooth;  // feedback delay in cycles of the note
+    bool delayInCycles = false;
+    double fbDelayNow = 2.0;
     int countdown = 0;
     bool snapNext = true;
 
@@ -162,6 +206,7 @@ struct Engine::Impl {
     double bendTarget = 0.0;
     double glideMs = spec(ParamId::glide).def;
     bool phaseResetOn = true;
+    bool beatLockOn = false;
 
     // Clock.
     bool wasPlaying = false;
@@ -197,8 +242,8 @@ struct Engine::Impl {
         decL.prepare(factor);
         decR.prepare(factor);
         localSub.prepare(factor);
-        localL.prepare(factor);
-        localR.prepare(factor);
+        localA.prepare(factor);
+        localB.prepare(factor);
         clip2xL.prepare();
         clip2xR.prepare();
         clip2xSub.prepare();
@@ -209,8 +254,8 @@ struct Engine::Impl {
         feedback.prepare(static_cast<int>(std::ceil(kMaxFeedbackDelaySeconds * fo)));
         feedbackDc.prepare(5.0, fo);
         vowelComp = computeVowelCompDb(fo);
-        foldL.prepare(fo * localL.factor());
-        foldR.prepare(fo * localR.factor());
+        foldA.prepare(fo * localA.factor());
+        foldB.prepare(fo * localB.factor());
         squash.prepare(fs);
         limiter.prepare(fs, kGrowlLimiterReleaseSeconds);
         subLimiter.prepare(fs);
@@ -262,18 +307,23 @@ struct Engine::Impl {
         decL.reset();
         decR.reset();
         localSub.reset();
-        localL.reset();
-        localR.reset();
+        localA.reset();
+        localB.reset();
         clip2xL.reset();
         clip2xR.reset();
         clip2xSub.reset();
         clip2xMaster.reset();
         feedback.clear();
         feedbackDc.reset();
-        tractL.reset();
-        tractR.reset();
-        foldL.reset();
-        foldR.reset();
+        feedbackLp.reset();
+        tractA.reset();
+        tractB.reset();
+        foldA.reset();
+        foldB.reset();
+        reachA.reset();
+        reachB.reset();
+        weightA.reset();
+        weightB.reset();
         growlHpL.reset();
         growlHpR.reset();
         sideHp.reset();
@@ -295,11 +345,14 @@ struct Engine::Impl {
         gate.reset();
         notes.clear();
         pendingNote = -1;
-        phaseMaster = phaseA = phaseB = 0.0;
+        phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
         for (auto& s : smooth) s.reset();
         for (auto& s : laneSmooth) s.reset();
         for (auto& s : formantSmooth) s.reset();
         delaySmooth.reset();
+        cycleSmooth.reset();
+        delayInCycles = false;
+        fbDelayNow = 2.0;
         snapNext = true;
         countdown = 0;
         idle = true;
@@ -337,7 +390,7 @@ struct Engine::Impl {
     }
 
     void beginNote(int note) noexcept TF_NONBLOCKING {
-        if (phaseResetOn) phaseMaster = phaseA = phaseB = 0.0;
+        if (phaseResetOn) phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
         glide.jump(note);
         sinceNoteStart = 0;
         if (!snapNext) retargetPitchNow();
@@ -377,12 +430,23 @@ struct Engine::Impl {
 
     double sm(Sm id) const noexcept TF_NONBLOCKING { return smooth[id].value(); }
 
+    // Cycles per oversampled sample. The voices sit at f0 x ratio, detuned in
+    // cents, or with Beat lock offset by a constant number of Hz, so every
+    // partial of a voice (the modulator stays at exactly f0) moves by the same
+    // amount and the whole spectrum beats at one rate.
     void pitchIncrements(double& master, double& a, double& b) const noexcept TF_NONBLOCKING {
         const double f0 = noteToHz(glide.current() + sm(bend));
         const double beatMod = std::clamp(sm(beat) + 0.5 * laneSmooth[3].value(), 0.0, 1.0);
+        master = f0 / fo;
+        if (beatLockOn) {
+            const double delta = beatLockHz(anchorBpmOrCurrent(), beatMod);
+            const auto share = beatLockShares(sm(aDetune), sm(bDetune));
+            a = (f0 * sm(aRatio) + delta * share.a) / fo;
+            b = (f0 * sm(bRatio) + delta * share.b) / fo;
+            return;
+        }
         const auto detA = feel::detuneCents(static_cast<float>(sm(aDetune)), static_cast<float>(beatMod));
         const auto detB = feel::detuneCents(static_cast<float>(sm(bDetune)), static_cast<float>(beatMod));
-        master = f0 / fo;
         a = master * sm(aRatio) * std::exp2(detA / 1200.0);
         b = master * sm(bRatio) * std::exp2(detB / 1200.0);
     }
@@ -395,6 +459,8 @@ struct Engine::Impl {
         os[incMaster].snap(m);
         os[incA].snap(a);
         os[incB].snap(b);
+        os[incLockA].snap(m * sm(aRatio));
+        os[incLockB].snap(m * sm(bRatio));
     }
 
     void controlTick(const Params& p) noexcept TF_NONBLOCKING {
@@ -448,6 +514,15 @@ struct Engine::Impl {
         step(ceilingDb, p[ParamId::ceiling]);
         step(limitOn, p.on(ParamId::limit) ? 1.0 : 0.0);
         step(bend, bendTarget);
+        step(reachLog, std::log(std::clamp(p[ParamId::reach], spec(ParamId::reach).min, spec(ParamId::reach).max)));
+        step(weight_, p[ParamId::weight]);
+        // Fit is a phase: smooth towards the nearest copy of the target, so
+        // 350 -> 10 degrees moves 20 degrees, not 340.
+        {
+            const double target = static_cast<double>(p[ParamId::fit]) / 360.0;
+            const double current = smooth[fitCycles].value();
+            step(fitCycles, snap ? target : current + wrapHalf(target - current));
+        }
 
         // Pitch.
         glide.advance(controlBase);
@@ -460,6 +535,8 @@ struct Engine::Impl {
         t[incMaster] = incM;
         t[incA] = incAv;
         t[incB] = incBv;
+        t[incLockA] = incM * sm(aRatio);
+        t[incLockB] = incM * sm(bRatio);
         // Phase offsets in cycles, not wrapped (the oscillator wraps), so a ramp
         // never sweeps the long way round.
         t[offA] = sm(aPhase) / 360.0 + 0.25 * lanePhaseMod;
@@ -468,19 +545,54 @@ struct Engine::Impl {
         t[pmB] = feel::pmIndex(static_cast<float>(sm(bPm)), static_cast<float>(sm(coupling)));
         t[fbGain] = feel::feedbackRadians(static_cast<float>(sm(fbAmount)));
         const double bpm = anchorBpmOrCurrent();
-        // In cycles of the note (incM is cycles per oversampled sample) or in beats.
+        // In cycles of the note (incM is cycles per oversampled sample) or in
+        // beats. In cycles the count is smoothed and the delay follows the
+        // pitch exactly, so the comb stays on the harmonics through glides and
+        // bends (a smoothed delay lags a glide and the loop bursts while it
+        // catches up). In beats the delay itself is smoothed. Switching between
+        // the two starts the new smoother from the current delay.
         const auto fbChoice = static_cast<std::size_t>(
             std::clamp(p.choice(ParamId::fbTime), 0, static_cast<int>(kFbTimeLengths.size()) - 1));
-        const double delayTarget = fbChoice < static_cast<std::size_t>(kFbCycleChoices)
-                                       ? kFbTimeLengths[fbChoice] / std::max(incM, 1e-9)
-                                       : kFbTimeLengths[fbChoice] * 60.0 / bpm * fo;
-        t[fbDelay] = std::clamp(delaySmooth.step(delayTarget, snap ? 1.0 : delayTickCoef), 2.0, feedback.maxDelay());
+        const bool inCycles = fbChoice < static_cast<std::size_t>(kFbCycleChoices);
+        const double delayCoef = snap ? 1.0 : delayTickCoef;
+        const double safeInc = std::max(incM, 1e-9);
+        double delay = 0.0;
+        if (inCycles) {
+            if (!snap && !delayInCycles) cycleSmooth.snap(fbDelayNow * safeInc);
+            delay = cycleSmooth.step(kFbTimeLengths[fbChoice], delayCoef) / safeInc;
+        } else {
+            if (!snap && delayInCycles) delaySmooth.snap(fbDelayNow);
+            delay = delaySmooth.step(kFbTimeLengths[fbChoice] * 60.0 / bpm * fo, delayCoef);
+        }
+        delayInCycles = inCycles;
+        // (The second tap, at twice the delay, is clamped by the line itself;
+        // in cycles it stays inside: 2 x 4 cycles of note 0 is under a second.)
+        fbDelayNow = std::clamp(delay, 2.0, feedback.maxDelay());
+        t[fbDelay] = fbDelayNow;
+        t[fbSecond] = inCycles ? kFbSecondTap : 0.0;
         t[width] = std::clamp(sm(width_), 0.0, 1.0);
         t[tractAmt] = std::clamp(sm(tract_), 0.0, 1.0);
         const double driveMod = std::clamp(sm(drive_) + 0.5 * laneDrive, 0.0, 1.0);
         t[driveGain] = feel::driveGain(static_cast<float>(driveMod));
         t[asymOffset] = 0.5 * sm(asym_);
         t[warpAmt] = std::clamp(sm(warp_), 0.0, 1.0);
+
+        // Fit: the sub runs ahead of the master by the phase its LR4 low-pass
+        // takes away at f0, plus fit, so at fit 0 the sub at the output is in
+        // phase with the master. The target is taken next to the current value
+        // (whole cycles do not matter) so the ramp never sweeps the long way.
+        const double f0 = incM * fo;
+        const double rotation = lr4LowpassLagCycles(f0, std::exp(sm(subFreqLog)), fs) + sm(fitCycles);
+        t[subRot] = snap ? rotation : os[subRot].value + wrapHalf(rotation - os[subRot].value);
+
+        // Reach: 24 dB/oct at reach x f0, below 0.45 of the oversampled rate.
+        t[reachG] = SvfCoefs::prewarp(std::min(std::exp(sm(reachLog)) * f0, kMaxFilterRatio * fo), fo);
+        // Weight: dry -> one one-pole -> two at 3 f0, level-matched at 2 f0 and 3 f0.
+        const auto blend = weightBlend(feel::weightSlopeDb(static_cast<float>(std::clamp(sm(weight_), 0.0, 1.0))), f0, fo);
+        t[weightG] = blend.gain;
+        t[weightDry] = blend.dry;
+        t[weightOne] = blend.one;
+        t[weightTwo] = blend.two;
         for (std::size_t i = 0; i < osCount; ++i) {
             if (snap) os[i].snap(t[i]);
             else os[i].to(t[i], controlOs);
@@ -545,42 +657,66 @@ struct Engine::Impl {
         phaseMaster += os[incMaster].value;
         phaseA += os[incA].value;
         phaseB += os[incB].value;
+        phaseLockA += os[incLockA].value;
+        phaseLockB += os[incLockB].value;
         phaseMaster -= std::floor(phaseMaster);
         phaseA -= std::floor(phaseA);
         phaseB -= std::floor(phaseB);
+        phaseLockA -= std::floor(phaseLockA);
+        phaseLockB -= std::floor(phaseLockB);
 
+        // The master modulates the voices; the sub is the same oscillator
+        // rotated by Fit (and the sub low-pass's lag).
         const float master = std::sin(static_cast<float>(kTwoPi * phaseMaster));
-        const double fb = os[fbGain].value * std::tanh(feedbackDc.process(feedback.read(os[fbDelay].value)));
+        const float subSine = std::sin(static_cast<float>(kTwoPi * frac(phaseMaster + os[subRot].value)));
+        // Feedback: one tap, or in cycles the mean of n and 2n cycles back.
+        const double second = os[fbSecond].value;
+        double fbRaw = feedback.read(os[fbDelay].value);
+        if (second > 0.0) fbRaw += second * (feedback.read(2.0 * os[fbDelay].value) - fbRaw);
+        const double fb = os[fbGain].value * std::tanh(feedbackDc.process(fbRaw));
         const double a = std::sin(static_cast<float>(kTwoPi * frac(phaseA + os[offA].value) + os[pmA].value * master + fb));
         const double b = std::sin(static_cast<float>(kTwoPi * frac(phaseB + os[offB].value) + os[pmB].value * master + fb));
-        feedback.write(static_cast<float>(0.5 * (a + b)));
+        // The loop hears the voices as they would be without detune: periodic
+        // in f0, so the feedback is too, and each voice stays a carrier at its
+        // own frequency phase-modulated only by things locked to the master.
+        const double lockA = std::sin(static_cast<float>(kTwoPi * frac(phaseLockA + os[offA].value) + os[pmA].value * master + fb));
+        const double lockB = std::sin(static_cast<float>(kTwoPi * frac(phaseLockB + os[offB].value) + os[pmB].value * master + fb));
 
-        const double w = os[width].value;
-        double l = (a + (1.0 - w) * b) / (2.0 - w);
-        double r = (b + (1.0 - w) * a) / (2.0 - w);
+        const ReachCoefs reach = ReachCoefs::make(os[reachG].value);
+        feedback.write(static_cast<float>(feedbackLp.process(reach, 0.5 * (lockA + lockB))));
 
+        // Each voice through its own tract and fold: detuned voices never meet
+        // in one nonlinearity. The fold runs at the local (16x) rate; the sub
+        // sine takes the same trip so both paths keep the same delay.
         const double tractAmount = os[tractAmt].value;
-        l = tractL.process(tractCoefs, tractAmount, l);
-        r = tractR.process(tractCoefs, tractAmount, r);
-
-        // The fold runs at the local (16x) rate; the master sine for the sub
-        // takes the same trip so both paths keep the same delay.
+        const double va = tractA.process(tractCoefs, tractAmount, a);
+        const double vb = tractB.process(tractCoefs, tractAmount, b);
         const double g = os[driveGain].value, off = os[asymOffset].value, warp = os[warpAmt].value;
-        const int local = localL.factor();
+        const int local = localA.factor();
         float* buf = bufLocal.data();
-        localL.up(static_cast<float>(l), buf);
-        for (int k = 0; k < local; ++k) buf[k] = static_cast<float>(foldL.process(buf[k], g, off, warp, foldFrom, foldTo, foldMix));
-        const float lf = localL.down(buf);
-        localR.up(static_cast<float>(r), buf);
-        for (int k = 0; k < local; ++k) buf[k] = static_cast<float>(foldR.process(buf[k], g, off, warp, foldFrom, foldTo, foldMix));
-        const float rf = localR.down(buf);
-        localSub.up(master, buf);
+        localA.up(static_cast<float>(va), buf);
+        for (int k = 0; k < local; ++k) buf[k] = static_cast<float>(foldA.process(buf[k], g, off, warp, foldFrom, foldTo, foldMix));
+        double ya = localA.down(buf);
+        localB.up(static_cast<float>(vb), buf);
+        for (int k = 0; k < local; ++k) buf[k] = static_cast<float>(foldB.process(buf[k], g, off, warp, foldFrom, foldTo, foldMix));
+        double yb = localB.down(buf);
+        localSub.up(subSine, buf);
         const float sub = localSub.down(buf);
+
+        // Reach, then Weight, per voice.
+        const WeightMix mix { os[weightG].value, os[weightDry].value, os[weightOne].value, os[weightTwo].value };
+        ya = weightA.process(mix, reachA.process(reach, ya));
+        yb = weightB.process(mix, reachB.process(reach, yb));
+
+        // Width: L = (A + (1 - w) B) / (2 - w) and the mirror; exactly mono at 0.
+        const double w = os[width].value;
+        const double l = (ya + (1.0 - w) * yb) / (2.0 - w);
+        const double r = (yb + (1.0 - w) * ya) / (2.0 - w);
 
         const auto idx = static_cast<std::size_t>(j);
         bufSub[idx] = sub;
-        bufL[idx] = lf;
-        bufR[idx] = rf;
+        bufL[idx] = static_cast<float>(l);
+        bufR[idx] = static_cast<float>(r);
     }
 
     void goIdle() noexcept TF_NONBLOCKING {
@@ -612,6 +748,7 @@ struct Engine::Impl {
         clipMaxDb = clipSumDb = 0.0;
         glideMs = p[ParamId::glide];
         phaseResetOn = p.on(ParamId::phaseReset);
+        beatLockOn = p.on(ParamId::beatLock);
         updateClock(transport);
 
         int n = 0;

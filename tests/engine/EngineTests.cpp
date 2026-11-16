@@ -3,6 +3,7 @@
 #include "helpers.h"
 
 #include "crossover.h"
+#include "harmonic.h"
 #include "limiter.h"
 #include "squash.h"
 
@@ -108,10 +109,11 @@ TEST_CASE("the growl leaves the sub band alone: sub band with and without the gr
     const double db = analysis::rmsDb(d) - analysis::rmsDb(slice(b, from, b.size()));
     std::printf("[sub band] %s note %d: growl's contribution to the sub band %.1f dB re sub\n", hot ? "hot" : "default", note, db);
     // What remains is linear: growl content around subFreq through the LR4
-    // crossover overlap (it scales with growlLevel): -36..-37 dB on the
-    // default patch, whose dry reese has strong 2nd and 3rd harmonics there,
-    // -51 dB on the hot one.
-    CHECK(db <= (hot ? -47.0 : -33.0));
+    // crossover overlap (it scales with growlLevel). 0.1 measured -36..-37 dB
+    // on the default patch and -51 dB on the hot one. With Reach and Weight
+    // (0.2) the growl's energy sits lower, nearer subFreq: default -38..-43,
+    // hot -46..-47 dB.
+    CHECK(db <= (hot ? -45.0 : -33.0));
 }
 
 TEST_CASE("a sub that fills the ceiling leaves the growl at the floor, smoothly", "[engine]") {
@@ -310,6 +312,10 @@ TEST_CASE("the growl clipper's inharmonic products, default and hot growl", "[en
     s.params[ParamId::fbAmount] = 0.0f;
     s.params[ParamId::foldType] = static_cast<float>(type);
     s.params[ParamId::growlLevel] = growl;
+    // Reach and Weight wide open (0.1's spectrum), so the growl is as dense as
+    // it can be and the clipper works: at their defaults it idles here.
+    s.params[ParamId::reach] = 64.0f;
+    s.params[ParamId::weight] = 0.0f;
     s.bend = static_cast<float>(semitones(1000.0, noteHz(83)));
     const auto out = render(s, held(83), frames(2.0, s.sampleRate));
     constexpr std::size_t n = 1 << 16;
@@ -336,6 +342,11 @@ TEST_CASE("the growl clipper's inharmonic products, default and hot growl", "[en
 TEST_CASE("path alignment: the sub and growl paths have equal latency to the sample", "[engine][spec]") {
     // A patch where both reese voices are exactly the master sine: the growl tap
     // must then equal the master tap through the growl path's (linear) filters.
+    // The master tap is the sub before its low-pass, which Fit rotates against
+    // the master by the low-pass's lag plus fit; fit is set to cancel that, so
+    // the tap is the master. Weight 0 is exactly dry. Reach (24 dB/oct at
+    // 64 f0, or 0.45 of the oversampled rate) is not, and runs at the
+    // oversampled rate, so its phase at f0 is applied to the expected sine.
     const int factor = GENERATE(2, 4, 8, 16);
     const int note = GENERATE(45, 69, 93);
     CAPTURE(factor, note);
@@ -353,8 +364,13 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     s.params[ParamId::growlLevel] = 0.5f;  // keeps the growl clipper idle
     s.params[ParamId::subLevel] = 0.0f;
     s.params[ParamId::midGain] = 0.0f;
+    s.params[ParamId::weight] = 0.0f;
+    s.params[ParamId::reach] = 64.0f;
     const double fs = s.sampleRate;
-    const auto out = render(s, held(note), frames(0.5, fs));
+    const double f0 = noteHz(note);
+    const double lag = dsp::lr4LowpassLagCycles(f0, s.params[ParamId::subFreq], fs);
+    s.params[ParamId::fit] = static_cast<float>(360.0 * (1.0 - lag));
+    const auto out = render(s, held(note), frames(0.6, fs));
 
     const auto cSub = dsp::butterworth(s.params[ParamId::subFreq], fs);
     const auto cX = dsp::butterworth(s.params[ParamId::xover], fs);
@@ -374,12 +390,25 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
         for (auto& f : postClipHp) y = f.process(cSub, y);
         expected[i] = y;
     }
-    // Compare once the taps run (they are silent before the latency). The
-    // growl path's fixed gain staging is fitted out (least squares).
-    const auto from = static_cast<std::size_t>(out.latency + 64);
-    const Signal a = slice(out.growl, from, out.growl.size());
+    // Reach's phase at f0: two TPT sections at fo, each the analogue
+    // 1 / (s^2 + k s + 1) at W = tan(pi f0 / fo) / tan(pi fc / fo). On a steady
+    // sine e[n], cos(t) e[n] + sin(t) (e[n+1] - e[n-1]) / (2 sin w) is e advanced by t.
+    const double fo = fs * factor;
+    const double fc = std::min(64.0 * f0, dsp::kMaxFilterRatio * fo);
+    const double wr = std::tan(dsp::kPi * f0 / fo) / std::tan(dsp::kPi * fc / fo);
+    const double theta = -std::atan2(dsp::kButterworth4K1 * wr, 1.0 - wr * wr) - std::atan2(dsp::kButterworth4K2 * wr, 1.0 - wr * wr);
+    const double w = 2.0 * dsp::kPi * f0 / fs;
+    Signal rotated(expected.size(), 0.0);
+    for (std::size_t i = 1; i + 1 < expected.size(); ++i)
+        rotated[i] = std::cos(theta) * expected[i] + std::sin(theta) * (expected[i + 1] - expected[i - 1]) / (2.0 * std::sin(w));
+    expected = rotated;
+    // Compare once the taps run and the filters' start-up has died away (the
+    // rotation above only holds for the steady sine). The growl path's fixed
+    // gain staging is fitted out (least squares).
+    const auto from = static_cast<std::size_t>(out.latency) + static_cast<std::size_t>(0.25 * fs);
+    const Signal a = slice(out.growl, from, out.growl.size() - 1);  // the rotation has no last sample
     const auto residual = [&](std::size_t offset) {
-        const Signal b = slice(expected, from - offset, expected.size() - offset);
+        const Signal b = slice(expected, from - offset, expected.size() - 1 - offset);
         double ab = 0, bb = 0;
         for (std::size_t i = 0; i < a.size(); ++i) {
             ab += a[i] * b[i];
@@ -398,8 +427,13 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
 }
 
 TEST_CASE("the master tap is latency-aligned with the output", "[engine]") {
+    // The tap is the sub before its low-pass, rotated by Fit: whatever fit is,
+    // the output sub is the tap through the LR4.
+    const float fit = GENERATE(0.0f, 135.0f);
+    CAPTURE(fit);
     Setup s;
     s.params = staticPatch();
+    s.params[ParamId::fit] = fit;
     s.params[ParamId::growlLevel] = 0.0f;
     s.params[ParamId::subLevel] = 1.0f;
     s.params[ParamId::limit] = 0.0f;
@@ -489,27 +523,37 @@ TEST_CASE("latency equals latencySamples()", "[engine]") {
     s.sampleRate = fs;
     s.oversampling = factor;
     s.params = staticPatch();
+    s.params[ParamId::growlLevel] = 0.0f;  // the output is the sub alone
     const int note = 43;  // ~98 Hz: one period is far longer than the latency
     const auto out = render(s, held(note), frames(0.5, fs));
 
     // The master oscillator starts at phase 0 on the note-on (frame 0) and its
     // first oversampled sample is one increment in, so in base-rate time it is
-    // sin(w (n + 1/factor)). The tap shows sin(w (n + 1/factor - latency)).
+    // sin(w (n + 1/factor)). At fit 0 the sub at the output is in phase with
+    // the master (Fit runs the sub ahead by its low-pass's lag), so the output
+    // shows sin(w (n + 1/factor - latency)).
     const double w = 2.0 * dsp::kPi * noteHz(note) / fs;
-    std::complex<double> acc { 0, 0 };
     const auto from = static_cast<std::size_t>(0.2 * fs);
-    const double available = static_cast<double>(out.master.size() - from);
+    const double available = static_cast<double>(out.left.size() - from);
     const double periods = std::floor(available * w / (2 * dsp::kPi));
     const auto to = from + static_cast<std::size_t>(std::floor(periods * 2 * dsp::kPi / w));
-    for (std::size_t n = from; n < to; ++n) acc += out.master[n] * std::polar(1.0, -w * static_cast<double>(n));
     // sin(w n + phi) correlates to (1/2j) e^{j phi}: phi = arg(acc) + pi/2.
-    const double phi = std::arg(acc) + dsp::kPi / 2;
+    const auto phase = [&](const Signal& x) {
+        std::complex<double> acc { 0, 0 };
+        for (std::size_t n = from; n < to; ++n) acc += x[n] * std::polar(1.0, -w * static_cast<double>(n));
+        return std::arg(acc) + dsp::kPi / 2;
+    };
+    const double phi = phase(out.left);
     double measured = (w / factor - phi) / w;
     const double period = 2 * dsp::kPi / w;
     while (measured < 0) measured += period;
     while (measured >= period) measured -= period;
     std::printf("[latency] %.1f kHz %2dx: reported %d, measured %.2f samples\n", fs / 1000, factor, out.latency, measured);
     CHECK(std::abs(measured - out.latency) <= 0.5);
+
+    // The master tap is the sub before its low-pass: ahead of the output by the lag.
+    const double lead = std::remainder(phase(out.master) - phi, 2 * dsp::kPi) / (2 * dsp::kPi);
+    CHECK(lead == Catch::Approx(dsp::lr4LowpassLagCycles(noteHz(note), s.params[ParamId::subFreq], fs)).margin(0.5 / 360));
 }
 
 TEST_CASE("oversampling is reduced at high host rates but stays at least 2x", "[engine]") {
@@ -640,7 +684,15 @@ TEST_CASE("after the release the engine goes idle and writes exact silence", "[e
 }
 
 TEST_CASE("width 0 is mono", "[engine]") {
+    // Each voice has its own tract, fold, Reach and Weight; Width mixes them
+    // afterwards, and at 0 both channels get exactly the same sum.
+    const bool hot = GENERATE(false, true);
+    CAPTURE(hot);
     Setup s;
+    if (hot) {
+        s.params = hotPatch();
+        s.params[ParamId::beatLock] = 1.0f;
+    }
     s.params[ParamId::width] = 0.0f;
     const auto out = render(s, held(29), 24000);
     CHECK(maxAbsDiff(out.left, out.right) == 0.0);
@@ -682,11 +734,16 @@ TEST_CASE("squash makes the growl denser, never quieter", "[engine]") {
         for (float cl : out.growlClip) clip = std::max(clip, static_cast<double>(cl));
         REQUIRE(clip == 0.0);  // the clipper stayed out of it
         const auto from = static_cast<std::size_t>(0.5 * fs);
-        // Above 250 Hz: the tap is after the high-passes that follow the
-        // clipper, which take away part of the low band Squash lifts.
-        const Signal growl = analysis::lr4Highpass(slice(out.growl, from, out.growl.size()), 250.0, fs);
+        // Above 400 Hz: the tap is after the high-passes that follow the
+        // clipper, which take away part of the low band Squash lifts, and
+        // Squash's make-up only protects its bands above the 200 Hz split,
+        // whose LR4 lets the low band reach up to about 400 Hz. (0.1 measured
+        // above 250 Hz; with Reach the quiet patch's growl sits mostly below
+        // 700 Hz at F1, and there 0.75 -> 1 read -0.15 dB from the low band,
+        // +0.02 dB above 400 Hz.)
+        const Signal growl = analysis::lr4Highpass(slice(out.growl, from, out.growl.size()), 400.0, fs);
         const double db = analysis::rmsDb(growl) - 20.0 * std::log10(0.1);
-        std::printf("[squash] %s amount %.2f: growl above 250 Hz %.2f dB RMS (at growlLevel 1)\n",
+        std::printf("[squash] %s amount %.2f: growl above 400 Hz %.2f dB RMS (at growlLevel 1)\n",
                     patch == 0 ? "default" : patch == 1 ? "hot" : "quiet", static_cast<double>(amount), db);
         CHECK(db >= previous - 0.05);
         previous = db;

@@ -45,6 +45,9 @@ struct Stereo {
 };
 Stereo deinterleave(const std::vector<float>& interleaved);
 
+// offHarmonicDb never counts energy this close to a harmonic as noise.
+inline constexpr double kMinHarmonicToleranceHz = 5.0;
+
 // The numbers tf-render --metrics prints. `steady` selects the part of the
 // render the level and movement metrics are computed on.
 struct Metrics {
@@ -54,6 +57,14 @@ struct Metrics {
     double correlation = 0;
     double centroidHz = 0, centroidRangeHz = 0;
     double growlRmsDb = 0;
+    // Steady part only: sample peak over the stereo RMS of the whole output
+    // (sub and growl together). crestDb takes its peak over the whole file.
+    double sumCrestDb = 0;
+    // See tiltDbPerOct() and offHarmonicDb(). offHarmonicDb is only computed
+    // when the request gives f0.
+    double tiltDbPerOct = 0;
+    double offHarmonicDb = 0;
+    double harmonicToleranceHz = 0;
 };
 
 struct MetricsRequest {
@@ -62,6 +73,8 @@ struct MetricsRequest {
     double xover = 100;
     std::size_t steadyBegin = 0;  // frames
     std::size_t steadyEnd = 0;    // frames, exclusive
+    double f0 = 0;                // Hz; 0 skips offHarmonicDb
+    double harmonicToleranceHz = kMinHarmonicToleranceHz;
 };
 
 Metrics computeMetrics(const Stereo& audio, const MetricsRequest& request);
@@ -77,6 +90,38 @@ double sideBelowXoverDb(const Stereo& audio, std::size_t begin, std::size_t end,
 Signal centroids(const Signal& x, std::size_t begin, std::size_t end, double sampleRate);
 
 double percentile(Signal values, double p);
+
+// Welch spectrum with a Blackman-Harris window (-92 dB side lobes), 50 %
+// overlap, frames of `frame` samples (power of two). Bin i is at i fs / frame.
+Signal welchBlackmanHarris(const Signal& x, std::size_t frame);
+
+// Largest power of two <= min(n, cap).
+std::size_t powerOfTwoAtMost(std::size_t n, std::size_t cap);
+
+// Spectral tilt in dB per octave: the least-squares slope of the energy (dB)
+// in the five octave bands 500 Hz - 16 kHz against octave number. Band energy,
+// as an octave-band analyser shows it: pink noise reads 0, white noise +3, a
+// sawtooth -3. (The 0.2 spec's targets and the 0.1 measurements use this.)
+double tiltDbPerOct(const Signal& x, std::size_t begin, std::size_t end, double sampleRate);
+
+// The share, in dB, of the 300 Hz - 6 kHz energy of x[begin, end) that lies
+// further than `toleranceHz` from every multiple of f0. White noise at F1 with
+// the 5 Hz minimum reads about -1.1 dB; a periodic note reads -60 dB or lower.
+// The tolerance is the caller's: harmonicToleranceHz() gives the one
+// tf-render uses. The spectrum is Welch-averaged Blackman-Harris frames of up
+// to 2^16 samples, whose main lobe (+-4 bins, +-2.9 Hz at 48 kHz) fits inside
+// the 5 Hz minimum, so a steady harmonic does not leak into the off share.
+double offHarmonicDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double f0,
+                     double toleranceHz);
+
+// The tolerance for offHarmonicDb: max(5 Hz, 1.5 x the larger voice offset
+// from f0 x its ratio). A detuned or beat-locked voice puts its partials that
+// far from the harmonics on purpose; that beating is not noise.
+double harmonicToleranceHz(double voiceOffsetAHz, double voiceOffsetBHz);
+
+// Power (dB, arbitrary reference) of x[begin, end) between lo and hi Hz, from
+// a Welch spectrum. Comparable between signals of the same length.
+double bandPowerDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double lo, double hi);
 
 std::string toJson(const Metrics& m);
 
