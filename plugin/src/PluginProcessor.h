@@ -3,14 +3,18 @@
 #include "Analysis.h"
 #include "Parameters.h"
 #include "Presets.h"
+#include "tf/engine.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <vector>
+
 namespace tf {
 
-class PluginProcessor final : public juce::AudioProcessor {
+class PluginProcessor final : public juce::AudioProcessor, private juce::AudioProcessorValueTreeState::Listener {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -34,12 +38,32 @@ public:
     void getStateInformation(juce::MemoryBlock& destination) override;
     void setStateInformation(const void* data, int size) override;
 
+    // What the last block was played with, for Resample.
+    struct Performance {
+        int note = 29;
+        double bpm = 174.0;
+    };
+    Performance lastPerformance() const noexcept;
+    Params currentParams() const noexcept { return values_.snapshot(); }
+
     juce::AudioProcessorValueTreeState state;
     Presets presets;
     Analysis analysis;
 
 private:
+    void parameterChanged(const juce::String& id, float value) override;
+    void prepareEngine();
+    Transport readTransport() const;
+    void handleMidi(const juce::MidiMessage& message) noexcept;
+
     ParameterValues values_;
+    Engine engine_;
+    double sampleRate_ = 48000.0;
+    int blockSize_ = 512;
+    std::vector<float> masterTap_, growlTap_;
+
+    std::atomic<int> lastNote_ { 29 };
+    std::atomic<double> lastBpm_ { 174.0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };

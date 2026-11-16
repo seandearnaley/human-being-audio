@@ -420,8 +420,8 @@ public:
                       metric::radiusSmall);
 
         drawMaster(canvas, visuals);
-        drawVoice(canvas, kReeseA, "Reese A", ParamId::aRatio, ParamId::aPhase, ParamId::aPm, -visuals.laneValue[0]);
-        drawVoice(canvas, kReeseB, "Reese B", ParamId::bRatio, ParamId::bPhase, ParamId::bPm, visuals.laneValue[0]);
+        drawVoice(canvas, kReeseA, "Reese A", ParamId::aRatio, ParamId::aPhase, ParamId::aPm, visuals.laneValue[0]);
+        drawVoice(canvas, kReeseB, "Reese B", ParamId::bRatio, ParamId::bPhase, ParamId::bPm, -visuals.laneValue[0]);
         drawFeedbackLabel(canvas);
         drawTract(canvas, visuals);
         drawFold(canvas, visuals);

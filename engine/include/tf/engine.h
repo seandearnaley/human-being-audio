@@ -56,6 +56,7 @@ public:
     float currentHz() const noexcept TF_NONBLOCKING;
     bool gateOpen() const noexcept TF_NONBLOCKING;
     float gainReductionDb() const noexcept TF_NONBLOCKING;                      // limiter, >= 0
+    double lanePpq() const noexcept TF_NONBLOCKING;  // the lane clock in quarter notes
     std::array<float, kLaneCount> lanePhases() const noexcept TF_NONBLOCKING;  // 0..1
     std::array<float, kLaneCount> laneValues() const noexcept TF_NONBLOCKING;  // -1..1, after depth and motion
 

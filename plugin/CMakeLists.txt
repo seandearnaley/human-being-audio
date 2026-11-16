@@ -40,6 +40,7 @@ target_compile_definitions(TractForm PUBLIC
 target_link_libraries(TractForm
     PRIVATE
         tf_core
+        tf_engine
         tf_ui
         tf_warnings
         TractFormPresets

@@ -133,6 +133,7 @@ struct Engine::Impl {
     float hz = 0.0f;
     float grDb = 0.0f;
     std::array<float, kLaneCount> uiPhase {}, uiValue {};
+    double uiPpq = 0.0;  // the lane clock, host position or free-running
 
     void prepare(double sampleRate, int oversampling) {
         fs = sampleRate;
@@ -328,6 +329,7 @@ struct Engine::Impl {
         const double ppqEnd = playing ? anchorPpq + static_cast<double>(sinceAnchor + controlBase) * qps
                                       : static_cast<double>(sinceNoteStart + controlBase) * qps;
         const double motion = p[ParamId::motion];
+        uiPpq = ppqEnd;
         for (int i = 0; i < kLaneCount; ++i) {
             const double theta = lanePhase(ppqEnd, p.choice(laneParam(i, LaneField::rate)), p[laneParam(i, LaneField::phase)]);
             const double raw = p.on(laneParam(i, LaneField::on))
@@ -607,6 +609,7 @@ struct Engine::Impl {
     void idleLaneDisplay(const Params& p) noexcept TF_NONBLOCKING {
         const double ppq = playing ? anchorPpq + static_cast<double>(sinceAnchor) * qps
                                    : static_cast<double>(sinceNoteStart) * qps;
+        uiPpq = ppq;
         for (int i = 0; i < kLaneCount; ++i) {
             const double theta = lanePhase(ppq, p.choice(laneParam(i, LaneField::rate)), p[laneParam(i, LaneField::phase)]);
             const double v = p.on(laneParam(i, LaneField::on))
@@ -645,6 +648,7 @@ void Engine::process(const Params& params, const Transport& transport, float* le
 float Engine::currentHz() const noexcept TF_NONBLOCKING { return impl_->hz; }
 bool Engine::gateOpen() const noexcept TF_NONBLOCKING { return !impl_->notes.empty(); }
 float Engine::gainReductionDb() const noexcept TF_NONBLOCKING { return std::max(0.0f, impl_->grDb); }
+double Engine::lanePpq() const noexcept TF_NONBLOCKING { return impl_->uiPpq; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept TF_NONBLOCKING { return impl_->uiPhase; }
 std::array<float, kLaneCount> Engine::laneValues() const noexcept TF_NONBLOCKING { return impl_->uiValue; }
 

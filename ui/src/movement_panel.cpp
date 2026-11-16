@@ -44,8 +44,8 @@ int choiceIndex(const Model& model, ParamId id) {
 float laneValueAt(const Model& model, int lane, double ppq) {
     const double length = kLaneRateQuarters[static_cast<std::size_t>(choiceIndex(model, laneParam(lane, LaneField::rate)))];
     const auto shape = static_cast<LaneShape>(choiceIndex(model, laneParam(lane, LaneField::shape)));
-    const float phase = tf::lanePhase(ppq, length, model.get(laneParam(lane, LaneField::phase)));
-    return tf::laneShape(shape, phase) * model.get(laneParam(lane, LaneField::depth)) * model.get(ParamId::motion);
+    const double phase = tf::lanePhase(ppq, length, model.get(laneParam(lane, LaneField::phase)));
+    return static_cast<float>(tf::laneShape(shape, phase, lane)) * model.get(laneParam(lane, LaneField::depth)) * model.get(ParamId::motion);
 }
 
 // The lane's name and its on switch: a toggle Row whose label carries the lane hue.
