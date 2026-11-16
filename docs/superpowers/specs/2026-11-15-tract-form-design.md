@@ -67,12 +67,22 @@ Oversampled domain (`M` = 2, 4 or 8 live; 16 offline), everything stereo:
 Base rate:
 
 8. **Growl path**: LR4 high-pass at `subFreq`, then **Squash** (three bands
-   split at 200 Hz and 2.5 kHz, upward and downward compression, auto make-up),
-   times `growlLevel`.
+   split at 200 Hz and 2.5 kHz, upward and downward compression, make-up that
+   never lowers the level), times `growlLevel`.
 9. **Mid/side**: side high-passed with LR4 at `xover`; `midGain`, `sideGain`.
-10. **Sub lock**: master sine, LR4 low-pass at `subFreq`, mono, times `subLevel`.
-11. Sum, amp gate (2 ms attack, 30 ms release), soft clip, look-ahead limiter
-    (1.5 ms, true-peak detection at 4×) to `ceiling`.
+10. **Growl ceiling**: the sub is a sine, so its peak is known exactly. The growl
+    gets what is left, `ceiling − subPeak`, as a static ceiling: a linked soft
+    clipper, a high-pass at `subFreq` to remove the low frequencies clipping
+    regenerates, then a look-ahead true-peak limiter whose release is slower than
+    a cycle of the note. Nothing here follows the sub's waveform: a gain that
+    moves at the note's rate would put growl energy on the fundamental.
+11. **Sub lock**: master sine, LR4 low-pass at `subFreq`, mono, times `subLevel`,
+    delayed to match and added after the growl limiter. It is never processed.
+12. Amp gate (2 ms attack, 30 ms release), then a linked soft clip at 0 dBFS as
+    a safety net. With `limit` off only that clip bounds the output.
+
+How loud the growl can be therefore depends on the room the sub leaves. The two
+levels in the Out node are that trade.
 
 Latency reported to the host is the decimator group delay, the look-ahead and
 the true-peak detector: 106 samples at 48 kHz.
@@ -205,7 +215,7 @@ Reese, Neuro, Talk, Sub, Motion, then User.
 Engine properties, each a Catch2 test:
 
 - **Sub stability**: output low-passed at `subFreq`, 50 ms Hann-weighted RMS
-  varies by less than 0.5 dB while all lanes run at full depth. (A rectangular
+  varies by less than 0.15 dB while all lanes run at full depth. (A rectangular
   50 ms window over a pure 44 Hz sine already varies by 0.58 dB.)
 - **Mono low end**: side energy one octave below `xover` is under −60 dB relative
   to mid. At the crossover itself an LR4 is only 6 dB down.
@@ -214,6 +224,9 @@ Engine properties, each a Catch2 test:
 - **Aliasing**: at 4×, inharmonic energy between 20 Hz and 20 kHz is at least
   70 dB below the harmonics for a 1 kHz note with `drive` and `coupling` at 1 and
   detune at 0. Half-band filters pass some aliases just under Nyquist.
+- **Sub independence**: sweeping `growlLevel` from 0 to 1 on a hot patch moves
+  the sub band by under 0.05 dB, and the sub band rendered with and without the
+  growl agrees to −36 dB (the remainder is linear crossover overlap).
 - **Path alignment**: sub and growl paths have equal latency to the sample.
 - **Fuzz**: random parameters and note streams produce only finite samples.
 - **Determinism**: the same input twice gives identical output.
