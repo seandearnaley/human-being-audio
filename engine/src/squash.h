@@ -1,8 +1,9 @@
 // Squash: three bands split with LR4 at 200 Hz and 2.5 kHz (all-pass
 // compensated, so the bands sum flat), each with upward and downward
 // compression from a stereo-linked RMS detector. Make-up is matched to the
-// input: slow RMS detectors on the input and on the compressed sum give the
-// gain that restores the input level, never less than 0 dB, plus a small lift
+// input above the low band: slow RMS detectors on the input and on the
+// compressed sum (mid and high bands) give the gain that restores the input
+// level, never less than 0 dB, plus a small lift
 // that grows with `amount`. So Squash makes any material denser and never
 // quieter, whatever its level. `amount` scales thresholds, ratios and the
 // upward range; at 0 every gain is exactly 1 and the module is a pure all-pass.
@@ -66,11 +67,15 @@ public:
     }
 
     void process(double& left, double& right, double amount) noexcept TF_NONBLOCKING {
-        inPower_ += makeupCoef_ * (0.5 * (left * left + right * right) - inPower_);
         std::array<double, kSquashBands> l {}, r {};
         split_[0].process(cLow_, cHigh_, left, l[0], l[1], l[2]);
         split_[1].process(cLow_, cHigh_, right, r[0], r[1], r[2]);
-        double outL = 0.0, outR = 0.0;
+        // Make-up matches the level above the low band: below 200 Hz the growl
+        // meets the high-passes after the growl clipper, so a lift there is not
+        // heard as loudness, and must not be traded for the mids.
+        const double inUpperL = l[1] + l[2], inUpperR = r[1] + r[2];
+        inPower_ += makeupCoef_ * (0.5 * (inUpperL * inUpperL + inUpperR * inUpperR) - inPower_);
+        double outL = 0.0, outR = 0.0, upperL = 0.0, upperR = 0.0;
         for (std::size_t b = 0; b < kSquashBands; ++b) {
             const double ms = 0.5 * (l[b] * l[b] + r[b] * r[b]);
             meanSquare_[b] += rmsCoef_[b] * (ms - meanSquare_[b]);
@@ -84,8 +89,12 @@ public:
             const double gain = gainDb_[b] == 0.0 ? 1.0 : dbToGain(gainDb_[b]);
             outL += gain * l[b];
             outR += gain * r[b];
+            if (b > 0) {
+                upperL += gain * l[b];
+                upperR += gain * r[b];
+            }
         }
-        outPower_ += makeupCoef_ * (0.5 * (outL * outL + outR * outR) - outPower_);
+        outPower_ += makeupCoef_ * (0.5 * (upperL * upperL + upperR * upperR) - outPower_);
         if (amount > 0.0) {
             const double match = 10.0 * std::log10((inPower_ + 1e-20) / (outPower_ + 1e-20));
             makeupDb_ = std::clamp(match, 0.0, kSquashMaxMakeupDb) + kSquashLiftDb * amount;

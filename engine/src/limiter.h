@@ -40,37 +40,14 @@ inline double softClipLinked(double& left, double& right, double knee = kSoftCli
 }
 
 // The growl clipper: a deliberate part of the sound (clip the mids, keep the
-// sub clean). softClip saturating towards the growl's ceiling, starting at
-// this fraction of it, applied per channel at 2x with first-order
-// antiderivative anti-aliasing. (A gain shared by both channels was tried: it
-// aliases more and writes as much low side signal, which the engine removes
-// with a side high-pass after the clipper either way.)
+// sub clean). One gain for both channels, from the larger one (so it does not
+// turn mid into side), saturating towards the growl's ceiling from this
+// fraction of it. The engine runs it at 2x.
 inline constexpr double kGrowlClipKnee = 0.6;
 
-// softClip with ADAA. Its shoulder has the closed-form antiderivative used here.
-class AdaaSoftClip {
-public:
-    void reset() noexcept TF_NONBLOCKING { x1_ = 0.0; }
-    double process(double x, double knee, double bound) noexcept TF_NONBLOCKING {
-        const double d = x - x1_;
-        double y;
-        if (std::abs(d) < 1e-6) y = softClip(0.5 * (x + x1_), knee, bound);
-        else y = (antiderivative(x, knee, bound) - antiderivative(x1_, knee, bound)) / d;
-        x1_ = x;
-        return y;
-    }
-    static double antiderivative(double x, double knee, double bound) noexcept TF_NONBLOCKING {
-        const double a = std::abs(x);
-        if (a <= knee) return 0.5 * x * x;
-        const double r = bound - knee;
-        const double u = (a - knee) / r;
-        const double logCosh = u + std::log1p(std::exp(-2.0 * u)) - 0.6931471805599453;
-        return 0.5 * knee * knee + knee * (a - knee) + r * r * logCosh;
-    }
-
-private:
-    double x1_ = 0.0;
-};
+inline double growlClip(double& left, double& right, double ceiling) noexcept TF_NONBLOCKING {
+    return softClipLinked(left, right, kGrowlClipKnee * ceiling, ceiling);
+}
 
 // The output safety clip: transparent up to the ceiling (the limiters keep the
 // sum there when limit is on), then a short shoulder to 0 dBFS.
@@ -201,13 +178,13 @@ public:
     static constexpr double kReleaseSeconds = 0.08;
     static constexpr double kMarginDb = 0.05;  // aim this far below the ceiling
 
-    void prepare(double sampleRate) {
+    void prepare(double sampleRate, double releaseSeconds = kReleaseSeconds) {
         lookahead_ = std::max(1, static_cast<int>(std::lround(kLookaheadSeconds * sampleRate)));
         delay_ = lookahead_ - 1 + TruePeakDetector::kDelay;
         for (auto& d : delays_) d.prepare(delay_);
         hold_.prepare(lookahead_);
         box_.assign(static_cast<std::size_t>(lookahead_), 1.0);
-        releaseCoef_ = onePoleCoef(kReleaseSeconds, 1.0 / sampleRate);
+        releaseCoef_ = onePoleCoef(releaseSeconds, 1.0 / sampleRate);
         reset();
     }
     void reset() noexcept TF_NONBLOCKING {

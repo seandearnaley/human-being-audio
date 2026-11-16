@@ -97,6 +97,7 @@ private:
 // audio band and the clipped result is band-limited before it leaves.
 class BaseRate2x {
 public:
+    static constexpr int kFactor = 2;
     void prepare() {
         up_.set_coefs(decimator_coefs::k2.data());
         down_.set_coefs(decimator_coefs::k2.data());

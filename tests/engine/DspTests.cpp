@@ -421,20 +421,6 @@ TEST_CASE("the soft clip is transparent below its knee and bounded above", "[dsp
     CHECK((softClip(kSoftClipKnee + h) - softClip(kSoftClipKnee)) / h == Catch::Approx(1.0).margin(1e-4));
 }
 
-TEST_CASE("the growl clipper's antiderivative matches its shape, and its output stays bounded", "[dsp][limiter]") {
-    const double knee = 0.24, bound = 0.4;
-    for (double x = -3.0; x <= 3.0; x += 0.0071) {
-        const double h = 1e-6;
-        const double numeric =
-            (AdaaSoftClip::antiderivative(x + h, knee, bound) - AdaaSoftClip::antiderivative(x - h, knee, bound)) / (2 * h);
-        CHECK(numeric == Catch::Approx(softClip(x, knee, bound)).margin(1e-5));
-    }
-    AdaaSoftClip c;
-    double worst = 0.0;
-    for (int i = 0; i < 20000; ++i) worst = std::max(worst, std::abs(c.process(3.0 * std::sin(0.37 * i), knee, bound)));
-    CHECK(worst <= bound);
-}
-
 TEST_CASE("the feedback delay interpolates fractional delays", "[dsp][feedback]") {
     FeedbackDelay d;
     d.prepare(1000);
