@@ -30,7 +30,7 @@
   "xover": 100.0,
   "subFreq": 110.0,
   "subLevel": 0.54,
-  "growlLevel": 0.3,
+  "growlLevel": 0.2,
   "squash": 0.0,
   "limit": true,
   "ceiling": -0.3,

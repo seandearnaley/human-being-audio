@@ -1,10 +1,13 @@
 // The factory bank: every file in presets/ loads, is complete and named, and
 // plays within the instrument's promises (the sub does not move, the output
-// stays under the ceiling). TF_PRESETS_DIR is set by CMake.
+// stays under the ceiling) and the 0.2 voicing targets (spec, "Measuring
+// noise": the growl is harmonic and weighted to the bottom). TF_PRESETS_DIR is
+// set by CMake.
 #include "helpers.h"
 
 #include "tf/preset.h"
 #include "tf/render.h"
+#include "tf/voice_pitch.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,6 +16,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -42,6 +47,79 @@ std::vector<File> presetFiles() {
 }
 
 constexpr std::array<std::string_view, 5> kCategories { "Reese", "Neuro", "Talk", "Sub", "Motion" };
+
+// The spec's voicing targets with the lanes off (motion 0), per category:
+// spectral tilt from 500 Hz to 0.8 x Reach x f0 in dB per octave, and the
+// most off-harmonic energy allowed. Sub presets have no growl to hold.
+struct VoicingTarget {
+    std::string_view category;
+    double tiltLo, tiltHi;
+    double offHarmonicMaxDb;
+};
+constexpr std::array<VoicingTarget, 4> kVoicing { {
+    { "Reese", -14.0, -7.0, -30.0 },
+    { "Neuro", -9.0, -4.0, -25.0 },
+    { "Talk", -10.0, -5.0, -25.0 },
+    { "Motion", -10.0, -5.0, -25.0 },
+} };
+// The targets are set on 16x, 4-bar renders at E1, F1 and A1; this test renders
+// F1 at 4x for two bars, so it allows this much either way.
+constexpr double kTiltMarginDb = 1.5;
+constexpr double kOffHarmonicMarginDb = 3.0;
+
+constexpr double kRate = 48000.0;
+constexpr int kNote = 29;  // F1
+
+struct Rendered {
+    std::string path;
+    Preset preset;
+    bool finite = false;
+    analysis::Metrics metrics;
+};
+
+// Every factory preset at F1, two bars at 4x, measured over the same window and
+// with the same tilt span and harmonic tolerance as tf-render --metrics. The
+// renders run in parallel (each owns its engine); checks happen afterwards, on
+// this thread.
+std::vector<Rendered> renderBank(bool lanesOff) {
+    std::vector<std::future<Rendered>> jobs;
+    for (const auto& file : presetFiles()) {
+        jobs.push_back(std::async(std::launch::async, [file, lanesOff] {
+            Rendered r;
+            r.path = file.path;
+            const auto preset = parsePreset(file.text);
+            if (!preset) return r;
+            r.preset = *preset;
+
+            RenderRequest request;
+            request.params = preset->params;
+            if (lanesOff) request.params[ParamId::motion] = 0.0f;
+            request.note = kNote;
+            request.bars = 2.0;
+            request.oversampling = 4;
+            request.sampleRate = kRate;
+            RenderStats stats;
+            const auto audio = analysis::deinterleave(renderOffline(request, &stats));
+            r.finite = allFinite(audio.left) && allFinite(audio.right);
+
+            analysis::MetricsRequest q;
+            q.sampleRate = kRate;
+            q.subFreq = request.params[ParamId::subFreq];
+            q.xover = request.params[ParamId::xover];
+            q.steadyBegin = static_cast<std::size_t>(frames(0.25, kRate));
+            q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
+            q.f0 = noteHz(kNote);
+            q.tiltUpperHz = 0.8 * request.params[ParamId::reach] * q.f0;
+            const auto offsets = voiceOffsetsHz(request.params, q.f0, request.bpm);
+            q.harmonicToleranceHz = analysis::harmonicToleranceHz(offsets.a, offsets.b);
+            r.metrics = analysis::computeMetrics(audio, q);
+            return r;
+        }));
+    }
+    std::vector<Rendered> out;
+    for (auto& job : jobs) out.push_back(job.get());
+    return out;
+}
 
 }
 
@@ -88,33 +166,40 @@ TEST_CASE("the Coupled Reese preset is the parameter defaults") {
 }
 
 TEST_CASE("every factory preset renders with a steady sub under the ceiling") {
-    constexpr double kRate = 48000.0;
-    for (const auto& file : presetFiles()) {
-        CAPTURE(file.path);
-        const auto preset = parsePreset(file.text);
-        REQUIRE(preset.has_value());
-
-        RenderRequest request;
-        request.params = preset->params;
-        request.note = 29;
-        request.bars = 2.0;
-        request.oversampling = 4;
-        request.sampleRate = kRate;
-        RenderStats stats;
-        const auto audio = analysis::deinterleave(renderOffline(request, &stats));
-        REQUIRE(allFinite(audio.left));
-        REQUIRE(allFinite(audio.right));
-
-        // The same measurement window as tf-render --metrics.
-        analysis::MetricsRequest q;
-        q.sampleRate = kRate;
-        q.subFreq = preset->params[ParamId::subFreq];
-        q.xover = preset->params[ParamId::xover];
-        q.steadyBegin = static_cast<std::size_t>(frames(0.25, kRate));
-        q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
-        const auto m = analysis::computeMetrics(audio, q);
+    for (const auto& r : renderBank(false)) {
+        CAPTURE(r.path);
+        REQUIRE(r.finite);
+        const auto& m = r.metrics;
         CAPTURE(m.subRmsRangeDb, m.truePeakDb, m.rmsDb);
         CHECK(m.subRmsRangeDb <= 0.2);
-        CHECK(m.truePeakDb <= preset->params[ParamId::ceiling] + 0.1);
+        CHECK(m.truePeakDb <= r.preset.params[ParamId::ceiling] + 0.1);
     }
+}
+
+TEST_CASE("every factory preset's growl is harmonic and weighted to the bottom") {
+    int held = 0;
+    for (const auto& r : renderBank(true)) {
+        CAPTURE(r.path);
+        REQUIRE(r.finite);
+        const auto target = std::find_if(kVoicing.begin(), kVoicing.end(),
+                                         [&](const VoicingTarget& t) { return t.category == r.preset.category; });
+        if (target == kVoicing.end()) continue;  // Sub
+        ++held;
+        const auto& m = r.metrics;
+        CAPTURE(r.preset.category, m.offHarmonicDb, m.harmonicToleranceHz);
+        CHECK(m.offHarmonicDb <= target->offHarmonicMaxDb + kOffHarmonicMarginDb);
+
+        // Tilt is undefined when Reach leaves less than two octaves above
+        // 500 Hz: such a preset is bottom-weighted by construction.
+        if (!m.tiltDbPerOct) continue;
+        // Coupled Reese must equal the parameter defaults (above). The defaults
+        // tilt at about -4.5 dB/oct at F1, above the Reese window, so only its
+        // harmonicity is held here.
+        if (r.preset.name == "Coupled Reese") continue;
+        const double tilt = *m.tiltDbPerOct;
+        CAPTURE(tilt);
+        CHECK(tilt >= target->tiltLo - kTiltMarginDb);
+        CHECK(tilt <= target->tiltHi + kTiltMarginDb);
+    }
+    CHECK(held >= 24);
 }
