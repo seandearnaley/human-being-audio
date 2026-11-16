@@ -230,10 +230,20 @@ void Row::paint(visage::Canvas& canvas) {
     }
 }
 
+void drawChip(visage::Canvas& canvas, const Context& context, const std::string& text, float width, float height,
+              unsigned textArgb) {
+    drawPanel(canvas, context, 0.0f, 0.0f, width, height, colour::raised, metric::radiusSmall);
+    drawLabel(canvas, context, text, 0.0f, 0.0f, width, height, textArgb, visage::Font::kCenter, type::small);
+}
+
+void Chip::setAccent(unsigned accent) {
+    if (accent == accent_) return;
+    accent_ = accent;
+    redraw();
+}
+
 void Chip::paint(visage::Canvas& canvas) {
-    drawPanel(canvas, context_, 0.0f, 0.0f, width(), height(), colour::raised, metric::radiusSmall);
-    drawLabel(canvas, context_, text(), 0.0f, 0.0f, width(), height(), active() ? colour::text : accent_,
-              visage::Font::kCenter, type::small);
+    drawChip(canvas, context_, text(), width(), height(), active() ? colour::text : accent_);
 }
 
 Button::Button(Context& context, std::string label, std::function<void()> onClick)

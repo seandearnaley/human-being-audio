@@ -13,4 +13,10 @@ if(TF_BUILD_PLUGIN)
     target_compile_definitions(tf_plugin_tests PRIVATE $<TARGET_PROPERTY:TractForm,COMPILE_DEFINITIONS>)
     target_link_libraries(tf_plugin_tests PRIVATE TractFormCode Catch2::Catch2WithMain tf_warnings)
     catch_discover_tests(tf_plugin_tests DISCOVERY_MODE PRE_TEST)
+
+    # The interface's editing logic, which needs no window. It is internal to tf_ui.
+    add_executable(tf_ui_tests ui/CurveEditTests.cpp)
+    target_include_directories(tf_ui_tests PRIVATE ${PROJECT_SOURCE_DIR}/ui/src)
+    target_link_libraries(tf_ui_tests PRIVATE tf_ui Catch2::Catch2WithMain tf_warnings)
+    catch_discover_tests(tf_ui_tests DISCOVERY_MODE PRE_TEST)
 endif()

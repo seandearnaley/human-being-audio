@@ -2,7 +2,9 @@
 // Fold, Sculpt, Mid/side and Out, joined by wires, with the sub path underneath.
 #include "panels.h"
 
+#include "movement_edit.h"
 #include "tf/feel.h"
+#include "tf/lanes.h"
 #include "tf/vowels.h"
 
 #include <algorithm>
@@ -86,8 +88,6 @@ constexpr float kFlowSpeed = 56.0f;    // design pixels per second: one column g
 constexpr float kDotSpacing = 112.0f;  // design pixels between dots on a wire
 constexpr float kDash = 4.0f;
 
-constexpr float kLaneDepth = 0.5f;  // lanes 2 and 3 move morph and drive by up to this much
-
 Box nodeTitle(const Box& node) { return { node.x + kInset, node.y + kInset, node.w - 2.0f * kInset, kTitleHeight }; }
 
 Box nodeVisual(const Box& node, float width) {
@@ -118,6 +118,18 @@ std::string hzText(float hz) {
 }
 
 float lerp(float a, float b, float t) { return a + (b - a) * t; }
+
+// Whether any lane that is on moves `target`.
+bool aimed(const Params& params, LaneTarget target) {
+    for (int lane = 0; lane < kLaneCount; ++lane)
+        if (params.on(laneParam(lane, LaneField::on)) && laneTargetOf(params, lane) == target) return true;
+    return false;
+}
+
+// A parameter's value after the lanes aimed at `target` have moved it, in its range.
+float moved(const Params& params, const Visuals& visuals, ParamId id, LaneTarget target) {
+    return clampToRange(spec(id), laneApply(target, params[id], laneSum(params, visuals.laneValue, target)));
+}
 
 float smoothstep(float t) {
     t = std::clamp(t, 0.0f, 1.0f);
@@ -363,22 +375,23 @@ Wire feedbackLoop() {
 
 // ---------------------------------------------------------------------------
 
-// Where a movement lane has pushed a barred value: a violet span on the row's
-// bar from the set value to the moved one, ending in a dot. Drawn over the row
-// and transparent to the mouse.
+// Where the movement lanes aimed at a barred value have pushed it: a violet span
+// on the row's bar from the set value to the moved one, ending in a dot. Drawn
+// over the row, only while a lane that is on aims at it, and transparent to the mouse.
 class LaneMarker final : public visage::Frame {
 public:
     static constexpr float kAbove = 6.0f;   // design pixels from the frame top to the row's bottom edge
     static constexpr float kHeight = 10.0f;
 
-    LaneMarker(Context& context, ParamId id, int lane) : context_(context), id_(id), lane_(lane) {
+    LaneMarker(Context& context, ParamId id, LaneTarget target) : context_(context), id_(id), target_(target) {
         setIgnoresMouseEvents(true, false);
     }
 
     void draw(visage::Canvas& canvas) override {
-        const float base = toNormalised(spec(id_), context_.model.get(id_));
-        const float lane = context_.model.visuals().laneValue[static_cast<std::size_t>(lane_)];
-        const float moved = std::clamp(base + kLaneDepth * lane, 0.0f, 1.0f);
+        const Params params = paramsOf(context_.model);
+        if (!aimed(params, target_)) return;
+        const float base = toNormalised(spec(id_), params[id_]);
+        const float moved = toNormalised(spec(id_), tf::ui::moved(params, context_.model.visuals(), id_, target_));
         const float thickness = context_.px(2.0f);
         const float barY = context_.px(kAbove) - thickness;
         const float w = width();
@@ -394,7 +407,7 @@ public:
 private:
     Context& context_;
     ParamId id_;
-    int lane_;
+    LaneTarget target_;
 };
 
 class GraphPanel final : public Panel {
@@ -418,14 +431,15 @@ public:
         place<Row>(nodeRow(kTract, 0), ParamId::vowelA, colour::growl, "From");
         place<Row>(nodeRow(kTract, 1), ParamId::vowelB, colour::growl, "To");
         place<Row>(nodeRow(kTract, 2), ParamId::morph, colour::growl, "Morph", true);
-        morphMarker_ = &place<LaneMarker>(markerBox(nodeRow(kTract, 2)), ParamId::morph, 1);
+        markers_[0] = &place<LaneMarker>(markerBox(nodeRow(kTract, 2)), ParamId::morph, LaneTarget::morph);
 
         // Fold
         place<Row>(nodeRow(kFold, 0), ParamId::foldType, colour::growl, "Type");
         place<Row>(nodeRow(kFold, 1), ParamId::drive, colour::growl, "Drive", true);
         place<Row>(nodeRow(kFold, 2), ParamId::asym, colour::growl, "Asym");
         place<Row>(nodeRow(kFold, 3), ParamId::weight, colour::growl, "Weight", true);
-        driveMarker_ = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, 2);
+        markers_[1] = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, LaneTarget::drive);
+        markers_[2] = &place<LaneMarker>(markerBox(nodeRow(kFold, 3)), ParamId::weight, LaneTarget::weight);
 
         // Sculpt. Its position is the macro in the top bar. Depth is bipolar and a
         // row's bar fills from the left, so it has none.
@@ -473,10 +487,8 @@ public:
 
         if (watched.gate) flow_ = std::fmod(flow_ + elapsed * kFlowSpeed, kDotSpacing * 1000.0f);
         if (watched.gate || changed) redraw();
-        if (lanesMoved || changed) {
-            morphMarker_->redraw();
-            driveMarker_->redraw();
-        }
+        if (lanesMoved || changed)
+            for (LaneMarker* marker : markers_) marker->redraw();
     }
 
     void draw(visage::Canvas& canvas) override {
@@ -488,13 +500,18 @@ public:
             drawPanel(canvas, context_, px(node.x), px(node.y), px(node.w), px(node.h), colour::raised,
                       metric::radiusSmall);
 
+        const Params params = paramsOf(context_.model);
         drawMaster(canvas, visuals);
-        drawVoice(canvas, kReeseA, "Reese A", ParamId::aRatio, ParamId::aPhase, ParamId::aPm, visuals.laneValue[0]);
-        drawVoice(canvas, kReeseB, "Reese B", ParamId::bRatio, ParamId::bPhase, ParamId::bPm, -visuals.laneValue[0]);
+        // Phase lanes move the two voices opposite ways.
+        const float phase = laneSum(params, visuals.laneValue, LaneTarget::phase);
+        drawVoice(canvas, kReeseA, "Reese A", ParamId::aRatio, laneApply(LaneTarget::phase, get(ParamId::aPhase), phase),
+                  ParamId::aPm);
+        drawVoice(canvas, kReeseB, "Reese B", ParamId::bRatio, laneApply(LaneTarget::phase, get(ParamId::bPhase), -phase),
+                  ParamId::bPm);
         drawFeedbackLabel(canvas);
-        drawTract(canvas, visuals);
-        drawFold(canvas, visuals);
-        drawSculpt(canvas);
+        drawTract(canvas, params, visuals);
+        drawFold(canvas, params, visuals);
+        drawSculpt(canvas, params, visuals);
         drawMidSide(canvas);
         drawOut(canvas, visuals);
         title(canvas, { kSubLock.x + kInset, kSubLock.midY() - kTitleHeight * 0.5f, kSubLockRowX, kTitleHeight },
@@ -506,24 +523,28 @@ private:
 
     // Everything the panel's own drawing depends on.
     struct Watched {
-        std::array<float, 22> params {};
-        std::array<float, 3> lanes {};
+        std::array<float, 31> params {};
+        std::array<float, kLaneCount> lanes {};
         float hz = 0.0f;
         int note = -1;
         bool gate = false;
         bool operator==(const Watched&) const = default;
     };
 
-    static constexpr std::array<ParamId, 22> kWatchedParams {
+    // The lanes' on and target decide which values they move.
+    static constexpr std::array<ParamId, 31> kWatchedParams {
         ParamId::coupling,    ParamId::width,       ParamId::aRatio,       ParamId::aPhase,    ParamId::aPm,
         ParamId::bRatio,      ParamId::bPhase,      ParamId::bPm,          ParamId::vowelA,    ParamId::vowelB,
         ParamId::morph,       ParamId::foldType,    ParamId::drive,        ParamId::asym,      ParamId::reach,
         ParamId::sculpt,      ParamId::sculptDepth, ParamId::sculptCount,  ParamId::sculptSpread, ParamId::sculptRes,
-        ParamId::sideGain,    ParamId::xover,
+        ParamId::sideGain,    ParamId::xover,       ParamId::weight,
+        ParamId::lane1On,     ParamId::lane1Target, ParamId::lane2On,      ParamId::lane2Target,
+        ParamId::lane3On,     ParamId::lane3Target, ParamId::lane4On,      ParamId::lane4Target,
     };
 
     Watched watch() {
         Watched w;
+        static_assert(std::tuple_size_v<decltype(w.params)> == kWatchedParams.size());
         for (std::size_t i = 0; i < kWatchedParams.size(); ++i) w.params[i] = get(kWatchedParams[i]);
         const Visuals& visuals = context_.model.visuals();
         for (std::size_t i = 0; i < w.lanes.size(); ++i) w.lanes[i] = visuals.laneValue[i];
@@ -630,11 +651,11 @@ private:
                       visage::Font::kRight, type::label, Weight::regular);
     }
 
-    void drawVoice(visage::Canvas& canvas, const Box& card, const char* name, ParamId ratio, ParamId phase, ParamId pm,
-                   float lane) {
+    void drawVoice(visage::Canvas& canvas, const Box& card, const char* name, ParamId ratio, float phaseDegrees,
+                   ParamId pm) {
         const Box band = nodeTitle(card);
         title(canvas, band, name, colour::growl);
-        const auto values = voicePeriod(get(ratio), get(phase) + 90.0f * lane,
+        const auto values = voicePeriod(get(ratio), phaseDegrees,
                                         feel::pmIndex(get(pm), get(ParamId::coupling)));
         curve(canvas, values, { band.right() - kSparkWidth, band.y, kSparkWidth, band.h }, colour::growl, -1.15f, 1.15f);
     }
@@ -653,32 +674,43 @@ private:
                   px(kFeedback.h), colour::textDim);
     }
 
-    void drawTract(visage::Canvas& canvas, const Visuals& visuals) {
+    void drawTract(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
         title(canvas, nodeTitle(kTract), "Tract", colour::growl);
-        const float morph = std::clamp(get(ParamId::morph) + kLaneDepth * visuals.laneValue[1], 0.0f, 1.0f);
+        const float morph = moved(params, visuals, ParamId::morph, LaneTarget::morph);
         const auto values = formantResponse(static_cast<int>(get(ParamId::vowelA) + 0.5f),
                                             static_cast<int>(get(ParamId::vowelB) + 0.5f), morph);
         curve(canvas, values, nodeVisual(kTract, kTract.w - 2.0f * kInset), colour::growl, 0.0f, 1.08f, 0.12f);
     }
 
-    void drawFold(visage::Canvas& canvas, const Visuals& visuals) {
+    void drawFold(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
         title(canvas, nodeTitle(kFold), "Fold", colour::growl);
         constexpr float kExtent = 1.08f;  // headroom so the stroke is not clipped at ±1
         const Box box = nodeVisual(kFold, kVisualHeight);
         hairline(canvas, { box.x, box.bottom() }, { box.right(), box.y }, colour::track);
-        const float drive = std::clamp(get(ParamId::drive) + kLaneDepth * visuals.laneValue[2], 0.0f, 1.0f);
+        const float drive = moved(params, visuals, ParamId::drive, LaneTarget::drive);
         const auto type = static_cast<FoldType>(static_cast<int>(get(ParamId::foldType) + 0.5f));
         curve(canvas, foldTransfer(type, drive, get(ParamId::asym), kExtent), box, colour::growl, -kExtent, kExtent);
     }
 
-    // The bank's response around the 0 dB line, with Reach marked where it cuts off.
-    void drawSculpt(visage::Canvas& canvas) {
+    // The bank's response around the 0 dB line, with Reach marked where it cuts
+    // off. Lanes aimed at Sculpt move the bank; one aimed at Reach adds a violet
+    // hairline where they have pushed it.
+    void drawSculpt(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
         title(canvas, nodeTitle(kSculpt), "Sculpt", colour::growl);
         const Box box = nodeVisual(kSculpt, kSculpt.w - 2.0f * kInset);
-        const float reachX = box.x + box.w * harmonicPosition(get(ParamId::reach));
-        hairline(canvas, { reachX, box.y }, { reachX, box.bottom() }, colour::track);
+        // Above the highest harmonic shown, Reach has no line.
+        const auto reachLine = [&](float reach, unsigned hue) {
+            const float position = harmonicPosition(reach);
+            if (position > 1.0f) return;
+            const float x = box.x + box.w * position;
+            hairline(canvas, { x, box.y }, { x, box.bottom() }, hue);
+        };
+        reachLine(get(ParamId::reach), colour::track);
         hairline(canvas, { box.x, box.midY() }, { box.right(), box.midY() }, colour::track);
-        const auto values = sculptResponse(get(ParamId::sculpt), static_cast<int>(get(ParamId::sculptCount) + 0.5f) + 1,
+        if (aimed(params, LaneTarget::reach))
+            reachLine(moved(params, visuals, ParamId::reach, LaneTarget::reach), colour::motion);
+        const auto values = sculptResponse(moved(params, visuals, ParamId::sculpt, LaneTarget::sculpt),
+                                           static_cast<int>(get(ParamId::sculptCount) + 0.5f) + 1,
                                            get(ParamId::sculptSpread), get(ParamId::sculptDepth),
                                            get(ParamId::sculptRes));
         curve(canvas, values, box, colour::growl, -kSculptRangeDb, kSculptRangeDb, 0.12f);
@@ -714,8 +746,7 @@ private:
     }
 
     std::vector<std::pair<visage::Frame*, Box>> placed_;
-    LaneMarker* morphMarker_ = nullptr;
-    LaneMarker* driveMarker_ = nullptr;
+    std::array<LaneMarker*, 3> markers_ {};  // morph, drive, weight
     Watched shown_;
     float flow_ = 0.0f;
     Clock::time_point lastTick_;

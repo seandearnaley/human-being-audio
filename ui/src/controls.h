@@ -106,6 +106,9 @@ class Chip final : public ParamFrame {
 public:
     Chip(Context& context, ParamId id, unsigned accent) : ParamFrame(context, id, accent) {}
 
+    // Changes the text colour, for a chip whose meaning changes (a lane turned off).
+    void setAccent(unsigned accent);
+
 private:
     void paint(visage::Canvas& canvas) override;
 };
@@ -132,6 +135,10 @@ private:
     bool hovered_ = false;
     bool pressed_ = false;
 };
+
+// The pill a Chip draws, for controls that look like one but behave differently.
+void drawChip(visage::Canvas& canvas, const Context& context, const std::string& text, float width, float height,
+              unsigned textArgb);
 
 // Text helpers so panels do not repeat font and justification boilerplate.
 void drawLabel(visage::Canvas& canvas, const Context& context, const std::string& text, float x, float y, float width,

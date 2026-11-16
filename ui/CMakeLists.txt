@@ -12,6 +12,8 @@ add_library(tf_ui STATIC
     src/editor.cpp
     src/fake_model.cpp
     src/graph_panel.cpp
+    src/movement_edit.cpp
+    src/movement_edit.h
     src/movement_panel.cpp
     src/output_panel.cpp
     src/panel.cpp
