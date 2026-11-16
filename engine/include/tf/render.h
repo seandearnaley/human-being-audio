@@ -24,6 +24,8 @@ struct RenderStats {
     int heldSamples = 0;           // frames while the note is held; the tail follows
     float maxGainReductionDb = 0;  // limiter, over the whole render
     float meanGainReductionDb = 0;
+    float maxGrowlClipDb = 0;      // growl clipper gain reduction, whole render
+    float meanGrowlClipDb = 0;     // per sample, while the note is held
 };
 
 // Interleaved stereo. Transport plays from ppq 0. The engine latency is removed,

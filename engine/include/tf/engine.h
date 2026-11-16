@@ -55,7 +55,13 @@ public:
     // State of the last processed sample, for the interface.
     float currentHz() const noexcept TF_NONBLOCKING;
     bool gateOpen() const noexcept TF_NONBLOCKING;
-    float gainReductionDb() const noexcept TF_NONBLOCKING;                      // limiter, >= 0
+    // Look-ahead limiter gain reduction, >= 0. It acts on the growl (the sub is
+    // only limited if it alone exceeds the ceiling); this is the larger of the two.
+    float gainReductionDb() const noexcept TF_NONBLOCKING;
+    // How hard the growl clipper worked over the last block: largest and mean
+    // gain reduction in dB (>= 0).
+    float growlClipDb() const noexcept TF_NONBLOCKING;
+    float growlClipMeanDb() const noexcept TF_NONBLOCKING;
     double lanePpq() const noexcept TF_NONBLOCKING;  // the lane clock in quarter notes
     std::array<float, kLaneCount> lanePhases() const noexcept TF_NONBLOCKING;  // 0..1
     std::array<float, kLaneCount> laneValues() const noexcept TF_NONBLOCKING;  // -1..1, after depth and motion

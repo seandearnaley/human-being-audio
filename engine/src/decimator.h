@@ -92,6 +92,28 @@ private:
     hiir::Downsampler2xFpu<2> s16_;
 };
 
+// 2x around a base-rate nonlinearity (the growl clipper), with the decimator's
+// steep last-stage design both ways, so images and aliases stay out of the
+// audio band and the clipped result is band-limited before it leaves.
+class BaseRate2x {
+public:
+    void prepare() {
+        up_.set_coefs(decimator_coefs::k2.data());
+        down_.set_coefs(decimator_coefs::k2.data());
+        reset();
+    }
+    void reset() noexcept TF_NONBLOCKING {
+        up_.clear_buffers();
+        down_.clear_buffers();
+    }
+    void up(float x, float* out) noexcept TF_NONBLOCKING { halfBandUp(up_, x, out); }
+    float down(const float* in) noexcept TF_NONBLOCKING { return halfBand(down_, in); }
+
+private:
+    hiir::Upsampler2xFpu<10> up_;
+    hiir::Downsampler2xFpu<10> down_;
+};
+
 // The fold needs about 16x to keep its aliasing 70 dB down at full drive, more
 // than the rest of the oversampled domain. LocalOversampler lifts one signal
 // from the domain's rate (factor M) to 16x and back around the fold, using the

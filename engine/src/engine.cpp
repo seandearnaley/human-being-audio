@@ -36,11 +36,25 @@ constexpr double kBendRange = 2.0;
 constexpr double kMinBpm = 20.0;
 constexpr double kMaxBpm = 999.0;
 constexpr double kPpqTolerance = 1e-5;  // quarters; larger jumps re-anchor the clock
-// Gain staging. The growl leaves the fold at full scale; at growlLevel 1 it is
-// trimmed so that, on top of a sub at subLevel 0.5 (-6 dBFS peak), the default
-// patch peaks below the soft clip's knee and the limiter stays idle. Without
-// it the output stage ducks the sub on every growl peak.
-constexpr double kGrowlTrim = 0.4;
+// Gain staging. The sub is a sine whose peak after its low-pass is known
+// exactly every control period, so the growl gets its own ceiling: the output
+// ceiling (less a small margin for inter-sample peaks) minus that sub peak.
+// After Squash, growlLevel and mid/side, a soft clipper (per channel, ADAA, at
+// 2x; the sub and master tap take the same 2x trip) saturates the growl
+// towards that ceiling, and the side is high-passed at the crossover again to
+// remove the low side signal clipping writes. Band-limiting a clipped bright
+// growl overshoots its clip level (by several dB on hot patches), so the
+// look-ahead true-peak limiter acts on the growl alone, against the headroom
+// the sub leaves at each instant (ceiling minus |sub|); the sub passes the same
+// delay untouched. A second limiter on the sub only acts if the sub alone
+// exceeds the ceiling (the user's choice). The sub is therefore never ducked
+// by the growl, however hard it is pushed, and latency is unchanged. The final
+// linked output clip is a safety net. kGrowlGain sets where the clipper
+// starts to bite: lightly on the default patch, hard at growlLevel 1 on a
+// dense one.
+constexpr double kGrowlGain = 0.7;
+constexpr double kGrowlCeilingMargin = 0.96605;  // -0.3 dB, for inter-sample peaks of the clipped growl
+constexpr double kGrowlCeilingFloor = 1e-3;      // -60 dBFS: a sub at or above the ceiling leaves the growl this
 
 int effectiveOversampling(double sampleRate, int requested) {
     int factor = 1;
@@ -53,7 +67,17 @@ int effectiveOversampling(double sampleRate, int requested) {
 // Oversampled-domain control values, ramped per oversampled sample.
 enum Os : std::size_t { incMaster, incA, incB, offA, offB, pmA, pmB, fbGain, fbDelay, width, tractAmt, driveGain, asymOffset, warpAmt, osCount };
 // Base-rate control values, ramped per base sample.
-enum Base : std::size_t { subLevel, growlLevel, midGain, sideGain, squashAmt, ceilingGain, limitAmt, baseCount };
+enum Base : std::size_t { subLevel, growlLevel, midGain, sideGain, squashAmt, ceilingGain, limitAmt, growlCeiling, baseCount };
+
+// |H| of the engine's LR4 low-pass (two TPT Butterworth sections) at `hz`:
+// 1 / (1 + W^4) with W the pre-warped frequency ratio. Zero at and above
+// Nyquist, where the decimator has already removed the sub.
+double lr4LowpassMagnitude(double hz, double cutoff, double sampleRate) noexcept TF_NONBLOCKING {
+    if (hz >= 0.499 * sampleRate) return 0.0;
+    const double w = std::tan(kPi * std::max(0.0, hz) / sampleRate) / SvfCoefs::prewarp(cutoff, sampleRate);
+    const double w2 = w * w;
+    return 1.0 / (1.0 + w2 * w2);
+}
 // Smoothed raw parameters.
 enum Sm : std::size_t {
     coupling, beat, aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm, fbAmount, width_, tract_, drive_, asym_,
@@ -80,6 +104,8 @@ struct Engine::Impl {
     // Oversampled domain.
     Decimator decSub, decL, decR;
     LocalOversampler localSub, localL, localR;  // around the fold; the sub gets the same delay
+    // Around the growl clipper; the sub and the master tap take the same trip.
+    BaseRate2x clip2xL, clip2xR, clip2xSub, clip2xMaster;
     std::array<float, kMaxOversampling> bufSub {}, bufL {}, bufR {}, bufLocal {};
     FeedbackDelay feedback;
     DcBlocker feedbackDc;
@@ -92,12 +118,17 @@ struct Engine::Impl {
     std::array<Ramp, osCount> os {};
 
     // Base rate.
-    Lr4Highpass growlHpL, growlHpR, sideHp;
+    Lr4Highpass growlHpL, growlHpR, sideHp, postClipSideHp;
+    AdaaSoftClip clipL, clipR;
+    float subHalf = 0.0f, masterHalf = 0.0f;  // previous 2x samples, see the sub lock
     Lr4Allpass midAp;
     Lr4Lowpass subLp;
     SvfCoefs cSub, cXover;
     Squash squash;
-    Limiter limiter;
+    Limiter limiter;     // on the growl
+    Limiter subLimiter;  // on the sub, idle unless the sub alone exceeds the ceiling
+    DelayLine<double> subAlign;  // the sub, aligned with the growl limiter's detector
+    double subPrevious = 0.0;
     std::array<Ramp, baseCount> base {};
 
     // Control.
@@ -132,6 +163,8 @@ struct Engine::Impl {
     // Interface state.
     float hz = 0.0f;
     float grDb = 0.0f;
+    float clipDb = 0.0f, clipMeanDb = 0.0f;  // growl clipper over the last block
+    double clipMaxDb = 0.0, clipSumDb = 0.0;
     std::array<float, kLaneCount> uiPhase {}, uiValue {};
     double uiPpq = 0.0;  // the lane clock, host position or free-running
 
@@ -152,7 +185,11 @@ struct Engine::Impl {
         localSub.prepare(factor);
         localL.prepare(factor);
         localR.prepare(factor);
-        decimatorDelayExact = measureDecimatorDelay(factor);
+        clip2xL.prepare();
+        clip2xR.prepare();
+        clip2xSub.prepare();
+        clip2xMaster.prepare();
+        decimatorDelayExact = measureDecimatorDelay(factor) + measureClipTripDelay();
         decimatorDelay = static_cast<int>(std::lround(decimatorDelayExact));
 
         feedback.prepare(static_cast<int>(std::ceil(kMaxFeedbackDelaySeconds * fo)));
@@ -162,9 +199,32 @@ struct Engine::Impl {
         foldR.prepare(fo * localR.factor());
         squash.prepare(fs);
         limiter.prepare(fs);
+        subLimiter.prepare(fs);
+        subAlign.prepare(TruePeakDetector::kDelay);
         gate.prepare(fs);
         gateDelay.prepare(decimatorDelay);
         reset();
+    }
+
+    // Group delay at DC of the 2x trip around the growl clipper, base samples.
+    static double measureClipTripDelay() {
+        BaseRate2x t;
+        t.prepare();
+        double moment = 0.0, sum = 0.0;
+        float half = 0.0f;
+        for (int n = 0; n < 4096; ++n) {
+            float buf[2];
+            t.up(n == 0 ? 1.0f : 0.0f, buf);
+            for (float& v : buf) {
+                const float x = v;
+                v = 0.5f * (x + half);
+                half = x;
+            }
+            const double y = t.down(buf);
+            moment += n * y;
+            sum += y;
+        }
+        return sum != 0.0 ? moment / sum : 0.0;
     }
 
     // Group delay at DC of the sub's trip (local oversampler, then decimator),
@@ -195,6 +255,10 @@ struct Engine::Impl {
         localSub.reset();
         localL.reset();
         localR.reset();
+        clip2xL.reset();
+        clip2xR.reset();
+        clip2xSub.reset();
+        clip2xMaster.reset();
         feedback.clear();
         feedbackDc.reset();
         tractL.reset();
@@ -204,10 +268,17 @@ struct Engine::Impl {
         growlHpL.reset();
         growlHpR.reset();
         sideHp.reset();
+        postClipSideHp.reset();
+        clipL.reset();
+        clipR.reset();
+        subHalf = masterHalf = 0.0f;
         midAp.reset();
         subLp.reset();
         squash.reset();
         limiter.reset();
+        subLimiter.reset();
+        subAlign.clear();
+        subPrevious = 0.0;
         gateDelay.clear();
         foldMix = 1.0;
     }
@@ -433,12 +504,17 @@ struct Engine::Impl {
         cXover = butterworth(std::exp(sm(xoverLog)), fs);
         std::array<double, baseCount> b {};
         b[subLevel] = std::clamp(sm(subLevel_), 0.0, 1.0);
-        b[growlLevel] = std::clamp(sm(growlLevel_), 0.0, 1.0);
+        b[growlLevel] = kGrowlGain * std::clamp(sm(growlLevel_), 0.0, 1.0);
         b[midGain] = dbToGain(sm(midGainDb));
         b[sideGain] = dbToGain(sm(sideGainDb));
         b[squashAmt] = std::clamp(sm(squash_), 0.0, 1.0);
         b[ceilingGain] = dbToGain(std::min(0.0, sm(ceilingDb)));
         b[limitAmt] = std::clamp(sm(limitOn), 0.0, 1.0);
+        // The sub is a sine, so its peak after the LR4 low-pass is exact:
+        // level times the filter's magnitude at the current pitch. The growl
+        // gets whatever is left under the ceiling.
+        const double subPeak = b[subLevel] * lr4LowpassMagnitude(incM * fo, std::exp(sm(subFreqLog)), fs);
+        b[growlCeiling] = std::max(b[ceilingGain] * kGrowlCeilingMargin - subPeak, kGrowlCeilingFloor);
         for (std::size_t i = 0; i < baseCount; ++i) {
             if (snap) base[i].snap(b[i]);
             else base[i].to(b[i], controlBase);
@@ -521,6 +597,7 @@ struct Engine::Impl {
     void process(const Params& p, const Transport& transport, float* left, float* right, int numSamples,
                  Taps taps) noexcept TF_NONBLOCKING {
         ScopedFlushDenormals noDenormals;
+        clipMaxDb = clipSumDb = 0.0;
         glideMs = p[ParamId::glide];
         phaseResetOn = p.on(ParamId::phaseReset);
         updateClock(transport);
@@ -552,8 +629,8 @@ struct Engine::Impl {
                 double gl = growlHpL.process(cSub, l);
                 double gr = growlHpR.process(cSub, r);
                 squash.process(gl, gr, base[squashAmt].value);
-                gl *= base[growlLevel].value * kGrowlTrim;
-                gr *= base[growlLevel].value * kGrowlTrim;
+                gl *= base[growlLevel].value;
+                gr *= base[growlLevel].value;
 
                 // Mid/side: the side is high-passed at the crossover; the mid gets
                 // the matching all-pass so both keep the same phase above it.
@@ -561,19 +638,78 @@ struct Engine::Impl {
                 mid = midAp.process(cXover, mid) * base[midGain].value;
                 side = sideHp.process(cXover, side) * base[sideGain].value;
 
-                // Sub lock.
-                const double subOut = subLp.process(cSub, sub) * base[subLevel].value;
+                // The growl clipper, at 2x: the growl's own ceiling is what the sub
+                // leaves. The sub and the master tap take the same 2x trip.
+                // Clipping writes some low side signal (the shared gain modulates
+                // the side), so the side is high-passed at the crossover once more
+                // after it. What that and the 2x band-limiting overshoot is left
+                // to the growl limiter below.
+                const double ceilingNow = base[growlCeiling].value;
+                std::array<float, 2> upL {}, upR {};
+                clip2xL.up(static_cast<float>(mid + side), upL.data());
+                clip2xR.up(static_cast<float>(mid - side), upR.data());
+                double clipDbNow = 0.0;
+                const double knee = kGrowlClipKnee * ceilingNow;
+                for (std::size_t k = 0; k < 2; ++k) {
+                    const double a = upL[k], c = upR[k];
+                    const double peak = std::max(std::abs(a), std::abs(c));
+                    if (peak > knee) clipDbNow = std::max(clipDbNow, gainToDb(peak / softClip(peak, knee, ceilingNow)));
+                    upL[k] = static_cast<float>(clipL.process(a, knee, ceilingNow));
+                    upR[k] = static_cast<float>(clipR.process(c, knee, ceilingNow));
+                }
+                gl = clip2xL.down(upL.data());
+                gr = clip2xR.down(upR.data());
+                mid = 0.5 * (gl + gr);
+                side = postClipSideHp.process(cXover, 0.5 * (gl - gr));
+                gl = mid + side;
+                gr = mid - side;
+                if (clipDbNow > 0.0) {
+                    clipMaxDb = std::max(clipMaxDb, clipDbNow);
+                    clipSumDb += clipDbNow;
+                }
 
-                double outL = (mid + side + subOut) * env;
-                double outR = (mid - side + subOut) * env;
-                softClipLinked(outL, outR);
-                std::array<double, 2> tapValues { sub, mid };
-                limiter.process(outL, outR, tapValues, base[ceilingGain].value, base[limitAmt].value);
+                // Sub lock. The sub and the master tap take the clipper's trip,
+                // including the half-sample (at 2x) average that first-order
+                // ADAA amounts to in its linear region.
+                std::array<float, 2> upSub {}, upMaster {};
+                clip2xSub.up(static_cast<float>(subLp.process(cSub, sub) * base[subLevel].value), upSub.data());
+                clip2xMaster.up(static_cast<float>(sub), upMaster.data());
+                for (std::size_t k = 0; k < 2; ++k) {
+                    const float s2 = upSub[k], m2 = upMaster[k];
+                    upSub[k] = 0.5f * (s2 + subHalf);
+                    upMaster[k] = 0.5f * (m2 + masterHalf);
+                    subHalf = s2;
+                    masterHalf = m2;
+                }
+                const double subOut = clip2xSub.down(upSub.data());
+                const double masterTap = clip2xMaster.down(upMaster.data());
+
+                // Gate, then two look-ahead limiters with the same delay. The
+                // growl's works against the headroom the sub leaves at each
+                // instant (ceiling minus |sub|, aligned with its detector), so it
+                // only catches what the clipped growl still overshoots, between
+                // or around samples and during sub transients. The sub's only
+                // acts if the sub alone exceeds the ceiling (the user's choice).
+                const double subGated = subOut * env;
+                const double ceilingLin = base[ceilingGain].value;
+                const double subNow = std::abs(subAlign.process(subGated));
+                const double growlRoom =
+                    std::max(ceilingLin - std::max(subNow, subPrevious), kGrowlCeilingFloor);
+                subPrevious = subNow;
+                double outL = gl * env, outR = gr * env;
+                std::array<double, 1> growlDelayed { 0.5 * (gl + gr) };
+                limiter.process(outL, outR, growlDelayed, growlRoom, base[limitAmt].value);
+                double subL = subGated, subR = subGated;
+                std::array<double, 1> subDelayed { masterTap };
+                subLimiter.process(subL, subR, subDelayed, ceilingLin, base[limitAmt].value);
+                outL += subL;
+                outR += subR;
+                outputClip(outL, outR, ceilingLin);
 
                 left[n] = static_cast<float>(outL);
                 right[n] = static_cast<float>(outR);
-                if (taps.master != nullptr) taps.master[n] = static_cast<float>(tapValues[0]);
-                if (taps.growl != nullptr) taps.growl[n] = static_cast<float>(tapValues[1]);
+                if (taps.master != nullptr) taps.master[n] = static_cast<float>(subDelayed[0]);
+                if (taps.growl != nullptr) taps.growl[n] = static_cast<float>(growlDelayed[0]);
 
                 ++sinceAnchor;
                 ++sinceNoteStart;
@@ -588,8 +724,10 @@ struct Engine::Impl {
                     silentCount = 0;
                 }
             }
-            grDb = static_cast<float>(-gainToDb(limiter.gain()));
+            grDb = static_cast<float>(-gainToDb(std::min(limiter.gain(), subLimiter.gain())));
         }
+        clipDb = static_cast<float>(clipMaxDb);
+        clipMeanDb = static_cast<float>(clipSumDb / numSamples);
 
         // Idle: silence, and the clocks keep running.
         if (n < numSamples) {
@@ -649,6 +787,8 @@ float Engine::currentHz() const noexcept TF_NONBLOCKING { return impl_->hz; }
 bool Engine::gateOpen() const noexcept TF_NONBLOCKING { return !impl_->notes.empty(); }
 float Engine::gainReductionDb() const noexcept TF_NONBLOCKING { return std::max(0.0f, impl_->grDb); }
 double Engine::lanePpq() const noexcept TF_NONBLOCKING { return impl_->uiPpq; }
+float Engine::growlClipDb() const noexcept TF_NONBLOCKING { return impl_->clipDb; }
+float Engine::growlClipMeanDb() const noexcept TF_NONBLOCKING { return impl_->clipMeanDb; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept TF_NONBLOCKING { return impl_->uiPhase; }
 std::array<float, kLaneCount> Engine::laneValues() const noexcept TF_NONBLOCKING { return impl_->uiValue; }
 

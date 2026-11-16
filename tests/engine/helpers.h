@@ -38,6 +38,7 @@ struct Rendered {
     int latency = 0;
     std::vector<std::array<float, kLaneCount>> laneValues;  // after each block
     std::vector<float> hz;                                  // after each block
+    std::vector<float> limiterGr, growlClip;                // after each block, dB
 };
 
 // Renders `frames` frames; events take effect at their frame (blocks are split there).
@@ -48,6 +49,9 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
 
 // Default patch with every lane off (no movement).
 Params staticPatch();
+
+// A dense, hard-driven patch: coupling, drive and warp at 1, growl 1, feedback 0.6, squash 0.6.
+Params hotPatch();
 
 // Uniformly random value for every parameter.
 Params randomParams(std::mt19937& rng);

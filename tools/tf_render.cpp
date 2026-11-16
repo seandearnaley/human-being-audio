@@ -112,9 +112,11 @@ int main(int argc, char** argv) {
         q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
         auto m = tf::analysis::computeMetrics(tf::analysis::deinterleave(audio), q);
         std::string json = tf::analysis::toJson(m);
-        char extra[160];
-        std::snprintf(extra, sizeof extra, ", \"limiterMaxGrDb\": %.2f, \"limiterMeanGrDb\": %.2f}", stats.maxGainReductionDb,
-                      stats.meanGainReductionDb);
+        char extra[256];
+        std::snprintf(extra, sizeof extra,
+                      ", \"limiterMaxGrDb\": %.2f, \"limiterMeanGrDb\": %.2f, \"growlClipMaxDb\": %.2f, \"growlClipMeanDb\": %.2f}",
+                      static_cast<double>(stats.maxGainReductionDb), static_cast<double>(stats.meanGainReductionDb),
+                      static_cast<double>(stats.maxGrowlClipDb), static_cast<double>(stats.meanGrowlClipDb));
         json.pop_back();
         json += extra;
         std::cout << json << "\n";

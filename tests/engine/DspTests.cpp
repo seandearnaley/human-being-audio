@@ -342,11 +342,33 @@ TEST_CASE("squash compresses loud bands and lifts quiet ones", "[dsp][squash]") 
     CHECK(SquashCurve::gainDb(-60.0, 1.0) > 6.0);
     CHECK(SquashCurve::gainDb(-200.0, 1.0) == 0.0);
     CHECK(SquashCurve::gainDb(-5.0, 0.0) == 0.0);
-    // Makes the band's reference level unity whatever the amount.
-    for (int b = 0; b < kSquashBands; ++b)
-        for (double a : { 0.25, 0.5, 1.0 })
-            CHECK(SquashCurve::gainDb(SquashCurve::referenceDb[static_cast<std::size_t>(b)], a) + SquashCurve::makeupDb(b, a) ==
-                  Catch::Approx(0.0).margin(1e-9));
+}
+
+TEST_CASE("squash make-up never lowers the level, loud or quiet", "[dsp][squash]") {
+    // A loud and a quiet two-tone through Squash at increasing amounts: the
+    // output RMS never drops as the amount rises.
+    const double fs = 48000.0;
+    for (double level : { 0.9, 0.003 }) {
+        CAPTURE(level);
+        double previous = -1e9;
+        for (double amount : { 0.0, 0.25, 0.5, 0.75, 1.0 }) {
+            Squash s;
+            s.prepare(fs);
+            Signal out;
+            for (int i = 0; i < 96000; ++i) {
+                const double t = i / fs;
+                double l = level * (0.7 * std::sin(2 * kPi * 330 * t) + 0.3 * std::sin(2 * kPi * 3300 * t));
+                double r = l;
+                s.process(l, r, amount);
+                if (i >= 48000) out.push_back(l);
+            }
+            const double db = analysis::rmsDb(out);
+            INFO("amount " << amount << ": " << db << " dB");
+            CHECK(db >= previous - 0.05);
+            CHECK(std::isfinite(db));
+            previous = db;
+        }
+    }
 }
 
 TEST_CASE("the limiter holds a hot signal under the ceiling, true peak included", "[dsp][limiter]") {
@@ -397,6 +419,20 @@ TEST_CASE("the soft clip is transparent below its knee and bounded above", "[dsp
     // Continuous slope at the knee.
     const double h = 1e-7;
     CHECK((softClip(kSoftClipKnee + h) - softClip(kSoftClipKnee)) / h == Catch::Approx(1.0).margin(1e-4));
+}
+
+TEST_CASE("the growl clipper's antiderivative matches its shape, and its output stays bounded", "[dsp][limiter]") {
+    const double knee = 0.24, bound = 0.4;
+    for (double x = -3.0; x <= 3.0; x += 0.0071) {
+        const double h = 1e-6;
+        const double numeric =
+            (AdaaSoftClip::antiderivative(x + h, knee, bound) - AdaaSoftClip::antiderivative(x - h, knee, bound)) / (2 * h);
+        CHECK(numeric == Catch::Approx(softClip(x, knee, bound)).margin(1e-5));
+    }
+    AdaaSoftClip c;
+    double worst = 0.0;
+    for (int i = 0; i < 20000; ++i) worst = std::max(worst, std::abs(c.process(3.0 * std::sin(0.37 * i), knee, bound)));
+    CHECK(worst <= bound);
 }
 
 TEST_CASE("the feedback delay interpolates fractional delays", "[dsp][feedback]") {

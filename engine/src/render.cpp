@@ -33,7 +33,7 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
 
     engine.noteOn(request.note);
     bool released = false;
-    double grSum = 0.0, grMax = 0.0;
+    double grSum = 0.0, grMax = 0.0, clipSum = 0.0, clipMax = 0.0;
     long long blocks = 0;
     for (long long pos = 0; pos < rendered;) {
         // The note-off lands exactly on frame `held` of the input timeline.
@@ -50,6 +50,8 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
         grSum += gr;
         grMax = std::max(grMax, gr);
         ++blocks;
+        clipMax = std::max(clipMax, static_cast<double>(engine.growlClipDb()));
+        if (!released) clipSum += static_cast<double>(engine.growlClipMeanDb()) * n;
         for (int i = 0; i < n; ++i) {
             const long long frame = pos + i - latency;
             if (frame < 0 || frame >= total) continue;
@@ -65,6 +67,8 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
         stats->heldSamples = static_cast<int>(held);
         stats->maxGainReductionDb = static_cast<float>(grMax);
         stats->meanGainReductionDb = blocks > 0 ? static_cast<float>(grSum / static_cast<double>(blocks)) : 0.0f;
+        stats->maxGrowlClipDb = static_cast<float>(clipMax);
+        stats->meanGrowlClipDb = held > 0 ? static_cast<float>(clipSum / static_cast<double>(held)) : 0.0f;
     }
     return out;
 }

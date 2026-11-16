@@ -1,8 +1,11 @@
 // Squash: three bands split with LR4 at 200 Hz and 2.5 kHz (all-pass
 // compensated, so the bands sum flat), each with upward and downward
-// compression from a stereo-linked RMS detector, and a static make-up gain.
-// `amount` scales thresholds, ratios and the upward range; at 0 every band gain
-// is exactly 1 and the module is a pure all-pass.
+// compression from a stereo-linked RMS detector. Make-up is matched to the
+// input: slow RMS detectors on the input and on the compressed sum give the
+// gain that restores the input level, never less than 0 dB, plus a small lift
+// that grows with `amount`. So Squash makes any material denser and never
+// quieter, whatever its level. `amount` scales thresholds, ratios and the
+// upward range; at 0 every gain is exactly 1 and the module is a pure all-pass.
 #pragma once
 
 #include "crossover.h"
@@ -16,11 +19,13 @@ inline constexpr int kSquashBands = 3;
 inline constexpr double kSquashLowHz = 200.0;
 inline constexpr double kSquashHighHz = 2500.0;
 
-struct SquashCurve {
-    // Band level (dB RMS) the make-up gain is computed for: at this level the
-    // band keeps its loudness whatever the amount. Tuned on the default patch.
-    static constexpr std::array<double, kSquashBands> referenceDb { -21.0, -10.5, -30.0 };
+// Make-up: RMS-matched over this time, at most this much, plus a lift of
+// kSquashLiftDb * amount on top.
+inline constexpr double kSquashMakeupSeconds = 0.2;
+inline constexpr double kSquashMaxMakeupDb = 24.0;
+inline constexpr double kSquashLiftDb = 1.5;
 
+struct SquashCurve {
     // Static gain in dB for a band at `levelDb` and amount `a` (0..1).
     static double gainDb(double levelDb, double a) noexcept TF_NONBLOCKING {
         if (a <= 0.0) return 0.0;
@@ -38,9 +43,6 @@ struct SquashCurve {
         }
         return 0.0;
     }
-    static double makeupDb(int band, double a) noexcept TF_NONBLOCKING {
-        return -gainDb(referenceDb[static_cast<std::size_t>(band)], a);
-    }
 };
 
 class Squash {
@@ -52,15 +54,19 @@ public:
         for (std::size_t b = 0; b < kSquashBands; ++b) rmsCoef_[b] = onePoleCoef(rmsMs[b] * 1e-3, 1.0 / sampleRate);
         attackCoef_ = onePoleCoef(0.003, 1.0 / sampleRate);
         releaseCoef_ = onePoleCoef(0.080, 1.0 / sampleRate);
+        makeupCoef_ = onePoleCoef(kSquashMakeupSeconds, 1.0 / sampleRate);
         reset();
     }
     void reset() noexcept TF_NONBLOCKING {
         for (auto& s : split_) s.reset();
         meanSquare_.fill(0.0);
         gainDb_.fill(0.0);
+        inPower_ = outPower_ = 0.0;
+        makeupDb_ = 0.0;
     }
 
     void process(double& left, double& right, double amount) noexcept TF_NONBLOCKING {
+        inPower_ += makeupCoef_ * (0.5 * (left * left + right * right) - inPower_);
         std::array<double, kSquashBands> l {}, r {};
         split_[0].process(cLow_, cHigh_, left, l[0], l[1], l[2]);
         split_[1].process(cLow_, cHigh_, right, r[0], r[1], r[2]);
@@ -71,7 +77,7 @@ public:
             double target = 0.0;
             if (amount > 0.0) {
                 const double levelDb = 10.0 * std::log10(meanSquare_[b] + 1e-20);
-                target = SquashCurve::gainDb(levelDb, amount) + SquashCurve::makeupDb(static_cast<int>(b), amount);
+                target = SquashCurve::gainDb(levelDb, amount);
             }
             const double coef = target < gainDb_[b] ? attackCoef_ : releaseCoef_;
             gainDb_[b] += coef * (target - gainDb_[b]);
@@ -79,9 +85,21 @@ public:
             outL += gain * l[b];
             outR += gain * r[b];
         }
+        outPower_ += makeupCoef_ * (0.5 * (outL * outL + outR * outR) - outPower_);
+        if (amount > 0.0) {
+            const double match = 10.0 * std::log10((inPower_ + 1e-20) / (outPower_ + 1e-20));
+            makeupDb_ = std::clamp(match, 0.0, kSquashMaxMakeupDb) + kSquashLiftDb * amount;
+            const double gain = dbToGain(makeupDb_);
+            outL *= gain;
+            outR *= gain;
+        } else {
+            makeupDb_ = 0.0;
+        }
         left = outL;
         right = outR;
     }
+
+    double makeupDb() const noexcept TF_NONBLOCKING { return makeupDb_; }
 
     double bandGainDb(int band) const noexcept TF_NONBLOCKING { return gainDb_[static_cast<std::size_t>(band)]; }
 
@@ -91,7 +109,8 @@ private:
     std::array<double, kSquashBands> rmsCoef_ {};
     std::array<double, kSquashBands> meanSquare_ {};
     std::array<double, kSquashBands> gainDb_ {};
-    double attackCoef_ = 1.0, releaseCoef_ = 1.0;
+    double attackCoef_ = 1.0, releaseCoef_ = 1.0, makeupCoef_ = 1.0;
+    double inPower_ = 0.0, outPower_ = 0.0, makeupDb_ = 0.0;
 };
 
 }

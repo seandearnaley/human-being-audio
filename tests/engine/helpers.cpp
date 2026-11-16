@@ -50,6 +50,8 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
         }
         out.laneValues.push_back(engine.laneValues());
         out.hz.push_back(engine.currentHz());
+        out.limiterGr.push_back(engine.gainReductionDb());
+        out.growlClip.push_back(engine.growlClipDb());
         pos = end;
     }
     return out;
@@ -58,6 +60,17 @@ Rendered render(Engine& engine, const Setup& setup, const std::vector<NoteEvent>
 Params staticPatch() {
     Params p = Params::defaults();
     for (int i = 0; i < kLaneCount; ++i) p[laneParam(i, LaneField::on)] = 0.0f;
+    return p;
+}
+
+Params hotPatch() {
+    Params p = Params::defaults();
+    p[ParamId::coupling] = 1.0f;
+    p[ParamId::drive] = 1.0f;
+    p[ParamId::warp] = 1.0f;
+    p[ParamId::growlLevel] = 1.0f;
+    p[ParamId::fbAmount] = 0.6f;
+    p[ParamId::squash] = 0.6f;
     return p;
 }
 

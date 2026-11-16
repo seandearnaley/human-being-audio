@@ -1,4 +1,4 @@
-// Output stage: a soft clip, then a look-ahead limiter after Geraint Luff's
+// Output stage: soft clips, and a look-ahead limiter after Geraint Luff's
 // design (https://signalsmith-audio.co.uk/writing/2022/limiter/): the gain each
 // sample needs is held at its minimum for the look-ahead length, released with
 // a one-pole, and smoothed with a box filter of the same length, so the gain
@@ -14,25 +14,70 @@
 
 namespace tf::dsp {
 
-// Identity below the knee, then a tanh shoulder that never exceeds 1.
+// Identity below the knee, then a tanh shoulder that approaches `bound` and
+// never exceeds it. The slope is continuous at the knee.
 inline constexpr double kSoftClipKnee = 0.8;
 
-inline double softClip(double x) noexcept TF_NONBLOCKING {
+inline double softClip(double x, double knee = kSoftClipKnee, double bound = 1.0) noexcept TF_NONBLOCKING {
     const double a = std::abs(x);
-    if (a <= kSoftClipKnee) return x;
-    const double range = 1.0 - kSoftClipKnee;
-    const double y = kSoftClipKnee + range * std::tanh((a - kSoftClipKnee) / range);
+    if (a <= knee) return x;
+    const double range = bound - knee;
+    const double y = knee + range * std::tanh((a - knee) / range);
     return x < 0.0 ? -y : y;
 }
 
-// The soft clip applied to a stereo pair with one gain, taken from the larger
-// channel, so it never turns the (mono) low end into side signal.
-inline void softClipLinked(double& left, double& right) noexcept TF_NONBLOCKING {
+// A soft clip applied to a stereo pair with one gain, taken from the larger
+// channel, so it never turns the (mono) low end into side signal. Returns the
+// gain it applied (1 below the knee).
+inline double softClipLinked(double& left, double& right, double knee = kSoftClipKnee,
+                             double bound = 1.0) noexcept TF_NONBLOCKING {
     const double peak = std::max(std::abs(left), std::abs(right));
-    if (peak <= kSoftClipKnee) return;
-    const double gain = softClip(peak) / peak;
+    if (peak <= knee) return 1.0;
+    const double gain = softClip(peak, knee, bound) / peak;
     left *= gain;
     right *= gain;
+    return gain;
+}
+
+// The growl clipper: a deliberate part of the sound (clip the mids, keep the
+// sub clean). softClip saturating towards the growl's ceiling, starting at
+// this fraction of it, applied per channel at 2x with first-order
+// antiderivative anti-aliasing. (A gain shared by both channels was tried: it
+// aliases more and writes as much low side signal, which the engine removes
+// with a side high-pass after the clipper either way.)
+inline constexpr double kGrowlClipKnee = 0.6;
+
+// softClip with ADAA. Its shoulder has the closed-form antiderivative used here.
+class AdaaSoftClip {
+public:
+    void reset() noexcept TF_NONBLOCKING { x1_ = 0.0; }
+    double process(double x, double knee, double bound) noexcept TF_NONBLOCKING {
+        const double d = x - x1_;
+        double y;
+        if (std::abs(d) < 1e-6) y = softClip(0.5 * (x + x1_), knee, bound);
+        else y = (antiderivative(x, knee, bound) - antiderivative(x1_, knee, bound)) / d;
+        x1_ = x;
+        return y;
+    }
+    static double antiderivative(double x, double knee, double bound) noexcept TF_NONBLOCKING {
+        const double a = std::abs(x);
+        if (a <= knee) return 0.5 * x * x;
+        const double r = bound - knee;
+        const double u = (a - knee) / r;
+        const double logCosh = u + std::log1p(std::exp(-2.0 * u)) - 0.6931471805599453;
+        return 0.5 * knee * knee + knee * (a - knee) + r * r * logCosh;
+    }
+
+private:
+    double x1_ = 0.0;
+};
+
+// The output safety clip: transparent up to the ceiling (the limiters keep the
+// sum there when limit is on), then a short shoulder to 0 dBFS.
+inline constexpr double kOutputClipMaxKnee = 0.97;
+
+inline void outputClip(double& left, double& right, double ceiling) noexcept TF_NONBLOCKING {
+    softClipLinked(left, right, std::min(ceiling, kOutputClipMaxKnee), 1.0);
 }
 
 // 4x interpolator for peak detection: a Kaiser-windowed sinc reaching kDelay
@@ -43,7 +88,9 @@ inline void softClipLinked(double& left, double& right) noexcept TF_NONBLOCKING 
 class TruePeakDetector {
 public:
     static constexpr int kPhases = 4;
-    static constexpr int kDelay = 32;           // base-rate samples
+    // Base-rate samples. 28 (not 32) so the growl clipper's 2x trip (~4.4
+    // samples) leaves the engine latency where it was.
+    static constexpr int kDelay = 28;
     static constexpr int kWidth = 2 * kDelay;   // taps per interpolated phase
 
     TruePeakDetector() {
@@ -179,10 +226,15 @@ public:
     int latency() const noexcept TF_NONBLOCKING { return delay_; }
     double gain() const noexcept TF_NONBLOCKING { return gain_; }
 
+    static constexpr std::size_t kMaxDelayed = 4;
+
     // Limits the stereo pair to `ceiling` (linear). `amount` 0 bypasses the
-    // gain (the delay stays). `taps` are delayed alongside the audio.
-    void process(double& left, double& right, std::array<double, 2>& taps, double ceiling,
+    // gain (the delay stays). The `delayed` values pass through the same delay
+    // without gain (the engine sends the sub and the taps this way).
+    template <std::size_t N>
+    void process(double& left, double& right, std::array<double, N>& delayed, double ceiling,
                  double amount) noexcept TF_NONBLOCKING {
+        static_assert(N <= kMaxDelayed);
         const double target = ceiling * marginGain_;
         const double peak = detector_.process(left, right);
         const double required = peak > target ? target / peak : 1.0;
@@ -200,15 +252,14 @@ public:
         gain_ = 1.0 - amount * (1.0 - smooth);
         left = delays_[0].process(left) * gain_;
         right = delays_[1].process(right) * gain_;
-        taps[0] = delays_[2].process(taps[0]);
-        taps[1] = delays_[3].process(taps[1]);
+        for (std::size_t i = 0; i < N; ++i) delayed[i] = delays_[2 + i].process(delayed[i]);
     }
 
 private:
     double marginGain_ = std::pow(10.0, -kMarginDb / 20.0);
     TruePeakDetector detector_;
     MovingMinimum hold_;
-    std::array<DelayLine<double>, 4> delays_ {};
+    std::array<DelayLine<double>, 2 + kMaxDelayed> delays_ {};
     std::vector<double> box_;
     double boxSum_ = 1.0;
     int boxPos_ = 0;
