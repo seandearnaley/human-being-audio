@@ -29,7 +29,7 @@ public:
 
     ui::ResampleState resampleState() const override;
     void resample() override;
-    void dragResampledFile() override;
+    std::string resampledFile() const override;
 
 private:
     PluginProcessor& processor_;

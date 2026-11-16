@@ -3,6 +3,7 @@
 #include "Analysis.h"
 #include "Parameters.h"
 #include "Presets.h"
+#include "Resampler.h"
 #include "tf/engine.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -49,6 +50,7 @@ public:
     juce::AudioProcessorValueTreeState state;
     Presets presets;
     Analysis analysis;
+    Resampler resampler;
 
 private:
     void parameterChanged(const juce::String& id, float value) override;

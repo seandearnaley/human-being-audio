@@ -9,6 +9,8 @@ namespace tf {
 namespace {
 const juce::Identifier kPresetName { "presetName" };
 constexpr const char* kUserCategory = "User";
+// The factory preset that matches the parameter defaults.
+constexpr const char* kDefaultPreset = "Coupled Reese";
 }
 
 juce::File Presets::userDirectory() {
@@ -53,7 +55,7 @@ std::vector<std::string> Presets::names() const {
 }
 
 std::string Presets::currentName() const {
-    return state_.state.getProperty(kPresetName, "Init").toString().toStdString();
+    return state_.state.getProperty(kPresetName, kDefaultPreset).toString().toStdString();
 }
 
 void Presets::setCurrentName(const std::string& name) {

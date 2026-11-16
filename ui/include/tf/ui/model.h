@@ -66,8 +66,8 @@ public:
 
     virtual ResampleState resampleState() const = 0;
     virtual void resample() = 0;
-    // Hands the rendered file to the host as a drag. Called on mouse drag from the button.
-    virtual void dragResampledFile() = 0;
+    // Path of the rendered file, offered as a drag source. Empty unless ready.
+    virtual std::string resampledFile() const = 0;
 };
 
 }

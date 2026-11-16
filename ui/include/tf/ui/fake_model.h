@@ -25,7 +25,7 @@ public:
 
     ResampleState resampleState() const override { return ResampleState::idle; }
     void resample() override {}
-    void dragResampledFile() override {}
+    std::string resampledFile() const override { return {}; }
 
 private:
     Params params_ = Params::defaults();

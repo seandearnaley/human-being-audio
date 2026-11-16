@@ -50,8 +50,18 @@ void PluginModel::savePreset() {
     }));
 }
 
-ui::ResampleState PluginModel::resampleState() const { return ui::ResampleState::idle; }
-void PluginModel::resample() {}
-void PluginModel::dragResampledFile() {}
+ui::ResampleState PluginModel::resampleState() const { return processor_.resampler.state(); }
+
+void PluginModel::resample() {
+    const auto performance = processor_.lastPerformance();
+    RenderRequest request;
+    request.params = processor_.currentParams();
+    request.note = performance.note;
+    request.bpm = performance.bpm;
+    request.sampleRate = processor_.getSampleRate() > 0.0 ? processor_.getSampleRate() : 48000.0;
+    processor_.resampler.start(request, toJuce(processor_.presets.currentName()));
+}
+
+std::string PluginModel::resampledFile() const { return processor_.resampler.file().getFullPathName().toStdString(); }
 
 }
