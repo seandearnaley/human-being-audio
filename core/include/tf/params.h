@@ -1,0 +1,210 @@
+// The parameter table. The engine's Params, the plugin's host parameters and the
+// interface's labels all derive from it, so a parameter is defined exactly once.
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+
+namespace tf {
+
+enum class ParamId : std::uint8_t {
+    coupling, beat, tract, warp, motion, width,
+    glide, phaseReset,
+    aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm,
+    fbTime, fbAmount,
+    vowelA, vowelB, morph,
+    foldType, drive, asym,
+    midGain, sideGain, xover,
+    subFreq, subLevel, growlLevel, squash,
+    limit, ceiling, quality,
+    lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape,
+    lane2On, lane2Rate, lane2Phase, lane2Depth, lane2Shape,
+    lane3On, lane3Rate, lane3Phase, lane3Depth, lane3Shape,
+    lane4On, lane4Rate, lane4Phase, lane4Depth, lane4Shape,
+    count
+};
+
+inline constexpr int kParamCount = static_cast<int>(ParamId::count);
+inline constexpr int kLaneCount = 4;
+
+enum class LaneField : std::uint8_t { on, rate, phase, depth, shape };
+enum class LaneTarget : std::uint8_t { phase, tract, fold, detune };
+
+constexpr ParamId laneParam(int lane, LaneField field) {
+    return static_cast<ParamId>(static_cast<int>(ParamId::lane1On) + lane * 5 + static_cast<int>(field));
+}
+
+enum class ParamKind : std::uint8_t { continuous, toggle, choice };
+
+// Unit decides how a value is shown. `percent` shows a 0..1 (or -1..1) value
+// multiplied by 100.
+enum class Unit : std::uint8_t { none, percent, ms, cents, degrees, dB, hz, ratio };
+
+struct ParamSpec {
+    std::string_view key;
+    std::string_view name;
+    ParamKind kind = ParamKind::continuous;
+    float min = 0.0f;
+    float max = 1.0f;
+    float def = 0.0f;
+    Unit unit = Unit::none;
+    // real = min + (max - min) * normalised^skew. Zero means logarithmic.
+    float skew = 1.0f;
+    std::span<const std::string_view> choices = {};
+    bool automatable = true;
+};
+
+namespace choices {
+inline constexpr std::array<std::string_view, 2> offOn { "Off", "On" };
+inline constexpr std::array<std::string_view, 7> fbTime { "1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4" };
+inline constexpr std::array<std::string_view, 6> vowel { "a", "æ", "e", "i", "o", "u" };
+inline constexpr std::array<std::string_view, 3> foldType { "Fold", "Sine", "Tube" };
+inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
+inline constexpr std::array<std::string_view, 12> laneRate {
+    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
+};
+inline constexpr std::array<std::string_view, 6> laneShape { "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps" };
+}
+
+// Lengths in quarter notes, matching the choice lists above.
+inline constexpr std::array<double, 7> kFbTimeQuarters { 1.0 / 16, 1.0 / 8, 1.0 / 6, 1.0 / 4, 1.0 / 3, 1.0 / 2, 1.0 };
+inline constexpr std::array<double, 12> kLaneRateQuarters {
+    32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
+};
+inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
+
+enum class FoldType : std::uint8_t { fold, sine, tube };
+enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps };
+
+namespace detail {
+constexpr ParamSpec amount(std::string_view key, std::string_view name, float def) {
+    return { .key = key, .name = name, .def = def, .unit = Unit::percent };
+}
+constexpr ParamSpec bipolar(std::string_view key, std::string_view name, float def) {
+    return { .key = key, .name = name, .min = -1.0f, .def = def, .unit = Unit::percent };
+}
+constexpr ParamSpec toggle(std::string_view key, std::string_view name, bool def) {
+    return { .key = key, .name = name, .kind = ParamKind::toggle, .def = def ? 1.0f : 0.0f, .choices = choices::offOn };
+}
+constexpr ParamSpec choice(std::string_view key, std::string_view name, std::span<const std::string_view> list, int def,
+                           bool automatable = true) {
+    return { .key = key, .name = name, .kind = ParamKind::choice, .max = static_cast<float>(list.size() - 1),
+             .def = static_cast<float>(def), .choices = list, .automatable = automatable };
+}
+constexpr ParamSpec ranged(std::string_view key, std::string_view name, float min, float max, float def, Unit unit,
+                           float skew = 1.0f) {
+    return { .key = key, .name = name, .min = min, .max = max, .def = def, .unit = unit, .skew = skew };
+}
+}
+
+#define TF_LANE(n, label, rate, phase, depth)                                                      \
+    detail::toggle("lane" #n "On", label " lane", true),                                           \
+    detail::choice("lane" #n "Rate", label " rate", choices::laneRate, rate),                      \
+    detail::ranged("lane" #n "Phase", label " phase", 0.0f, 360.0f, phase, Unit::degrees),         \
+    detail::bipolar("lane" #n "Depth", label " depth", depth),                                     \
+    detail::choice("lane" #n "Shape", label " shape", choices::laneShape, 0)
+
+// Order must match ParamId.
+inline constexpr std::array<ParamSpec, kParamCount> kParams { {
+    detail::amount("coupling", "Coupling", 0.72f),
+    detail::amount("beat", "Beat", 0.38f),
+    detail::amount("tract", "Tract", 0.61f),
+    detail::amount("warp", "Warp", 0.46f),
+    detail::amount("motion", "Motion", 0.78f),
+    detail::amount("width", "Width", 0.64f),
+    detail::ranged("glide", "Glide", 0.0f, 500.0f, 12.5f, Unit::ms, 3.0f),
+    detail::toggle("phaseReset", "Phase reset", true),
+    detail::ranged("aDetune", "A detune", -50.0f, 50.0f, 19.0f, Unit::cents),
+    detail::ranged("bDetune", "B detune", -50.0f, 50.0f, -19.0f, Unit::cents),
+    detail::ranged("aRatio", "A ratio", 0.25f, 8.0f, 1.0f, Unit::ratio, 0.0f),
+    detail::ranged("bRatio", "B ratio", 0.25f, 8.0f, 1.0f, Unit::ratio, 0.0f),
+    detail::ranged("aPhase", "A phase", 0.0f, 360.0f, 0.0f, Unit::degrees),
+    detail::ranged("bPhase", "B phase", 0.0f, 360.0f, 180.0f, Unit::degrees),
+    detail::bipolar("aPm", "A PM", 0.62f),
+    detail::bipolar("bPm", "B PM", -0.48f),
+    detail::choice("fbTime", "Feedback time", choices::fbTime, 3),
+    detail::amount("fbAmount", "Feedback", 0.24f),
+    detail::choice("vowelA", "Vowel A", choices::vowel, 1),
+    detail::choice("vowelB", "Vowel B", choices::vowel, 5),
+    detail::amount("morph", "Morph", 0.63f),
+    detail::choice("foldType", "Fold type", choices::foldType, 0),
+    detail::amount("drive", "Drive", 0.42f),
+    detail::amount("asym", "Asym", 0.18f),
+    detail::ranged("midGain", "Mid", -12.0f, 12.0f, 0.0f, Unit::dB),
+    detail::ranged("sideGain", "Side", -12.0f, 12.0f, 4.2f, Unit::dB),
+    detail::ranged("xover", "Crossover", 60.0f, 300.0f, 100.0f, Unit::hz, 0.0f),
+    detail::ranged("subFreq", "Sub low-pass", 40.0f, 200.0f, 120.0f, Unit::hz, 0.0f),
+    detail::amount("subLevel", "Sub", 0.5f),
+    detail::amount("growlLevel", "Growl", 0.76f),
+    detail::amount("squash", "Squash", 0.3f),
+    detail::toggle("limit", "Limit", true),
+    detail::ranged("ceiling", "Ceiling", -12.0f, 0.0f, -0.3f, Unit::dB),
+    detail::choice("quality", "Quality", choices::quality, 1, false),
+    TF_LANE(1, "Phase", 7, 0.0f, 0.62f),
+    TF_LANE(2, "Tract", 5, 90.0f, 0.79f),
+    TF_LANE(3, "Fold", 7, 180.0f, 0.46f),
+    TF_LANE(4, "Detune", 4, 270.0f, 0.38f),
+} };
+
+#undef TF_LANE
+
+constexpr const ParamSpec& spec(ParamId id) { return kParams[static_cast<std::size_t>(id)]; }
+
+// The table is checked at compile time: a bad entry fails the build.
+namespace detail {
+constexpr bool tableIsValid() {
+    int automatable = 0;
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        const auto& p = kParams[i];
+        if (p.key.empty() || p.name.empty()) return false;
+        if (!(p.min < p.max)) return false;
+        if (p.def < p.min || p.def > p.max) return false;
+        if (p.skew < 0.0f) return false;
+        if (p.skew == 0.0f && p.min <= 0.0f) return false;
+        if (p.kind != ParamKind::continuous && p.choices.size() != static_cast<std::size_t>(p.max) + 1) return false;
+        for (std::size_t j = 0; j < i; ++j)
+            if (kParams[j].key == p.key) return false;
+        automatable += p.automatable ? 1 : 0;
+    }
+    // Ableton Live shows an empty device panel above 64 automatable parameters.
+    return automatable <= 64;
+}
+}
+static_assert(detail::tableIsValid(), "parameter table is inconsistent");
+static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must match ParamId");
+static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
+static_assert(kFbTimeQuarters.size() == choices::fbTime.size());
+static_assert(kLaneRateQuarters.size() == choices::laneRate.size());
+
+// Real parameter values, indexed by ParamId. Choices and toggles hold their index.
+struct Params {
+    std::array<float, kParamCount> values {};
+
+    constexpr float operator[](ParamId id) const { return values[static_cast<std::size_t>(id)]; }
+    constexpr float& operator[](ParamId id) { return values[static_cast<std::size_t>(id)]; }
+    constexpr int choice(ParamId id) const { return static_cast<int>((*this)[id] + 0.5f); }
+    constexpr bool on(ParamId id) const { return (*this)[id] >= 0.5f; }
+
+    static constexpr Params defaults() {
+        Params p;
+        for (std::size_t i = 0; i < kParams.size(); ++i) p.values[i] = kParams[i].def;
+        return p;
+    }
+};
+
+std::optional<ParamId> findParam(std::string_view key);
+
+// Normalised 0..1 position <-> real value. Choices and toggles snap to steps.
+float toNormalised(const ParamSpec& spec, float real);
+float fromNormalised(const ParamSpec& spec, float normalised);
+float clampToRange(const ParamSpec& spec, float real);
+
+// "72 %", "+7.2 ct", "100 Hz", "æ", "On".
+std::string formatValue(const ParamSpec& spec, float real);
+
+}
