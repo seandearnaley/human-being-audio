@@ -17,7 +17,7 @@
   "bPhase": 180.0,
   "aPm": 0.62,
   "bPm": -0.48,
-  "fbTime": "1/16",
+  "fbTime": "1 cyc",
   "fbAmount": 0.49,
   "vowelA": "æ",
   "vowelB": "u",
@@ -53,5 +53,9 @@
   "lane4Rate": "1/2",
   "lane4Phase": 270.0,
   "lane4Depth": 0.38,
-  "lane4Shape": "Sine"
+  "lane4Shape": "Sine",
+  "reach": 16.0,
+  "weight": 0.5,
+  "fit": 0.0,
+  "beatLock": false
 }

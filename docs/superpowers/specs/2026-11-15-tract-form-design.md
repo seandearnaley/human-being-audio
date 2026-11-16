@@ -101,24 +101,28 @@ the true-peak detector: 106 samples at 48 kHz.
 
 ## Parameters
 
-Stable string ids. 54 parameters, 53 automatable (`quality` is not); Live shows
+Stable string ids. 58 parameters, 57 automatable (`quality` is not); Live shows
 an empty device panel above 64.
 
 | Id | Name | Range | Default |
 |---|---|---|---|
 | `coupling` | Coupling | 0–1 | 0.72 |
 | `beat` | Beat | 0–1 | 0.38 |
+| `reach` | Reach | 2–64 harmonics, log | 16 |
 | `tract` | Tract | 0–1 | 0.61 |
 | `warp` | Warp | 0–1 | 0.46 |
 | `motion` | Motion | 0–1 | 0.78 |
 | `width` | Width | 0–1 | 0.64 |
+| `weight` | Weight | 0–1 | 0.5 |
+| `fit` | Fit | 0–360° | 0 |
+| `beatLock` | Beat lock | off/on | off |
 | `glide` | Glide | 0–500 ms, skewed | 12.5 |
 | `phaseReset` | Phase reset | off/on | on |
 | `aDetune`, `bDetune` | Detune | −50–50 ct | +19, −19 |
 | `aRatio`, `bRatio` | Ratio | 0.25–8, skewed | 1.000 |
 | `aPhase`, `bPhase` | Phase | 0–360° | 0, 180 |
 | `aPm`, `bPm` | PM | −1–1 | +0.62, −0.48 |
-| `fbTime` | Feedback time | 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4 | 1/16 |
+| `fbTime` | Feedback time | 1/4, 1/2, 1, 2, 4 cycles; 1/64 … 1/4 | 1 cyc |
 | `fbAmount` | Feedback | 0–1, squared | 0.49 |
 | `vowelA`, `vowelB` | Vowel | a, æ, e, i, o, u | æ, u |
 | `morph` | Morph | 0–1 | 0.63 |
@@ -245,3 +249,61 @@ Hosts: pluginval at strictness 10, `auval -v aumu Trfm Hbmu`.
 Interface: `tf-ui-snapshot` renders the editor headlessly against `FakeModel`;
 `tf-plugin-snapshot` plays a note through the real processor and renders the
 interface from the real analysis, with no host or audio device.
+
+## Revision 0.2
+
+Listening to 0.1 showed the Neuro presets were close to white noise: with the
+lanes off, Chrome Rasp had −17 dB of its mid-range energy off the note's
+harmonics and a flat spectrum, against −53 dB and −3.8 dB per octave with
+feedback off. Three causes: the feedback delay was timed to the beat rather than
+the pitch; detuned voices shared one folder; and nothing limited how many
+harmonics distortion made.
+
+The rule for 0.2: **everything that adds spectrum is locked to the master, and
+the growl's harmonics are bounded and weighted to the bottom.**
+
+### Harmonic core
+
+- **Per-voice distortion.** Reese A and Reese B each run through their own tract
+  and fold. `width` mixes them afterwards (`L = (A + (1−w)·B) / (2−w)`, and the
+  mirror for R), so detuned voices never intermodulate in a shared nonlinearity.
+- **Reach** (`reach`, 2–64, a harmonic number): a 24 dB per octave low-pass at
+  `reach · f0` after the fold. It follows pitch, glide and bend. The feedback
+  loop is low-passed at the same frequency.
+- **Weight** (`weight`): extra slope above the third harmonic, from 0 to
+  −12 dB per octave (`feel::weightSlopeDb`), by blending in one and then two
+  one-pole low-passes at `3 · f0`.
+- **Fit** (`fit`, 0–360°): rotates the sub against the growl. At 0 the sub at
+  the output is in phase with the master, with the sub low-pass's phase at `f0`
+  compensated; `fit` adds to that. It changes how the two waveforms interleave,
+  which shows as the crest factor of the sum.
+- **Feedback in cycles.** `fbTime` gains `1/4 cyc` … `4 cyc`: a delay of that
+  many cycles of the note, so the loop is a comb on the harmonics. The beat
+  divisions remain. The default is `1 cyc`.
+- **Beat lock** (`beatLock`): the Beat macro then selects a division
+  (`choices::beatLock`, via `feel::beatLockIndex`) and the two voices are offset
+  by a constant frequency so their fundamentals beat exactly once per division.
+  Each voice keeps its share of the offset in proportion to its Detune setting,
+  with its sign.
+
+The macros are now Coupling, Beat, Reach, Tract, Warp, Motion. Width lives in
+the Mid/side node.
+
+### Measuring noise
+
+`tf-render --metrics` adds `tiltDbPerOct` (octave bands from 500 Hz to 16 kHz)
+and `offHarmonicDb` (the share of 300 Hz–6 kHz energy further than a tolerance
+from any harmonic of the note; white noise reads about −1 dB). Presets are held
+to targets with the lanes off:
+
+| Category | Tilt, dB per octave | Off-harmonic |
+|---|---|---|
+| Reese | −14 to −7 | under −30 dB |
+| Neuro | −9 to −4 | under −25 dB |
+| Talk, Motion | −10 to −5 | under −25 dB |
+
+### Still to come in 0.2
+
+**Sculpt**: a pitch-tracked bank of notches, peaks or combs placed at harmonic
+numbers, after Reach. **Movement**: drawn curves, lanes that follow other lanes
+at a ratio, phase or inversion, and assignable targets.

@@ -53,5 +53,9 @@
   "lane4Rate": "1 bar",
   "lane4Phase": 0.0,
   "lane4Depth": 0.5,
-  "lane4Shape": "Steps"
+  "lane4Shape": "Steps",
+  "reach": 16.0,
+  "weight": 0.5,
+  "fit": 0.0,
+  "beatLock": false
 }

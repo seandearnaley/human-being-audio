@@ -50,4 +50,6 @@ TEST_CASE("values are formatted for display") {
     CHECK(formatValue(spec(ParamId::bPhase), 180.0f) == "180°");
     CHECK(formatValue(spec(ParamId::vowelB), 5.0f) == "u");
     CHECK(formatValue(spec(ParamId::limit), 1.0f) == "On");
+    CHECK(formatValue(spec(ParamId::reach), 16.0f) == "\u00d716");
+    CHECK(formatValue(spec(ParamId::fbTime), 2.0f) == "1 cyc");
 }

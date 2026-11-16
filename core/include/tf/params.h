@@ -13,14 +13,14 @@
 namespace tf {
 
 enum class ParamId : std::uint8_t {
-    coupling, beat, tract, warp, motion, width,
-    glide, phaseReset,
+    coupling, beat, reach, tract, warp, motion,
+    glide, phaseReset, beatLock,
     aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm,
     fbTime, fbAmount,
     vowelA, vowelB, morph,
-    foldType, drive, asym,
-    midGain, sideGain, xover,
-    subFreq, subLevel, growlLevel, squash,
+    foldType, drive, asym, weight,
+    midGain, sideGain, xover, width,
+    subFreq, fit, subLevel, growlLevel, squash,
     limit, ceiling, quality,
     lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape,
     lane2On, lane2Rate, lane2Phase, lane2Depth, lane2Shape,
@@ -43,7 +43,7 @@ enum class ParamKind : std::uint8_t { continuous, toggle, choice };
 
 // Unit decides how a value is shown. `percent` shows a 0..1 (or -1..1) value
 // multiplied by 100.
-enum class Unit : std::uint8_t { none, percent, ms, cents, degrees, dB, hz, ratio };
+enum class Unit : std::uint8_t { none, percent, ms, cents, degrees, dB, hz, ratio, harmonic };
 
 struct ParamSpec {
     std::string_view key;
@@ -61,7 +61,14 @@ struct ParamSpec {
 
 namespace choices {
 inline constexpr std::array<std::string_view, 2> offOn { "Off", "On" };
-inline constexpr std::array<std::string_view, 7> fbTime { "1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4" };
+// Feedback delay: in cycles of the note (a comb on its harmonics), or in beats.
+inline constexpr std::array<std::string_view, 12> fbTime {
+    "1/4 cyc", "1/2 cyc", "1 cyc", "2 cyc", "4 cyc", "1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"
+};
+// What the Beat macro selects while Beat lock is on: one roll per this length.
+inline constexpr std::array<std::string_view, 9> beatLock {
+    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/32"
+};
 inline constexpr std::array<std::string_view, 6> vowel { "a", "æ", "e", "i", "o", "u" };
 inline constexpr std::array<std::string_view, 3> foldType { "Fold", "Sine", "Tube" };
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
@@ -71,8 +78,14 @@ inline constexpr std::array<std::string_view, 12> laneRate {
 inline constexpr std::array<std::string_view, 6> laneShape { "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps" };
 }
 
-// Lengths in quarter notes, matching the choice lists above.
-inline constexpr std::array<double, 7> kFbTimeQuarters { 1.0 / 16, 1.0 / 8, 1.0 / 6, 1.0 / 4, 1.0 / 3, 1.0 / 2, 1.0 };
+// Feedback delay per choice: the first kFbCycleChoices are in cycles of the
+// note, the rest in quarter notes.
+inline constexpr int kFbCycleChoices = 5;
+inline constexpr std::array<double, 12> kFbTimeLengths {
+    0.25, 0.5, 1.0, 2.0, 4.0, 1.0 / 16, 1.0 / 8, 1.0 / 6, 1.0 / 4, 1.0 / 3, 1.0 / 2, 1.0
+};
+// Quarter notes per roll for each Beat lock division.
+inline constexpr std::array<double, 9> kBeatLockQuarters { 32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
 inline constexpr std::array<double, 12> kLaneRateQuarters {
     32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
 };
@@ -113,12 +126,13 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
 inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::amount("coupling", "Coupling", 0.72f),
     detail::amount("beat", "Beat", 0.38f),
+    detail::ranged("reach", "Reach", 2.0f, 64.0f, 16.0f, Unit::harmonic, 0.0f),
     detail::amount("tract", "Tract", 0.61f),
     detail::amount("warp", "Warp", 0.46f),
     detail::amount("motion", "Motion", 0.78f),
-    detail::amount("width", "Width", 0.64f),
     detail::ranged("glide", "Glide", 0.0f, 500.0f, 12.5f, Unit::ms, 3.0f),
     detail::toggle("phaseReset", "Phase reset", true),
+    detail::toggle("beatLock", "Beat lock", false),
     detail::ranged("aDetune", "A detune", -50.0f, 50.0f, 19.0f, Unit::cents),
     detail::ranged("bDetune", "B detune", -50.0f, 50.0f, -19.0f, Unit::cents),
     detail::ranged("aRatio", "A ratio", 0.25f, 8.0f, 1.0f, Unit::ratio, 0.0f),
@@ -127,7 +141,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::ranged("bPhase", "B phase", 0.0f, 360.0f, 180.0f, Unit::degrees),
     detail::bipolar("aPm", "A PM", 0.62f),
     detail::bipolar("bPm", "B PM", -0.48f),
-    detail::choice("fbTime", "Feedback time", choices::fbTime, 3),
+    detail::choice("fbTime", "Feedback time", choices::fbTime, 2),
     detail::amount("fbAmount", "Feedback", 0.49f),
     detail::choice("vowelA", "Vowel A", choices::vowel, 1),
     detail::choice("vowelB", "Vowel B", choices::vowel, 5),
@@ -135,10 +149,13 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::choice("foldType", "Fold type", choices::foldType, 0),
     detail::amount("drive", "Drive", 0.42f),
     detail::amount("asym", "Asym", 0.18f),
+    detail::amount("weight", "Weight", 0.5f),
     detail::ranged("midGain", "Mid", -12.0f, 12.0f, 0.0f, Unit::dB),
     detail::ranged("sideGain", "Side", -12.0f, 12.0f, 4.2f, Unit::dB),
     detail::ranged("xover", "Crossover", 60.0f, 300.0f, 100.0f, Unit::hz, 0.0f),
+    detail::amount("width", "Width", 0.64f),
     detail::ranged("subFreq", "Sub low-pass", 40.0f, 200.0f, 120.0f, Unit::hz, 0.0f),
+    detail::ranged("fit", "Fit", 0.0f, 360.0f, 0.0f, Unit::degrees),
     detail::amount("subLevel", "Sub", 0.5f),
     detail::amount("growlLevel", "Growl", 0.76f),
     detail::amount("squash", "Squash", 0.3f),
@@ -178,7 +195,11 @@ constexpr bool tableIsValid() {
 static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must match ParamId");
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
-static_assert(kFbTimeQuarters.size() == choices::fbTime.size());
+static_assert(spec(ParamId::reach).key == "reach" && spec(ParamId::beatLock).key == "beatLock", "kParams order");
+static_assert(spec(ParamId::weight).key == "weight" && spec(ParamId::width).key == "width", "kParams order");
+static_assert(spec(ParamId::fit).key == "fit" && spec(ParamId::glide).key == "glide", "kParams order");
+static_assert(kFbTimeLengths.size() == choices::fbTime.size());
+static_assert(kBeatLockQuarters.size() == choices::beatLock.size());
 static_assert(kLaneRateQuarters.size() == choices::laneRate.size());
 
 // Real parameter values, indexed by ParamId. Choices and toggles hold their index.

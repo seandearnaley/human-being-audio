@@ -10,15 +10,15 @@ struct Macro {
     unsigned accent;
 };
 
-// Coupling and Beat act on the master/voice relationship, Tract and Warp on the
-// growl, Motion on the lanes. Width is neutral.
+// Coupling and Beat act on the master/voice relationship; Reach, Tract and Warp
+// on the growl; Motion on the lanes.
 constexpr std::array<Macro, 6> kMacros { {
     { ParamId::coupling, colour::master },
     { ParamId::beat, colour::master },
+    { ParamId::reach, colour::growl },
     { ParamId::tract, colour::growl },
     { ParamId::warp, colour::growl },
     { ParamId::motion, colour::motion },
-    { ParamId::width, colour::text },
 } };
 }
 

@@ -53,5 +53,9 @@
   "lane4Rate": "8 bars",
   "lane4Phase": 0.0,
   "lane4Depth": 0.8,
-  "lane4Shape": "Sine"
+  "lane4Shape": "Sine",
+  "reach": 16.0,
+  "weight": 0.5,
+  "fit": 0.0,
+  "beatLock": false
 }

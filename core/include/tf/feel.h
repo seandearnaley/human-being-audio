@@ -24,6 +24,19 @@ inline float driveGain(float drive) {
     return std::pow(10.0f, drive * maxDb / 20.0f);
 }
 
+// Extra slope above the third harmonic, in dB per octave, for Weight (0..1).
+// Zero leaves the distortion's own slope; one leans the energy hard to the bottom.
+inline float weightSlopeDb(float weight) {
+    constexpr float maxSlopeDb = 12.0f;
+    return -weight * maxSlopeDb;
+}
+
+// Which Beat lock division the Beat macro (0..1) selects.
+inline int beatLockIndex(float beat, int divisions) {
+    const int index = static_cast<int>(beat * static_cast<float>(divisions - 1) + 0.5f);
+    return index < 0 ? 0 : index >= divisions ? divisions - 1 : index;
+}
+
 // Feedback into the voices' phase, in radians, for Feedback (0..1). Squared:
 // the loop turns chaotic above about 0.8 rad, and a linear control reached that
 // a third of the way up.

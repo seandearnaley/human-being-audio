@@ -468,8 +468,12 @@ struct Engine::Impl {
         t[pmB] = feel::pmIndex(static_cast<float>(sm(bPm)), static_cast<float>(sm(coupling)));
         t[fbGain] = feel::feedbackRadians(static_cast<float>(sm(fbAmount)));
         const double bpm = anchorBpmOrCurrent();
-        const double delayTarget = kFbTimeQuarters[static_cast<std::size_t>(std::clamp(p.choice(ParamId::fbTime), 0, 6))] *
-                                   60.0 / bpm * fo;
+        // In cycles of the note (incM is cycles per oversampled sample) or in beats.
+        const auto fbChoice = static_cast<std::size_t>(
+            std::clamp(p.choice(ParamId::fbTime), 0, static_cast<int>(kFbTimeLengths.size()) - 1));
+        const double delayTarget = fbChoice < static_cast<std::size_t>(kFbCycleChoices)
+                                       ? kFbTimeLengths[fbChoice] / std::max(incM, 1e-9)
+                                       : kFbTimeLengths[fbChoice] * 60.0 / bpm * fo;
         t[fbDelay] = std::clamp(delaySmooth.step(delayTarget, snap ? 1.0 : delayTickCoef), 2.0, feedback.maxDelay());
         t[width] = std::clamp(sm(width_), 0.0, 1.0);
         t[tractAmt] = std::clamp(sm(tract_), 0.0, 1.0);

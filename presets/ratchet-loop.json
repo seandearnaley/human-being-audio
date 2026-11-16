@@ -53,5 +53,9 @@
   "lane4Rate": "2 bars",
   "lane4Phase": 180.0,
   "lane4Depth": 0.5,
-  "lane4Shape": "Ramp down"
+  "lane4Shape": "Ramp down",
+  "reach": 16.0,
+  "weight": 0.5,
+  "fit": 0.0,
+  "beatLock": false
 }

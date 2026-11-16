@@ -53,5 +53,9 @@
   "lane4Rate": "1/2",
   "lane4Phase": 270.0,
   "lane4Depth": 0.4,
-  "lane4Shape": "Triangle"
+  "lane4Shape": "Triangle",
+  "reach": 16.0,
+  "weight": 0.5,
+  "fit": 0.0,
+  "beatLock": false
 }
