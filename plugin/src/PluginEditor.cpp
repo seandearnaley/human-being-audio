@@ -4,6 +4,7 @@ namespace tf {
 
 PluginEditor::PluginEditor(PluginProcessor& processor)
     : AudioProcessorEditor(processor), model_(processor), view_(model_) {
+    model_.setDragSource(this);
     setOpaque(true);
     setResizable(true, true);
     setResizeLimits(ui::kMinWidth, ui::kMinHeight, ui::kDefaultWidth * 2, ui::kDefaultHeight * 2);

@@ -29,7 +29,10 @@ public:
 
     ui::ResampleState resampleState() const override;
     void resample() override;
-    std::string resampledFile() const override;
+    void dragResampledFile() override;
+
+    // The component whose window file drags start from: the editor.
+    void setDragSource(juce::Component* source) { dragSource_ = source; }
 
 private:
     PluginProcessor& processor_;
@@ -37,6 +40,7 @@ private:
     ui::Visuals visuals_;
     juce::int64 lastUpdateTicks_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;
+    juce::Component* dragSource_ = nullptr;
 };
 
 }

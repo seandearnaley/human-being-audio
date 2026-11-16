@@ -66,6 +66,11 @@ void PluginModel::resample() {
     processor_.resampler.start(request, toJuce(processor_.presets.currentName()));
 }
 
-std::string PluginModel::resampledFile() const { return processor_.resampler.file().getFullPathName().toStdString(); }
+// A real file URL on the pasteboard, which is what hosts accept as a sample.
+void PluginModel::dragResampledFile() {
+    const auto file = processor_.resampler.file();
+    if (dragSource_ == nullptr || !file.existsAsFile()) return;
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({ file.getFullPathName() }, false, dragSource_);
+}
 
 }

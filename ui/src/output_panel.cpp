@@ -13,6 +13,7 @@ constexpr float kMeterPitch = 11.0f;  // top of one bar to the top of the next
 constexpr float kReductionHeight = 3.0f;
 constexpr float kReadoutWidth = 54.0f;
 constexpr float kColumnGap = 12.0f;
+constexpr float kDragThreshold = 4.0f;  // design pixels before a press becomes a drag
 constexpr float kButtonHeight = 28.0f;
 
 constexpr float kMeterFloorDb = -48.0f;
@@ -56,12 +57,31 @@ public:
     void mouseEnter(const visage::MouseEvent& e) override { button_.mouseEnter(e); }
     void mouseExit(const visage::MouseEvent& e) override { button_.mouseExit(e); }
 
-    void mouseDown(const visage::MouseEvent& e) override { button_.mouseDown(e); }
-    void mouseUp(const visage::MouseEvent& e) override { button_.mouseUp(e); }
+    void mouseDown(const visage::MouseEvent& e) override {
+        dragged_ = false;
+        downPosition_ = e.position;
+        button_.mouseDown(e);
+    }
 
-    // Once a render is ready the button is a file the host can pick up.
-    bool isDragDropSource() override { return state_ == ResampleState::ready; }
-    std::string startDragDropSource() override { return context_.model.resampledFile(); }
+    // Once a render is ready, dragging off the button hands the file to the host.
+    // The model starts the drag: hosts such as Ableton Live accept a real file on
+    // disk but not the file promise Visage's own drag source offers.
+    void mouseDrag(const visage::MouseEvent& e) override {
+        if (dragged_ || state_ != ResampleState::ready) return;
+        const float dx = e.position.x - downPosition_.x;
+        const float dy = e.position.y - downPosition_.y;
+        if (std::hypot(dx, dy) < context_.px(kDragThreshold)) return;
+        dragged_ = true;
+        auto release = e;
+        release.position = { -1.0f, -1.0f };  // outside: release the button without a click
+        button_.mouseUp(release);
+        context_.model.dragResampledFile();
+    }
+
+    void mouseUp(const visage::MouseEvent& e) override {
+        if (!dragged_) button_.mouseUp(e);
+        dragged_ = false;
+    }
 
 private:
     void clicked() {
@@ -71,6 +91,8 @@ private:
     Context& context_;
     Button button_;
     ResampleState state_ = ResampleState::idle;
+    visage::Point downPosition_;
+    bool dragged_ = false;
 };
 
 class OutputPanel final : public Panel {
