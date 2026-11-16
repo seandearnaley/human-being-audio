@@ -24,10 +24,12 @@ inline float driveGain(float drive) {
     return std::pow(10.0f, drive * maxDb / 20.0f);
 }
 
-// Feedback into the voices' phase, in radians, for Feedback (0..1).
+// Feedback into the voices' phase, in radians, for Feedback (0..1). Squared:
+// the loop turns chaotic above about 0.8 rad, and a linear control reached that
+// a third of the way up.
 inline float feedbackRadians(float amount) {
     constexpr float maxRadians = 6.2831853f;
-    return amount * maxRadians;
+    return amount * amount * maxRadians;
 }
 
 }

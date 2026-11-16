@@ -109,7 +109,7 @@ an empty device panel above 64.
 | `aPhase`, `bPhase` | Phase | 0–360° | 0, 180 |
 | `aPm`, `bPm` | PM | −1–1 | +0.62, −0.48 |
 | `fbTime` | Feedback time | 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4 | 1/16 |
-| `fbAmount` | Feedback | 0–1 | 0.24 |
+| `fbAmount` | Feedback | 0–1, squared | 0.49 |
 | `vowelA`, `vowelB` | Vowel | a, æ, e, i, o, u | æ, u |
 | `morph` | Morph | 0–1 | 0.63 |
 | `foldType` | Type | Fold, Sine, Tube | Fold |

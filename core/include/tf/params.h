@@ -128,7 +128,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::bipolar("aPm", "A PM", 0.62f),
     detail::bipolar("bPm", "B PM", -0.48f),
     detail::choice("fbTime", "Feedback time", choices::fbTime, 3),
-    detail::amount("fbAmount", "Feedback", 0.24f),
+    detail::amount("fbAmount", "Feedback", 0.49f),
     detail::choice("vowelA", "Vowel A", choices::vowel, 1),
     detail::choice("vowelB", "Vowel B", choices::vowel, 5),
     detail::amount("morph", "Morph", 0.63f),

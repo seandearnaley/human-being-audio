@@ -18,7 +18,7 @@
   "aPm": 0.95,
   "bPm": 0.55,
   "fbTime": "1/32",
-  "fbAmount": 0.25,
+  "fbAmount": 0.5,
   "vowelA": "a",
   "vowelB": "u",
   "morph": 0.5,
