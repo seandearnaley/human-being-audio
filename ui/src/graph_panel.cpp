@@ -426,7 +426,7 @@ public:
         drawTract(canvas, visuals);
         drawFold(canvas, visuals);
         drawMidSide(canvas);
-        title(canvas, nodeTitle(kOut), "Out", colour::text);
+        drawOut(canvas, visuals);
         title(canvas, { kSubLock.x + kInset, kSubLock.midY() - kTitleHeight * 0.5f, kSubLockRowX, kTitleHeight },
               "Sub lock", colour::master);
     }
@@ -597,6 +597,15 @@ private:
         const float drive = std::clamp(get(ParamId::drive) + kLaneDepth * visuals.laneValue[2], 0.0f, 1.0f);
         const auto type = static_cast<FoldType>(static_cast<int>(get(ParamId::foldType) + 0.5f));
         curve(canvas, foldTransfer(type, drive, get(ParamId::asym), kExtent), box, colour::growl, -kExtent, kExtent);
+    }
+
+    // The sum that leaves the plugin: the same phase-locked output trace the scope shows.
+    void drawOut(visage::Canvas& canvas, const Visuals& visuals) {
+        title(canvas, nodeTitle(kOut), "Out", colour::text);
+        const Box box = nodeVisual(kOut, kOut.w - 2.0f * kInset);
+        hairline(canvas, { box.x, box.midY() }, { box.right(), box.midY() }, colour::track);
+        drawCurve(canvas, context_, visuals.scopeOut, px(box.x), px(box.y), px(box.w), px(box.h),
+                  colour::withAlpha(colour::text, 0.8f), -1.2f, 1.2f);
     }
 
     void drawMidSide(visage::Canvas& canvas) {
