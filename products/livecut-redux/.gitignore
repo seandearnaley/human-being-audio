@@ -1,0 +1,12 @@
+# Build trees
+build/
+build-capture/
+build-perform/
+build-recut/
+build-recut-release/
+cmake-build-*/
+
+# IDE and OS clutter
+.idea/
+.vscode/
+.DS_Store

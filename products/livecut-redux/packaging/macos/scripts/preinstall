@@ -1,0 +1,24 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Installer runs this before it installs Livecut Redux. Livecut Redux has the
+# same plug-in IDs as Livecut 0.1.0 to 1.0.0-beta.1, so a host that found both
+# would list it twice: this removes those copies, and only those. The original
+# 2004 Livecut is also called Livecut.component, and stays.
+#
+# Installer passes the package, the destination and the volume it installs on.
+set -eu
+
+volume=${3%/}
+
+for bundle in "$volume/Library/Audio/Plug-Ins/VST3/Livecut.vst3" \
+              "$volume/Library/Audio/Plug-Ins/Components/Livecut.component" \
+              "$volume/Applications/Livecut.app"; do
+    # No bundle, or one without an identifier, is not ours.
+    identifier=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$bundle/Contents/Info.plist" 2> /dev/null) || continue
+
+    if [[ $identifier == "com.seandearnaley.livecut" ]]; then
+        rm -rf "$bundle"
+        echo "Removed $bundle, which Livecut Redux replaces"
+    fi
+done
