@@ -94,10 +94,16 @@ jobs:
           NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
           NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
         run: bash factory/release/notarize.sh
+      - uses: actions/setup-python@v6
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12'
       - name: Open the installed Mac plug-ins in pluginval
         if: runner.os == 'macOS'
         run: |
           python3 factory/release/verify_product.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+          python -m pip install --only-binary=:all: pedalboard==0.9.26
+          python factory/release/verify_recall.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
           swift factory/release/standalone-mac.swift "/Applications/$NAME.app"
           bash factory/release/pluginval.sh "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
 

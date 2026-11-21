@@ -3,7 +3,21 @@ name: Tract Form
 on:
   push:
     branches: [main]
+    paths:
+      - 'products/tract-form/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/tract-form.yml'
   pull_request:
+    paths:
+      - 'products/tract-form/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/tract-form.yml'
   merge_group:
 
 permissions:

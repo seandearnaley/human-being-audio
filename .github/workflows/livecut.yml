@@ -3,7 +3,21 @@ name: Livecut Redux
 on:
   push:
     branches: [main]
+    paths:
+      - 'products/livecut-redux/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/livecut.yml'
   pull_request:
+    paths:
+      - 'products/livecut-redux/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/livecut.yml'
   merge_group:
 
 permissions:

@@ -2,9 +2,23 @@ name: Native desktop builds
 
 on:
   pull_request:
+    paths:
+      - 'products/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/native.yml'
   merge_group:
   push:
     branches: [main]
+    paths:
+      - 'products/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.gitmodules'
+      - '.github/workflows/native.yml'
 
 permissions:
   contents: read
