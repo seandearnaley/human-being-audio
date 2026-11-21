@@ -1,0 +1,12 @@
+{
+  "livecut-redux": {
+    "name": "Livecut Redux",
+    "artifacts": "Livecut_artefacts/Release",
+    "bundle": "com.humanbeingmusic.livecutredux"
+  },
+  "tract-form": {
+    "name": "Tract Form",
+    "artifacts": "plugin/TractForm_artefacts/Release",
+    "bundle": "com.humanbeingmusic.tractform"
+  }
+}

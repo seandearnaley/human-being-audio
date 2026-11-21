@@ -1,0 +1,190 @@
+name: Studio release
+run-name: Release ${{ inputs.product }} from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: Product to package
+        type: choice
+        options: [livecut-redux, tract-form]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-release-${{ inputs.product }}
+  cancel-in-progress: false
+
+env:
+  PRODUCT: ${{ inputs.product }}
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+jobs:
+  prepare:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 factory/release/release.py env "$PRODUCT"
+      - name: Check source and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          python3 -m unittest discover -s factory/release
+          refs=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/archive/$PRODUCT/tags/v$VERSION")
+          if [[ -n $refs ]]; then echo "::error::This version already has a release tag. Bump the product version first."; exit 1; fi
+          drafts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name')
+          if grep -Fxq "$TAG" <<<"$drafts"; then echo "::error::A release already exists for $TAG"; exit 1; fi
+
+  package:
+    needs: prepare
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025-vs2026, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: ${{ inputs.product == 'livecut-redux' }}
+          persist-credentials: false
+      - run: python factory/release/release.py env "$PRODUCT"
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends
+          echo CC=clang-22 >> "$GITHUB_ENV"
+          echo CXX=clang++-22 >> "$GITHUB_ENV"
+      - name: Build Release and run the native tests
+        if: runner.os != 'Windows'
+        working-directory: products/${{ inputs.product }}
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+          if [[ $RUNNER_OS == Linux ]]; then
+            xvfb-run -a ../../cmake/with-window-manager.sh ctest --preset release
+          else
+            ctest --preset release
+          fi
+      - name: Build Release and run the native Windows tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./cmake/windows-release.ps1 -Product $env:PRODUCT
+
+      - name: Sign Mac bundles and install the notarized package
+        if: runner.os == 'macOS'
+        env:
+          MACOS_APPLICATION_IDENTITY: ${{ secrets.MACOS_APPLICATION_IDENTITY }}
+          MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+          MACOS_APPLICATION_P12: ${{ secrets.MACOS_APPLICATION_P12 }}
+          MACOS_INSTALLER_P12: ${{ secrets.MACOS_INSTALLER_P12 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: bash factory/release/notarize.sh
+      - name: Open the installed Mac plug-ins in pluginval
+        if: runner.os == 'macOS'
+        run: bash factory/release/pluginval.sh "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+
+      - name: Log in to the Windows signing profile with GitHub OIDC
+        if: runner.os == 'Windows'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign the Windows standalone and VST3 payloads
+        if: runner.os == 'Windows'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files: |
+            ${{ env.ARTIFACTS }}\Standalone\${{ env.NAME }}.exe
+            ${{ env.ARTIFACTS }}\VST3\${{ env.NAME }}.vst3\Contents\x86_64-win\${{ env.NAME }}.vst3
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          choco install nsis --version=3.13 --yes --no-progress
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory dist | Out-Null
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /V2 factory/release/windows.nsi
+      - name: Sign the finished Windows installer
+        if: runner.os == 'Windows'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\${{ env.WINDOWS_FILE }}
+      - name: Install, verify signatures, validate VST3 and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./factory/release/windows-test.ps1
+
+      - name: Install the Linux archive and validate the packaged VST3
+        if: runner.os == 'Linux'
+        run: |
+          bash factory/release/linux.sh
+          mkdir -p "$RUNNER_TEMP/installed" "$HOME/.vst3"
+          tar -xzf "dist/$LINUX_FILE" -C "$RUNNER_TEMP/installed"
+          cp -a "$RUNNER_TEMP/installed/$NAME/VST3/$NAME.vst3" "$HOME/.vst3/"
+          test -x "$RUNNER_TEMP/installed/$NAME/Standalone/$NAME"
+          xvfb-run -a cmake/with-window-manager.sh bash factory/release/pluginval.sh "$HOME/.vst3/$NAME.vst3"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ runner.os }}
+          path: |
+            dist/*.pkg
+            dist/*.exe
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  draft:
+    needs: package
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - run: python3 factory/release/release.py env "$PRODUCT"
+      - run: python3 factory/release/release.py record "$PRODUCT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Verify the final assets and create a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest "$GITHUB_SHA"; done
+          printf '%s\n' "$NAME $VERSION" "" "Source and build instructions: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" "" "Verify downloads with SHA256SUMS or gh attestation verify FILE --repo $GITHUB_REPOSITORY." > "$RUNNER_TEMP/notes"
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
+
