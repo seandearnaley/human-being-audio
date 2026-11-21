@@ -15,6 +15,8 @@ The growl can be as violent as you like and the sub never moves.
 
 VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on macOS. Beta 0.2.
 
+On Ubuntu, the editor uses Vulkan through the desktop graphics driver. The studio’s Ubuntu test environment uses Mesa’s Vulkan driver.
+
 ## What it does
 
 - **Master sine** sets the pitch, phase-modulates both reese voices and becomes the sub.
