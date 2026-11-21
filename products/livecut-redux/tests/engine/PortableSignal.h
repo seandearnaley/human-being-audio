@@ -32,12 +32,12 @@ inline float portableSignal (std::int64_t frame, int channel)
 
 // The engine's own maths still differs in its last bits between toolchains:
 // libm's sin and cos (pan), exp (fades) and pow (pitch), and Apple Clang's fused
-// multiply-adds. So an output pinned to the bit is pinned per toolchain: the
-// Apple Clang value as measured, and the MSVC value as Windows CI measured it.
-constexpr std::uint64_t pinnedHash ([[maybe_unused]] std::uint64_t appleClang, [[maybe_unused]] std::uint64_t msvc)
+// multiply-adds. The Ubuntu x86_64 Clang renders match the published Windows
+// reference hashes bit for bit. Both use the same reference column.
+constexpr std::uint64_t pinnedHash ([[maybe_unused]] std::uint64_t appleClang, [[maybe_unused]] std::uint64_t windowsOrLinuxX64)
 {
-#if defined (_MSC_VER)
-    return msvc;
+#if defined (_MSC_VER) || (defined (__linux__) && defined (__x86_64__))
+    return windowsOrLinuxX64;
 #else
     return appleClang;
 #endif
