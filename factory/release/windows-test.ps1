@@ -34,6 +34,10 @@ try {
             $standalone.Refresh()
         }
         if ($standalone.HasExited -or !$standalone.MainWindowHandle) { throw 'Standalone did not open its window' }
+        if ($env:PRODUCT -eq 'tract-form') {
+            python products/tract-form/tests/plugin/verify_windows_editor.py $standalone.MainWindowHandle
+            if ($LASTEXITCODE) { throw 'The instrument covered the standalone controls' }
+        }
     } finally {
         if (!$standalone.HasExited) { $standalone.Kill(); $standalone.WaitForExit() }
     }

@@ -1,5 +1,13 @@
 #include "PluginEditor.h"
 
+#if JUCE_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <system_error>
+#endif
+
 namespace tf {
 
 PluginEditor::PluginEditor(PluginProcessor& processor)
@@ -7,8 +15,8 @@ PluginEditor::PluginEditor(PluginProcessor& processor)
           // Leave the native mouse callback before closing its Visage window.
           juce::MessageManager::callAsync([safe] { if (safe != nullptr) safe->showAbout(); });
       }) {
-#if JUCE_LINUX
-    addAndMakeVisible(linuxHost_);
+#if JUCE_LINUX || JUCE_WINDOWS
+    addAndMakeVisible(nativeHost_);
 #endif
     addChildComponent(about_);
     aboutText_.setText("Tract Form\n\nMonophonic bass synthesizer\n\n"
@@ -41,8 +49,8 @@ void PluginEditor::detachView() {
 void PluginEditor::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff0b0e13)); }
 
 void PluginEditor::resized() {
-#if JUCE_LINUX
-    linuxHost_.setBounds(getLocalBounds());
+#if JUCE_LINUX || JUCE_WINDOWS
+    nativeHost_.setBounds(getLocalBounds());
 #endif
     about_.setBounds(getLocalBounds());
     aboutText_.setBounds(about_.getLocalBounds().reduced(40).withTrimmedTop(64));
@@ -54,8 +62,8 @@ void PluginEditor::parentHierarchyChanged() { attachWhenOnScreen(); }
 void PluginEditor::showAbout() {
     if (about_.isVisible()) return;
     detachView();
-#if JUCE_LINUX
-    linuxHost_.setVisible(false);
+#if JUCE_LINUX || JUCE_WINDOWS
+    nativeHost_.setVisible(false);
 #endif
     about_.open();
 }
@@ -63,11 +71,28 @@ void PluginEditor::showAbout() {
 void PluginEditor::attachWhenOnScreen() {
     if (about_.isVisible()) return;
     auto* peer = getPeer();
+    if (peer == nullptr) {
+        detachView();
+        return;
+    }
+#if JUCE_LINUX || JUCE_WINDOWS
+    nativeHost_.setVisible(true);
+#endif
 #if JUCE_LINUX
-    linuxHost_.setVisible(true);
-    void* nativeView = peer != nullptr ? reinterpret_cast<void*>(linuxHost_.getHostWindowID()) : nullptr;
+    auto* nativeView = reinterpret_cast<void*>(nativeHost_.getHostWindowID());
+#elif JUCE_WINDOWS
+    if (nativeHost_.getHWND() == nullptr) {
+        // JUCE positions this child inside the editor and owns its lifetime.
+        auto window = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                                      0, 0, 0, 0, static_cast<HWND>(peer->getNativeHandle()),
+                                      nullptr, nullptr, nullptr);
+        if (window == nullptr)
+            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Create editor window");
+        nativeHost_.setHWND(window);
+    }
+    auto* nativeView = nativeHost_.getHWND();
 #else
-    void* nativeView = peer != nullptr ? peer->getNativeHandle() : nullptr;
+    auto* nativeView = peer->getNativeHandle();
 #endif
     if (nativeView == attachedTo_) return;
 

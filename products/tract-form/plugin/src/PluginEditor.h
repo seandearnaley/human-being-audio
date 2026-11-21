@@ -24,7 +24,9 @@ private:
 
     PluginModel model_;
 #if JUCE_LINUX
-    juce::XEmbedComponent linuxHost_ { juce::XEmbedComponentOptions{} };
+    juce::XEmbedComponent nativeHost_ { juce::XEmbedComponentOptions{} };
+#elif JUCE_WINDOWS
+    juce::HWNDComponent nativeHost_;
 #endif
     ui::Editor view_;
     hba::StudioAbout about_;
