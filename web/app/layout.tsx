@@ -13,12 +13,7 @@ export const metadata: Metadata = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap"
-        />
-      </head>
+
       <body id="top">
         <a className="skip" href="#main">
           Skip to content

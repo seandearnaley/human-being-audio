@@ -38,6 +38,7 @@ export default function Hero() {
           <span className="dock__meta mono" data-backend>
             3D: loading…
           </span>
+          <button type="button" className="btn btn--quiet" data-enable-scene="" hidden>Enable 3D</button>
         </div>
 
         <fieldset className="forms" id="form-picker">

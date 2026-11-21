@@ -179,10 +179,36 @@ reducedMotion.addEventListener('change', () => {
    No AudioContext anywhere: the page is silent by construction.
    ========================================================================== */
 const backendEl = $('[data-backend]');
-startStage().catch((err) => {
+const enableScene = $('[data-enable-scene]');
+async function enableStage() {
+  enableScene.hidden = true;
+  try { await startStage(); }
+  catch (err) {
+    root.dataset.stage = 'fallback';
+    backendEl.textContent = '3D unavailable';
+    console.warn('[stage]', err);
+  }
+}
+async function hasHardwareGraphics() {
+  const adapter = await navigator.gpu?.requestAdapter();
+  if (adapter) {
+    const info = adapter.info;
+    return !info?.isFallbackAdapter && !/swiftshader|llvmpipe|software/i.test(
+      [info?.architecture, info?.description, info?.device].join(' '));
+  }
+  const probe = document.createElement('canvas').getContext('webgl2', {failIfMajorPerformanceCaveat:true});
+  if (!probe) return false;
+  const debug = probe.getExtension('WEBGL_debug_renderer_info');
+  const name = debug ? probe.getParameter(debug.UNMASKED_RENDERER_WEBGL) : '';
+  probe.getExtension('WEBGL_lose_context')?.loseContext();
+  return !/swiftshader|llvmpipe|software/i.test(name);
+}
+enableScene.addEventListener('click', enableStage, {once:true});
+hasHardwareGraphics().then(hardware => {
+  if (hardware) return enableStage();
   root.dataset.stage = 'fallback';
-  backendEl.textContent = '3D: off (static)';
-  console.warn('[stage] 3D disabled, showing the static sculpture instead:', err?.message ?? err);
+  backendEl.textContent = '3D paused · software graphics';
+  enableScene.hidden = false;
 });
 
 async function startStage() {
