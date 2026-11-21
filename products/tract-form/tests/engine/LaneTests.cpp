@@ -18,6 +18,8 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 
 using namespace tf;
 using namespace tf::test;
@@ -88,17 +90,38 @@ double sideReMidDb(const Rendered& r, std::size_t from, std::size_t to) {
 
 // ---- Default targets play exactly as before ---------------------------------------------
 
-TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[engine][lanes]") {
-    // Hashes of the output of the engine before the lanes moved onto core's
-    // definition (beta-0.2 at "Carry drawn curves through ..."): the default
-    // patch, and every lane on at full depth with four different shapes. With
-    // one lane per target the summed movement is the lane's value exactly, and
-    // the spans are 0.5 and 90/360, so the arithmetic is unchanged to the bit.
-    // A deliberate change to the sound will change these: update them then.
-    // (Updated for the sub split following the note and Growl as a level
-    // after the growl's ceiling stage: both change the output by design.)
+static void checkReferenceRender(const Setup& setup, const char* filename, std::uint64_t originalHash) {
+    constexpr std::size_t frames = 24000;
+    const auto output = render(setup, held(29), frames);
+    std::ifstream file(std::filesystem::path(TF_LANE_FIXTURES_DIR) / filename, std::ios::binary);
+    REQUIRE(file.is_open());
+
+    Rendered reference;
+    for (auto* channel : {&reference.left, &reference.right}) {
+        std::vector<float> samples(frames);
+        REQUIRE(file.read(reinterpret_cast<char*>(samples.data()), frames * sizeof(float)).good());
+        channel->assign(samples.begin(), samples.end());
+    }
+    REQUIRE(file.peek() == std::char_traits<char>::eof());
+    REQUIRE(hashOutput(reference) == originalHash);
+
+    double squaredError = 0.0;
+    for (const auto& [actual, expected] : {std::pair{&output.left, &reference.left},
+                                           std::pair{&output.right, &reference.right}}) {
+        REQUIRE(actual->size() == frames);
+        REQUIRE(allFinite(*actual));
+        CHECK(maxAbsDiff(*actual, *expected) < 1.0e-6);
+        for (std::size_t i = 0; i < frames; ++i) {
+            const double difference = (*actual)[i] - (*expected)[i];
+            squaredError += difference * difference;
+        }
+    }
+    CHECK(std::sqrt(squaredError / (2.0 * frames)) < 1.0e-7);
+}
+
+TEST_CASE("lanes: default targets reproduce the original fixed-lane audio", "[engine][lanes]") {
     Setup a;
-    CHECK(hashOutput(render(a, held(29), 24000)) == 0xd6bbcf9a9b7ff560ULL);
+    checkReferenceRender(a, "default.f32", 0xd6bbcf9a9b7ff560ULL);
     Setup b;
     b.params[ParamId::motion] = 1.0f;
     for (int i = 0; i < kLaneCount; ++i) {
@@ -106,7 +129,7 @@ TEST_CASE("lanes: default targets play exactly as the fixed 0.1 lanes did", "[en
         b.params[laneParam(i, LaneField::depth)] = 1.0f;
         b.params[laneParam(i, LaneField::shape)] = static_cast<float>(i + 1);
     }
-    CHECK(hashOutput(render(b, held(29), 24000)) == 0x89f7ad505b11fe61ULL);
+    checkReferenceRender(b, "movement.f32", 0x89f7ad505b11fe61ULL);
 }
 
 // ---- Retargeting -----------------------------------------------------------------------
