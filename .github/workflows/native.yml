@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'products/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
       - 'cmake/**'
       - 'modules/**'
       - 'studio.json'
@@ -14,6 +16,8 @@ on:
     branches: [main]
     paths:
       - 'products/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
       - 'cmake/**'
       - 'modules/**'
       - 'studio.json'

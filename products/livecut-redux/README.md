@@ -111,18 +111,15 @@ at strictness level 10 (including Steinberg's VST3 validator) and with `auval`.
 
 ## Releases
 
-Pushing a tag such as `v0.1.0` builds a signed, notarised macOS installer and
-the Windows plug-ins, and puts them in a draft GitHub release to check and
-publish. Tags with a suffix, such as `v0.1.0-rc.1`, become pre-releases. The signing
-secrets it needs are listed at the top of
-[.github/workflows/release.yml](.github/workflows/release.yml). To check the
-installer's layout locally without signing it:
+Follow the [studio release guide](../../factory/release/README.md). Select Livecut Redux in the Studio release workflow. GitHub signs the Windows installer, signs and notarizes the Mac package, and publishes all three platforms after installed-package checks.
+
+To inspect the Mac installer locally, use a universal Release build and the version from this product's CMake project:
 
 ```sh
-packaging/macos/make-installer.sh build/Livecut_artefacts/Release 0.1.0 dist --unsigned
+packaging/macos/make-installer.sh build/release/Livecut_artefacts/Release 1.0.1 dist --unsigned
 ```
 
-That builds `dist/Livecut-Redux-0.1.0.pkg`. Before it installs, the installer
+Before it installs, the installer
 removes Livecut 0.1.0 to 1.0.0-beta.1 from `/Library/Audio/Plug-Ins` and
 `/Applications`, since Livecut Redux has the same plug-in IDs and hosts would
 otherwise list it twice. Anything else called Livecut, such as the original

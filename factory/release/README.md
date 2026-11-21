@@ -1,6 +1,8 @@
 # Release a studio product
 
 1. Merge the product changes with its new three-part version in the product’s top-level CMakeLists.txt. This version becomes the plug-in version, package filenames and product-scoped release tag.
+Add its musician-facing changes in `products/<product>/docs/releases/<version>.md`. The workflow publishes that file with the source link and verification instructions.
+
 2. In GitHub Actions, open **Studio release**, select **Run workflow**, keep the branch on **main** and choose the product. From any authenticated terminal, the equivalent command is `gh workflow run release.yml -R seandearnaley/human-being-audio --ref main -f product=livecut-redux`. Use `tract-form` for the synth.
 3. GitHub builds and tests all three platforms, signs and installs their packages, checks the installed VST3 publisher and host class IDs, opens the plug-ins in pluginval, and verifies the Windows uninstaller. macOS also validates the Audio Unit.
 4. When all three packages pass, the workflow verifies provenance, publishes the product tag and uploads its catalogue record. The website discovers the release automatically.
