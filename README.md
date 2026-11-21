@@ -43,7 +43,7 @@ CTest covers both products on each OS. Tract Form also runs its Apple libmalloc 
 
 ## Website and shared code
 
-Open `web/index.html` for the imported catalogue. A local web server can serve `web/` directly. Vercel can use that directory as the site root when deployment is enabled. Each product will supply its own published release record for the download catalogue.
+The [live website](https://humanbeingaudio.com) is a Next.js App Router application in [web/](web). From that directory run `npm ci` and `npm run dev`. For a production check, run `npm test`, `npm run build`, `npx playwright install chromium` and `npm run test:e2e`. Vercel builds the site from the studio repository. The server reads public release manifests, verifies asset sizes and SHA-256 digests against GitHub, and revalidates the catalogue every minute. The download and source links work without JavaScript.
 
 Both products include [the studio CMake presets](cmake/native-presets.json) and retain independent configure roots and JUCE versions. Both About screens use [the studio UI module](modules/studio-ui). [The studio catalogue](studio.json) supplies product identity to JUCE and packaging. The DSP engines keep their independent signal paths and tests. The site and the native build do not depend on each other's toolchains.
 
