@@ -4,17 +4,17 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <CoreFoundation/CoreFoundation.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <thread>
 #include <vector>
 
+#if JUCE_MAC
 // libmalloc calls this hook, when set, for every allocation and free. It is how
 // Apple's own memory tools watch a process, and it sees malloc as well as new.
 extern "C" void (*malloc_logger)(uint32_t type, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uint32_t);
+#endif
 
 using Catch::Approx;
 using namespace tf;
@@ -47,6 +47,7 @@ struct Host {
     }
 };
 
+#if JUCE_MAC
 // Counts this thread's allocations while one is alive.
 class AllocationCount {
 public:
@@ -64,9 +65,10 @@ private:
     static thread_local int count_;
 };
 thread_local int AllocationCount::count_ = 0;
+#endif
 
 // Lets the message thread's queued callbacks run.
-void runMessageLoop() { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false); }
+void runMessageLoop() { juce::MessageManager::getInstance()->runDispatchLoopUntil(50); }
 
 float bandHz(int band) {
     return 20.0f * std::pow(1000.0f, (static_cast<float>(band) + 0.5f) / ui::Visuals::kSpectrumBands);
@@ -208,7 +210,8 @@ TEST_CASE("a drawn curve is saved with the session and with a preset's lane") {
 }
 
 
-TEST_CASE("the audio callback does not allocate, whatever MIDI arrives") {
+#if JUCE_MAC
+TEST_CASE("Apple libmalloc counts no audio callback allocations for note and SysEx events") {
     Host host;
     const auto allocationsFor = [&](const juce::MidiMessage& message) {
         juce::MidiBuffer midi;
@@ -229,6 +232,7 @@ TEST_CASE("the audio callback does not allocate, whatever MIDI arrives") {
     CHECK(allocationsFor(juce::MidiMessage::noteOn(1, 29, 1.0f)) == 0);
     CHECK(allocationsFor(sysex) == 0);
 }
+#endif
 
 TEST_CASE("Quality set from another thread takes effect on the message thread") {
     const auto setQualityElsewhere = [](PluginProcessor& processor, float normalised) {

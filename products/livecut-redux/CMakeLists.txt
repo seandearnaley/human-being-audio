@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
 # Both must be set before project() to apply to every target. macOS 11 is the
+
+# The engine and UI libraries are linked into loadable plugin modules.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # first release with Apple Silicon, so it is the floor for a universal binary.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures to build")

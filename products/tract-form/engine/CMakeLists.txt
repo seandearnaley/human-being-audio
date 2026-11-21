@@ -1,3 +1,26 @@
+# Some older Clang toolchains accept the annotation without enforcing it.
+include(CheckCXXSourceCompiles)
+include(CMakePushCheckState)
+cmake_push_check_state(RESET)
+set(CMAKE_REQUIRED_FLAGS "-Werror=function-effects")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+check_cxx_source_compiles("
+    #if !__has_cpp_attribute(clang::nonblocking)
+    #error nonblocking attribute unavailable
+    #endif
+    int value() [[clang::nonblocking]] { return 1; }
+" TF_HAS_NONBLOCKING)
+if(TF_HAS_NONBLOCKING)
+    check_cxx_source_compiles("
+        int* allocate() [[clang::nonblocking]] { return new int; }
+    " TF_ACCEPTS_NONBLOCKING_ALLOCATION)
+endif()
+cmake_pop_check_state()
+unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
+if(NOT TF_HAS_NONBLOCKING OR TF_ACCEPTS_NONBLOCKING_ALLOCATION)
+    message(FATAL_ERROR "Tract Form requires Clang with enforced nonblocking checks. See the studio README for the native toolchain.")
+endif()
+
 add_library(tf_engine STATIC
     include/tf/engine.h
     include/tf/nonblocking.h
