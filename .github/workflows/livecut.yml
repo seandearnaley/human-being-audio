@@ -14,6 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  CTEST_PARALLEL_LEVEL: 4
   PLUGINVAL_VERSION: v1.0.4
   VST3SDK_TAG: v3.8.1_build_84
   ARTEFACTS: build/Livecut_artefacts/Release

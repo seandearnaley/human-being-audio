@@ -13,12 +13,12 @@ cd human-being-audio/products/livecut-redux
 cmake --workflow --preset check
 ```
 
-The workflow configures, builds and tests the selected product. For an existing clone, use `git submodule update --init --recursive`. The first Tract Form configure fetches its pinned dependencies. To reuse those sources between builds, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. For daily edits, `cmake --build --preset dev` reuses the existing build.
+The workflow configures, builds and tests the selected product. For an existing clone, use `git submodule update --init --recursive`. The first Tract Form configure fetches its pinned dependencies. To reuse those sources between builds, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. Livecut’s tests also support `ctest --preset dev --parallel 4`. For daily edits, `cmake --build --preset dev` reuses the existing build.
 
 | Native environment | One-time setup |
 | --- | --- |
 | macOS | Install Xcode with its command-line tools, CMake 3.25+ and Ninja. Use Apple Clang. The development preset builds for the current CPU and the release preset builds arm64 and x86_64. |
-| Windows x64 | Open the x64 Visual Studio developer shell with the Desktop development with C++ workload, Windows SDK, CMake and Ninja on PATH. Livecut uses MSVC. For Tract Form, put upstream LLVM on PATH and set PowerShell variables `$env:CC = 'clang'` and `$env:CXX = 'clang++'` before the first configure. LLVM 23.1.6 was tested with VS 2022. Use a fresh build directory when changing compiler. |
+| Windows x64 | Open the x64 Visual Studio developer shell with the Desktop development with C++ workload, Windows SDK, CMake and Ninja on PATH. Livecut uses MSVC. For Tract Form, put upstream LLVM on PATH and set PowerShell variables `$env:CC = 'clang'` and `$env:CXX = 'clang++'` before the first configure. [LLVM 23.1.6](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.6) was tested with VS 2022. Use a fresh build directory when changing compiler. |
 | Ubuntu 26.04 x86_64 | At the repo root run `sudo apt-get update` and `xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install --no-install-recommends`. Set `export CC=clang-22 CXX=clang++-22`. On a headless machine prefix the workflow or CTest command with `xvfb-run -a ../../cmake/with-window-manager.sh` from the product directory. Livecut’s editor tests exercise real window and focus behavior. |
 
 Tract Form checks at configure time that the compiler both accepts an annotated audio function and rejects an allocation inside it. See [Clang function effect analysis](https://clang.llvm.org/docs/FunctionEffectAnalysis.html).
