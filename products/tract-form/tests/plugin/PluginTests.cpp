@@ -273,9 +273,11 @@ TEST_CASE("About identifies the studio, links to this synth and returns to the s
     editor.showAbout();
     REQUIRE(sheet->isVisible());
     CHECK(sheet->getTitle() == "About Tract Form");
-    auto* mark = dynamic_cast<juce::Drawable*>(sheet->findChildWithID("studioMark"));
-    REQUIRE(mark != nullptr);
-    CHECK_FALSE(mark->getDrawableBounds().isEmpty());
+    juce::Image header(juce::Image::ARGB, 128, 64, true);
+    juce::Graphics graphics(header);
+    sheet->paintOverChildren(graphics);
+    const auto mark = header.getPixelAt(35, 24);
+    CHECK(mark.getBlue() > mark.getRed());
     auto* source = dynamic_cast<juce::HyperlinkButton*>(sheet->findChildWithID("aboutSource"));
     REQUIRE(source != nullptr);
     CHECK(source->getURL().toString(false) == "https://github.com/seandearnaley/human-being-audio/tree/main/products/tract-form");

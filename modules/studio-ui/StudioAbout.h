@@ -12,9 +12,6 @@ namespace hba {
 class StudioAbout : public juce::Component {
 public:
     StudioAbout() {
-        mark->setComponentID("studioMark");
-        mark->setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(*mark);
         setComponentID("aboutSheet");
         setTitle(juce::String("About ") + product::name);
         setDescription(juce::String(product::publisher) + " / " + product::name + " " + product::version + " / " + product::license);
@@ -48,7 +45,6 @@ public:
         return true;
     }
     void resized() override {
-        mark->setTransformToFit({24.0f, 16.0f, 32.0f, 32.0f}, juce::RectanglePlacement::centred);
         auto row = getLocalBounds().removeFromTop(64).reduced(20, 16);
         closeButton.setBounds(row.removeFromRight(78));
         row.removeFromRight(12);
@@ -57,6 +53,7 @@ public:
 
     void paintOverChildren(juce::Graphics& g) override {
         // Only paint the left-hand masthead; the buttons own the right-hand side.
+        mark->drawWithin(g, {24.0f, 16.0f, 32.0f, 32.0f}, juce::RectanglePlacement::centred, 1.0f);
         auto header = getLocalBounds().removeFromTop(64);
         header.removeFromRight(218);
         header.removeFromLeft(68);
