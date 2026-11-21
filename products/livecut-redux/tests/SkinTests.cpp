@@ -672,9 +672,11 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
     CHECK (sheet.getTitle() == "About Livecut Redux");
     CHECK (sheet.getDescription() == story); // read out by a screen reader
 
-    juce::Image header (juce::Image::ARGB, 128, 64, true);
-    juce::Graphics graphics (header);
-    sheet.paintOverChildren (graphics);
+    juce::Image header (juce::Image::ARGB, 128, 64, true, juce::SoftwareImageType{});
+    {
+        juce::Graphics graphics (header);
+        sheet.paintOverChildren (graphics);
+    }
     const auto mark = header.getPixelAt (35, 24);
     CHECK (mark.getBlue() > mark.getRed());
     auto* source = findControl<juce::HyperlinkButton> (sheet);
