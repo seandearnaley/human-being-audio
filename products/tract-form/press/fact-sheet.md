@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Product** | Tract Form |
-| **Maker** | Human Being Music |
+| **Maker** | Human Being Audio |
 | **What it is** | A monophonic bass synthesizer for neurofunk and drum & bass |
 | **Status** | Beta 0.2 |
 | **Formats** | VST3, Audio Unit, Standalone |
-| **Platform** | macOS 12 or later, Apple Silicon. Intel builds compile but are untested. Windows is not built yet |
+| **Platform** | macOS 12 or later (universal), Windows x64, Ubuntu 26.04 x86_64 |
 | **Licence** | Open source, AGPL-3.0-or-later |
-| **Source** | <https://github.com/seandearnaley/tract-form> |
+| **Source** | <https://github.com/seandearnaley/human-being-audio/tree/main/products/tract-form> |
 
 ## The idea
 

@@ -49,7 +49,7 @@ Four tempo-locked movement lanes each play a curve you draw, aimed at any of
 ten parameters. A lane can follow another at a ratio, so one gesture can drive
 several parts of the sound at once.
 
-Tract Form is open source and runs as VST3, Audio Unit and Standalone on macOS.
+Tract Form is open source and runs as VST3 and standalone on macOS, Windows and Ubuntu, with Audio Unit on macOS.
 
 ## Naming
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ui/FrameClock.h"
+#include "StudioAbout.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -38,17 +39,16 @@ private:
 // was, why this rewrite exists and who made each, beside a pair of scissors
 // that snip slowly at a strip of tape. Close, Escape or a click on the sheet
 // puts it away. While it is open the keyboard stays inside it.
-class AboutSheet final : public juce::Component
+class AboutSheet final : public hba::StudioAbout
 {
 public:
     AboutSheet();
 
     // Fades the sheet in and gives the keyboard to its Close button.
-    void open();
+    void open() override;
 
     // Fades it out. Once it has gone, onClosed is called.
-    void close();
-    std::function<void()> onClosed;
+    void close() override;
 
     // Moves the fade and the scissors on by this many seconds. The display's refresh calls it.
     void animate (double seconds);
@@ -57,21 +57,11 @@ public:
     static juce::StringArray story();
 
     void paint (juce::Graphics&) override;
-    void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
-    bool keyPressed (const juce::KeyPress&) override;
 
 private:
-    // The link to the source, with a ring when it has the keyboard.
-    struct Link final : juce::HyperlinkButton
-    {
-        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
-    };
-
     juce::Rectangle<float> scissorsArea() const;
 
-    juce::TextButton closeButton { "Close" };
-    Link source;
     juce::TextLayout text;
     float shown = 0.0f; // how far the sheet has faded in
     float snip = 0.0f;  // the scissors' slow open and shut, as a phase

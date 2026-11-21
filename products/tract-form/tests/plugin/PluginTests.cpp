@@ -1,3 +1,4 @@
+#include "PluginEditor.h"
 #include "PluginModel.h"
 #include "PluginProcessor.h"
 
@@ -257,4 +258,26 @@ TEST_CASE("Quality set from another thread takes effect on the message thread") 
         }
         runMessageLoop();
     }
+}
+
+TEST_CASE("About identifies the studio, links to this synth and returns to the same preset") {
+    Host host;
+    const int preset = host.processor.getCurrentProgram();
+    PluginEditor editor(host.processor);
+    CHECK(juce::String(JucePlugin_Manufacturer) == "Human Being Audio");
+    CHECK(JucePlugin_ManufacturerCode == 0x48626d75);
+    CHECK(JucePlugin_PluginCode == 0x5472666d);
+    auto* sheet = editor.findChildWithID("aboutSheet");
+    REQUIRE(sheet != nullptr);
+    CHECK_FALSE(sheet->isVisible());
+    editor.showAbout();
+    REQUIRE(sheet->isVisible());
+    CHECK(sheet->getTitle() == "About Tract Form");
+    auto* source = dynamic_cast<juce::HyperlinkButton*>(sheet->findChildWithID("aboutSource"));
+    REQUIRE(source != nullptr);
+    CHECK(source->getURL().toString(false) == "https://github.com/seandearnaley/human-being-audio/tree/main/products/tract-form");
+    CHECK(sheet->getDescription().contains("AGPL"));
+    CHECK(sheet->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)));
+    CHECK_FALSE(sheet->isVisible());
+    CHECK(host.processor.getCurrentProgram() == preset);
 }

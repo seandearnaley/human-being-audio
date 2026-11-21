@@ -1,0 +1,23 @@
+{
+  "publisher": "Human Being Audio",
+  "website": "https://humanbeingaudio.com",
+  "repository": "https://github.com/seandearnaley/human-being-audio",
+  "products": {
+    "livecut-redux": {
+      "name": "Livecut Redux",
+      "artifacts": "Livecut_artefacts/Release",
+      "bundle": "com.humanbeingmusic.livecutredux",
+      "manufacturerCode": "Sdrn",
+      "pluginCode": "Lvct",
+      "license": "GPL-3.0-or-later"
+    },
+    "tract-form": {
+      "name": "Tract Form",
+      "artifacts": "plugin/TractForm_artefacts/Release",
+      "bundle": "com.humanbeingmusic.tractform",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Trfm",
+      "license": "AGPL-3.0-or-later"
+    }
+  }
+}

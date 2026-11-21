@@ -1,6 +1,6 @@
 # Tract Form agent guide
 
-A monophonic neuro bass synth: VST3, AU and Standalone for macOS. `CLAUDE.md` imports this file.
+A monophonic neuro bass synth: VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on macOS. `CLAUDE.md` imports this file.
 The design contract is `docs/superpowers/specs/2026-11-15-tract-form-design.md`; change it in the
 same commit as the code it describes.
 

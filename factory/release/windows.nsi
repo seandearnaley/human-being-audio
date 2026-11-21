@@ -8,18 +8,30 @@ Unicode true
 
 Name "${NAME}"
 OutFile "$%GITHUB_WORKSPACE%\dist\$%WINDOWS_FILE%"
-InstallDir "$PROGRAMFILES64\Human Being Audio\${NAME}"
+InstallDir "$PROGRAMFILES64\$%PUBLISHER%\${NAME}"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "${NAME}"
-VIAddVersionKey "CompanyName" "Human Being Audio"
+VIAddVersionKey "CompanyName" "$%PUBLISHER%"
 VIAddVersionKey "FileDescription" "${NAME} installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" "Human Being Audio"
+VIAddVersionKey "LegalCopyright" "$%PUBLISHER%"
 !uninstfinalize 'pwsh -NoProfile -NonInteractive -File "$%GITHUB_WORKSPACE%\factory\release\sign-uninstaller.ps1" "%1"' = 0
 
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "$%GITHUB_WORKSPACE%\design\studio\header.bmp"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "$%GITHUB_WORKSPACE%\design\studio\welcome.bmp"
+BrandingText "$%PUBLISHER%"
+Caption "${NAME} · $%PUBLISHER%"
+!define MUI_WELCOMEPAGE_TITLE "${NAME}"
+!define MUI_WELCOMEPAGE_TEXT "$%PUBLISHER%  /  ${VERSION}$\r$\n$\r$\nInstall the VST3 plug-in and standalone app. Close your audio host before installing.$\r$\n$\r$\nThe plug-in goes into the system VST3 folder. The app is available in the $%PUBLISHER% Start menu folder."
+!define MUI_FINISHPAGE_LINK "$%PUBLISHER%"
+!define MUI_FINISHPAGE_LINK_LOCATION "$%WEBSITE%"
+!insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
@@ -41,11 +53,13 @@ Section "Install"
   File "$%GITHUB_WORKSPACE%\products\$%PRODUCT%\LICENSE"
   File "$%GITHUB_WORKSPACE%\products\$%PRODUCT%\README.md"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  CreateDirectory "$SMPROGRAMS\Human Being Audio"
-  CreateShortcut "$SMPROGRAMS\Human Being Audio\${NAME}.lnk" "$INSTDIR\${NAME}.exe"
+  CreateDirectory "$SMPROGRAMS\$%PUBLISHER%"
+  CreateShortcut "$SMPROGRAMS\$%PUBLISHER%\${NAME}.lnk" "$INSTDIR\${NAME}.exe"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "URLInfoAbout" "$%WEBSITE%"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${NAME}.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${NAME}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "Human Being Audio"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "$%PUBLISHER%"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegStr HKLM "${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
   WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoModify" 1
@@ -61,7 +75,7 @@ Section "Uninstall"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
-  Delete "$SMPROGRAMS\Human Being Audio\${NAME}.lnk"
-  RMDir "$SMPROGRAMS\Human Being Audio"
+  Delete "$SMPROGRAMS\$%PUBLISHER%\${NAME}.lnk"
+  RMDir "$SMPROGRAMS\$%PUBLISHER%"
   DeleteRegKey HKLM "${UNINSTALL_KEY}"
 SectionEnd

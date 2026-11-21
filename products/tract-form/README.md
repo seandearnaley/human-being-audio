@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-A monophonic bass synthesizer for neurofunk drum & bass, by Human Being Music.
+A monophonic bass synthesizer for neurofunk drum & bass, by Human Being Audio.
 
 ![Tract Form's interface](press/screenshots/tract-form-interface.png)
 
@@ -13,7 +13,7 @@ One master sine drives everything. It phase-modulates two detuned reese voices,
 and it also becomes a clean, mono, phase-locked sub that bypasses all processing.
 The growl can be as violent as you like and the sub never moves.
 
-VST3, AU and Standalone for macOS. Beta 0.2.
+VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on macOS. Beta 0.2.
 
 ## What it does
 

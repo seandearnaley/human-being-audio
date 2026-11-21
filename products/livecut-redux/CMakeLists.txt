@@ -66,15 +66,18 @@ target_compile_features(LivecutSpectral PUBLIC cxx_std_20)
 target_link_libraries(LivecutSpectral PRIVATE juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
+include("${PROJECT_SOURCE_DIR}/../../cmake/StudioProduct.cmake")
+hba_product(livecut-redux)
+
 juce_add_plugin(Livecut
-    PRODUCT_NAME "Livecut Redux"
+    PRODUCT_NAME "${HBA_name}"
     DESCRIPTION "BBCut-style live beat slicer"
-    COMPANY_NAME "Human Being Music"
-    COMPANY_WEBSITE "https://github.com/seandearnaley/livecut"
-    BUNDLE_ID "com.humanbeingmusic.livecutredux"
+    COMPANY_NAME "${HBA_publisher}"
+    COMPANY_WEBSITE "${HBA_website}"
+    BUNDLE_ID "${HBA_bundle}"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
-    PLUGIN_MANUFACTURER_CODE Sdrn
-    PLUGIN_CODE Lvct
+    PLUGIN_MANUFACTURER_CODE "${HBA_manufacturerCode}"
+    PLUGIN_CODE "${HBA_pluginCode}"
     FORMATS VST3 AU Standalone
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
@@ -140,7 +143,7 @@ target_sources(LivecutCode
         src/ui/XYPad.cpp
         src/ui/XYPad.h)
 target_include_directories(LivecutCode INTERFACE src)
-target_link_libraries(LivecutCode INTERFACE LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils)
+target_link_libraries(LivecutCode INTERFACE hba_studio_ui LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils)
 
 target_link_libraries(Livecut
     PRIVATE

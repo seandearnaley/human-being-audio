@@ -1,6 +1,6 @@
 # Livecut Redux
 
-Livecut Redux, published by Human Being Music, is a live beat slicer. Instead
+Livecut Redux, published by Human Being Audio, is a live beat slicer. Instead
 of chopping audio into equal slices, it builds *phrases* out of *blocks* of
 *cuts* whose length and number of repeats depend on the cutting procedure, the
 way a jungle or drum & bass producer would re-edit a break. It is based on
@@ -15,7 +15,7 @@ bar.
 This repository is a ground-up port of Remy Muller's original Livecut plugin to
 [JUCE 9](https://juce.com) as a native 64-bit **VST3**, **AU** and
 **Standalone** app, for current DAWs (Ableton Live 12, Logic, Reaper, Bitwig…)
-on Apple Silicon, Intel Macs and Windows. Up to 1.0.0-beta.1 it was called
+on macOS, Windows and Ubuntu. Up to 1.0.0-beta.1 it was called
 Livecut; Livecut Redux opens sessions saved with those versions.
 
 ![Livecut Redux's editor: eight program tabs above an orange pad of cut strips, with the phrase as a strip of tape across the top](docs/editor.png)
@@ -36,17 +36,11 @@ has the editor's design rules.
 
 ## Install
 
-Download the [latest release](https://github.com/seandearnaley/livecut/releases/latest):
+Find Livecut Redux on the [studio downloads page](https://humanbeingaudio.com/#plugins).
 
-- **macOS** 11 or later, Apple Silicon and Intel: `Livecut-Redux-<version>.pkg`,
-  signed and notarised. It installs the VST3, the Audio Unit and the
-  standalone app.
-- **Windows** 10 or later, x64: `Livecut-Redux-<version>-windows-x64.zip`. Copy
-  `Livecut Redux.vst3` to `C:\Program Files\Common Files\VST3`. The Windows
-  builds are not code-signed.
-
-[The 1.0.0 release notes](docs/releases/1.0.0.md) have the details, what
-changed, and the known limits.
+- **macOS** — the universal, signed and notarized PKG installs the VST3, AU and standalone app.
+- **Windows x64** — run the signed installer. It installs the VST3 in the system VST3 folder and adds the standalone to the Human Being Audio Start menu folder.
+- **Ubuntu 26.04 x86_64** — extract the archive, copy the complete VST3 bundle to `~/.vst3/` and rescan your host. The standalone runs directly from the extracted folder.
 
 ## The pad
 
@@ -95,8 +89,8 @@ built between 0.2.0 and the pad:
 Requirements: CMake 3.25+, and a recent Xcode (macOS) or Visual Studio (Windows).
 
 ```sh
-git clone --recurse-submodules https://github.com/seandearnaley/livecut.git
-cd livecut
+git clone --recurse-submodules https://github.com/seandearnaley/human-being-audio.git
+cd human-being-audio/products/livecut-redux
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
 ctest --test-dir build --build-config Release --output-on-failure
@@ -141,7 +135,7 @@ otherwise list it twice. Anything else called Livecut, such as the original
 - **Nick Collins** designed the BBCut algorithms Livecut implements.
 - Livecut-GUI 0.1, a JUCE 6 fork, exposed every parameter in a GUI.
 - **Sean Dearnaley** wrote Livecut Redux, this project's ground-up rewrite,
-  published by **Human Being Music**.
+  published by **Human Being Audio**.
 - The editor is set in [Bricolage Grotesque](https://github.com/ateliertriay/bricolage)
   by Mathieu Triay, under the SIL Open Font License
   ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)).

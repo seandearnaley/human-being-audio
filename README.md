@@ -37,7 +37,7 @@ cmake --build --preset engine
 ctest --preset engine
 ```
 
-Release targets produce a VST3 bundle and standalone application on all three platforms and an Audio Unit on macOS. Find Livecut outputs in `build/release/Livecut_artefacts/Release/` and Tract Form outputs in `build/release/plugin/TractForm_artefacts/Release/`. These are developer builds. To produce signed installers and a draft release, follow the [studio release guide](factory/release/README.md). The build presets leave installed plugins alone.
+Release targets produce a VST3 bundle and standalone application on all three platforms and an Audio Unit on macOS. Find Livecut outputs in `build/release/Livecut_artefacts/Release/` and Tract Form outputs in `build/release/plugin/TractForm_artefacts/Release/`. These are developer builds. To produce signed installers and a public release, follow the [studio release guide](factory/release/README.md). The build presets leave installed plugins alone.
 
 CTest covers both products on each OS. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
 
@@ -45,7 +45,7 @@ CTest covers both products on each OS. Tract Form also runs its Apple libmalloc 
 
 Open `web/index.html` for the imported catalogue. A local web server can serve `web/` directly. Vercel can use that directory as the site root when deployment is enabled. Each product will supply its own published release record for the download catalogue.
 
-Both products include [the studio CMake presets](cmake/native-presets.json) and retain independent configure roots and JUCE versions. Production DSP and UI modules will enter `modules/` when the first change has two verified consumers. The site and the native build do not depend on each other's toolchains.
+Both products include [the studio CMake presets](cmake/native-presets.json) and retain independent configure roots and JUCE versions. Both About screens use [the studio UI module](modules/studio-ui). [The studio catalogue](studio.json) supplies product identity to JUCE and packaging. The DSP engines keep their independent signal paths and tests. The site and the native build do not depend on each other's toolchains.
 
 ## Source history and licenses
 
