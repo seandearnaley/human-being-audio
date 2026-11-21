@@ -662,7 +662,7 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
 
     // The people and the licence. The rest of the wording is free to change.
     for (const auto* fact : { "Remy Muller", "Smartelectronix", "Nick Collins", "BBCut", "Made by Sean Dearnaley",
-                              "published by Human Being Music", "GNU General Public License, version 3 or later" })
+                              "published by Human Being Audio", "GNU General Public License, version 3 or later" })
     {
         INFO (fact);
         CHECK (story.contains (fact));
@@ -674,7 +674,7 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
 
     auto* source = findControl<juce::HyperlinkButton> (sheet);
     REQUIRE (source != nullptr);
-    CHECK (source->getURL().toString (false) == "https://github.com/seandearnaley/livecut");
+    CHECK (source->getURL().toString (false) == "https://github.com/seandearnaley/human-being-audio/tree/main/products/livecut-redux");
 }
 
 TEST_CASE ("Frames come steadily at 30 and 60 a second, whatever the display", "[skin][art]")

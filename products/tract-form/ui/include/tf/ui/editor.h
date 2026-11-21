@@ -4,6 +4,7 @@
 
 #include "tf/ui/model.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -16,7 +17,7 @@ inline constexpr int kMinHeight = 540;
 
 class Editor {
 public:
-    explicit Editor(Model& model);
+    explicit Editor(Model& model, std::function<void()> showAbout = {});
     ~Editor();
 
     // `parentView` is the host's native view (an NSView* on macOS).

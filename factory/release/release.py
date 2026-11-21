@@ -8,7 +8,8 @@ import re
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-PRODUCTS = json.loads((HERE / "products.json").read_text())
+STUDIO = json.loads((ROOT / "studio.json").read_text())
+PRODUCTS = STUDIO["products"]
 
 
 def product(slug):
@@ -50,7 +51,7 @@ def main():
         return
     artifact_dir = ROOT / "products" / args.slug / "build/release" / item["artifacts"]
     values = dict(PRODUCT=args.slug, NAME=item["name"], VERSION=item["version"], TAG=item["tag"],
-                  BUNDLE=item["bundle"], ARTIFACTS=artifact_dir,
+                  PUBLISHER=STUDIO["publisher"], WEBSITE=STUDIO["website"], BUNDLE=item["bundle"], ARTIFACTS=artifact_dir,
                   **{platform.upper() + "_FILE": name for platform, name in item["assets"].items()})
     with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
         for key, value in values.items():

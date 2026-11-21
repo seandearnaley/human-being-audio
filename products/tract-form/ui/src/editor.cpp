@@ -23,8 +23,8 @@ constexpr Rect kOutput { kDefaultWidth - kMargin - kOutputWidth, 532.0f, kOutput
 }
 
 struct Editor::Impl final : visage::EventTimer {
-    explicit Impl(Model& model)
-        : context(model), topBar(context), graph(makeGraphPanel(context)), analysis(makeAnalysisPanel(context)),
+    Impl(Model& model, std::function<void()> showAbout)
+        : context(model), topBar(context, std::move(showAbout)), graph(makeGraphPanel(context)), analysis(makeAnalysisPanel(context)),
           movement(makeMovementPanel(context)), output(makeOutputPanel(context)) {
         window.onDraw() = [this](visage::Canvas& canvas) {
             canvas.setColor(colour::window);
@@ -64,7 +64,7 @@ struct Editor::Impl final : visage::EventTimer {
     std::unique_ptr<Panel> graph, analysis, movement, output;
 };
 
-Editor::Editor(Model& model) : impl_(std::make_unique<Impl>(model)) {}
+Editor::Editor(Model& model, std::function<void()> showAbout) : impl_(std::make_unique<Impl>(model, std::move(showAbout))) {}
 
 Editor::~Editor() { detach(); }
 

@@ -21,7 +21,7 @@ shell and the interface. Change it in the same commit as the code it describes.
 | Build | CMake presets, Ninja, ccache, CPM | One command, pinned tags, no submodules. |
 | Tests | Catch2 v3, pluginval, auval | Empirical checks over review rounds. |
 
-Company `Human Being Music`, bundle id `com.humanbeingmusic.tractform`,
+Company `Human Being Audio`, bundle id `com.humanbeingmusic.tractform`,
 manufacturer code `Hbmu`, plugin code `Trfm`.
 
 ## Modules

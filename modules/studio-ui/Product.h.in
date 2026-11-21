@@ -1,0 +1,8 @@
+#pragma once
+namespace hba::product {
+inline constexpr auto publisher = "@HBA_publisher@";
+inline constexpr auto name = "@HBA_name@";
+inline constexpr auto version = "@PROJECT_VERSION@";
+inline constexpr auto source = "@HBA_repository@/tree/main/products/@slug@";
+inline constexpr auto license = "@HBA_license@";
+}

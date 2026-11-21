@@ -36,4 +36,4 @@ Each has an `.svg` beside it.
 ## Contact
 
 Questions, review copies and corrections:
-<https://github.com/seandearnaley/tract-form/issues>
+<https://github.com/seandearnaley/human-being-audio/issues>

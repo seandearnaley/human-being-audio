@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginModel.h"
+#include "StudioAbout.h"
 #include "tf/ui/editor.h"
 
 namespace tf {
@@ -14,6 +15,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void showAbout();
     void parentHierarchyChanged() override;
 
 private:
@@ -21,6 +23,8 @@ private:
 
     PluginModel model_;
     ui::Editor view_;
+    hba::StudioAbout about_;
+    juce::Label aboutText_;
     void* attachedTo_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)

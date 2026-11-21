@@ -8,6 +8,9 @@ cp -a "$ARTIFACTS/VST3/$NAME.vst3" "$root/VST3/"
 install -m 755 "$ARTIFACTS/Standalone/$NAME" "$root/Standalone/$NAME"
 cp "products/$PRODUCT/"{LICENSE,README.md} "$root/"
 cat > "$root/INSTALL.txt" <<EOF
+$PUBLISHER
+$WEBSITE
+
 $NAME $VERSION — Ubuntu 26.04 x86_64
 Close your host. Copy the entire VST3/$NAME.vst3 directory into ~/.vst3/
 and rescan VST3 plugins in your host. Run Standalone/$NAME to use the app.

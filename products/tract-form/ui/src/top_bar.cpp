@@ -31,13 +31,14 @@ constexpr std::array<Macro, 8> kMacros { {
 } };
 }
 
-TopBar::TopBar(Context& context)
+TopBar::TopBar(Context& context, std::function<void()> showAbout)
     : context_(context),
       previous_(context, "‹", [this] { context_.model.stepPreset(-1); }),
       name_(context, "", [this] { showPresetMenu(); }),
       next_(context, "›", [this] { context_.model.stepPreset(1); }),
-      save_(context, "Save", [this] { context_.model.savePreset(); }) {
-    for (auto* button : { &previous_, &name_, &next_, &save_ }) addChild(button);
+      save_(context, "Save", [this] { context_.model.savePreset(); }),
+      about_(context, "About", std::move(showAbout)) {
+    for (auto* button : { &previous_, &name_, &next_, &save_, &about_ }) addChild(button);
     save_.setAccent(colour::textDim);
     for (std::size_t i = 0; i < kMacros.size(); ++i) {
         macros_.push_back(std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent));
@@ -108,6 +109,7 @@ void TopBar::resized() {
     next_.setBounds(x, y, arrow, buttonHeight);
     x += arrow + px(metric::gap);
     save_.setBounds(x, y, px(52.0f), buttonHeight);
+    about_.setBounds(x + px(52.0f + metric::gap), y, px(56.0f), buttonHeight);
 
     const float knobWidth = px(64.0f);
     const float knobHeight = px(60.0f);

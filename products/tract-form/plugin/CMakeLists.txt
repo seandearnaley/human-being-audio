@@ -1,11 +1,14 @@
+include("${PROJECT_SOURCE_DIR}/../../cmake/StudioProduct.cmake")
+hba_product(tract-form)
+
 juce_add_plugin(TractForm
-    PRODUCT_NAME "Tract Form"
+    PRODUCT_NAME "${HBA_name}"
     DESCRIPTION "Sub-locked neuro bass synthesizer"
-    COMPANY_NAME "Human Being Music"
-    COMPANY_WEBSITE "https://github.com/seandearnaley/tract-form"
-    BUNDLE_ID "com.humanbeingmusic.tractform"
-    PLUGIN_MANUFACTURER_CODE Hbmu
-    PLUGIN_CODE Trfm
+    COMPANY_NAME "${HBA_publisher}"
+    COMPANY_WEBSITE "${HBA_website}"
+    BUNDLE_ID "${HBA_bundle}"
+    PLUGIN_MANUFACTURER_CODE "${HBA_manufacturerCode}"
+    PLUGIN_CODE "${HBA_pluginCode}"
     FORMATS VST3 AU Standalone
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
@@ -40,7 +43,7 @@ target_sources(TractFormCode INTERFACE
     src/Resampler.cpp
     src/Resampler.h)
 target_include_directories(TractFormCode INTERFACE src)
-target_link_libraries(TractFormCode INTERFACE
+target_link_libraries(TractFormCode INTERFACE hba_studio_ui
     tf_analysis
     tf_core
     tf_engine

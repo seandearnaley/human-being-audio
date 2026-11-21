@@ -92,8 +92,9 @@ productbuild --synthesize \
     --package "$work/packages/notices.pkg" \
     "$work/distribution.xml"
 
+python3 "$repo/factory/release/macos-welcome.py" "$work" "$PRODUCT"
 installer="$output/${NAME// /-}-$version.pkg"
-product_options=(--distribution "$work/distribution.xml" --package-path "$work/packages")
+product_options=(--distribution "$work/distribution.xml" --package-path "$work/packages" --resources "$work/resources")
 [[ $mode == --sign ]] && product_options+=(--sign "$installer_identity" --timestamp)
 productbuild "${product_options[@]}" "$installer"
 

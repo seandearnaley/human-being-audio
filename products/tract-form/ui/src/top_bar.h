@@ -11,7 +11,7 @@ namespace tf::ui {
 
 class TopBar final : public visage::Frame, public Live {
 public:
-    explicit TopBar(Context& context);
+    explicit TopBar(Context& context, std::function<void()> showAbout);
     ~TopBar() override;
 
     void tick() override;
@@ -26,6 +26,7 @@ private:
     Button name_;
     Button next_;
     Button save_;
+    Button about_;
     std::vector<std::unique_ptr<Knob>> macros_;
     std::string shownPreset_;
 };

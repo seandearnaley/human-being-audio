@@ -62,6 +62,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xdotool
           xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends
           echo CC=clang-22 >> "$GITHUB_ENV"
           echo CXX=clang++-22 >> "$GITHUB_ENV"
@@ -93,9 +94,18 @@ jobs:
           NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
           NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
         run: bash factory/release/notarize.sh
+      - uses: actions/setup-python@v6
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12'
       - name: Open the installed Mac plug-ins in pluginval
         if: runner.os == 'macOS'
-        run: bash factory/release/pluginval.sh "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+        run: |
+          python3 factory/release/verify_product.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+          python -m pip install --only-binary=:all: pedalboard==0.9.26
+          python factory/release/verify_recall.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+          swift factory/release/standalone-mac.swift "/Applications/$NAME.app"
+          bash factory/release/pluginval.sh "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
 
       - name: Log in to the Windows signing profile with GitHub OIDC
         if: runner.os == 'Windows'
@@ -146,7 +156,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/installed" "$HOME/.vst3"
           tar -xzf "dist/$LINUX_FILE" -C "$RUNNER_TEMP/installed"
           cp -a "$RUNNER_TEMP/installed/$NAME/VST3/$NAME.vst3" "$HOME/.vst3/"
-          test -x "$RUNNER_TEMP/installed/$NAME/Standalone/$NAME"
+          python3 factory/release/verify_product.py "$PRODUCT" "$HOME/.vst3/$NAME.vst3"
+          xvfb-run -a cmake/with-window-manager.sh bash factory/release/standalone-linux.sh "$RUNNER_TEMP/installed/$NAME/Standalone/$NAME"
           xvfb-run -a cmake/with-window-manager.sh bash factory/release/pluginval.sh "$HOME/.vst3/$NAME.vst3"
 
       - uses: actions/upload-artifact@v7
@@ -158,7 +169,7 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
 
-  draft:
+  publish:
     needs: package
     runs-on: ubuntu-26.04
     permissions:
@@ -179,12 +190,12 @@ jobs:
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
-      - name: Verify the final assets and create a draft
+      - name: Verify and publish the signed release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum -c SHA256SUMS)
           for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest "$GITHUB_SHA"; done
-          printf '%s\n' "$NAME $VERSION" "" "Source and build instructions: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" "" "Verify downloads with SHA256SUMS or gh attestation verify FILE --repo $GITHUB_REPOSITORY." > "$RUNNER_TEMP/notes"
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
+          printf '%s\n' "$NAME $VERSION by $PUBLISHER" "" "Install the signed and notarized universal PKG on macOS, the signed x64 installer on Windows, or unpack the x86_64 archive on Ubuntu 26.04. Close your host before installing and rescan plug-ins afterwards." "" "This release adds the studio About screen and installer branding. The plug-in retains its host IDs for existing projects." "" "Source and build instructions: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" "" "Verify downloads with SHA256SUMS or gh attestation verify FILE --repo $GITHUB_REPOSITORY." > "$RUNNER_TEMP/notes"
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
 
