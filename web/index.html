@@ -866,7 +866,7 @@
         <li><a href="#plugins">Plugins<span class="nav__progress" aria-hidden="true"></span></a></li>
         <li><a href="#notes">Notes</a></li>
         <li><a href="#install">Install</a></li>
-        <li><a href="https://github.com/seandearnaley" rel="noopener">GitHub<span aria-hidden="true">&nbsp;↗</span></a></li>
+        <li><a href="https://github.com/seandearnaley/human-being-audio" rel="noopener">GitHub<span aria-hidden="true">&nbsp;↗</span></a></li>
       </ul>
     </nav>
   </div>
@@ -989,7 +989,7 @@
         </div>
 
         <div class="catalog__grid">
-          <div class="catalog__list" id="catalog"></div>
+          <div><p id="release-status" role="status" hidden>Current studio releases could not be loaded. <a href="https://github.com/seandearnaley/human-being-audio/releases">Check GitHub for current downloads</a>.</p><div class="catalog__list" id="catalog"></div></div>
           <div class="stage-window grab" data-grab data-anchor="catalog" aria-hidden="true">
             <p class="window-label"><b data-window-name>Livecut Redux</b><span class="mono muted" data-window-kind></span></p>
           </div>
@@ -1002,7 +1002,7 @@
         <div>
           <div class="section__head">
             <h2 id="notes-title">Release notes</h2>
-            <a class="btn" href="https://github.com/seandearnaley/livecut/releases.atom" rel="noopener">Atom feed</a>
+            <a class="btn" href="https://github.com/seandearnaley/human-being-audio/releases.atom" rel="noopener">Atom feed</a>
           </div>
           <ol class="notes__list" id="notes-list" role="list"></ol>
           <p class="bench" id="bench"></p>
@@ -1027,13 +1027,13 @@
       <details name="install-faq">
         <summary>Windows</summary>
         <div class="faq__body">
-          <p>Not code-signed yet. Copy the <code>.vst3</code> into <code>C:\Program Files\Common Files\VST3</code>, and check the SHA-256 first.</p>
+          <p>For the original unsigned Livecut ZIP, copy the <code>.vst3</code> into <code>C:\Program Files\Common Files\VST3</code>, and check the SHA-256 first. For studio releases, run the signed installer listed for your product.</p>
         </div>
       </details>
       <details name="install-faq">
         <summary>Linux</summary>
         <div class="faq__body">
-          <p>Not built yet. It will show up in every download menu on the day it ships.</p>
+          <p>Studio Linux archives target Ubuntu 26.04 x86_64. Copy the complete VST3 bundle into <code>~/.vst3</code> and rescan in your host.</p>
         </div>
       </details>
       <details name="install-faq">
@@ -1072,7 +1072,7 @@
 <noscript>
   <p class="wrap" style="padding:2rem 0">The catalog is drawn by JavaScript from one manifest. Without it, everything is still on GitHub:
     <a href="https://github.com/seandearnaley/livecut/releases/latest">Livecut Redux releases</a> ·
-    <a href="https://github.com/seandearnaley/tract-form">Tract Form source</a>.</p>
+    <a href="https://github.com/seandearnaley/human-being-audio/tree/main/products/tract-form">Tract Form source</a>.</p>
 </noscript>
 
 <script type="module">
@@ -1149,7 +1149,8 @@ const PLUGINS = [
     platformsText: 'macOS 11+ Universal · Windows 10+ x64',
     builtWith: 'AI-assisted code, tested by hand',   // how it was made, stated plainly on the card and in Details
     licence: 'GPL-3.0',
-    repo: `${GITHUB}/livecut`,
+    repo: `${GITHUB}/human-being-audio/tree/main/products/livecut-redux`,
+    releasesUrl: `${GITHUB}/livecut/releases`,
     downloads: [
       {
         os: 'macos',
@@ -1244,11 +1245,11 @@ const PLUGINS = [
     platformsText: 'macOS 12+ Apple Silicon (Intel compiles, untested)',
     builtWith: 'AI-assisted code, tested by hand',
     licence: 'AGPL-3.0',
-    repo: `${GITHUB}/tract-form`,
+    repo: `${GITHUB}/human-being-audio/tree/main/products/tract-form`,
     downloads: [],           // No binary release yet. Add Download objects here when the first signed build ships.
     build: {
-      note: 'Needs CMake 3.25+, Ninja and the Xcode Command Line Tools. Dependencies are fetched and pinned by CMake.',
-      commands: 'git clone https://github.com/seandearnaley/tract-form.git\ncd tract-form\ncmake --preset dev\ncmake --build --preset dev\nctest --preset dev\ntools/scripts/install.sh',
+      note: 'Native build instructions for macOS, Windows and Ubuntu are in the studio repository.',
+      commands: 'git clone --recurse-submodules https://github.com/seandearnaley/human-being-audio.git\ncd human-being-audio/products/tract-form\ncmake --workflow --preset check',
     },
     highlights: [
       ['Master sine', 'Sets the pitch, phase-modulates both voices and becomes the sub.'],
@@ -1338,6 +1339,32 @@ const PLUGINS = [
     releases: [],
   },
 ];
+// Published studio records supersede the original Livecut release.
+if (location.protocol === 'https:' || location.protocol === 'http:') {
+  try {
+    const response = await fetch('/api/releases');
+    if (!response.ok) throw new Error('Studio catalog unavailable');
+    const records = await response.json();
+    const platforms = {
+      macos: { detail: 'Apple Silicon + Intel', contents: 'Installer (.pkg) · VST3, AU, Standalone', signing: 'notarized' },
+      windows: { detail: 'Windows x64', contents: 'Installer (.msi) · VST3, Standalone', signing: 'signed' },
+      linux: { detail: 'Ubuntu 26.04 · x86_64', contents: 'Archive (.tar.gz) · VST3, Standalone', signing: 'attested' },
+    };
+    for (const record of records) {
+      const p = PLUGINS.find(item => item.id === (record.product === 'livecut-redux' ? 'livecut' : record.product));
+      p.downloads = record.downloads.map(d => ({ ...platforms[d.os], ...d }));
+      p.releases.unshift({ version: record.version, date: record.date, title: p.name + ' ' + record.version,
+        url: record.url, notes: ['macOS, Windows and Ubuntu downloads with checksums and build provenance.'] });
+      p.releasesUrl = record.url;
+      p.status = 'released';
+      p.statusLabel = 'Released';
+      p.platformsText = 'macOS Universal · Windows x64 · Ubuntu 26.04 x86_64';
+    }
+  } catch {
+    document.getElementById('release-status').hidden = false;
+  }
+}
+
 
 /* ==========================================================================
    2. HELPERS
@@ -1359,7 +1386,7 @@ const fmtBytes = (b) => mbFmt.format(b / 1e6);
 const wavBytes = (bars, bpm) => Math.round((bars * 4 * 60 / bpm) * 48000 * 3 * 2 + 44);
 
 const OS_LABEL = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
-const SIGN_LABEL = { notarized: 'Signed & notarized', signed: 'Signed', unsigned: 'Not code-signed' };
+const SIGN_LABEL = { notarized: 'Signed & notarized', signed: 'Signed', attested: 'GitHub-attested', unsigned: 'Not code-signed' };
 const userOS = (() => {
   const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
   if (p.includes('mac')) return 'macos';
@@ -1516,7 +1543,7 @@ function downloadRows(p) {
     const mine = os === userOS ? html`<span class="yours">your system</span>` : '';
     if (!d) {
       return html`<li class="dl-row is-unavailable"><span class="dl-row__os">${OS_LABEL[os]} ${mine}</span>
-        <span class="dl-row__detail">Not built yet</span></li>`;
+        <span class="dl-row__detail">No public download yet</span></li>`;
     }
     return html`<li><a class="dl-row" href="${d.url}" download="${d.file}">
       <span class="dl-row__os">${OS_LABEL[os]} ${mine}</span>
@@ -1540,7 +1567,7 @@ function downloadPopover(p) {
     ${body}
     <div class="dl-pop__foot">
       <button class="btn btn--quiet" type="button" commandfor="about-${p.id}" command="show-modal">Checksums &amp; details</button>
-      <a class="btn btn--quiet" href="${p.downloads.length ? `${p.repo}/releases` : p.repo}" rel="noopener">${p.downloads.length ? 'All releases' : 'Source'} ↗</a>
+      <a class="btn btn--quiet" href="${p.downloads.length ? p.releasesUrl : p.repo}" rel="noopener">${p.downloads.length ? 'All releases' : 'Source'} ↗</a>
     </div>
   </div>`;
 }
@@ -1713,8 +1740,9 @@ $('#pills').innerHTML = show([
   const licences = [...new Set(PLUGINS.map((p) => p.licence).filter(Boolean))];
   const osRow = (os) => {
     const files = shipped.filter((d) => d.os === os);
-    if (!files.length) return 'Not built yet';
-    const signing = files.every((d) => d.signing === 'notarized') ? 'signed & notarized'
+    if (!files.length) return 'No public download yet';
+    const signing = files.every((d) => d.signing === 'attested') ? 'GitHub-attested'
+      : files.every((d) => d.signing === 'notarized') ? 'signed & notarized'
       : files.every((d) => d.signing !== 'unsigned') ? 'signed' : 'not code-signed yet';
     return `${files[0].detail.split(' · ').pop()} · ${signing}`;
   };
