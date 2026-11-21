@@ -1,6 +1,6 @@
 # Studio design and product handoff
 
-The [studio mark](studio/mark.svg) is the source for the installer's welcome and header artwork. Rebuild the committed Windows bitmaps and macOS PNG with `bash design/studio/render-installers.sh` and ImageMagick. Both products use the same [About controls](../modules/studio-ui/StudioAbout.h). Product-specific art and instrument controls live next to the product.
+The [studio mark](studio/mark.svg) appears in both native About screens, the website header and browser tab. It also supplies the installers’ welcome and header artwork. Rebuild the committed Windows bitmaps and macOS PNG with `bash design/studio/render-installers.sh` and ImageMagick. Both products use the same [About controls](../modules/studio-ui/StudioAbout.h). Product-specific art and instrument controls live next to the product.
 
 | Surface | Editable source | Inspect the result |
 | --- | --- | --- |

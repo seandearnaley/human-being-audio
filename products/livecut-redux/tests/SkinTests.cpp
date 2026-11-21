@@ -672,6 +672,9 @@ TEST_CASE ("The About sheet says what Livecut was, why Redux exists and who made
     CHECK (sheet.getTitle() == "About Livecut Redux");
     CHECK (sheet.getDescription() == story); // read out by a screen reader
 
+    auto* mark = dynamic_cast<juce::Drawable*> (sheet.findChildWithID ("studioMark"));
+    REQUIRE (mark != nullptr);
+    CHECK_FALSE (mark->getDrawableBounds().isEmpty());
     auto* source = findControl<juce::HyperlinkButton> (sheet);
     REQUIRE (source != nullptr);
     CHECK (source->getURL().toString (false) == "https://github.com/seandearnaley/human-being-audio/tree/main/products/livecut-redux");

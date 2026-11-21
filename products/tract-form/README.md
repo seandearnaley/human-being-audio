@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-A monophonic bass synthesizer for neurofunk drum & bass, by Human Being Audio.
+A monophonic bass synthesizer for neurofunk drum & bass, by Human Being Audio. [Downloads and installation instructions](https://humanbeingaudio.com/#tract-form).
 
 ![Tract Form's interface](press/screenshots/tract-form-interface.png)
 
@@ -33,19 +33,13 @@ The [studio downloads page](https://humanbeingaudio.com/#tract-form) lists the M
 
 ## Building
 
-Needs CMake 3.25+, Ninja and the Xcode Command Line Tools. Dependencies are
-fetched and pinned by CMake.
+Start with the [studio build instructions](../../README.md#first-build) for the native toolchain on macOS, Windows or Ubuntu. From this product directory, configure, build and test with one preset.
 
 ```sh
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
-tools/scripts/install.sh
+cmake --workflow --preset check
 ```
 
-That builds everything, runs the tests, and copies the VST3 and AU into
-`~/Library/Audio/Plug-Ins` with a fresh signature. For work on the sound alone, the `engine` preset
-builds and tests the DSP in seconds without JUCE or Visage.
+For an incremental build, use `cmake --build --preset dev` and `ctest --preset dev`. For work on the sound alone, the `engine` preset builds and tests the DSP without JUCE or Visage. On macOS, `tools/scripts/install.sh` explicitly replaces the user-local VST3 and Audio Unit with the development build. For a distributable installer, follow the [studio release guide](../../factory/release/README.md).
 
 Logos, the app icon and usage rules are in [brand/](brand); screenshots, a fact
 sheet and ready-to-use copy are in [press/](press).
