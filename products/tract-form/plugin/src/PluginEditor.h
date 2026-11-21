@@ -20,8 +20,14 @@ public:
 
 private:
     void attachWhenOnScreen();
+    void detachView();
 
     PluginModel model_;
+#if JUCE_LINUX
+    juce::XEmbedComponent nativeHost_ { juce::XEmbedComponentOptions{} };
+#elif JUCE_WINDOWS
+    juce::HWNDComponent nativeHost_;
+#endif
     ui::Editor view_;
     hba::StudioAbout about_;
     juce::Label aboutText_;
