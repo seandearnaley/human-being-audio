@@ -842,3 +842,7 @@
 .studio-facts { margin:.6rem 0; }
 .studio-actions,.studio-footer { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; }
 .studio-footer { padding-block:2rem; }
+
+.studio-audio { margin:1.1rem 0; }
+.studio-audio figcaption { margin-bottom:.45rem; font-weight:600; }
+.studio-audio audio { display:block; width:100%; }

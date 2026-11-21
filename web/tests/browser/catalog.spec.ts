@@ -64,20 +64,33 @@ test("browse both real products, inspect images and open install notes", async (
     const card = page.locator("#" + release.product);
     for (const asset of release.downloads)
       await expect(
-        card
-          .locator("a")
-          .filter({
-            hasText:
-              asset.os === "linux"
-                ? "Ubuntu"
-                : asset.os === "windows"
-                  ? "Windows"
-                  : "macOS",
-          }),
+        card.locator("a").filter({
+          hasText:
+            asset.os === "linux"
+              ? "Ubuntu"
+              : asset.os === "windows"
+                ? "Windows"
+                : "macOS",
+        }),
       ).toHaveAttribute("href", asset.url);
   }
   expect(errors).toEqual([]);
 });
+test("both examples decode and play only on request", async ({ page }) => {
+  await page.goto("/");
+  const examples = page.locator("audio");
+  await expect(examples).toHaveCount(2);
+  for (const example of await examples.all()) {
+    expect(await example.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
+    const duration = await example.evaluate(async (el: HTMLAudioElement) => {
+      await el.play();
+      el.pause();
+      return el.duration;
+    });
+    expect(duration).toBeCloseTo(3, 2);
+  }
+});
+
 test("the sculpture responds to keyboard controls", async ({ page }) => {
   await page.goto("/");
   const slider = page.getByRole("slider", { name: "Chaos" });

@@ -83,6 +83,19 @@ function Product({ slug, release, unavailable }) {
           sizes="(max-width: 800px) 93vw, 550px"
           className="studio-interface"
         />
+        <figure className="studio-audio">
+          <figcaption>
+            {slug === "livecut-redux"
+              ? "Hear Rush on a drum loop"
+              : "Hear Tract Form on MIDI note 29"}
+          </figcaption>
+          <audio
+            controls
+            preload="none"
+            aria-label={product.name + " audio example"}
+            src={"/audio/" + slug + ".flac"}
+          />
+        </figure>
         <p className="studio-facts">{detail.credits}</p>
         <p className="mono studio-facts">
           {product.license} · VST3 · Audio Unit on Mac · Standalone
