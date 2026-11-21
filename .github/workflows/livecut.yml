@@ -1,9 +1,10 @@
-name: CI
+name: Livecut Redux
 
 on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
@@ -20,6 +21,7 @@ env:
 defaults:
   run:
     shell: bash
+    working-directory: products/livecut-redux
 
 jobs:
   build:
@@ -105,7 +107,7 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: |
-            ${{ env.ARTEFACTS }}/VST3
-            ${{ env.ARTEFACTS }}/AU
-            ${{ env.ARTEFACTS }}/Standalone
+            products/livecut-redux/${{ env.ARTEFACTS }}/VST3
+            products/livecut-redux/${{ env.ARTEFACTS }}/AU
+            products/livecut-redux/${{ env.ARTEFACTS }}/Standalone
           if-no-files-found: error

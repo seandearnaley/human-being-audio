@@ -1,0 +1,68 @@
+name: Native desktop builds
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu:
+    name: ${{ matrix.product }} · Ubuntu x64
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [livecut-redux, tract-form]
+    env:
+      CC: clang-22
+      CXX: clang++-22
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    defaults:
+      run:
+        working-directory: products/${{ matrix.product }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: ${{ matrix.product == 'livecut-redux' }}
+      - name: Install build dependencies
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends
+      - run: cmake --preset release
+      - run: cmake --build --preset release
+      - run: xvfb-run -a ../../cmake/with-window-manager.sh ctest --preset release
+
+  windows-tract:
+    name: Tract Form · Windows x64
+    runs-on: windows-2025-vs2026
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test from the x64 developer shell
+        working-directory: products/tract-form
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          $env:CC = 'clang'
+          $env:CXX = 'clang++'
+          # Use upstream LLVM's GNU-style driver with the MSVC SDK and runtime.
+          $env:PATH = "${env:ProgramFiles}\LLVM\bin;$env:PATH"
+          cmake --preset release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build --preset release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --preset release

@@ -1,9 +1,10 @@
-name: CI
+name: Tract Form
 
 on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
@@ -17,6 +18,10 @@ env:
   CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
   ARTEFACTS: build/dev/plugin/TractForm_artefacts/RelWithDebInfo
 
+defaults:
+  run:
+    working-directory: products/tract-form
+
 jobs:
   engine:
     name: Core and engine
@@ -28,7 +33,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-engine-${{ hashFiles('CMakeLists.txt') }}
+          key: cpm-engine-${{ hashFiles('products/tract-form/CMakeLists.txt', 'products/tract-form/cmake/CPM.cmake') }}
       - run: cmake --preset engine -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
       - run: cmake --build --preset engine
       - run: ctest --preset engine
@@ -43,7 +48,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-plugin-${{ hashFiles('CMakeLists.txt') }}
+          key: cpm-plugin-${{ hashFiles('products/tract-form/CMakeLists.txt', 'products/tract-form/cmake/CPM.cmake') }}
       - run: cmake --preset dev -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
       - run: cmake --build --preset dev
       - run: ctest --preset dev
@@ -60,6 +65,7 @@ jobs:
         with:
           name: TractForm-macOS
           path: |
-            ${{ env.ARTEFACTS }}/VST3
-            ${{ env.ARTEFACTS }}/AU
+            products/tract-form/${{ env.ARTEFACTS }}/VST3
+            products/tract-form/${{ env.ARTEFACTS }}/AU
+            products/tract-form/${{ env.ARTEFACTS }}/Standalone
           if-no-files-found: error

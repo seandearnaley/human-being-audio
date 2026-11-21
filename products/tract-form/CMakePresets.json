@@ -1,44 +1,16 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "include": ["../../cmake/native-presets.json"],
   "configurePresets": [
     {
-      "name": "base",
-      "hidden": true,
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CPM_SOURCE_CACHE": "$env{HOME}/.cache/CPM",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
-    },
-    {
       "name": "engine",
-      "displayName": "Core, engine and tools only: no JUCE or Visage, fastest loop",
+      "displayName": "Core, engine and offline tools",
       "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "TF_BUILD_PLUGIN": "OFF" }
-    },
-    {
-      "name": "dev",
-      "displayName": "Everything, host architecture",
-      "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
-    },
-    {
-      "name": "release",
-      "displayName": "Everything, universal binary",
-      "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64" }
     }
   ],
-  "buildPresets": [
-    { "name": "engine", "configurePreset": "engine" },
-    { "name": "dev", "configurePreset": "dev" },
-    { "name": "release", "configurePreset": "release" }
-  ],
+  "buildPresets": [{ "name": "engine", "configurePreset": "engine" }],
   "testPresets": [
-    { "name": "engine", "configurePreset": "engine", "output": { "outputOnFailure": true } },
-    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "engine", "configurePreset": "engine", "output": { "outputOnFailure": true } }
   ]
 }
