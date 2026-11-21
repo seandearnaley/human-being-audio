@@ -21,6 +21,7 @@ option(LIVECUT_COPY_PLUGIN_AFTER_BUILD "Install the plugins into the user's plug
 add_subdirectory(libs/JUCE)
 
 # The cutting engine is plain C++ with no JUCE dependency, so it can be tested in isolation.
+add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
 add_library(LivecutEngine STATIC
     src/engine/Accent.h
     src/engine/WetHold.h
@@ -50,6 +51,7 @@ add_library(LivecutEngine STATIC
 target_include_directories(LivecutEngine PUBLIC src)
 target_compile_features(LivecutEngine PUBLIC cxx_std_20)
 target_link_libraries(LivecutEngine
+    PUBLIC hba_dsp
     PRIVATE
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
@@ -194,6 +196,7 @@ if(LIVECUT_BUILD_TESTS)
     catch_discover_tests(LivecutTests DISCOVERY_MODE PRE_TEST)
 
     add_executable(LivecutEngineTests
+        "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
         tests/engine/AttackCandidatesTests.cpp
         tests/engine/TransformPlaybackTests.cpp
         tests/engine/RecutSelectionTests.cpp
