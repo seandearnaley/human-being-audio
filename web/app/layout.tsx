@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import studio from "../../studio.json";
-import mark from "../../design/studio/welcome.png";
+import Image from "next/image";
+import mark from "../../design/studio/mark.svg";
 import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(studio.website),
@@ -21,7 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <header className="site-header">
           <div className="wrap site-header__bar">
             <a className="wordmark" href="#top">
-              <span className="wordmark__mark" aria-hidden="true" />
+              <Image src={mark} alt="" className="wordmark__mark" width={24} height={24} unoptimized />
               <span>Human Being <b>Audio</b></span>
             </a>
             <nav aria-label="Primary">

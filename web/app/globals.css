@@ -241,14 +241,7 @@
     & b { font-weight: 360; }
     @media (width < 34rem) { font-stretch: 108%; font-size: 0.92rem;  }
   }
-  .wordmark__mark {
-    inline-size: 1.35rem; aspect-ratio: 1; border-radius: 50%;
-    background:
-      linear-gradient(transparent 46%, var(--paper) 46% 56%, transparent 56%),
-      conic-gradient(from 210deg in oklch longer hue, oklch(0.78 0.14 210), oklch(0.78 0.14 210));
-    box-shadow: inset 0 0 0 1px var(--line);
-  }
-
+  .wordmark__mark { inline-size: 1.5rem; block-size: 1.5rem; }
   .nav { display: flex; gap: clamp(0rem, 1.5vw, 1.5rem); }
   .nav a {
     display: inline-flex; align-items: center; min-block-size: var(--hit); padding-inline: 0.35rem;

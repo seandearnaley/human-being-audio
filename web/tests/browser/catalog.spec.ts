@@ -9,6 +9,10 @@ test("browse both real products, inspect images and open install notes", async (
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
     "Human Being Audio.",
   );
+  const studioMark = page.locator(".site-header .wordmark img");
+  const tabIcon = await page.locator('link[rel="icon"]').getAttribute("href");
+  expect(await studioMark.count()).toBe(1);
+  await expect(studioMark).toHaveAttribute("src", tabIcon!);
   await page.getByRole("link", { name: "Browse the plugins" }).click();
   const cards = page.locator("article[data-plugin]");
   await expect(cards).toHaveCount(2);
