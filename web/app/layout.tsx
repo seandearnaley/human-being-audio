@@ -22,7 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="wrap site-header__bar">
             <a className="wordmark" href="#top">
               <span className="wordmark__mark" aria-hidden="true" />
-              Human Being <b>Audio</b>
+              <span>Human Being <b>Audio</b></span>
             </a>
             <nav aria-label="Primary">
               <ul className="nav">

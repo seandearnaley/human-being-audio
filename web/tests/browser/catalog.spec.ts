@@ -53,11 +53,13 @@ test("browse both real products, inspect images and open install notes", async (
     await detail.locator("summary").click();
     await expect(detail).toHaveAttribute("open", "");
   }
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  const viewport = page.viewportSize()!;
+  const widths = test.info().project.name === "mobile" ? [320, 390, viewport.width] : [viewport.width];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: viewport.height });
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
   const response = await request.get("/api/releases");
   expect(response.ok()).toBe(true);
   for (const release of await response.json()) {
