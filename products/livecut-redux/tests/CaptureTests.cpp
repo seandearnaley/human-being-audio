@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <thread>
 
 using livecut::PhraseCapture;
@@ -100,37 +101,51 @@ TEST_CASE ("Concurrent capture leases survive publication and preparation", "[ca
     capture.prepare (48000.0, 32);
     capture.startPhrase (true);
     phrase (capture, 1.0f, 32);
-    std::atomic<bool> done { false }, valid { true };
-    std::atomic<int> leases { 0 };
+    std::atomic<bool> done { false };
+    bool valid = true;
+    std::promise<void> firstLeaseAcquired, nextPhrasePublished;
+    auto firstLease = firstLeaseAcquired.get_future();
+    auto nextPhrase = nextPhrasePublished.get_future();
     std::thread reader ([&]
     {
-        while (! done.load())
+        auto lease = capture.acquireLatest();
+        // Hold the initial lease across a known publication even if the writer
+        // gets an uninterrupted time slice for the rest of the stress loop.
+        firstLeaseAcquired.set_value();
+        nextPhrase.wait();
+        valid = lease && lease.channel (0).size() == 32 && lease.channel (0)[0] == 1.0f;
+        do
         {
-            auto lease = capture.acquireLatest();
-            if (! lease)
-                continue;
-            ++leases;
-            const auto left = lease.channel (0);
-            const auto right = lease.channel (1);
-            if (left.size() != 32 || right.size() != 32)
-                valid = false;
-            const auto first = left[0];
-            std::this_thread::yield();
-            for (std::size_t i = 0; i < left.size(); ++i)
-                if (left[i] != first || right[i] != -first)
+            if (lease)
+            {
+                const auto left = lease.channel (0);
+                const auto right = lease.channel (1);
+                if (left.size() != 32 || right.size() != 32)
+                {
                     valid = false;
-        }
+                    return;
+                }
+                const auto first = left[0];
+                std::this_thread::yield();
+                for (std::size_t i = 0; i < left.size(); ++i)
+                    if (left[i] != first || right[i] != -first)
+                        valid = false;
+            }
+            lease = capture.acquireLatest();
+        } while (! done.load());
     });
+    firstLease.wait();
+    phrase (capture, 2.0f, 32);
+    nextPhrasePublished.set_value();
     for (int iteration = 0; iteration < 10000; ++iteration)
     {
-        phrase (capture, static_cast<float> (iteration + 2), 32);
+        phrase (capture, static_cast<float> (iteration + 3), 32);
         if (iteration % 100 == 0)
             std::this_thread::yield();
     }
     done = true;
     reader.join();
-    CHECK (valid.load());
-    CHECK (leases.load() > 0);
+    CHECK (valid);
     auto old = capture.acquireLatest();
     REQUIRE (old);
     const auto oldSample = old.channel (0)[0];
