@@ -79,6 +79,7 @@
     --gutter: clamp(1rem, 0.6rem + 2vw, 2.5rem);
     --radius-1: 4px; --radius-2: 8px; --radius-3: 14px;
     --header-h: 3.75rem;
+    @media (width < 34rem) { --header-h: 6rem; }
     --hit: 1.75rem;                       /* ≥ 24px targets (WCAG 2.5.8) */
     --ease-out: cubic-bezier(.2, .8, .2, 1);
     --ease-spring: linear(0, 0.36 9%, 0.83 22%, 1.04 33%, 1.06 41%, 1.01 58%, 1);
@@ -153,6 +154,12 @@
     timeline-scope: --catalog;
   }
   .site-header__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); block-size: 100%; }
+
+  @media (width < 34rem) {
+    .site-header__bar { flex-direction: column; align-items: start; justify-content: center; gap: 0; }
+    .site-header nav { inline-size: 100%; }
+    .site-header .nav { justify-content: space-between; gap: 0; }
+  }
 
   /* The sticky 3D stage spans hero → release notes, then scrolls away.
      content-visibility:auto lets the browser skip it off-screen, and the
@@ -232,7 +239,7 @@
     text-decoration: none; font-stretch: 140%; font-weight: 760; font-size: 1.02rem; letter-spacing: -0.01em;
     min-block-size: var(--hit); white-space: nowrap;
     & b { font-weight: 360; }
-    @media (width < 34rem) { font-stretch: 108%; font-size: 0.92rem; & b { display: none; } }
+    @media (width < 34rem) { font-stretch: 108%; font-size: 0.92rem;  }
   }
   .wordmark__mark {
     inline-size: 1.35rem; aspect-ratio: 1; border-radius: 50%;
@@ -297,14 +304,14 @@
   /* Hero ------------------------------------------------------------------- */
   .hero__title {
     /* The Formant macro drives the width axis: drag it and the headline's
-       letters stretch like a vowel opening up. Lines never re-wrap. */
+       letters stretch like a vowel opening up. */
     font-size: clamp(2.6rem, 10.5cqi, 7.4rem);
     font-stretch: calc(104% + var(--formant, 0.35) * 46%);
     font-weight: 800;
     line-height: 0.9;
     letter-spacing: -0.03em;
     margin-block-end: var(--space-5);
-    & span { display: block; white-space: nowrap; }
+    & span { display: block; text-wrap: balance; }
     & .thin { font-weight: 300; margin-block-end: 0.06em; }   /* room for the descender of "by" */
   }
   .hero__lede { font-size: var(--step-1); max-inline-size: 36ch; color: var(--ink); line-height: 1.45; }
