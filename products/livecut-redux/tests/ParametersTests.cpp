@@ -1,0 +1,910 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "PadSurface.h"
+#include "Parameters.h"
+#include "PluginProcessor.h"
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <array>
+#include <limits>
+
+using namespace livecut;
+using Catch::Matchers::WithinAbs;
+
+namespace
+{
+constexpr std::array allIds {
+    ids::procedure, ids::subdivision, ids::seed, ids::minPhraseBars, ids::maxPhraseBars, ids::fade,
+    ids::minAmp, ids::maxAmp, ids::minPan, ids::maxPan, ids::minPitch, ids::maxPitch, ids::duty,
+    ids::fillDuty, ids::minRepeats, ids::maxRepeats, ids::stutterChance, ids::stutterArea,
+    ids::straightChance, ids::regularChance, ids::ritardChance, ids::accel, ids::activity,
+    ids::crusher, ids::minBits, ids::maxBits, ids::minRate, ids::maxRate, ids::comb, ids::combType,
+    ids::combFeedback, ids::minDelay, ids::maxDelay,
+    ids::bounceChance, ids::ratchetChance, ids::climb, ids::halftimeChance, ids::wet, ids::outputTrim, ids::swing, ids::accent, ids::hold,
+    ids::mode, ids::attackAlign, ids::attackThreshold, ids::reverseChance,
+    ids::impactFilterEnabled, ids::impactFilterType, ids::impactFilterChance, ids::impactFilterCutoff, ids::impactFilterQ, ids::impactFilterEnvOctaves, ids::impactFilterRepeatOctaves, ids::impactFilterMix, ids::impactDriveEnabled, ids::impactDriveMode, ids::impactDriveChance, ids::impactDriveDb, ids::impactDriveEnvDb, ids::impactDriveRepeatDb, ids::impactDriveMix, ids::impactTransientEnabled, ids::impactTransientChance, ids::impactTransientAttackDb, ids::impactTransientSustainDb, ids::impactTransientTimeMs, ids::impactTransientMix, ids::impactAttackMs, ids::impactDecayMs,
+    ids::fractureProcedure, ids::fractureActivity, ids::fractureGrainSizeMs, ids::fractureGrainDensity, ids::fractureGrainPositionSpreadMs, ids::fractureGrainPitchSpreadCents, ids::fractureGrainPanSpread, ids::fractureTapeStartSpeed, ids::fractureTapeEndSpeed, ids::fractureTapeCurve, ids::fractureTapeCycle, ids::fractureTapeAlternate, ids::fractureFrequencyEnabled, ids::fractureFrequencyMode, ids::fractureFrequencyChance, ids::fractureFrequencyHz, ids::fractureFrequencyEnvHz, ids::fractureFrequencyRepeatHz, ids::fractureFrequencyMix,
+    ids::resonanceEnabled, ids::resonanceRootHz, ids::resonanceDecayMs, ids::resonanceExcitationDb, ids::resonanceInterval1, ids::resonanceInterval2, ids::resonanceInterval3, ids::resonanceInterval4, ids::resonanceWeight1, ids::resonanceWeight2, ids::resonanceWeight3, ids::resonanceWeight4, ids::resonanceMix, ids::resonanceOrder, ids::resonanceSpectralEnabled, ids::resonanceFreeze, ids::resonanceSmearMs, ids::resonanceSpectralMix,
+    ids::padProgram, ids::padX, ids::padY, ids::padTouch, ids::padHold, ids::padQuantize, ids::surface, ids::padStraight
+};
+
+juce::RangedAudioParameter& parameter (juce::AudioProcessorValueTreeState& state, const char* id)
+{
+    auto* found = state.getParameter (id);
+    REQUIRE (found != nullptr);
+    return *found;
+}
+
+float defaultValue (juce::AudioProcessorValueTreeState& state, const char* id)
+{
+    auto& p = parameter (state, id);
+    return p.convertFrom0to1 (p.getDefaultValue());
+}
+
+void setNormalised (juce::AudioProcessorValueTreeState& state, const char* id, float value)
+{
+    parameter (state, id).setValueNotifyingHost (value);
+}
+
+void setValue (juce::AudioProcessorValueTreeState& state, const char* id, float value)
+{
+    auto& p = parameter (state, id);
+    p.setValueNotifyingHost (p.convertTo0to1 (value));
+}
+} // namespace
+
+TEST_CASE ("Every parameter has a stable ID", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    for (std::size_t index = 0; index < allIds.size(); ++index)
+    {
+        auto* p = state.getParameter (allIds[index]);
+        REQUIRE (p != nullptr);
+        CHECK (p->getParameterIndex() == static_cast<int> (index));
+    }
+
+    CHECK (processor.getParameters().size() == static_cast<int> (allIds.size()));
+}
+
+// Livecut exposed every parameter as continuous, so hosts drew choices as knobs
+// and SQPusher was only reachable at exactly 100%.
+TEST_CASE ("Choice parameters are discrete steps for the host", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    CHECK (parameter (state, ids::procedure).getNumSteps() == 4);
+    CHECK (parameter (state, ids::subdivision).getNumSteps() == 7);
+    CHECK (parameter (state, ids::combType).getNumSteps() == 2);
+    CHECK (parameter (state, ids::seed).getNumSteps() == 16);
+    CHECK (parameter (state, ids::crusher).isBoolean());
+
+    // SQPusher remains reachable below the new final choice.
+    setNormalised (state, ids::procedure, 0.8f);
+    CHECK (SettingsReader (state).read().procedure == engine::Procedure::sqPusher);
+    setNormalised (state, ids::procedure, 1.0f);
+    CHECK (SettingsReader (state).read().procedure == engine::Procedure::bounce);
+}
+
+TEST_CASE ("Defaults preserve the original plugin and add Bounce", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    CHECK_THAT (defaultValue (state, ids::stutterChance), WithinAbs (0.8, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::minPan), WithinAbs (-0.2, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::accel), WithinAbs (0.9, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::maxPhraseBars), WithinAbs (4.0, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::maxBits), WithinAbs (32.0, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::minDelay), WithinAbs (10.0, 1.0e-6));
+
+    CHECK_THAT (defaultValue (state, ids::bounceChance), WithinAbs (0.4, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::ratchetChance), WithinAbs (0.7, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::climb), WithinAbs (7.0, 1.0e-6));
+    CHECK_THAT (defaultValue (state, ids::halftimeChance), WithinAbs (0.15, 1.0e-6));
+
+    const auto settings = SettingsReader (state).read();
+    CHECK_THAT (settings.cut.bounceChance, WithinAbs (0.4, 1.0e-6));
+    CHECK_THAT (settings.cut.ratchetChance, WithinAbs (0.7, 1.0e-6));
+    CHECK (settings.cut.climb == 7);
+    CHECK_THAT (settings.cut.halftimeChance, WithinAbs (0.15, 1.0e-6));
+    const engine::CutParameters original;
+
+    CHECK (settings.procedure == engine::Procedure::cutProc11);
+    CHECK (settings.unitsPerBar == 8);
+    CHECK (settings.seed == 1);
+    CHECK_THAT (settings.fadeMilliseconds, WithinAbs (0.0, 1.0e-9));
+    CHECK (settings.cut.minPhraseBars == original.minPhraseBars);
+    CHECK (settings.cut.maxPhraseBars == original.maxPhraseBars);
+    CHECK_THAT (settings.cut.minPan, WithinAbs (original.minPan, 1.0e-6));
+    CHECK_THAT (settings.cut.maxPan, WithinAbs (original.maxPan, 1.0e-6));
+    CHECK_THAT (settings.cut.stutterChance, WithinAbs (original.stutterChance, 1.0e-6));
+    CHECK_THAT (settings.cut.straightChance, WithinAbs (original.straightChance, 1.0e-6));
+    CHECK_THAT (settings.cut.accel, WithinAbs (original.accel, 1.0e-6));
+    CHECK_THAT (settings.cut.activity, WithinAbs (original.activity, 1.0e-6));
+    CHECK (settings.cut.minRepeats == original.minRepeats);
+    CHECK (settings.cut.maxRepeats == original.maxRepeats);
+    CHECK_FALSE (settings.crusher.enabled);
+    CHECK_THAT (settings.crusher.minBits, WithinAbs (32.0, 1.0e-6));
+    CHECK_THAT (settings.crusher.maxHz, WithinAbs (192000.0, 1.0e-3));
+    CHECK_FALSE (settings.comb.enabled);
+    CHECK (settings.comb.type == engine::CombParameters::Type::feedForward);
+    CHECK_THAT (settings.comb.feedback, WithinAbs (0.5, 1.0e-6));
+    CHECK_THAT (settings.comb.minDelayMs, WithinAbs (10.0, 1.0e-6));
+}
+
+TEST_CASE ("Settings follow the values the host sets", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    setValue (state, ids::bounceChance, 0.2f);
+    setValue (state, ids::ratchetChance, 0.9f);
+    setValue (state, ids::climb, 11.0f);
+    setValue (state, ids::halftimeChance, 0.6f);
+    setValue (state, ids::subdivision, 3.0f); // "16"
+    setValue (state, ids::seed, 7.0f);
+    setValue (state, ids::stutterChance, 0.25f);
+    setValue (state, ids::minPitch, -1200.0f);
+    setValue (state, ids::combType, 1.0f);
+    setValue (state, ids::maxDelay, 33.0f);
+
+    const auto settings = SettingsReader (state).read();
+
+    CHECK_THAT (settings.cut.bounceChance, WithinAbs (0.2, 1.0e-6));
+    CHECK_THAT (settings.cut.ratchetChance, WithinAbs (0.9, 1.0e-6));
+    CHECK (settings.cut.climb == 11);
+    CHECK_THAT (settings.cut.halftimeChance, WithinAbs (0.6, 1.0e-6));
+    CHECK (settings.unitsPerBar == 16);
+    CHECK (settings.seed == 7);
+    CHECK_THAT (settings.cut.stutterChance, WithinAbs (0.25, 1.0e-5));
+    CHECK_THAT (settings.cut.minCents, WithinAbs (-1200.0, 1.0e-2));
+    CHECK (settings.comb.type == engine::CombParameters::Type::feedBack);
+    CHECK_THAT (settings.comb.maxDelayMs, WithinAbs (33.0, 1.0e-3));
+}
+
+TEST_CASE ("Skewed ranges centre where the original plugin did", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    CHECK_THAT (parameter (state, ids::fade).convertFrom0to1 (0.5f), WithinAbs (5.0, 1.0e-3));
+    CHECK_THAT (parameter (state, ids::minRate).convertFrom0to1 (0.5f), WithinAbs (4410.0, 1.0));
+}
+
+// Saved projects and hosts are untrusted: a NaN or out-of-range value must not
+// reach the engine, where it could index past a table or a delay line.
+TEST_CASE ("Settings stay usable when a parameter holds an invalid value", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    state.getRawParameterValue (ids::subdivision)->store (std::numeric_limits<float>::quiet_NaN());
+    state.getRawParameterValue (ids::procedure)->store (99.0f);
+    state.getRawParameterValue (ids::minDelay)->store (std::numeric_limits<float>::infinity());
+    state.getRawParameterValue (ids::maxDelay)->store (-5.0f);
+    state.getRawParameterValue (ids::maxRepeats)->store (std::numeric_limits<float>::quiet_NaN());
+
+    const auto settings = SettingsReader (state).read();
+
+    CHECK (settings.unitsPerBar == 8); // the default
+    CHECK (settings.procedure == engine::Procedure::bounce);
+    CHECK_THAT (settings.comb.minDelayMs, WithinAbs (10.0, 1.0e-6));
+    CHECK_THAT (settings.comb.maxDelayMs, WithinAbs (1.0, 1.0e-6));
+    CHECK (settings.cut.maxRepeats == 1);
+}
+
+// Livecut printed raw floats; JUCE's default text has seven decimal places.
+TEST_CASE ("Parameter values read naturally in hosts", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    auto text = [&] (const char* id, float value)
+    {
+        auto& p = parameter (state, id);
+        return p.getText (p.convertTo0to1 (value), 32);
+    };
+
+    CHECK (text (ids::bounceChance, 0.4f) == "40%");
+    CHECK (text (ids::ratchetChance, 0.7f) == "70%");
+    CHECK (text (ids::halftimeChance, 0.15f) == "15%");
+    CHECK (text (ids::climb, 7.0f) == "+7 st");
+    CHECK (text (ids::climb, 0.0f) == "0 st");
+    CHECK (text (ids::climb, 12.0f) == "+12 st");
+    CHECK (text (ids::stutterChance, 0.8f) == "80%");
+    CHECK (text (ids::maxAmp, 1.0f) == "100%");
+    CHECK (text (ids::combFeedback, 0.5f) == "50%");
+    CHECK (text (ids::minPan, -0.2f) == "20L");
+    CHECK (text (ids::minPan, 0.0f) == "C");
+    CHECK (text (ids::maxPan, 0.2f) == "20R");
+    CHECK (text (ids::minPitch, 300.0f) == "+300");
+    CHECK (text (ids::minPitch, -1200.0f) == "-1200");
+    CHECK (text (ids::minPitch, 0.0f) == "0");
+    CHECK (text (ids::fade, 5.0f) == "5.0");
+    CHECK (text (ids::maxDelay, 10.0f) == "10.0");
+    CHECK (text (ids::minRate, 4410.0f) == "4.41");
+    CHECK (text (ids::minRate, 44100.0f) == "44.1");
+    CHECK (text (ids::maxRate, 192000.0f) == "192");
+    CHECK (text (ids::maxBits, 32.0f) == "32.0");
+    CHECK (text (ids::accel, 0.9f) == "0.90");
+
+    CHECK (parameter (state, ids::minRate).getLabel() == "kHz");
+    CHECK (parameter (state, ids::minPitch).getLabel() == "cents");
+    CHECK (parameter (state, ids::stutterChance).getLabel().isEmpty());
+}
+
+TEST_CASE ("Typed values are read in the same format", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    auto valueOf = [&] (const char* id, const char* text)
+    {
+        auto& p = parameter (state, id);
+        return p.convertFrom0to1 (p.getValueForText (text));
+    };
+
+    CHECK_THAT (valueOf (ids::climb, "+7 st"), WithinAbs (7.0, 1.0e-6));
+    CHECK_THAT (valueOf (ids::climb, "0 st"), WithinAbs (0.0, 1.0e-6));
+    CHECK_THAT (valueOf (ids::bounceChance, "40%"), WithinAbs (0.4, 1.0e-6));
+    CHECK_THAT (valueOf (ids::ratchetChance, "70%"), WithinAbs (0.7, 1.0e-6));
+    CHECK_THAT (valueOf (ids::halftimeChance, "15%"), WithinAbs (0.15, 1.0e-6));
+    CHECK_THAT (valueOf (ids::stutterChance, "80%"), WithinAbs (0.8, 1.0e-4));
+    CHECK_THAT (valueOf (ids::minPan, "20L"), WithinAbs (-0.2, 1.0e-4));
+    CHECK_THAT (valueOf (ids::minPan, "C"), WithinAbs (0.0, 1.0e-4));
+    CHECK_THAT (valueOf (ids::maxPan, "35R"), WithinAbs (0.35, 1.0e-4));
+    CHECK_THAT (valueOf (ids::minRate, "4.41"), WithinAbs (4410.0, 0.5));
+    CHECK_THAT (valueOf (ids::minPitch, "+300"), WithinAbs (300.0, 1.0e-2));
+}
+
+TEST_CASE ("Parameters added for Bounce carry version hint 2", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+
+    for (const auto* id : allIds)
+    {
+        INFO (id);
+        const juce::String name (id);
+        const auto isBounce = name == ids::bounceChance || name == ids::ratchetChance
+                           || name == ids::climb || name == ids::halftimeChance;
+        const auto isMixer = name == ids::wet || name == ids::outputTrim;
+        const auto isPerform = name == ids::swing || name == ids::accent || name == ids::hold;
+        const auto isRecut = name == ids::mode || name == ids::attackAlign || name == ids::attackThreshold || name == ids::reverseChance;
+        const auto isPad = name.startsWith ("pad") || name == ids::surface;
+        CHECK (parameter (state, id).getVersionHint() == (isPad ? 9 : name.startsWith ("resonance") ? 8 : name.startsWith ("fracture") ? 7 : name.startsWith ("impact") ? 6 : isRecut ? 5 : isPerform ? 4 : isMixer ? 3 : isBounce ? 2 : 1));
+    }
+}
+
+TEST_CASE ("Bounce parameters have the specified names and ranges and are appended", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    constexpr std::array bounceIds { ids::bounceChance, ids::ratchetChance, ids::climb, ids::halftimeChance };
+    constexpr std::array names { "Bounce", "Ratchet", "Climb", "Halftime" };
+
+    for (std::size_t i = 0; i < bounceIds.size(); ++i)
+    {
+        auto& p = parameter (state, bounceIds[i]);
+        CHECK (p.getName (32) == names[i]);
+        CHECK (p.getParameterIndex() == static_cast<int> (37 - bounceIds.size() + i));
+        CHECK_THAT (p.convertFrom0to1 (0.0f), WithinAbs (0.0, 1.0e-6));
+        CHECK_THAT (p.convertFrom0to1 (1.0f), WithinAbs (i == 2 ? 12.0 : 1.0, 1.0e-6));
+    }
+    CHECK (parameter (state, ids::climb).getNumSteps() == 13);
+}
+
+TEST_CASE ("Bounce settings validate host values and round Climb", "[parameters]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    for (const auto* id : { ids::bounceChance, ids::ratchetChance, ids::climb, ids::halftimeChance })
+        parameter (state, id);
+
+    SettingsReader reader (state);
+    for (const auto invalid : { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+    {
+        for (const auto* id : { ids::bounceChance, ids::ratchetChance, ids::climb, ids::halftimeChance })
+            state.getRawParameterValue (id)->store (invalid);
+        const auto cut = reader.read().cut;
+        CHECK_THAT (cut.bounceChance, WithinAbs (0.4, 1.0e-6));
+        CHECK_THAT (cut.ratchetChance, WithinAbs (0.7, 1.0e-6));
+        CHECK (cut.climb == 7);
+        CHECK_THAT (cut.halftimeChance, WithinAbs (0.15, 1.0e-6));
+    }
+    for (const auto raw : { -99.0f, 99.0f })
+    {
+        for (const auto* id : { ids::bounceChance, ids::ratchetChance, ids::climb, ids::halftimeChance })
+            state.getRawParameterValue (id)->store (raw);
+        const auto cut = reader.read().cut;
+        const auto expected = raw < 0.0f ? 0.0 : 1.0;
+        CHECK_THAT (cut.bounceChance, WithinAbs (expected, 1.0e-6));
+        CHECK_THAT (cut.ratchetChance, WithinAbs (expected, 1.0e-6));
+        CHECK (cut.climb == (raw < 0.0f ? 0 : 12));
+        CHECK_THAT (cut.halftimeChance, WithinAbs (expected, 1.0e-6));
+    }
+    state.getRawParameterValue (ids::climb)->store (7.6f);
+    CHECK (reader.read().cut.climb == 8);
+    state.getRawParameterValue (ids::climb)->store (7.4f);
+    CHECK (reader.read().cut.climb == 7);
+}
+
+TEST_CASE ("Capture release appends version-three mixer parameters", "[parameters][capture]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    auto* wet = state.getParameter ("wet");
+    auto* trim = state.getParameter ("outputTrim");
+    REQUIRE (wet != nullptr);
+    REQUIRE (trim != nullptr);
+    CHECK (wet->getVersionHint() == 3);
+    CHECK (trim->getVersionHint() == 3);
+    CHECK (wet->getParameterIndex() == 37);
+    CHECK (trim->getParameterIndex() == 38);
+    CHECK_THAT (wet->convertFrom0to1 (wet->getDefaultValue()), WithinAbs (1.0, 0.0));
+    CHECK_THAT (trim->convertFrom0to1 (trim->getDefaultValue()), WithinAbs (0.0, 0.0));
+}
+
+TEST_CASE ("Perform appends neutral groove and Hold parameters", "[parameters][perform]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    for (const auto* id : { "swing", "accent", "hold" })
+    {
+        INFO (id);
+        auto* parameter = state.getParameter (id);
+        REQUIRE (parameter != nullptr);
+        CHECK (parameter->getVersionHint() == 4);
+    }
+    CHECK_THAT (state.getParameter ("swing")->convertFrom0to1 (state.getParameter ("swing")->getDefaultValue()), WithinAbs (50.0, 0.0));
+    CHECK_THAT (state.getParameter ("accent")->convertFrom0to1 (state.getParameter ("accent")->getDefaultValue()), WithinAbs (0.0, 0.0));
+    CHECK (state.getParameter ("hold")->isBoolean());
+}
+
+TEST_CASE ("Impact parameters expose bounded musical controls and disabled defaults", "[parameters][impact]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    struct Expected { const char* id; float low, high, initial; };
+    constexpr std::array<Expected, 23> expected {{
+        Expected { "impactFilterEnabled", 0, 1, 0 }, { "impactFilterType", 0, 2, 0 },
+        { "impactFilterChance", 0, 1, 1 }, { "impactFilterCutoff", 30, 18000, 12000 },
+        { "impactFilterQ", .5f, 8, .707f }, { "impactFilterEnvOctaves", -6, 6, 0 },
+        { "impactFilterRepeatOctaves", -4, 4, 0 }, { "impactFilterMix", 0, 1, 1 },
+        { "impactDriveEnabled", 0, 1, 0 }, { "impactDriveMode", 0, 1, 0 },
+        { "impactDriveChance", 0, 1, 1 }, { "impactDriveDb", 0, 30, 6 },
+        { "impactDriveEnvDb", -24, 24, 0 }, { "impactDriveRepeatDb", -24, 24, 0 },
+        { "impactDriveMix", 0, 1, 1 }, { "impactTransientEnabled", 0, 1, 0 },
+        { "impactTransientChance", 0, 1, 1 }, { "impactTransientAttackDb", -18, 18, 0 },
+        { "impactTransientSustainDb", -18, 18, 0 }, { "impactTransientTimeMs", 10, 200, 40 },
+        { "impactTransientMix", 0, 1, 1 }, { "impactAttackMs", 0, 25, 1 },
+        { "impactDecayMs", 5, 1000, 80 }
+    }};
+    for (const auto& spec : expected)
+    {
+        INFO (spec.id);
+        auto& p = parameter (state, spec.id);
+        CHECK (p.getVersionHint() == 6);
+        CHECK_THAT (p.getNormalisableRange().start, WithinAbs (spec.low, .001));
+        CHECK_THAT (p.getNormalisableRange().end, WithinAbs (spec.high, .001));
+        CHECK_THAT (defaultValue (state, spec.id), WithinAbs (spec.initial, .001));
+    }
+}
+
+TEST_CASE ("Impact settings map host values and reject malformed input", "[parameters][impact]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    const auto defaults = reader.read().impact;
+    CHECK_FALSE (defaults.filter.enabled);
+    CHECK_FALSE (defaults.drive.enabled);
+    CHECK_FALSE (defaults.transient.enabled);
+    CHECK_THAT (defaults.attackMs, WithinAbs (1, .001));
+    CHECK_THAT (defaults.decayMs, WithinAbs (80, .001));
+
+    setValue (state, ids::impactFilterEnabled, 1);
+    setValue (state, ids::impactFilterType, 2);
+    setValue (state, ids::impactFilterChance, .25f);
+    setValue (state, ids::impactFilterCutoff, 450);
+    setValue (state, ids::impactFilterQ, 2);
+    setValue (state, ids::impactFilterEnvOctaves, -3);
+    setValue (state, ids::impactFilterRepeatOctaves, 2);
+    setValue (state, ids::impactFilterMix, .5f);
+    setValue (state, ids::impactDriveEnabled, 1);
+    setValue (state, ids::impactDriveMode, 1);
+    setValue (state, ids::impactDriveChance, .75f);
+    setValue (state, ids::impactDriveDb, 18);
+    setValue (state, ids::impactDriveEnvDb, -12);
+    setValue (state, ids::impactDriveRepeatDb, 10);
+    setValue (state, ids::impactDriveMix, .4f);
+    setValue (state, ids::impactTransientEnabled, 1);
+    setValue (state, ids::impactTransientChance, .6f);
+    setValue (state, ids::impactTransientAttackDb, 9);
+    setValue (state, ids::impactTransientSustainDb, -7);
+    setValue (state, ids::impactTransientTimeMs, 123);
+    setValue (state, ids::impactTransientMix, .3f);
+    setValue (state, ids::impactAttackMs, 15);
+    setValue (state, ids::impactDecayMs, 400);
+    const auto impact = reader.read().impact;
+    CHECK (impact.filter.enabled);
+    CHECK (impact.filter.type == engine::ImpactParameters::Filter::Type::highPass);
+    CHECK_THAT (impact.filter.chance, WithinAbs (.25, .001));
+    CHECK_THAT (impact.filter.cutoffHz, WithinAbs (450, .001));
+    CHECK_THAT (impact.filter.q, WithinAbs (2, .001));
+    CHECK_THAT (impact.filter.envelopeOctaves, WithinAbs (-3, .001));
+    CHECK_THAT (impact.filter.repeatOctaves, WithinAbs (2, .001));
+    CHECK_THAT (impact.filter.mix, WithinAbs (.5, .001));
+    CHECK (impact.drive.enabled);
+    CHECK (impact.drive.mode == engine::ImpactParameters::Drive::Mode::wavefold);
+    CHECK_THAT (impact.drive.chance, WithinAbs (.75, .001));
+    CHECK_THAT (impact.drive.driveDb, WithinAbs (18, .001));
+    CHECK_THAT (impact.drive.envelopeDb, WithinAbs (-12, .001));
+    CHECK_THAT (impact.drive.repeatDb, WithinAbs (10, .001));
+    CHECK_THAT (impact.drive.mix, WithinAbs (.4, .001));
+    CHECK (impact.transient.enabled);
+    CHECK_THAT (impact.transient.chance, WithinAbs (.6, .001));
+    CHECK_THAT (impact.transient.attackDb, WithinAbs (9, .001));
+    CHECK_THAT (impact.transient.sustainDb, WithinAbs (-7, .001));
+    CHECK_THAT (impact.transient.timeMs, WithinAbs (123, .001));
+    CHECK_THAT (impact.transient.mix, WithinAbs (.3, .001));
+    CHECK_THAT (impact.attackMs, WithinAbs (15, .001));
+    CHECK_THAT (impact.decayMs, WithinAbs (400, .001));
+
+    state.getRawParameterValue (ids::impactFilterType)->store (99);
+    state.getRawParameterValue (ids::impactDriveMode)->store (-9);
+    state.getRawParameterValue (ids::impactFilterCutoff)->store (std::numeric_limits<float>::quiet_NaN());
+    state.getRawParameterValue (ids::impactFilterQ)->store (100);
+    state.getRawParameterValue (ids::impactDriveDb)->store (std::numeric_limits<float>::infinity());
+    state.getRawParameterValue (ids::impactTransientTimeMs)->store (-20);
+    state.getRawParameterValue (ids::impactAttackMs)->store (-5);
+    const auto safe = reader.read().impact;
+    CHECK (safe.filter.type == engine::ImpactParameters::Filter::Type::highPass);
+    CHECK (safe.drive.mode == engine::ImpactParameters::Drive::Mode::drive);
+    CHECK_THAT (safe.filter.cutoffHz, WithinAbs (12000, .001));
+    CHECK_THAT (safe.filter.q, WithinAbs (8, .001));
+    CHECK_THAT (safe.drive.driveDb, WithinAbs (6, .001));
+    CHECK_THAT (safe.transient.timeMs, WithinAbs (10, .001));
+    CHECK_THAT (safe.attackMs, WithinAbs (0, .001));
+    CHECK (parameter (state, ids::impactDriveMix).getText (.75f, 32) == "75%");
+    CHECK_THAT (parameter (state, ids::impactFilterChance).getValueForText ("25%"), WithinAbs (.25, .001));
+}
+
+TEST_CASE ("Fracture controls append the frozen 19 host parameters", "[parameters][fracture-ui]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    struct Expected { const char* id; float low, high, initial; };
+    constexpr std::array<Expected, 19> expected {{
+        { "fractureProcedure", 0, 2, 0 }, { "fractureActivity", 0, 1, .5f },
+        { "fractureGrainSizeMs", 10, 160, 40 }, { "fractureGrainDensity", .5f, 4, 2 },
+        { "fractureGrainPositionSpreadMs", 0, 250, 40 }, { "fractureGrainPitchSpreadCents", 0, 1200, 300 },
+        { "fractureGrainPanSpread", 0, 1, .3f }, { "fractureTapeStartSpeed", 0, 1, 1 },
+        { "fractureTapeEndSpeed", 0, 1, 0 }, { "fractureTapeCurve", 0, 1, 1 },
+        { "fractureTapeCycle", 0, 3, 1 }, { "fractureTapeAlternate", 0, 1, 0 },
+        { "fractureFrequencyEnabled", 0, 1, 0 }, { "fractureFrequencyMode", 0, 1, 0 },
+        { "fractureFrequencyChance", 0, 1, 1 }, { "fractureFrequencyHz", -2000, 2000, 100 },
+        { "fractureFrequencyEnvHz", -2000, 2000, 0 }, { "fractureFrequencyRepeatHz", -2000, 2000, 0 },
+        { "fractureFrequencyMix", 0, 1, 1 }
+    }};
+    for (std::size_t i = 0; i < expected.size(); ++i)
+    {
+        const auto& spec = expected[i];
+        INFO (spec.id);
+        auto& p = parameter (state, spec.id);
+        CHECK (p.getParameterIndex() == 69 + static_cast<int> (i));
+        CHECK (p.getVersionHint() == 7);
+        CHECK_THAT (p.getNormalisableRange().start, WithinAbs (spec.low, .001));
+        CHECK_THAT (p.getNormalisableRange().end, WithinAbs (spec.high, .001));
+        CHECK_THAT (defaultValue (state, spec.id), WithinAbs (spec.initial, .001));
+    }
+}
+
+TEST_CASE ("Fracture settings map all controls without changing Classic automation", "[parameters][fracture-ui]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    const auto original = reader.read();
+    CHECK (original.fracture.procedure == engine::FractureProcedure::classic);
+    CHECK_FALSE (original.frequency.enabled);
+    CHECK (parameter (state, ids::procedure).getNumSteps() == 4);
+    for (int i = 0; i < 4; ++i)
+    {
+        setNormalised (state, ids::procedure, static_cast<float> (i) / 3.0f);
+        CHECK (static_cast<int> (reader.read().procedure) == i);
+    }
+    setValue (state, ids::fractureProcedure, 2);
+    setValue (state, ids::fractureActivity, .75f);
+    setValue (state, ids::fractureGrainSizeMs, 90);
+    setValue (state, ids::fractureGrainDensity, 3);
+    setValue (state, ids::fractureGrainPositionSpreadMs, 180);
+    setValue (state, ids::fractureGrainPitchSpreadCents, 700);
+    setValue (state, ids::fractureGrainPanSpread, .65f);
+    setValue (state, ids::fractureTapeStartSpeed, .8f);
+    setValue (state, ids::fractureTapeEndSpeed, .2f);
+    setValue (state, ids::fractureTapeCurve, 0);
+    setValue (state, ids::fractureTapeCycle, 3);
+    setValue (state, ids::fractureTapeAlternate, 1);
+    setValue (state, ids::fractureFrequencyEnabled, 1);
+    setValue (state, ids::fractureFrequencyMode, 1);
+    setValue (state, ids::fractureFrequencyChance, .25f);
+    setValue (state, ids::fractureFrequencyHz, -333);
+    setValue (state, ids::fractureFrequencyEnvHz, 888);
+    setValue (state, ids::fractureFrequencyRepeatHz, -555);
+    setValue (state, ids::fractureFrequencyMix, .4f);
+    const auto settings = reader.read();
+    CHECK (settings.fracture.procedure == engine::FractureProcedure::tapeCut);
+    CHECK_THAT (settings.fracture.activity, WithinAbs (.75, .001));
+    CHECK_THAT (settings.fracture.grain.sizeMs, WithinAbs (90, .001));
+    CHECK_THAT (settings.fracture.grain.density, WithinAbs (3, .001));
+    CHECK_THAT (settings.fracture.grain.positionSpreadMs, WithinAbs (180, .001));
+    CHECK_THAT (settings.fracture.grain.pitchSpreadCents, WithinAbs (700, .001));
+    CHECK_THAT (settings.fracture.grain.panSpread, WithinAbs (.65, .001));
+    CHECK_THAT (settings.fracture.tape.startSpeed, WithinAbs (.8, .001));
+    CHECK_THAT (settings.fracture.tape.endSpeed, WithinAbs (.2, .001));
+    CHECK (settings.fracture.tape.curve == engine::FractureParameters::Tape::Curve::linear);
+    CHECK (settings.fracture.tape.cycle == engine::FractureParameters::Tape::Cycle::fourBeats);
+    CHECK (settings.fracture.tape.alternate);
+    CHECK (settings.frequency.enabled);
+    CHECK (settings.frequency.mode == engine::FrequencyParameters::Mode::frequencyShift);
+    CHECK_THAT (settings.frequency.chance, WithinAbs (.25, .001));
+    CHECK_THAT (settings.frequency.rateHz, WithinAbs (-333, .001));
+    CHECK_THAT (settings.frequency.envelopeHz, WithinAbs (888, .001));
+    CHECK_THAT (settings.frequency.repeatHz, WithinAbs (-555, .001));
+    CHECK_THAT (settings.frequency.mix, WithinAbs (.4, .001));
+
+    state.getRawParameterValue (ids::fractureProcedure)->store (99);
+    state.getRawParameterValue (ids::fractureTapeCurve)->store (-99);
+    state.getRawParameterValue (ids::fractureTapeCycle)->store (std::numeric_limits<float>::quiet_NaN());
+    state.getRawParameterValue (ids::fractureGrainSizeMs)->store (std::numeric_limits<float>::infinity());
+    state.getRawParameterValue (ids::fractureTapeStartSpeed)->store (-3);
+    state.getRawParameterValue (ids::fractureFrequencyMode)->store (99);
+    state.getRawParameterValue (ids::fractureFrequencyEnvHz)->store (99999);
+    const auto safe = reader.read();
+    CHECK (safe.fracture.procedure == engine::FractureProcedure::tapeCut);
+    CHECK (safe.fracture.tape.curve == engine::FractureParameters::Tape::Curve::linear);
+    CHECK (safe.fracture.tape.cycle == engine::FractureParameters::Tape::Cycle::oneBeat);
+    CHECK_THAT (safe.fracture.grain.sizeMs, WithinAbs (40, .001));
+    CHECK_THAT (safe.fracture.tape.startSpeed, WithinAbs (0, .001));
+    CHECK (safe.frequency.mode == engine::FrequencyParameters::Mode::frequencyShift);
+    CHECK_THAT (safe.frequency.envelopeHz, WithinAbs (2000, .001));
+    CHECK (parameter (state, ids::fractureFrequencyMix).getText (.75f, 32) == "75%");
+    CHECK (parameter (state, ids::fractureTapeStartSpeed).getLabel() == "x");
+}
+
+TEST_CASE ("Resonance controls preserve prepared configuration and explicit invalid weights", "[parameters][resonance]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    CHECK_FALSE (parameter (state, ids::resonanceSpectralEnabled).isAutomatable());
+    CHECK (parameter (state, ids::resonanceFreeze).isAutomatable());
+    CHECK (parameter (state, ids::resonanceOrder).getNumSteps() == 3);
+    for (const auto* id : { ids::resonanceWeight1, ids::resonanceWeight2, ids::resonanceWeight3, ids::resonanceWeight4 })
+        setValue (state, id, 0);
+    setValue (state, ids::resonanceRootHz, 220);
+    setValue (state, ids::resonanceInterval2, -7);
+    setValue (state, ids::resonanceSpectralEnabled, 1);
+    setValue (state, ids::resonanceFreeze, 1);
+    setValue (state, ids::resonanceSmearMs, 750);
+    setValue (state, ids::resonanceSpectralMix, .4f);
+    const auto settings = SettingsReader (state).read();
+    CHECK_THAT (settings.resonance.rootHz, WithinAbs (220, .001));
+    CHECK (settings.resonance.intervals[1] == -7);
+    for (auto weight : settings.resonance.weights)
+        CHECK (weight == 0);
+    CHECK (settings.requestedSpectral);
+    CHECK (settings.spectralFreeze);
+    CHECK (settings.spectralSmearMs == 750);
+    CHECK_THAT (settings.spectralMix, WithinAbs (.4f, 1.e-6f));
+}
+
+TEST_CASE ("Pad parameters have the specified names, choices and ranges and are appended", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    constexpr std::array padIds { ids::padProgram, ids::padX, ids::padY, ids::padTouch, ids::padHold, ids::padQuantize, ids::surface };
+    constexpr std::array names { "Pad Program", "Pad X", "Pad Y", "Pad Touch", "Pad Hold", "Pad Quantize", "Surface" };
+
+    for (std::size_t i = 0; i < padIds.size(); ++i)
+    {
+        INFO (padIds[i]);
+        auto& p = parameter (state, padIds[i]);
+        CHECK (p.getParameterIndex() == static_cast<int> (106 + i));
+        CHECK (p.getName (32) == names[i]);
+        CHECK (p.isAutomatable() == (i != 6));
+        CHECK_THAT (p.convertFrom0to1 (0.0f), WithinAbs (0.0, 1.0e-6));
+        CHECK_THAT (p.convertFrom0to1 (1.0f), WithinAbs (i == 0 ? 7.0 : 1.0, 1.0e-6));
+        CHECK_THAT (defaultValue (state, padIds[i]), WithinAbs (i == 1 || i == 2 ? .5 : 0.0, 1.0e-6));
+    }
+
+    const auto checkChoices = [&] (const char* id, const juce::StringArray& expected)
+    {
+        const auto* p = dynamic_cast<juce::AudioParameterChoice*> (&parameter (state, id));
+        REQUIRE (p != nullptr);
+        CHECK (p->choices == expected);
+    };
+    checkChoices (ids::padProgram, { "Cut", "Bounce", "Glitch", "Suction", "Filter", "Tape", "Loops", "Rush" });
+    checkChoices (ids::padQuantize, { "Beat", "Bar" });
+    checkChoices (ids::surface, { "Pad", "Classic" });
+    checkChoices (ids::procedure, { "CutProc11", "WarpCut", "SQPusher", "Bounce" });
+    CHECK (parameter (state, ids::padTouch).isBoolean());
+    CHECK (parameter (state, ids::padHold).isBoolean());
+    for (const auto* id : { ids::padX, ids::padY })
+    {
+        auto& p = parameter (state, id);
+        REQUIRE (dynamic_cast<juce::AudioParameterFloat*> (&p) != nullptr);
+        CHECK (p.getNormalisableRange().interval == 0.0f);
+        CHECK (p.getNormalisableRange().skew == 1.0f);
+        CHECK (p.getText (.5f, 32) == "50%");
+        CHECK_THAT (p.convertFrom0to1 (p.getValueForText ("75%")), WithinAbs (.75, 1.0e-6));
+    }
+}
+
+TEST_CASE ("Settings read the pad parameters", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::surface, 1);
+    setValue (state, ids::padX, .25f);
+    setValue (state, ids::padY, .75f);
+    setValue (state, ids::padTouch, 1);
+    setValue (state, ids::padHold, 1);
+    setValue (state, ids::padQuantize, 1);
+    constexpr std::array programs { engine::PadProgram::cut, engine::PadProgram::bounce, engine::PadProgram::glitch,
+        engine::PadProgram::suction, engine::PadProgram::filter, engine::PadProgram::tape, engine::PadProgram::loops, engine::PadProgram::rush };
+    for (std::size_t i = 0; i < programs.size(); ++i)
+    {
+        setValue (state, ids::padProgram, static_cast<float> (i));
+        const auto settings = reader.read();
+        CHECK (settings.surface == Surface::classic);
+        CHECK (settings.padProgram == programs[i]);
+        CHECK_THAT (settings.padX, WithinAbs (.25, 1.0e-6));
+        CHECK_THAT (settings.padY, WithinAbs (.75, 1.0e-6));
+        CHECK (settings.padTouch);
+        CHECK (settings.padHold);
+        CHECK (settings.padQuantize == engine::PadQuantize::bar);
+    }
+}
+
+TEST_CASE ("A new instance defaults to the Pad surface", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    for (const auto& settings : { Settings {}, SettingsReader (processor.getParameterState()).read() })
+    {
+        CHECK (settings.surface == Surface::pad);
+        CHECK (settings.padProgram == engine::PadProgram::cut);
+        CHECK_THAT (settings.padX, WithinAbs (.5, 1.0e-6));
+        CHECK_THAT (settings.padY, WithinAbs (.5, 1.0e-6));
+        CHECK_FALSE (settings.padTouch);
+        CHECK_FALSE (settings.padHold);
+        CHECK (settings.padQuantize == engine::PadQuantize::beat);
+    }
+}
+
+TEST_CASE ("A state saved without Surface loads as Classic", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    setValue (processor.getParameterState(), ids::seed, 7);
+    juce::MemoryBlock saved;
+    processor.getStateInformation (saved);
+    auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), static_cast<int> (saved.getSize()));
+    REQUIRE (xml != nullptr);
+    auto* surface = xml->getChildByAttribute ("id", ids::surface);
+    REQUIRE (surface != nullptr);
+    xml->removeChildElement (surface, true);
+    SECTION ("Current schema without Surface") {}
+    SECTION ("Old schema without Surface") { xml->setAttribute ("schemaVersion", 8); }
+    SECTION ("Unversioned state without Surface") { xml->removeAttribute ("schemaVersion"); }
+    juce::AudioProcessor::copyXmlToBinary (*xml, saved);
+
+    LivecutAudioProcessor restored;
+    restored.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+    const auto settings = SettingsReader (restored.getParameterState()).read();
+    CHECK (settings.surface == Surface::classic);
+    CHECK (settings.seed == 7);
+    CHECK (restored.getParameterState().getRawParameterValue (ids::surface)->load() == 1.0f);
+}
+
+TEST_CASE ("Surface round-trips, and the saved schema version is 9", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    LivecutAudioProcessor restored;
+    for (const auto surface : { Surface::classic, Surface::pad })
+    {
+        setValue (processor.getParameterState(), ids::surface, static_cast<float> (surface));
+        juce::MemoryBlock saved;
+        processor.getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), static_cast<int> (saved.getSize()));
+        REQUIRE (xml != nullptr);
+        CHECK (xml->getIntAttribute ("schemaVersion") == 9);
+        CHECK (xml->getIntAttribute ("algorithmVersion") == 2);
+        restored.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+        CHECK (SettingsReader (restored.getParameterState()).read().surface == surface);
+    }
+}
+
+TEST_CASE ("Pad Straight is a bool named Pad Straight, default off", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    auto& p = parameter (state, ids::padStraight);
+    CHECK (p.getParameterIndex() == 113);
+    CHECK (p.getName (32) == "Pad Straight");
+    CHECK (p.isBoolean());
+    CHECK (p.isAutomatable());
+    CHECK (p.getVersionHint() == 9);
+    CHECK_THAT (defaultValue (state, ids::padStraight), WithinAbs (0.0, 1.0e-6));
+}
+
+TEST_CASE ("Settings read Pad Straight", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    CHECK_FALSE (Settings {}.padStraight);
+    CHECK_FALSE (reader.read().padStraight);
+    setValue (state, ids::padStraight, 1);
+    CHECK (reader.read().padStraight);
+    setValue (state, ids::padStraight, 0);
+    CHECK_FALSE (reader.read().padStraight);
+}
+
+TEST_CASE ("padSettings passes Straight to the cut parameters, and Classic never does", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    const auto mapping = engine::mapPad (engine::PadProgram::glitch, .5f, .5f, {});
+    CHECK_FALSE (mapping.cut.straight);
+
+    for (const auto on : { false, true })
+    {
+        INFO ("Pad Straight " << (on ? "on" : "off"));
+        setValue (state, ids::padStraight, on ? 1.0f : 0.0f);
+        const auto user = reader.read();
+        CHECK (user.padStraight == on);
+        CHECK_FALSE (user.cut.straight); // Classic reads the cut parameters without Straight
+        CHECK (padSettings (user, mapping).cut.straight == on);
+    }
+}
+
+TEST_CASE ("padSettings carries the program's Impact", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::impactFilterEnabled, 1);
+    setValue (state, ids::impactDriveEnabled, 1);
+    setValue (state, ids::impactTransientEnabled, 1);
+    setValue (state, ids::impactDecayMs, 500);
+    const auto user = reader.read();
+    REQUIRE (user.impact.filter.enabled);
+    REQUIRE (user.impact.drive.enabled);
+    REQUIRE (user.impact.transient.enabled);
+
+    // Suction's band reaches the engine.
+    const auto suction = engine::mapPad (engine::PadProgram::suction, .25f, .75f, {});
+    const auto& filter = padSettings (user, suction).impact.filter;
+    CHECK (filter.enabled);
+    CHECK (filter.type == engine::ImpactParameters::Filter::Type::band);
+    CHECK_THAT (filter.bandLowHz, WithinAbs (suction.impact.filter.bandLowHz, 0.0));
+    CHECK_THAT (filter.bandHighHz, WithinAbs (suction.impact.filter.bandHighHz, 0.0));
+    CHECK_THAT (filter.q, WithinAbs (suction.impact.filter.q, 0.0));
+    CHECK_THAT (filter.envelopeOctaves, WithinAbs (1.5, 0.0));
+    CHECK_THAT (padSettings (user, suction).impact.decayMs, WithinAbs (180.0, 0.0));
+    CHECK_FALSE (padSettings (user, suction).impact.drive.enabled);
+    CHECK_FALSE (padSettings (user, suction).impact.transient.enabled);
+
+    // Nothing from the Classic Impact page leaks onto the pad.
+    for (const auto program : { engine::PadProgram::cut, engine::PadProgram::bounce, engine::PadProgram::glitch })
+    {
+        INFO (static_cast<int> (program));
+        const auto impact = padSettings (user, engine::mapPad (program, .5f, .5f, {})).impact;
+        CHECK_FALSE (impact.filter.enabled);
+        CHECK_FALSE (impact.drive.enabled);
+        CHECK_FALSE (impact.transient.enabled);
+        CHECK_THAT (impact.decayMs, WithinAbs (engine::ImpactParameters{}.decayMs, 0.0));
+    }
+}
+
+TEST_CASE ("padSettings carries Rush's roll and the pad's Straight, and no Classic procedure", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::procedure, 1); // the Classic page's WarpCut
+    setValue (state, ids::padStraight, 1);
+    const auto user = reader.read();
+    REQUIRE (user.procedure == engine::Procedure::warpCut);
+
+    const auto mapping = engine::mapPad (engine::PadProgram::rush, .75f, .6f, {});
+    const auto settings = padSettings (user, mapping);
+    CHECK (settings.procedure == engine::Procedure::rush);
+    CHECK (settings.unitsPerBar == 16);
+    CHECK (settings.seed == 808u);
+    CHECK_THAT (settings.cut.rollBeats, WithinAbs (3.0, 0.0));
+    CHECK_THAT (settings.cut.rollCurve, WithinAbs (.5, 1.0e-6));
+    CHECK_THAT (settings.cut.rollCents, WithinAbs (250.0, 1.0e-3));
+    CHECK (settings.cut.straight);
+    CHECK (settings.fracture.procedure == engine::FractureProcedure::classic);
+    CHECK_FALSE (settings.impact.filter.enabled);
+    CHECK_THAT (settings.fadeMilliseconds, WithinAbs (0.0, 0.0));
+}
+
+TEST_CASE ("padSettings carries Loops' loop and depth, and the pad's Straight", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::procedure, 1); // the Classic page's WarpCut
+    setValue (state, ids::attackAlign, 1); // and its Attack Align, which Loops' snap doesn't use
+    setValue (state, ids::padStraight, 1);
+    const auto user = reader.read();
+    REQUIRE (user.procedure == engine::Procedure::warpCut);
+
+    const auto mapping = engine::mapPad (engine::PadProgram::loops, .5f, .6f, {});
+    const auto settings = padSettings (user, mapping);
+    CHECK (settings.procedure == engine::Procedure::loops);
+    CHECK (settings.unitsPerBar == 16);
+    CHECK (settings.seed == 707u);
+    CHECK_THAT (settings.cut.loopBars, WithinAbs (.5, 0.0));
+    CHECK (settings.cut.loopDepth == 2);
+    CHECK (settings.cut.straight);
+    CHECK_FALSE (settings.attackAlign);
+    CHECK (settings.fracture.procedure == engine::FractureProcedure::classic);
+    CHECK_FALSE (settings.impact.filter.enabled);
+    CHECK_THAT (settings.fadeMilliseconds, WithinAbs (0.0, 0.0));
+}
+
+TEST_CASE ("padSettings carries Tape's stops, and the other programs keep Classic Fracture", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::fractureProcedure, 2); // the Classic page's Tape, with its own speeds
+    setValue (state, ids::fractureTapeStartSpeed, .4f);
+    const auto user = reader.read();
+    REQUIRE (user.fracture.procedure == engine::FractureProcedure::tapeCut);
+
+    const auto mapping = engine::mapPad (engine::PadProgram::tape, .6f, .3f, {});
+    const auto fracture = padSettings (user, mapping).fracture;
+    CHECK (fracture.procedure == engine::FractureProcedure::tapeCut);
+    CHECK (fracture.tape.layout == engine::FractureParameters::Tape::Layout::stops);
+    CHECK_THAT (fracture.tape.stopBeats, WithinAbs (2.0, 0.0));
+    CHECK_THAT (fracture.tape.stopDensity, WithinAbs (mapping.fracture.tape.stopDensity, 0.0));
+    CHECK_THAT (fracture.tape.startSpeed, WithinAbs (engine::FractureParameters{}.tape.startSpeed, 0.0));
+    CHECK_THAT (padSettings (user, mapping).fadeMilliseconds, WithinAbs (0.0, 0.0));
+
+    for (const auto program : { engine::PadProgram::cut, engine::PadProgram::bounce, engine::PadProgram::glitch,
+                                engine::PadProgram::suction, engine::PadProgram::filter })
+    {
+        INFO (static_cast<int> (program));
+        CHECK (padSettings (user, engine::mapPad (program, .5f, .5f, {})).fracture.procedure == engine::FractureProcedure::classic);
+    }
+}
+
+TEST_CASE ("padSettings carries Filter's sweep and tail", "[parameters][pad]")
+{
+    LivecutAudioProcessor processor;
+    auto& state = processor.getParameterState();
+    const SettingsReader reader (state);
+    setValue (state, ids::impactFilterEnabled, 1);
+    setValue (state, ids::impactFilterCutoff, 900);
+    const auto user = reader.read();
+
+    const auto mapping = engine::mapPad (engine::PadProgram::filter, .25f, .75f, {});
+    const auto& filter = padSettings (user, mapping).impact.filter;
+    CHECK (filter.enabled);
+    CHECK (filter.type == engine::ImpactParameters::Filter::Type::sweep);
+    CHECK_THAT (filter.cutoffHz, WithinAbs (mapping.impact.filter.cutoffHz, 0.0));
+    CHECK_THAT (filter.q, WithinAbs (mapping.impact.filter.q, 0.0));
+    CHECK_THAT (filter.tailLevel, WithinAbs (.75, 1.0e-6));
+    CHECK_THAT (filter.tailDecayMs, WithinAbs (mapping.impact.filter.tailDecayMs, 0.0));
+    CHECK_FALSE (padSettings (user, mapping).impact.drive.enabled);
+    CHECK_FALSE (padSettings (user, mapping).impact.transient.enabled);
+}

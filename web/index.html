@@ -1,0 +1,2844 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f3f8">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14141f">
+<title>Human Being Audio — free plugins by Human Being</title>
+<meta name="description" content="Free beat slicers, synths and MIDI tools by the artist Human Being. Open source, no account, no DRM, no installer manager: download from GitHub and check the SHA-256.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2345d4ee'/%3E%3Cstop offset='.5' stop-color='%23a77bff'/%3E%3Cstop offset='1' stop-color='%23ff7a45'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='14' fill='url(%23g)'/%3E%3Crect x='2' y='15' width='28' height='2.4' fill='%2314141f'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<!-- One display/body family with a real width axis (Anybody, wdth 50–150) + one technical mono for specs only. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap">
+
+<!--
+  Three.js r187 import map — the exact layout the official r187 WebGPU examples use.
+  three.webgpu.js imports ./three.tsl.js and ./three.core.js relatively, so every
+  specifier below resolves into ONE module graph (no duplicate-three problems).
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.webgpu.js",
+    "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.webgpu.js",
+    "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.tsl.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+/* ==========================================================================
+   Human Being Audio — single-file landing page
+   Cascade layers keep specificity flat: later layers win, :where() keeps
+   resets at zero specificity, and no rule needs !important except [hidden].
+   ========================================================================== */
+@layer reset, tokens, base, layout, components, utilities;
+
+/* Registered so the stage light can animate its hue when a plugin is chosen. */
+@property --stage-hue { syntax: "<number>"; inherits: true; initial-value: 43; }
+
+/* ---------------------------------------------------------------- reset -- */
+@layer reset {
+  :where(*, *::before, *::after) { box-sizing: border-box; }
+  :where(html) { -webkit-text-size-adjust: none; text-size-adjust: none; }
+  :where(body, h1, h2, h3, h4, p, figure, blockquote, dl, dd, ol, ul, pre) { margin: 0; }
+  :where(ul, ol)[role="list"] { list-style: none; padding: 0; }
+  :where(img, svg, video, canvas) { display: block; max-inline-size: 100%; }
+  :where(input, button, select, textarea) { font: inherit; color: inherit; letter-spacing: inherit; }
+  :where(button) { cursor: pointer; }
+  :where(fieldset) { margin: 0; padding: 0; border: 0; min-inline-size: 0; }
+  :where([hidden]:not([hidden="until-found"])) { display: none !important; }
+}
+
+/* --------------------------------------------------------------- tokens -- */
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* Neutral axis: a cool graphite-violet (hue 275). The UI itself stays
+       monochrome — colour arrives only with a plugin (its --hue), the same
+       rule Livecut Redux's own editor follows. */
+    --paper:   light-dark(oklch(0.968 0.006 275), oklch(0.158 0.018 275));
+    --paper-2: light-dark(oklch(0.938 0.010 275), oklch(0.198 0.022 275));
+    --ink:     light-dark(oklch(0.205 0.022 275), oklch(0.955 0.006 275));
+    --ink-2:   light-dark(oklch(0.430 0.020 275), oklch(0.765 0.014 275)); /* AA on paper */
+    --line:        color-mix(in oklab, var(--ink) 13%, transparent);
+    --line-strong: color-mix(in oklab, var(--ink) 30%, transparent);
+    --surface:     color-mix(in oklab, var(--paper) 90%, transparent);
+    --surface-2:   color-mix(in oklab, var(--paper-2) 94%, transparent);
+    --focus:   light-dark(oklch(0.46 0.21 285), oklch(0.84 0.12 285));
+    --on-accent: oklch(0.16 0.02 275);
+
+    /* Media "screens" stay dark in both themes, like the plugins' own UIs. */
+    --screen:     oklch(0.135 0.02 275);
+    --screen-ink: oklch(0.93 0.01 275);
+    --screen-dim: oklch(0.62 0.02 275);
+
+    /* Thin-film interference: the one decorative colour, used sparingly. */
+    --film: linear-gradient(100deg in oklch longer hue, oklch(0.80 0.13 200), oklch(0.80 0.13 200));
+
+    /* Type */
+    --font-sans: "Anybody", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --step--2: clamp(0.72rem, 0.70rem + 0.08vw, 0.78rem);
+    --step--1: clamp(0.82rem, 0.80rem + 0.12vw, 0.9rem);
+    --step-0:  clamp(1rem, 0.96rem + 0.2vw, 1.12rem);
+    --step-1:  clamp(1.18rem, 1.08rem + 0.5vw, 1.45rem);
+    --step-2:  clamp(1.45rem, 1.22rem + 1.1vw, 2.15rem);
+    --step-3:  clamp(1.9rem, 1.4rem + 2.4vw, 3.3rem);
+
+    /* Space & shape */
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+    --space-5: 1.5rem;  --space-6: 2.5rem; --space-7: 4rem;    --space-8: 6.5rem;
+    --gutter: clamp(1rem, 0.6rem + 2vw, 2.5rem);
+    --radius-1: 4px; --radius-2: 8px; --radius-3: 14px;
+    --header-h: 3.75rem;
+    --hit: 1.75rem;                       /* ≥ 24px targets (WCAG 2.5.8) */
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: linear(0, 0.36 9%, 0.83 22%, 1.04 33%, 1.06 41%, 1.01 58%, 1);
+  }
+  @media (pointer: coarse) { :root { --hit: 2.75rem; } }       /* 44px on touch */
+
+  /* Per-plugin colour, derived from one number in the manifest.
+     Tints come from color-mix in oklab — never by nudging oklch lightness. */
+  [style*="--hue"] {
+    --accent:     oklch(0.75 0.16 var(--hue));
+    --accent-ink: light-dark(oklch(0.50 0.15 var(--hue)), oklch(0.82 0.12 var(--hue)));
+    --accent-wash: color-mix(in oklab, var(--accent) 13%, var(--paper));
+    --accent-line: color-mix(in oklab, var(--accent) 55%, transparent);
+  }
+}
+
+/* ----------------------------------------------------------------- base -- */
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    scroll-padding-block-start: calc(var(--header-h) + 1rem);
+    hanging-punctuation: first allow-end last;
+  }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  /* Native scroll lock while a modal dialog is open — no JS. */
+  html:has(dialog:modal) { overflow: hidden; }
+
+  body {
+    min-block-size: 100dvh;
+    font-family: var(--font-sans);
+    font-size: var(--step-0);
+    font-stretch: 100%;
+    line-height: 1.55;
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { line-height: 1.04; font-weight: 720; letter-spacing: -0.012em; text-wrap: balance; }
+  h2 { font-size: var(--step-3); font-stretch: 122%; }
+  h3 { font-size: var(--step-2); font-stretch: 118%; }
+  p, li, dd, summary { text-wrap: pretty; }
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; }
+  a:hover { text-decoration-thickness: 2px; }
+  code, kbd, samp, pre, .mono {
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    font-stretch: 87.5%;
+    font-weight: 420;
+    letter-spacing: 0;
+  }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+  ::selection { background: color-mix(in oklab, var(--focus) 32%, transparent); }
+  dialog::backdrop { background: color-mix(in oklab, oklch(0.12 0.02 275) 62%, transparent); }
+}
+
+/* --------------------------------------------------------------- layout -- */
+@layer layout {
+  .wrap { inline-size: min(100% - 2 * var(--gutter), 86rem); margin-inline: auto; }
+
+  .skip {
+    position: absolute; inset-inline-start: var(--gutter); inset-block-start: -10rem; z-index: 100;
+    padding: var(--space-2) var(--space-4); background: var(--ink); color: var(--paper); border-radius: var(--radius-1);
+    &:focus-visible { inset-block-start: var(--space-2); }
+  }
+
+  .site-header {
+    position: sticky; inset-block-start: 0; z-index: 20;
+    block-size: var(--header-h);
+    background: color-mix(in oklab, var(--paper) 78%, transparent);
+    backdrop-filter: blur(14px) saturate(1.4);
+    border-block-end: 1px solid var(--line);
+    timeline-scope: --catalog;
+  }
+  .site-header__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); block-size: 100%; }
+
+  /* The sticky 3D stage spans hero → release notes, then scrolls away.
+     content-visibility:auto lets the browser skip it off-screen, and the
+     contentvisibilityautostatechange event pauses the render loop. */
+  /* Stage and content share one grid cell, so the sticky stage is bounded by
+     the scope itself (a negative-margin overlay would keep it stuck — and
+     rendering — for a whole extra viewport after the scope ends). */
+  .stage-scope { display: grid; grid-template: "stack" / minmax(0, 1fr); isolation: isolate; }
+  .stage-scope > * { grid-area: stack; }
+  .stage {
+    position: sticky; inset-block-start: 0; z-index: 0; align-self: start;
+    block-size: 100lvh;                               /* lvh: no resize churn when mobile toolbars move */
+    pointer-events: none;
+    overflow: clip;
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 100lvh;
+  }
+  .stage > * { position: absolute; inset: 0; }
+  .stage-scope > :not(.stage) { position: relative; z-index: 1; min-inline-size: 0; }
+
+  .hero {
+    display: grid;
+    gap: var(--space-5);
+    min-block-size: calc(100dvh - var(--header-h));
+    padding-block: clamp(var(--space-6), 6vh, var(--space-8)) var(--space-6);
+    /* Narrow screens: sculpture first (it's the thesis), then the words, then the toys. */
+    grid-template: "grab" 38svh "copy" auto "dock" auto / minmax(0, 1fr);
+    padding-block-start: var(--space-4);
+    @media (width >= 64rem) {
+      grid-template: "copy grab" 1fr "copy dock" auto / minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: var(--space-6);
+      row-gap: 0;
+      padding-block-start: clamp(var(--space-6), 6vh, var(--space-8));
+    }
+  }
+  .hero__copy { grid-area: copy; align-self: center; container-type: inline-size; }
+  .hero__grab { grid-area: grab; @media (width >= 64rem) { min-block-size: 16rem; } }
+  .hero__dock { grid-area: dock; justify-self: end; inline-size: min(100%, 29rem); }
+
+  .section { padding-block: var(--space-8) var(--space-7); }
+  .section__head {
+    display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between;
+    gap: var(--space-4) var(--space-6); margin-block-end: var(--space-6);
+  }
+
+  .catalog__grid, .notes__grid {
+    display: grid; gap: var(--space-6);
+    grid-template-columns: minmax(0, 1fr);
+    @media (width >= 72rem) { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  }
+  .catalog__list {
+    container: catalog / inline-size;
+    display: grid; gap: var(--space-5);
+    align-content: start;
+  }
+  .stage-window {
+    display: none;
+    @media (width >= 72rem) {
+      display: block;
+      position: sticky; inset-block-start: calc(var(--header-h) + 2rem);
+      block-size: min(72svh, 46rem);
+    }
+  }
+
+  /* Below-the-fold sections: skip rendering work until they're near. */
+  .cv { content-visibility: auto; contain-intrinsic-block-size: auto 60rem; }
+  .install { background: var(--paper); position: relative; z-index: 2; }
+  .site-footer { background: var(--paper); position: relative; z-index: 2; }
+}
+
+/* ----------------------------------------------------------- components -- */
+@layer components {
+
+  /* Wordmark — Anybody at full width, plus a thin-film dot with a slice through it. */
+  .wordmark {
+    display: inline-flex; align-items: center; gap: 0.6rem;
+    text-decoration: none; font-stretch: 140%; font-weight: 760; font-size: 1.02rem; letter-spacing: -0.01em;
+    min-block-size: var(--hit); white-space: nowrap;
+    & b { font-weight: 360; }
+    @media (width < 34rem) { font-stretch: 108%; font-size: 0.92rem; & b { display: none; } }
+  }
+  .wordmark__mark {
+    inline-size: 1.35rem; aspect-ratio: 1; border-radius: 50%;
+    background:
+      linear-gradient(transparent 46%, var(--paper) 46% 56%, transparent 56%),
+      conic-gradient(from 210deg in oklch longer hue, oklch(0.78 0.14 210), oklch(0.78 0.14 210));
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+
+  .nav { display: flex; gap: clamp(0rem, 1.5vw, 1.5rem); }
+  .nav a {
+    display: inline-flex; align-items: center; min-block-size: var(--hit); padding-inline: 0.35rem;
+    text-decoration: none; font-size: var(--step--1); font-weight: 520; color: var(--ink-2); white-space: nowrap;
+    @media (width < 34rem) { font-size: var(--step--2); padding-inline: 0.3rem; }
+    position: relative;
+    &:hover { color: var(--ink); }
+  }
+  .nav__progress {
+    position: absolute; inset-inline: 0.35rem; inset-block-end: 0.15rem; block-size: 2px;
+    background: var(--film); transform-origin: 0 50%; scale: 0 1; opacity: 0;
+  }
+
+  .scroll-progress {
+    position: absolute; inset-inline: 0; inset-block-end: -1px; block-size: 2px;
+    background: var(--film); transform-origin: 0 50%; scale: 0 1;
+  }
+
+  /* Buttons ---------------------------------------------------------------- */
+  .btn {
+    --_bg: transparent; --_fg: var(--ink); --_bd: var(--line-strong);
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5em;
+    min-block-size: max(var(--hit), 2.5rem); min-inline-size: var(--hit);
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--_bd); border-radius: var(--radius-1);
+    background: var(--_bg); color: var(--_fg);
+    font-size: var(--step--1); font-weight: 620; font-stretch: 112%;
+    text-decoration: none; white-space: nowrap; line-height: 1.1;
+    transition: background-color .15s, border-color .15s, color .15s;
+    &:hover { --_bd: var(--ink); }
+    &:active { translate: 0 1px; }
+    &[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+  }
+  .btn--primary { --_bg: var(--ink); --_fg: var(--paper); --_bd: var(--ink);
+    &:hover { --_bg: color-mix(in oklab, var(--ink) 86%, var(--paper)); } }
+  .btn--accent { --_bg: var(--accent); --_fg: var(--on-accent); --_bd: var(--accent);
+    &:hover { --_bg: color-mix(in oklab, var(--accent) 84%, white); --_bd: var(--_bg); } }
+  .btn--quiet { --_bd: transparent; padding-inline: 0.6rem; &:hover { --_bd: var(--line-strong); } }
+  .btn__chev { inline-size: 0.6em; aspect-ratio: 1; border: solid currentColor; border-width: 0 1.5px 1.5px 0; rotate: 45deg; translate: 0 -0.15em; }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 0.4em;
+    padding: 0.15rem 0.5rem; border-radius: 999px;
+    font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; font-weight: 500;
+    border: 1px solid var(--line-strong); color: var(--ink-2); white-space: nowrap;
+  }
+  .tag--released { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-wash); }
+  .tag--beta { border-style: solid; }
+  .tag--concept { border-style: dashed; }
+  .tag--pending { border-style: dashed; color: var(--ink-2); font-size: 0.68rem; }
+  .dot { inline-size: 0.55em; aspect-ratio: 1; border-radius: 50%; background: var(--accent, var(--ink-2)); }
+
+  /* Hero ------------------------------------------------------------------- */
+  .hero__title {
+    /* The Formant macro drives the width axis: drag it and the headline's
+       letters stretch like a vowel opening up. Lines never re-wrap. */
+    font-size: clamp(2.6rem, 10.5cqi, 7.4rem);
+    font-stretch: calc(104% + var(--formant, 0.35) * 46%);
+    font-weight: 800;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+    margin-block-end: var(--space-5);
+    & span { display: block; white-space: nowrap; }
+    & .thin { font-weight: 300; margin-block-end: 0.06em; }   /* room for the descender of "by" */
+  }
+  .hero__lede { font-size: var(--step-1); max-inline-size: 36ch; color: var(--ink); line-height: 1.45; }
+  .hero__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-block-start: var(--space-5); }
+  .hero__latest { margin-block-start: var(--space-4); font-size: var(--step--1); color: var(--ink-2);
+    & a { color: var(--ink); } }
+
+  /* Transparent drag surfaces that sit over the sculpture. Horizontal drags
+     twist; vertical gestures stay with the page so scrolling never traps. */
+  .grab {
+    position: relative; touch-action: pan-y; cursor: grab;
+    -webkit-user-select: none; user-select: none;
+    &:active { cursor: grabbing; }
+  }
+  .grab__hint {
+    position: absolute; inset-block-start: 0.25rem; inset-inline-end: 0;
+    font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; color: var(--ink-2);
+    pointer-events: none; white-space: nowrap;
+  }
+
+  /* Fallback sculpture when no GPU path is available: CSS-only thin film orb. */
+  .fallback-orb { display: none; }
+  :root[data-stage="fallback"] .fallback-orb {
+    display: block; position: absolute; inset: 0; margin: auto;
+    inline-size: min(70%, 22rem); aspect-ratio: 1; border-radius: 50%;
+    background:
+      radial-gradient(circle at 34% 30%, oklch(1 0 0 / .85), transparent 22%),
+      conic-gradient(from 120deg in oklch longer hue, oklch(0.78 0.14 calc(var(--stage-hue) * 1deg)), oklch(0.78 0.14 calc(var(--stage-hue) * 1deg)));
+    mask: radial-gradient(circle, #000 60%, transparent 71%);
+    opacity: .9;
+  }
+
+  /* Stage light: a soft pool behind the sculpture, tinted by the plugin. */
+  .stage__light {
+    background:
+      radial-gradient(38rem 30rem at var(--stage-x, 70%) var(--stage-y, 46%),
+        color-mix(in oklab, oklch(0.72 0.15 var(--stage-hue)) var(--stage-light, 22%), transparent), transparent 70%);
+    transition: --stage-hue 900ms var(--ease-out);
+  }
+  .stage canvas { inline-size: 100%; block-size: 100%; opacity: 0; transition: opacity 900ms var(--ease-out); }
+  :root[data-stage="live"] .stage canvas { opacity: 1; }
+
+  /* Hoberman cursor: a decorative linkage sphere that trails fine pointers. */
+  .hoberman {
+    position: fixed; inset-block-start: 0; inset-inline-start: 0; z-index: 40;
+    inline-size: 180px; block-size: 180px; pointer-events: none; will-change: transform;
+  }
+
+  /* Macro dock ------------------------------------------------------------- */
+  .dock {
+    position: relative;
+    padding: var(--space-3) var(--space-4) var(--space-3);
+    border-radius: var(--radius-3);
+    background: color-mix(in oklab, var(--paper-2) 72%, transparent);
+    backdrop-filter: blur(18px) saturate(1.4);   /* the sculpture frosts behind it */
+    border: 1px solid var(--line);
+    display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr);
+    &::before {   /* thin-film hairline across the top: the dock's only ornament */
+      content: ""; position: absolute; inset-inline: var(--space-4); inset-block-start: -1px; block-size: 1px; background: var(--film);
+    }
+  }
+  .dock__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 var(--space-3); }
+  .dock__title { font-size: var(--step-0); font-stretch: 120%; font-weight: 700; }
+  .dock__meta { color: var(--ink-2); font-size: var(--step--2); }
+  .dock__note { font-size: var(--step--2); color: var(--ink-2); }
+  .dock__row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
+
+  .forms { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .forms legend { position: absolute; clip-path: inset(50%); }  /* visually hidden; read by AT */
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    min-block-size: var(--hit); padding: 0.2rem 0.65rem 0.2rem 0.5rem; border-radius: 999px;
+    border: 1px solid var(--line); font-size: var(--step--2); font-weight: 600; cursor: pointer; white-space: nowrap;
+    & input { position: absolute; opacity: 0; pointer-events: none; }
+    & .glyph { inline-size: 0.95rem; aspect-ratio: 1; fill: currentColor; stroke: currentColor; opacity: .7; }
+    &:has(:checked) { border-color: var(--accent); background: var(--accent-wash); color: var(--accent-ink); & .glyph { opacity: 1; } }
+    &:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  }
+
+  input[type="range"] {
+    accent-color: var(--ink);
+    min-block-size: var(--hit);
+    inline-size: 100%;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  /* Vowel space: the five-vowel chart (F1 down = more open, F2 left = more front).
+     Letters swell along Anybody's width + weight axes as the puck nears them. */
+  .vowel {
+    display: grid; gap: 0.15rem var(--space-2);
+    grid-template: "xl yt" auto "pad y" auto "x yb" auto "read read" auto / minmax(0, 1fr) auto;
+  }
+  .vowel__pad {
+    grid-area: pad; position: relative; aspect-ratio: 16 / 9; overflow: clip;
+    border-radius: var(--radius-2); border: 1px solid var(--line-strong);
+    background: color-mix(in oklab, var(--paper) 55%, transparent);
+    touch-action: none; cursor: crosshair;
+    /* crosshair through the puck */
+    &::before, &::after { content: ""; position: absolute; background: var(--line-strong); pointer-events: none; }
+    &::before { inset-inline: 0; inset-block-start: calc(9% + var(--y, .6) * 58%); block-size: 1px; }
+    &::after { inset-block: 0; inset-inline-start: calc(8% + var(--x, .5) * 84%); inline-size: 1px; }
+  }
+  .vowel__art { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; pointer-events: none; overflow: visible; }
+  .vowel__arc  { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+  .vowel__comb { fill: none; stroke: color-mix(in oklab, var(--ink) 35%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .vowel__fill { fill: color-mix(in oklab, var(--accent) 16%, transparent); }
+  .vowel__line { fill: none; stroke: var(--accent-ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .vowel__v {
+    position: absolute; translate: -50% -55%; pointer-events: none; line-height: 1;
+    inset-inline-start: calc(8% + var(--vx) * 84%); inset-block-start: calc(9% + var(--vy) * 58%);
+    font-size: clamp(1.9rem, 1.1rem + 2.1vw, 3.2rem);
+    font-stretch: calc(62% + var(--w, 0) * 88%);
+    font-weight: calc(240 + var(--w, 0) * 660);
+    color: color-mix(in oklab, var(--accent-ink) calc(var(--w, 0) * 100%), var(--ink-2));
+    opacity: calc(.4 + var(--w, 0) * .6);
+  }
+  .vowel__puck {
+    position: absolute; inline-size: 1.25rem; aspect-ratio: 1; border-radius: 50%; translate: -50% -50%; pointer-events: none;
+    inset-inline-start: calc(8% + var(--x, .5) * 84%); inset-block-start: calc(9% + var(--y, .6) * 58%);
+    border: 1.5px solid var(--ink); background: color-mix(in oklab, var(--paper) 60%, transparent);
+    box-shadow: 0 0 0 7px color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+  /* Axis words live outside the pad, so they never collide with the vowels. */
+  .vowel__axis { font-family: var(--font-mono); font-size: 0.62rem; font-stretch: 87.5%; color: var(--ink-2); line-height: 1.2; }
+  .vowel__axis--x { grid-area: xl; display: flex; justify-content: space-between; padding-inline: 0.25rem; }
+  .vowel__axis--top { grid-area: yt; justify-self: center; align-self: end; }
+  .vowel__axis--bottom { grid-area: yb; justify-self: center; align-self: center; }
+  .vowel__x { grid-area: x; }
+  .vowel__y {
+    grid-area: y; writing-mode: vertical-lr;            /* native vertical range: close at top, open at bottom */
+    width: var(--hit); height: 100%; min-block-size: 0; min-inline-size: 0;   /* physical: in vertical-lr, inline-size IS the height */
+  }
+  .vowel__read { grid-area: read; display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+  .vowel__ipa { font-size: var(--step-1); font-weight: 760; font-stretch: 130%; color: var(--accent-ink); }
+  .vowel__read .mono { color: var(--ink-2); font-size: var(--step--2); }
+
+  /* Slice + Chaos: each control draws what it does. */
+  .dock__pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+  .macro { display: grid; gap: 0.2rem; min-inline-size: 0; }
+  .macro__top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+  .macro label { font-size: var(--step--1); font-weight: 650; }
+  .macro output { font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; color: var(--ink-2); }
+  .ruler {
+    block-size: 0.7rem;
+    background:
+      repeating-linear-gradient(90deg, var(--ink) 0 1.5px, transparent 1.5px calc(100% / 4)) 0 0 / 100% 100%,
+      repeating-linear-gradient(90deg, var(--ink-2) 0 1px, transparent 1px calc(100% / var(--div, 16))) 0 100% / 100% 55%;
+    background-repeat: no-repeat;
+    border-inline-end: 1.5px solid var(--ink);
+  }
+  .noise { inline-size: 100%; block-size: 0.9rem; overflow: visible; }
+  .noise path { fill: none; stroke: var(--accent-ink); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .glitch {    /* a still RGB split that widens with Chaos — no flicker */
+    text-shadow: calc(var(--chaos, 0) * 3px) 0 oklch(0.78 0.14 200 / .75), calc(var(--chaos, 0) * -3px) 0 oklch(0.7 0.2 350 / .75);
+  }
+
+  /* Fine-print plate -------------------------------------------------------- */
+  .plate { padding-block: var(--space-6); }
+  .plate__inner {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-3);
+    padding: clamp(var(--space-4), 3vw, var(--space-6));
+    display: grid; gap: var(--space-5);
+    @media (width >= 64rem) { grid-template-columns: minmax(0, 0.7fr) minmax(0, 2fr); }
+  }
+  .plate__title { font-size: var(--step-2); font-stretch: 125%; }
+  .plate__intro { color: var(--ink-2); margin-block-start: var(--space-3); max-inline-size: 34ch; }
+  .plate__grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    border-block-start: 1px solid var(--line);
+    & > div { padding: var(--space-3) var(--space-3) var(--space-3) 0; border-block-end: 1px solid var(--line); }
+    & dt { font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; color: var(--ink-2); }
+    & dd { font-weight: 560; margin-block-start: 0.15rem; }
+  }
+
+  /* Filters (<search>) ----------------------------------------------------- */
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+  .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.45em;
+    min-block-size: max(var(--hit), 2.25rem); padding: 0.3rem 0.85rem; border-radius: 999px;
+    border: 1px solid var(--line-strong); font-size: var(--step--1); font-weight: 580; cursor: pointer;
+    background: var(--surface);
+    & input { position: absolute; opacity: 0; pointer-events: none; }
+    & .count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-2); }
+    /* Pure-CSS selected state, no class toggling. */
+    &:has(:checked) { background: var(--ink); color: var(--paper); border-color: var(--ink); & .count { color: inherit; opacity: .7; } }
+    &:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  }
+  .search-field {
+    display: flex; align-items: center; gap: var(--space-2);
+    & input {
+      min-block-size: max(var(--hit), 2.25rem); inline-size: min(16rem, 60vw);
+      padding: 0.3rem 0.8rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface);
+    }
+  }
+  .result-count { font-family: var(--font-mono); font-size: var(--step--2); color: var(--ink-2); }
+
+  /* Plugin module ---------------------------------------------------------- */
+  .plugin {
+    view-transition-class: plugin;
+    position: relative;
+    display: grid; grid-template-areas: "media" "body" "facts" "loops"; grid-template-columns: minmax(0, 1fr);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-3);
+    overflow: clip;
+    transition: border-color .25s;
+    &::before {     /* the plugin's colour, one hairline, nothing more */
+      content: ""; position: absolute; inset-inline: 0; inset-block-start: 0; block-size: 3px; background: var(--accent); z-index: 2;
+    }
+    &:hover, &:focus-within, &[data-active] { border-color: var(--accent-line); }
+  }
+  @container catalog (inline-size >= 46rem) {
+    /* Facts sit under the screen, the story beside it: both columns end near the same line. */
+    .plugin { grid-template-areas: "media body" "facts body" "loops loops"; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
+    .plugin__body { padding-block: var(--space-5); }
+    .plugin__facts { padding-block-start: var(--space-4); }
+  }
+  .plugin__body { grid-area: body; padding: var(--space-4) var(--space-5) 0; display: grid; gap: var(--space-3); align-content: start; }
+  .plugin__facts { grid-area: facts; padding: var(--space-4) var(--space-5) var(--space-5); display: grid; gap: var(--space-3); align-content: start; }
+  .plugin__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2) var(--space-3); }
+  .plugin__name { font-size: var(--step-2); font-stretch: 116%; font-weight: 760; }
+  .plugin__kind { font-size: var(--step--1); color: var(--accent-ink); font-weight: 620; }
+  .plugin__summary { color: var(--ink); }
+  .specs {
+    display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem var(--space-3);
+    font-size: var(--step--1);
+    & dt { font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; color: var(--ink-2); padding-block-start: 0.15rem; }
+    & dd { font-weight: 520; }
+  }
+  .plugin__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+  /* 16:9 media frame: video when wired, procedural sketch until then. */
+  .plugin__media { grid-area: media; }    /* only inside a card — elsewhere it would mint implicit grid tracks */
+  .media {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen); color: var(--screen-ink); overflow: clip;
+    & > video, & > .sketch { inline-size: 100%; block-size: 100%; object-fit: cover; }
+  }
+  .media__toggle {
+    position: absolute; inset-block-start: 0.6rem; inset-inline-end: 0.6rem; z-index: 2;
+    display: grid; place-items: center; inline-size: max(var(--hit), 2rem); aspect-ratio: 1;
+    border-radius: 50%; border: 1px solid oklch(1 0 0 / .25); background: oklch(0.13 0.02 275 / .55); color: var(--screen-ink);
+    &::before { content: ""; inline-size: 0.55rem; block-size: 0.7rem; border-inline: 3px solid currentColor; }   /* pause glyph */
+    &[aria-pressed="true"]::before {   /* play glyph */
+      border: 0; inline-size: 0; block-size: 0; border-block: 0.38rem solid transparent; border-inline-start: 0.6rem solid currentColor; translate: 0.1rem 0;
+    }
+  }
+  .media__caption {
+    position: absolute; inset-inline: 0; inset-block-end: 0; z-index: 2;
+    padding: 1.4rem 0.75rem 0.5rem;
+    background: linear-gradient(transparent, oklch(0.12 0.02 275 / .9) 55%);
+    font-family: var(--font-mono); font-size: 0.66rem; font-stretch: 87.5%; color: var(--screen-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Procedural sketches. Animations only run when the frame is visible and
+     motion is on (JS sets data-motion from prefers-reduced-motion + the toggle). */
+  .sketch { --a: oklch(0.75 0.16 var(--hue)); --a2: oklch(0.8 0.13 calc(var(--hue) + 160)); font-family: var(--font-mono); }
+  .sketch text { fill: var(--screen-dim); font-size: 10px; font-stretch: 87.5%; }
+  .sketch .t-on { fill: var(--on-accent); font-weight: 600; }
+  .sketch .fill-a { fill: var(--a); }
+  .sketch .stroke-a { stroke: var(--a); }
+  .sketch .wave rect { fill: oklch(0.86 0.01 275 / .82); }
+  .sketch .grid line { stroke: oklch(1 0 0 / .08); }
+  .sketch :is(g, rect, line, circle, path, polygon) { transform-box: view-box; }
+  .media .sketch * { animation-play-state: paused; }
+  .media[data-motion="on"][data-visible] .sketch * { animation-play-state: running; }
+
+  .sk-play   { animation: sk-play var(--dur, 5.58s) linear infinite; }
+  /* Photosensitivity: nothing in the sketches switches instantly. Blocks glide and hold;
+     highlights fade over seconds; the fastest light change is a single slow swell. */
+  .sk-shunt  { animation: sk-shunt var(--dur, 11.16s) cubic-bezier(.65, 0, .25, 1) infinite; animation-delay: var(--d, 0s); }
+  .sk-glow   { opacity: 0; animation: sk-glow var(--dur, 11.16s) ease-in-out infinite; animation-delay: var(--d, 0s); }
+  .sk-vowel  { animation: sk-vowel 3.8s ease-in-out infinite alternate; }
+  .sk-spin   { transform-origin: 320px 180px; animation: sk-spin var(--dur, 6s) linear infinite; }
+  .sk-tick   { transform-origin: 320px 26px; animation: sk-tick calc(var(--dur, .47s) * 4) ease-in-out infinite alternate; }
+  .sk-shimmer{ animation: sk-shimmer 2.4s ease-in-out infinite alternate; animation-delay: var(--d, 0s); }
+  .sk-chime  { transform-origin: 0 318px; animation: sk-chime var(--dur, 1.79s) cubic-bezier(.1,.7,.3,1) infinite; animation-delay: var(--d, 0s); }
+
+  @keyframes sk-play  { from { translate: 0 0; } to { translate: 592px 0; } }
+  @keyframes sk-shunt { 0%, 18% { translate: 0 0; } 25%, 43% { translate: var(--dx, -37px) 0; } 50%, 68% { translate: 0 var(--dy, 0px); } 75%, 93% { translate: calc(var(--dx, -37px) * -1) 0; } 100% { translate: 0 0; } }
+  @keyframes sk-glow  { 0%, 100% { opacity: 0; } 50% { opacity: .22; } }
+  @keyframes sk-vowel { from { translate: var(--xa) 0; } to { translate: var(--xb) 0; } }
+  @keyframes sk-spin  { to { rotate: 1turn; } }
+  @keyframes sk-tick  { from { opacity: .9; scale: 1.3; } to { opacity: .5; scale: 1; } }
+  @keyframes sk-shimmer { from { opacity: .25; } to { opacity: .95; } }
+  @keyframes sk-chime { 0% { scale: 1 1; opacity: 1; } 100% { scale: 1 .18; opacity: .45; } }
+
+  /* Demo loops drawer ------------------------------------------------------ */
+  .loops { grid-area: loops; border-block-start: 1px solid var(--line); }
+  .loops > summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-5); min-block-size: max(var(--hit), 2.75rem);
+    cursor: pointer; list-style: none; font-weight: 620; font-size: var(--step--1);
+    &::-webkit-details-marker { display: none; }
+    &::before { content: ""; inline-size: 0.5em; aspect-ratio: 1; border: solid currentColor; border-width: 0 1.5px 1.5px 0; rotate: -45deg; transition: rotate .2s; }
+    & .mono { color: var(--ink-2); font-weight: 420; }
+  }
+  .loops[open] > summary::before { rotate: 45deg; }
+  .loops__body { padding: 0 var(--space-5) var(--space-5); display: grid; gap: var(--space-3); }
+  .loop {
+    display: grid; gap: var(--space-2) var(--space-4); align-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    padding-block: var(--space-3); border-block-start: 1px solid var(--line);
+    @container catalog (inline-size >= 40rem) { grid-template-columns: minmax(0, 1fr) auto; }
+  }
+  .loop__title { font-weight: 600; }
+  .loop__meta { color: var(--ink-2); font-size: var(--step--2); display: block; margin-block-start: 0.1rem; }
+  .loop__files { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .file-link {
+    display: inline-flex; align-items: baseline; gap: 0.45em;
+    min-block-size: var(--hit); padding: 0.3rem 0.7rem; border-radius: var(--radius-1);
+    border: 1px solid var(--line-strong); text-decoration: none; font-size: var(--step--1); font-weight: 600;
+    & .mono { color: var(--ink-2); font-weight: 400; }
+    &:is(a):hover { border-color: var(--ink); }
+    &.is-pending { border-style: dashed; color: var(--ink-2); }
+  }
+  .loops__all { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+
+  /* Download popover (anchored) ------------------------------------------- */
+  .dl-pop {
+    /* Fallback: the UA's default popover style centres it in the viewport. */
+    inline-size: min(27rem, 100vw - 2rem);
+    padding: var(--space-3); margin: auto;
+    border: 1px solid var(--line-strong); border-radius: var(--radius-3);
+    background: var(--paper); color: var(--ink);
+    box-shadow: 0 1px 0 var(--line), 0 24px 60px -24px oklch(0.1 0.02 275 / .45);
+    @supports (anchor-name: --a) {
+      inset: auto; margin: 0.4rem 0;
+      position-area: block-end span-inline-end;
+      position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    }
+  }
+  .dl-pop__head { padding: var(--space-2) var(--space-2) var(--space-3); display: grid; gap: 0.1rem; }
+  .dl-pop__title { font-weight: 700; font-stretch: 115%; }
+  .dl-pop__sub { font-size: var(--step--2); color: var(--ink-2); }
+  .dl-list { display: grid; gap: 0.25rem; }
+  .dl-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 0.1rem var(--space-3); align-items: center;
+    padding: var(--space-3); border-radius: var(--radius-2); border: 1px solid transparent;
+    text-decoration: none; min-block-size: var(--hit);
+    &:is(a):hover { background: var(--accent-wash); border-color: var(--accent-line); }
+    &:is(a):hover .dl-row__go { translate: 2px 0; }
+    &.is-unavailable { color: var(--ink-2); }
+  }
+  .dl-row__os { font-weight: 700; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+  .dl-row__detail { grid-column: 1; font-size: var(--step--2); color: var(--ink-2); }
+  .dl-row__go { grid-row: 1 / span 2; grid-column: 2; font-family: var(--font-mono); font-size: var(--step--2); transition: translate .15s; }
+  .yours { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; padding: 0.05rem 0.4rem; border-radius: 999px; background: var(--ink); color: var(--paper); }
+  .sign-ok   { color: var(--accent-ink); }
+  .sign-none { color: var(--ink-2); }
+  .dl-pop__foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-1); border-block-start: 1px solid var(--line); margin-block-start: var(--space-2); font-size: var(--step--1); }
+  .build pre {
+    margin-block: var(--space-2); padding: var(--space-3); border-radius: var(--radius-2);
+    background: var(--screen); color: var(--screen-ink); overflow-x: auto; font-size: 0.74rem; line-height: 1.6;
+  }
+
+  /* Dialog sheets ---------------------------------------------------------- */
+  .sheet {
+    inline-size: min(54rem, 100vw - 1.5rem); max-block-size: min(92dvh, 64rem);
+    padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-3);
+    background: var(--paper); color: var(--ink);
+    overscroll-behavior: contain;
+    &::before { content: ""; display: block; block-size: 3px; background: var(--accent, var(--film)); }
+  }
+  .sheet__head {
+    position: sticky; inset-block-start: 0; z-index: 3; display: flex; justify-content: space-between; align-items: start; gap: var(--space-4);
+    padding: var(--space-5) var(--space-5) var(--space-4); background: color-mix(in oklab, var(--paper) 92%, transparent); backdrop-filter: blur(10px);
+    border-block-end: 1px solid var(--line);
+  }
+  .sheet__head h2 { font-size: var(--step-3); font-stretch: 130%; }
+  .sheet__tagline { color: var(--ink-2); margin-block-start: var(--space-2); max-inline-size: 52ch; }
+  .sheet__body { padding: var(--space-5); display: grid; gap: var(--space-6); }
+  .sheet__body h3 { font-size: var(--step-1); font-stretch: 118%; margin-block-end: var(--space-3); }
+  .sheet__foot {
+    position: sticky; inset-block-end: 0; display: flex; flex-wrap: wrap; justify-content: end; gap: var(--space-2);
+    padding: var(--space-4) var(--space-5); background: color-mix(in oklab, var(--paper) 92%, transparent); backdrop-filter: blur(10px);
+    border-block-start: 1px solid var(--line);
+    & form { display: contents; }
+  }
+  .defs { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    & div { border-inline-start: 2px solid var(--accent-line); padding-inline-start: var(--space-3); }
+    & dt { font-weight: 700; } & dd { color: var(--ink-2); font-size: var(--step--1); } }
+  .file-card {
+    display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-2);
+    & + .file-card { margin-block-start: var(--space-3); }
+  }
+  .file-card__top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+  .hash { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 0; }
+  .hash code {
+    flex: 1; min-inline-size: 0; overflow-wrap: anywhere; padding: var(--space-2) var(--space-3);
+    background: var(--paper-2); border-radius: var(--radius-1); font-size: 0.72rem; line-height: 1.5;
+  }
+  .copy { flex: none; }
+  .releases { display: grid; gap: var(--space-4); }
+  .release h4 { font-size: var(--step-0); font-stretch: 112%; }
+  .release ul { padding-inline-start: 1.1rem; color: var(--ink-2); font-size: var(--step--1); }
+  .status-live { position: absolute; clip-path: inset(50%); }
+
+  .video-sheet video, .video-sheet .sketch { inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; background: var(--screen); border-radius: var(--radius-2); }
+  .video-sheet .media { border-radius: var(--radius-2); }
+
+  /* Release notes ---------------------------------------------------------- */
+  .notes__list { display: grid; gap: 0; border-block-start: 1px solid var(--line); }
+  .note {
+    display: grid; gap: var(--space-2) var(--space-5); padding-block: var(--space-5); border-block-end: 1px solid var(--line);
+    background: linear-gradient(90deg, var(--surface), transparent);
+    @media (width >= 48rem) { grid-template-columns: 9rem minmax(0, 1fr); }
+    & time { font-family: var(--font-mono); font-size: var(--step--1); font-stretch: 87.5%; color: var(--ink-2); padding-block-start: 0.35rem; }
+    & h3 { font-size: var(--step-1); font-stretch: 116%; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
+    & ul { margin-block: var(--space-2) var(--space-3); padding-inline-start: 1.1rem; display: grid; gap: 0.3rem; }
+  }
+  .bench { margin-block-start: var(--space-5); color: var(--ink-2); font-size: var(--step--1); }
+
+  /* Install notes (exclusive accordion) ------------------------------------ */
+  .faq { display: grid; border-block-start: 1px solid var(--line); max-inline-size: 60rem; }
+  .faq details { border-block-end: 1px solid var(--line); }
+  .faq summary {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--space-4);
+    padding-block: var(--space-4); min-block-size: max(var(--hit), 3rem); cursor: pointer; list-style: none;
+    font-size: var(--step-1); font-stretch: 112%; font-weight: 650;
+    &::-webkit-details-marker { display: none; }
+    &::after { content: "+"; font-family: var(--font-mono); font-weight: 300; font-size: 1.4em; line-height: 1; transition: rotate .2s; }
+  }
+  .faq details[open] summary::after { rotate: 45deg; }
+  .faq__body { padding-block-end: var(--space-5); display: grid; gap: var(--space-3); max-inline-size: 65ch; color: var(--ink);
+    & pre { padding: var(--space-3); background: var(--screen); color: var(--screen-ink); border-radius: var(--radius-2); overflow-x: auto; font-size: 0.74rem; line-height: 1.7; }
+    & ul { padding-inline-start: 1.2rem; display: grid; gap: 0.3rem; } }
+
+  .site-footer { padding-block: var(--space-7); border-block-start: 1px solid var(--line); font-size: var(--step--1); color: var(--ink-2); }
+  .site-footer__grid { display: grid; gap: var(--space-5); @media (width >= 56rem) { grid-template-columns: 1.4fr 1fr 1fr; } }
+  .site-footer h2 { font-size: var(--step-0); font-stretch: 120%; color: var(--ink); margin-block-end: var(--space-2); }
+  .site-footer ul { display: grid; gap: 0.2rem; }
+  .site-footer a { display: inline-flex; min-block-size: var(--hit); align-items: center; }
+
+  .empty { padding: var(--space-6) var(--space-5); border: 1px dashed var(--line-strong); border-radius: var(--radius-3); display: grid; gap: var(--space-3); justify-items: start; }
+
+  .window-label {
+    position: absolute; inset-inline: 0; inset-block-end: 0;
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+    padding-block-start: var(--space-3); border-block-start: 1px solid var(--line);
+    font-size: var(--step--1);
+    & b { font-stretch: 125%; font-size: var(--step-1); }
+  }
+}
+
+/* ------------------------------------------------------------ utilities -- */
+@layer utilities {
+  .visually-hidden { position: absolute !important; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .muted { color: var(--ink-2); }
+}
+
+/* -------------------------------------------------------- top-layer motion
+   Dialogs and popovers fade/slide in and out of the top layer with
+   @starting-style + allow-discrete. `overlay` keeps them in the top layer
+   for the exit transition (Chromium; harmlessly ignored elsewhere). */
+@media (prefers-reduced-motion: no-preference) {
+  .dl-pop, .sheet {
+    opacity: 0; translate: 0 6px;
+    transition: opacity .2s var(--ease-out), translate .24s var(--ease-out),
+                display .24s allow-discrete, overlay .24s allow-discrete;
+  }
+  .dl-pop:popover-open, .sheet[open] {
+    opacity: 1; translate: 0 0;
+    @starting-style { opacity: 0; translate: 0 6px; }
+  }
+  .sheet::backdrop { opacity: 0; transition: opacity .24s, display .24s allow-discrete, overlay .24s allow-discrete; }
+  .sheet[open]::backdrop { opacity: 1; @starting-style { opacity: 0; } }
+
+  /* Filter rearrangement: shared view-transition-class for every card. */
+  ::view-transition-group(*.plugin) { animation-duration: 420ms; animation-timing-function: var(--ease-out); }
+  ::view-transition-old(*.plugin):only-child { animation: vt-out 220ms var(--ease-out) both; }
+  ::view-transition-new(*.plugin):only-child { animation: vt-in 320ms var(--ease-out) both; }
+  @keyframes vt-out { to { opacity: 0; scale: .97; } }
+  @keyframes vt-in  { from { opacity: 0; scale: .97; } }
+}
+/* Only named cards take part; the rest of the page stays live and clickable. */
+:root { view-transition-name: none; }
+::view-transition { pointer-events: none; }
+
+/* ------------------------------------------------- scroll-driven choreography
+   Decorative only, compositor-friendly (transform/opacity), and gated on real
+   support including animation-range. animation-timeline/range come AFTER the
+   animation shorthand, which would otherwise reset them. No polyfill. */
+@supports ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scroll-progress {
+      animation: grow-x linear both;
+      animation-timeline: scroll(root block);
+    }
+    #plugins { view-timeline-name: --catalog; }
+    .nav__progress {
+      animation: grow-x linear both;
+      animation-timeline: --catalog;      /* timeline-scope on the header makes this reachable */
+      animation-range: contain 0% contain 100%;
+    }
+    .hero__copy {
+      animation: hero-exit linear both;
+      animation-timeline: view();
+      animation-range: exit 10% exit 90%;
+    }
+    .plugin, .note {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+    @keyframes grow-x { from { scale: 0 1; opacity: 1; } to { scale: 1 1; opacity: 1; } }
+    @keyframes hero-exit { to { opacity: 0; translate: 0 -6vh; } }
+    @keyframes rise { from { opacity: .35; translate: 0 2.5rem; } to { opacity: 1; translate: 0 0; } }
+  }
+}
+
+/* ------------------------------------------------------- forced colours ---- */
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid Highlight; }
+  .btn, .pill, .chip, .tag, .plugin, .dock, .plate__inner, .dl-pop, .sheet, .file-link, .vowel__pad, .file-card, .search-field input {
+    border-color: CanvasText;
+  }
+  .pill:has(:checked), .chip:has(:checked) { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .btn--primary, .btn--accent { background: ButtonText; color: ButtonFace; forced-color-adjust: none; }
+  .plugin::before, .sheet::before, .dock::before, .scroll-progress, .nav__progress { background: CanvasText; }
+  .vowel__puck { border-color: CanvasText; }
+  .vowel__v { color: CanvasText; }
+  .stage, .hoberman { display: none; }
+}
+</style>
+</head>
+
+<body id="top">
+<a class="skip" href="#main">Skip to the plugins</a>
+
+<header class="site-header">
+  <div class="wrap site-header__bar">
+    <a class="wordmark" href="#top" aria-label="Human Being Audio, back to top"><span class="wordmark__mark" aria-hidden="true"></span><span>Human Being <b>Audio</b></span></a>
+    <nav aria-label="Primary">
+      <ul class="nav" role="list">
+        <li><a href="#plugins">Plugins<span class="nav__progress" aria-hidden="true"></span></a></li>
+        <li><a href="#notes">Notes</a></li>
+        <li><a href="#install">Install</a></li>
+        <li><a href="https://github.com/seandearnaley" rel="noopener">GitHub<span aria-hidden="true">&nbsp;↗</span></a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="scroll-progress" aria-hidden="true"></div>
+</header>
+
+<div class="stage-scope">
+  <!-- The 3D stage: decorative, silent, and paused whenever it can't be seen. -->
+  <div class="stage" id="stage" aria-hidden="true">
+    <div class="stage__light"></div>
+    <div class="fallback-orb"></div>
+    <canvas id="stage-canvas"></canvas>
+  </div>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero__copy">
+        <h1 class="hero__title" id="hero-title">
+          <span>Free plugins</span>
+          <span class="thin">by</span>
+          <span>Human Being.</span>
+        </h1>
+        <p class="hero__lede">I write software for a living and make experimental computer music at night. These are the tools I build for that, given away: no account, no DRM, no installer manager. Download from GitHub, check the SHA-256, make noise.</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#plugins">Browse the plugins</a>
+          <a class="btn" href="#install">How installing works</a>
+        </div>
+        <p class="hero__latest" id="hero-latest"></p>
+      </div>
+
+      <div class="hero__grab grab" data-grab aria-hidden="true">
+        <span class="grab__hint">drag to twist · tap to hit</span>
+      </div>
+
+      <aside class="hero__dock dock" aria-labelledby="dock-title" style="--hue:43">
+        <div class="dock__head">
+          <h2 class="dock__title" id="dock-title">Play with the sculpture</h2>
+          <span class="dock__meta mono" data-backend>3D: loading…</span>
+        </div>
+
+        <fieldset class="forms" id="form-picker">
+          <legend>Form</legend>
+          <!-- form chips rendered from FORMS (a shared visual library, not one per plugin) -->
+        </fieldset>
+
+        <div class="vowel">
+          <span class="vowel__axis vowel__axis--x" aria-hidden="true"><span>front</span><span>back</span></span>
+          <span class="vowel__axis vowel__axis--top" aria-hidden="true">close</span>
+          <span class="vowel__axis vowel__axis--bottom" aria-hidden="true">open</span>
+          <div class="vowel__pad" data-vowel-pad aria-hidden="true">
+            <svg class="vowel__art" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polyline class="vowel__arc" data-arc points=""/>
+              <path class="vowel__comb" data-comb d=""/>
+              <path class="vowel__fill" data-env-fill d=""/>
+              <path class="vowel__line" data-env-line d=""/>
+            </svg>
+            <!-- vowel letters rendered from VOWELS -->
+            <span class="vowel__puck"></span>
+          </div>
+          <input class="vowel__y" id="m-open" type="range" min="0" max="100" value="80" data-macro="open" aria-label="Vowel height, close to open">
+          <input class="vowel__x" id="m-formant" type="range" min="0" max="100" value="60" data-macro="formant" aria-label="Vowel position, front to back">
+          <p class="vowel__read">
+            <output class="vowel__ipa" data-readout="vowel" for="m-formant m-open">/a/</output>
+            <span class="mono" data-readout="hz"></span>
+          </p>
+        </div>
+
+        <div class="dock__pair">
+          <div class="macro">
+            <div class="macro__top"><label for="m-slice">Slice</label><output for="m-slice" data-readout="slice">16ths</output></div>
+            <div class="ruler" aria-hidden="true"></div>
+            <input id="m-slice" type="range" min="0" max="100" value="50" data-macro="slice">
+          </div>
+          <div class="macro">
+            <div class="macro__top"><label for="m-chaos"><span class="glitch">Chaos</span></label><output for="m-chaos" data-readout="chaos">15%</output></div>
+            <svg class="noise" viewBox="0 0 120 16" preserveAspectRatio="none" aria-hidden="true"><path data-noise d=""/></svg>
+            <input id="m-chaos" type="range" min="0" max="100" value="15" data-macro="chaos">
+          </div>
+        </div>
+
+        <div class="dock__row">
+          <p class="dock__note">These move pixels, not air.<br>This page never makes a sound.</p>
+          <span>
+            <button class="btn btn--quiet" type="button" data-hit>Hit it</button>
+            <button class="btn btn--quiet" type="button" data-freeze aria-pressed="false">Freeze</button>
+          </span>
+        </div>
+      </aside>
+    </section>
+
+    <section class="plate" aria-labelledby="plate-title">
+      <div class="wrap">
+        <div class="plate__inner">
+          <div>
+            <h2 class="plate__title" id="plate-title">The fine print, up front</h2>
+            <p class="plate__intro">Worked out from the release files themselves, so it can't promise what hasn't shipped.</p>
+          </div>
+          <dl class="plate__grid" id="plate"></dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="section catalog" id="plugins" aria-labelledby="plugins-title">
+      <div class="wrap">
+        <div class="section__head">
+          <h2 id="plugins-title">The plugins</h2>
+          <search>
+            <form class="filters" id="filters" role="none">
+              <fieldset>
+                <legend class="visually-hidden">Category</legend>
+                <div class="pills" id="pills"></div>
+              </fieldset>
+              <label class="search-field">
+                <span class="visually-hidden">Search plugins</span>
+                <input type="search" id="q" name="q" placeholder="VST3, bass, slicer…" autocomplete="off" enterkeyhint="search">
+              </label>
+              <output class="result-count" id="result-count" for="q"></output>
+            </form>
+          </search>
+        </div>
+
+        <div class="catalog__grid">
+          <div class="catalog__list" id="catalog"></div>
+          <div class="stage-window grab" data-grab data-anchor="catalog" aria-hidden="true">
+            <p class="window-label"><b data-window-name>Livecut Redux</b><span class="mono muted" data-window-kind></span></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section notes" id="notes" aria-labelledby="notes-title">
+      <div class="wrap notes__grid">
+        <div>
+          <div class="section__head">
+            <h2 id="notes-title">Release notes</h2>
+            <a class="btn" href="https://github.com/seandearnaley/livecut/releases.atom" rel="noopener">Atom feed</a>
+          </div>
+          <ol class="notes__list" id="notes-list" role="list"></ol>
+          <p class="bench" id="bench"></p>
+        </div>
+        <div class="stage-window" data-anchor="notes" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<section class="section install cv" id="install" style="contain-intrinsic-block-size: auto 28rem" aria-labelledby="install-title">
+  <div class="wrap">
+    <div class="section__head"><h2 id="install-title">Install notes</h2></div>
+    <!-- Placeholder answers: short on purpose while install flows settle. Full steps live in each release's notes on GitHub. -->
+    <div class="faq">
+      <details name="install-faq">
+        <summary>macOS</summary>
+        <div class="faq__body">
+          <p>Signed and notarized, so Gatekeeper opens it without a fuss. The installer puts the VST3 and AU in <code>/Library/Audio/Plug-Ins</code>.</p>
+        </div>
+      </details>
+      <details name="install-faq">
+        <summary>Windows</summary>
+        <div class="faq__body">
+          <p>Not code-signed yet. Copy the <code>.vst3</code> into <code>C:\Program Files\Common Files\VST3</code>, and check the SHA-256 first.</p>
+        </div>
+      </details>
+      <details name="install-faq">
+        <summary>Linux</summary>
+        <div class="faq__body">
+          <p>Not built yet. It will show up in every download menu on the day it ships.</p>
+        </div>
+      </details>
+      <details name="install-faq">
+        <summary>Checking a download</summary>
+        <div class="faq__body">
+          <p>Every file's SHA-256 is under <em>Details</em>, next to the command that checks it. If they don't match, don't install it.</p>
+        </div>
+      </details>
+      <details name="install-faq">
+        <summary>How they're built</summary>
+        <div class="faq__body">
+          <p>I design them and tune them by ear. The code is written with AI assistance, then reviewed, tested and validated before every release. The source is on GitHub if you want to check.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer cv" style="contain-intrinsic-block-size: auto 20rem">
+  <div class="wrap site-footer__grid">
+    <div>
+      <h2>Human Being Audio</h2>
+      <p>Free plugins, published as Human Being Music. This page is one static HTML file: no build step, no trackers, no cookies, no sound.</p>
+    </div>
+    <div>
+      <h2>Source</h2>
+      <ul role="list" id="footer-repos"></ul>
+    </div>
+    <div>
+      <h2>Credits</h2>
+      <p>Livecut Redux rewrites Remy Muller's Livecut (2003–04), which implements Nick Collins' BBCut algorithms.</p>
+    </div>
+  </div>
+</footer>
+
+<noscript>
+  <p class="wrap" style="padding:2rem 0">The catalog is drawn by JavaScript from one manifest. Without it, everything is still on GitHub:
+    <a href="https://github.com/seandearnaley/livecut/releases/latest">Livecut Redux releases</a> ·
+    <a href="https://github.com/seandearnaley/tract-form">Tract Form source</a>.</p>
+</noscript>
+
+<script type="module">
+/* ==========================================================================
+   1. THE MANIFEST — the single source of truth.
+   Adding a plugin = adding one object to PLUGINS. Cards, download pickers,
+   detail + video dialogs, loop drawers, filters, the fine-print plate,
+   release notes and the 3D sculpture all derive from it.
+   ========================================================================== */
+
+/**
+ * @typedef {'macos'|'windows'|'linux'} OS
+ * @typedef {{ os: OS, detail: string, contents: string, file: string, url: string,
+ *             bytes: number, sha256: string, signing: 'notarized'|'signed'|'unsigned' }} Download
+ * @typedef {{ label: string, url: string, bytes?: number, kind?: 'wav'|'midi' }} Stem
+ * @typedef {{ title: string, bpm: number, key: string, bars: number, format: string, slug: string, stems: Stem[] }} Loop
+ * @typedef {{ version: string, date: string, title: string, url: string, notes: string[] }} Release
+ * @typedef {{ src: string, type: string }} VideoSource
+ * @typedef {{
+ *   id: string, name: string, tagline: string, summary: string,
+ *   categories: string[], status: 'released'|'beta'|'concept', statusLabel: string,
+ *   hue: number, form?: FormName, sketch: 'slices'|'formants'|'polyrhythm'|'prism',
+ *   formats: string[], platformsText: string, builtWith?: string, licence?: string, repo?: string,
+ *   downloads: Download[], build?: { note: string, commands: string },
+ *   highlights: [string, string][], specs: [string, string][], credits?: string,
+ *   videoSources: VideoSource[], poster?: string, captions?: string,
+ *   loops: Loop[], loopsZip: { file: string, url: string },
+ *   releases: Release[]
+ * }} Plugin
+ */
+
+const GITHUB = 'https://github.com/seandearnaley';
+
+/** Category order + labels for the filter pills (only categories in use are shown). */
+const CATEGORIES = {
+  'beat-slicers': 'Beat Slicers',
+  'audio-fx': 'Audio FX',
+  'midi': 'MIDI',
+  'synths': 'Synths',
+};
+
+/**
+ * The sculpture's forms: a small, fixed visual library — NOT one per plugin.
+ * Any number of plugins share these; each tints its form with its own hue and
+ * varies it with a seed derived from its id. Glyphs are 16×16 SVG for the dock.
+ * @typedef {'monoliths'|'tube'|'rings'|'prisms'} FormName
+ */
+const FORMS = {
+  monoliths: { label: 'Monoliths', glyph: '<rect x="2" y="5" width="3" height="9"/><rect x="6.5" y="2" width="3" height="12"/><rect x="11" y="7" width="3" height="7"/>' },
+  tube:      { label: 'Tube',      glyph: '<ellipse cx="8" cy="8" rx="6.5" ry="4" fill="none" stroke-width="2"/><circle cx="8" cy="8" r="1.6"/>' },
+  rings:     { label: 'Rings',     glyph: '<polygon points="8,1.5 14,5 14,11 8,14.5 2,11 2,5" fill="none" stroke-width="1.5"/><polygon points="8,5 11,10 5,10" fill="none" stroke-width="1.5"/>' },
+  prisms:    { label: 'Prisms',    glyph: '<polygon points="8,1 14,8 8,15 2,8"/><line x1="2" y1="8" x2="14" y2="8" stroke="var(--paper)" stroke-width="1"/>' },
+};
+/** Which form a plugin gets unless its manifest entry names one. Tune freely. */
+const FORM_BY_CATEGORY = { 'beat-slicers': 'monoliths', 'audio-fx': 'tube', 'midi': 'rings', 'synths': 'prisms' };
+const formOf = (p) => p.form ?? FORM_BY_CATEGORY[p.categories[0]] ?? 'monoliths';
+/** Stable 0–1 seed from the plugin id, so two plugins sharing a form still look different. */
+const seedOf = (p) => [...p.id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) / 2 ** 32;
+
+/** @type {Plugin[]} */
+const PLUGINS = [
+  {
+    id: 'livecut',
+    name: 'Livecut Redux',
+    tagline: 'A live beat slicer that re-edits breaks the way a jungle producer would.',
+    summary: 'Instead of chopping audio into equal slices, Livecut Redux builds phrases out of blocks of cuts and repeats, in time with your host. Press the pad to cut, let go to stop on the next beat or bar, and drag to play two settings of a program at once.',
+    categories: ['beat-slicers', 'audio-fx'],
+    status: 'released',
+    statusLabel: 'Released',
+    hue: 43,                 // Cut's orange (#FF6B1A in the plugin's own skin)
+    sketch: 'slices',        // procedural preview until a video is wired
+    bpm: 172,
+    formats: ['VST3', 'AU', 'Standalone'],
+    platformsText: 'macOS 11+ Universal · Windows 10+ x64',
+    builtWith: 'AI-assisted code, tested by hand',   // how it was made, stated plainly on the card and in Details
+    licence: 'GPL-3.0',
+    repo: `${GITHUB}/livecut`,
+    downloads: [
+      {
+        os: 'macos',
+        detail: 'macOS 11 or later · Apple Silicon + Intel',
+        contents: 'Installer (.pkg): VST3, AU, Standalone',
+        file: 'Livecut-Redux-1.0.0.pkg',
+        url: `${GITHUB}/livecut/releases/download/v1.0.0/Livecut-Redux-1.0.0.pkg`,
+        bytes: 21983565,
+        sha256: '789647bdc2bba8c22a4d21bff9eb667ccba47b06685f4858166822e36e417012',
+        signing: 'notarized',
+      },
+      {
+        os: 'windows',
+        detail: 'Windows 10 or later · x64',
+        contents: 'Zip: VST3, Standalone',
+        file: 'Livecut-Redux-1.0.0-windows-x64.zip',
+        url: `${GITHUB}/livecut/releases/download/v1.0.0/Livecut-Redux-1.0.0-windows-x64.zip`,
+        bytes: 8684344,
+        sha256: '16dfcac783500723dd199b13aa588f0362925c5d040e062f2014211fdb41135b',
+        signing: 'unsigned',
+      },
+    ],
+    highlights: [
+      ['Cut', 'From the nearly untouched break to busy jungle editing. BBCut’s CutProc11.'],
+      ['Bounce', 'Triplet bounces against a straight beat, and ratchets that climb to close each phrase.'],
+      ['Glitch', 'Repeats from 1/16 to 1/128 through a crusher that crunches harder as they speed up.'],
+      ['Suction', 'Cuts squeeze into a singing band that bursts open on every hit.'],
+      ['Filter', 'A resonant low-pass whose rolls ring out on the cutoff’s own note.'],
+      ['Tape', 'Brakes the track to a halt on the grid, then spins it back up on time.'],
+      ['Loops', 'Loops a bar, half a bar or a beat, folding into shorter loops of its first hit.'],
+      ['Rush', 'Rolls the last beats of each bar into the next downbeat, rushing or dragging.'],
+    ],
+    specs: [
+      ['Shows up as', 'Livecut Redux, by Human Being Music'],
+      ['Hosts', 'Ableton Live 12, Logic, Reaper, Bitwig and other VST3 / AU hosts'],
+      ['Tested', '758 tests on macOS + Windows CI; pluginval strictness 10 and auval on every build'],
+      ['Sessions', 'Opens sets saved with Livecut 0.1.0 onwards; automation lands on the same controls'],
+      ['Known limits', 'Windows builds aren’t code-signed. The editor art always moves: JUCE can’t read reduce-motion.'],
+    ],
+    credits: 'A ground-up rewrite of Remy Muller’s Livecut (2003–04), built on Nick Collins’ BBCut algorithms.',
+    // ▼ Drop-in video: paste encodes here (first match wins) and the procedural sketch steps aside.
+    //   { src: 'media/livecut-loop.av1.mp4', type: 'video/mp4; codecs=av01.0.05M.08' },
+    //   { src: 'media/livecut-loop.webm',    type: 'video/webm' },
+    //   { src: 'media/livecut-loop.mp4',     type: 'video/mp4' },
+    videoSources: [],
+    poster: '',              // e.g. 'media/livecut-poster.avif'
+    captions: '',            // e.g. 'media/livecut-walkthrough.en.vtt' (used by the full demo dialog)
+    loops: [
+      { title: 'Break through Cut', slug: 'livecut-cut-172bpm-fmin', bpm: 172, key: 'F minor', bars: 8,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Dry', url: '' }, { label: 'Wet', url: '' }] },
+      { title: 'Garage shuffle through Bounce', slug: 'livecut-bounce-140bpm-gmin', bpm: 140, key: 'G minor', bars: 8,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Wet', url: '' }] },
+      { title: 'Halftime roll through Rush', slug: 'livecut-rush-170bpm-dmin', bpm: 170, key: 'D minor', bars: 8,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Dry', url: '' }, { label: 'Wet', url: '' }] },
+    ],
+    loopsZip: { file: 'livecut-redux-demo-loops.zip', url: '' },
+    releases: [
+      { version: '1.0.0', date: '2026-11-14', title: 'Livecut Redux 1.0.0', url: `${GITHUB}/livecut/releases/tag/v1.0.0`, notes: [
+        'Plays from an XY pad with eight programs: Cut, Bounce, Glitch, Suction, Filter, Tape, Loops and Rush.',
+        'Classic keeps all four cut procedures and everything built since 0.2.0, released here for the first time.',
+        'New name and publisher. Sessions and automation from 0.1.0 onwards open unchanged.',
+      ] },
+      { version: '1.0.0-beta.1', date: '2026-11-04', title: 'Livecut 1.0.0-beta.1', url: `${GITHUB}/livecut/releases/tag/v1.0.0-beta.1`, notes: [
+        'A Kaoss-style XY pad replaces the settings pages: press to cut, let go to stop on the beat or bar.',
+        'Every program has a fixed seed, so the same spot in the same bar always sounds the same.',
+      ] },
+      { version: '0.2.0', date: '2026-10-21', title: 'Livecut 0.2.0', url: `${GITHUB}/livecut/releases/tag/v0.2.0`, notes: [
+        'Bounce, a fourth cut procedure: triplet bounces, climbing ratchets and the odd halftime bar.',
+        'If you automated Cut Procedure in 0.1.0, re-record it: the lane now spans four choices.',
+      ] },
+      { version: '0.1.0', date: '2026-10-21', title: 'Livecut 0.1.0', url: `${GITHUB}/livecut/releases/tag/v0.1.0`, notes: [
+        'JUCE 9 rewrite with the CutProc11, WarpCut and SQPusher procedures and a host-synced cutter.',
+        'Signed, notarized macOS installers built straight from version tags.',
+      ] },
+    ],
+  },
+
+  {
+    id: 'tract-form',
+    name: 'Tract Form',
+    tagline: 'A bass synth whose growl can be as violent as you like while its sub never moves.',
+    // Copy follows the repo's press kit (press/copy.md, press/fact-sheet.md). Refine there first.
+    summary: 'A monophonic bass synth for neurofunk and drum & bass. One master sine phase-modulates two reese voices and also becomes a clean, mono sub that skips every stage of processing. Shape the growl with vowels, folding and harmonic notches; the low end stays where you put it.',
+    categories: ['synths'],
+    status: 'beta',
+    statusLabel: 'Beta 0.2',
+    hue: 205,                // Sub cyan (#3FD9E8 in Tract Form's brand); growl amber shows in the 3D
+    form: 'tube',            // override: a synth, but its 'sub that never moves' story is the Tube form
+    sketch: 'formants',
+    bpm: 174,
+    formats: ['VST3', 'AU', 'Standalone'],
+    platformsText: 'macOS 12+ Apple Silicon (Intel compiles, untested)',
+    builtWith: 'AI-assisted code, tested by hand',
+    licence: 'AGPL-3.0',
+    repo: `${GITHUB}/tract-form`,
+    downloads: [],           // No binary release yet. Add Download objects here when the first signed build ships.
+    build: {
+      note: 'Needs CMake 3.25+, Ninja and the Xcode Command Line Tools. Dependencies are fetched and pinned by CMake.',
+      commands: 'git clone https://github.com/seandearnaley/tract-form.git\ncd tract-form\ncmake --preset dev\ncmake --build --preset dev\nctest --preset dev\ntools/scripts/install.sh',
+    },
+    highlights: [
+      ['Master sine', 'Sets the pitch, phase-modulates both voices and becomes the sub.'],
+      ['Reese A + B', 'Detune, ratio, phase and a feedback loop timed in cycles of the note.'],
+      ['Beat lock', 'The two voices beat once per note division, so the reese rolls in time.'],
+      ['Tract', 'A five-formant filter that morphs between two of six vowels.'],
+      ['Fold', 'Three anti-aliased wave shapers with drive and asymmetry.'],
+      ['Sculpt', 'Up to six notches or peaks on harmonics of the note, in tune across the keyboard.'],
+      ['Movement', 'Four tempo-locked lanes; each plays a curve you draw or follows another lane.'],
+      ['Resample', 'Renders four bars offline at 16× and hands you the WAV.'],
+    ],
+    specs: [
+      ['Voices', '1 · mono, last-note priority, glide'],
+      ['Oversampling', '2×, 4× or 8× live · 16× for Resample'],
+      ['Latency', '106 samples at 48 kHz, reported to the host'],
+      ['CPU', 'About 6% of one core at 4× on an Apple M4 Max'],
+      ['Presets', '28 factory presets: Reese, Neuro, Talk, Sub, Motion'],
+      ['Sub stability', 'Under 0.15 dB of movement with all four lanes at full depth'],
+    ],
+    videoSources: [],        // ◀ paste encodes here (see Livecut Redux above for the format)
+    poster: '',
+    captions: '',
+    loops: [
+      { title: 'Coupled Reese, held note', slug: 'tractform-coupled-reese-174bpm-fmin', bpm: 174, key: 'F minor', bars: 4,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Full', url: '' }, { label: 'Sub only', url: '' }, { label: 'Growl only', url: '' }] },
+      { title: 'Speaking Pipe, vowel bass', slug: 'tractform-speaking-pipe-174bpm-emin', bpm: 174, key: 'E minor', bars: 8,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Full', url: '' }] },
+    ],
+    loopsZip: { file: 'tract-form-demo-loops.zip', url: '' },
+    releases: [],
+  },
+
+  {
+    id: 'polyrift',
+    name: 'Polyrift',
+    tagline: 'Hold one note; get evolving, euphoric polyrhythmic phrases.',
+    summary: 'A generative MIDI sequencer: it spreads a held note across interlocking Euclidean rings, each with its own length, pulse count and probability, and sends the result to any instrument. It’s a sketch on the bench. No code yet, so nothing to download.',
+    categories: ['midi'],
+    status: 'concept',
+    statusLabel: 'Concept',
+    hue: 150,
+    sketch: 'polyrhythm',
+    bpm: 128,
+    formats: [],
+    platformsText: 'Decided when it’s built',
+    downloads: [],
+    highlights: [
+      ['Rings', 'Each ring is a Euclidean pattern: E(3,8), E(5,12), E(7,16) and so on.'],
+      ['Probability', 'Every pulse can roll the dice, so phrases evolve instead of looping.'],
+      ['Scale lock', 'Rings step through a chord or scale from the note you hold.'],
+    ],
+    specs: [['Status', 'Concept. Nothing is built yet.']],
+    videoSources: [],
+    loops: [
+      { title: 'Arp: E(5,8) against E(3,8)', slug: 'polyrift-arp-128bpm-amin', bpm: 128, key: 'A minor', bars: 8,
+        format: 'MIDI + 24-bit / 48 kHz WAV preview', stems: [{ label: 'MIDI', url: '', kind: 'midi' }, { label: 'WAV preview', url: '' }] },
+    ],
+    loopsZip: { file: 'polyrift-midi-arp-128-amin.zip', url: '' },
+    releases: [],
+  },
+
+  {
+    id: 'glassline',
+    name: 'Glassline',
+    tagline: 'Crystalline FM and additive synth for warm chimes, spectral leads and glassy chords.',
+    summary: 'FM operators and an additive partial bank sharing one set of envelopes, aimed at bell tones that stay warm instead of brittle. It’s the next synth on the bench: a concept for now, nothing to download.',
+    categories: ['synths'],
+    status: 'concept',
+    statusLabel: 'Concept',
+    hue: 295,
+    sketch: 'prism',
+    bpm: 134,
+    formats: [],
+    platformsText: 'Decided when it’s built',
+    downloads: [],
+    highlights: [
+      ['FM + additive', 'Operators for the strike, partials for the shimmer, one envelope set for both.'],
+      ['Spectral tilt', 'Lean the partials warm or icy without changing the attack.'],
+    ],
+    specs: [['Status', 'Concept. Nothing is built yet.']],
+    videoSources: [],
+    loops: [
+      { title: 'Glass chords', slug: 'glassline-chords-134bpm-ebmaj', bpm: 134, key: 'E♭ major', bars: 8,
+        format: '24-bit / 48 kHz WAV', stems: [{ label: 'Wet', url: '' }] },
+    ],
+    loopsZip: { file: 'glassline-demo-pack.zip', url: '' },
+    releases: [],
+  },
+];
+
+/* ==========================================================================
+   2. HELPERS
+   ========================================================================== */
+const RAW = Symbol('raw');
+const raw = (s) => ({ [RAW]: String(s) });
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const show = (v) => v == null || v === false ? '' : Array.isArray(v) ? v.map(show).join('') : (typeof v === 'object' && RAW in v) ? v[RAW] : esc(v);
+/** Tagged template: interpolations are escaped unless wrapped in raw()/html``. */
+const html = (strings, ...vals) => raw(strings.reduce((out, s, i) => out + s + (i < vals.length ? show(vals[i]) : ''), ''));
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const fmtDate = (iso) => dateFmt.format(new Date(`${iso}T00:00:00Z`));
+const mbFmt = new Intl.NumberFormat('en', { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
+const fmtBytes = (b) => mbFmt.format(b / 1e6);
+/** Size of an uncompressed 24-bit / 48 kHz stereo WAV for N bars — honest "≈" until real files exist. */
+const wavBytes = (bars, bpm) => Math.round((bars * 4 * 60 / bpm) * 48000 * 3 * 2 + 44);
+
+const OS_LABEL = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
+const SIGN_LABEL = { notarized: 'Signed & notarized', signed: 'Signed', unsigned: 'Not code-signed' };
+const userOS = (() => {
+  const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
+  if (p.includes('mac')) return 'macos';
+  if (p.includes('win')) return 'windows';
+  if (p.includes('linux') && !p.includes('android')) return 'linux';
+  return null;
+})();
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const byId = Object.fromEntries(PLUGINS.map((p) => [p.id, p]));
+const kindText = (p) => p.categories.map((c) => CATEGORIES[c] ?? c).join(' · ');
+
+/* ==========================================================================
+   3. PROCEDURAL SKETCHES — silent stand-ins for demo videos (640 × 360)
+   ========================================================================== */
+const SKETCHES = {
+  /** Livecut: a break as transient bars, cut into blocks that shunt and repeat. */
+  slices(p) {
+    const programs = ['Cut', 'Bounce', 'Glitch', 'Suction', 'Filter', 'Tape', 'Loops', 'Rush'];
+    const env = [1, .3, .55, .28, .92, .32, .5, .26, .78, .3, .62, .3, .96, .34, .48, .64];
+    const N = 64, x0 = 24, W = 592, bw = W / N;
+    const bar = (i) => {
+      const a = env[i % 16] * (0.82 + 0.18 * Math.sin(i * 1.7));
+      const h = 6 + a * 70;
+      return `<rect x="${(x0 + i * bw + 1).toFixed(1)}" y="${(196 - h).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${(h * 2).toFixed(1)}" rx="1"/>`;
+    };
+    let cells = '';
+    for (let c = 0; c < 16; c++) {
+      let rects = '';
+      for (let j = 0; j < 4; j++) rects += bar(c * 4 + j);
+      const pattern = [3, 6, 9, 13].includes(c) ? 'shunt' : [5, 10, 14].includes(c) ? 'flash' : '';
+      const dx = c % 2 ? '37px' : '-74px';
+      const d = `${-(c % 4) * 2.4}s`;
+      cells += pattern === 'shunt'
+        ? `<g class="sk-shunt" style="--dx:${dx};--dy:${c % 3 ? '-10px' : '12px'};--d:${d}">${rects}</g>`
+        : `<g>${rects}</g>`;
+      if (pattern === 'flash') cells += `<rect class="sk-glow fill-a" style="--d:${d}" x="${x0 + c * 37}" y="112" width="37" height="168" rx="2"/>`;
+    }
+    const tabs = programs.map((n, i) => `<g transform="translate(${24 + i * 68} 18)"><rect width="63" height="20" rx="3" ${i === 0 ? 'class="fill-a"' : 'fill="oklch(1 0 0 / .06)"'}/><text x="31.5" y="13.5" text-anchor="middle" ${i === 0 ? 'class="t-on"' : ''}>${n}</text></g>`).join('');
+    const tape = [0, 1, 2, 3].map((b) => `<rect x="${24 + b * 148}" y="52" width="146" height="18" rx="2" ${b === 1 ? 'class="fill-a" opacity=".9"' : 'fill="oklch(1 0 0 / .09)"'}/>`).join('');
+    const grid = Array.from({ length: 17 }, (_, i) => `<line x1="${24 + i * 37}" x2="${24 + i * 37}" y1="96" y2="300"/>`).join('');
+    return `<svg class="sketch" viewBox="0 0 640 360" width="640" height="360" aria-hidden="true" focusable="false">
+      ${tabs}${tape}<g class="grid">${grid}</g><g class="wave">${cells}</g>
+      <g class="sk-play" style="--dur:${(4 * 4 * 60 / p.bpm).toFixed(2)}s"><line x1="24" x2="24" y1="46" y2="306" class="stroke-a" stroke-width="2"/></g>
+    </svg>`;
+  },
+
+  /** Tract Form: a harmonic comb, five formant peaks morphing a → i, and a sub that never moves. */
+  formants() {
+    const X = (f) => 64 + 552 * Math.log(f / 30) / Math.log(8000 / 30);
+    const A = [730, 1090, 2440, 3400, 4500], I = [270, 2290, 3010, 3500, 4500];
+    const H = [150, 118, 88, 64, 50], Wd = [46, 40, 34, 30, 28];
+    let comb = '';
+    for (let n = 2; n <= 90; n++) {
+      const x = X(43.65 * n); if (x > 616) break;
+      comb += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="300" y2="${(300 - 30 - 60 / Math.sqrt(n)).toFixed(1)}"/>`;
+    }
+    const peaks = A.map((fa, i) => {
+      const xa = X(fa), xb = X(I[i]), h = H[i], w = Wd[i];
+      return `<g class="sk-vowel" style="--xa:${xa.toFixed(1)}px;--xb:${xb.toFixed(1)}px;animation-delay:${-i * 0.12}s">
+        <path d="M${-w * 1.6} 300 C ${-w * .7} 300 ${-w * .55} ${300 - h} 0 ${300 - h} S ${w * .7} 300 ${w * 1.6} 300" fill="oklch(0.78 0.15 70 / .16)" stroke="oklch(0.80 0.15 70)" stroke-width="1.5"/></g>`;
+    }).join('');
+    return `<svg class="sketch" viewBox="0 0 640 360" width="640" height="360" aria-hidden="true" focusable="false">
+      <g class="grid">${[100, 1000].map((f) => `<line x1="${X(f)}" x2="${X(f)}" y1="40" y2="300"/>`).join('')}<line x1="40" x2="616" y1="300" y2="300"/></g>
+      <g stroke="oklch(1 0 0 / .32)" stroke-width="1.2">${comb}</g>
+      ${peaks}
+      <rect x="44" y="120" width="12" height="180" rx="2" fill="oklch(0.84 0.12 205)"/>
+      <rect x="40" y="116" width="20" height="188" rx="4" fill="none" stroke="oklch(0.84 0.12 205 / .35)"/>
+      <text x="38" y="106">sub · locked</text>
+      <text x="${X(100) + 4}" y="54">100 Hz</text><text x="${X(1000) + 4}" y="54">1 kHz</text>
+    </svg>`;
+  },
+
+  /** Polyrift: Euclidean rings (E(3,8), E(5,12), E(7,16)) rotating past a playhead. */
+  polyrhythm() {
+    const rings = [[8, 3, 64], [12, 5, 104], [16, 7, 146]];
+    const step = 60 / 128;                 // one step per quarter at 128 BPM
+    const g = rings.map(([n, k, r], ri) => {
+      const pts = [], nodes = [];
+      for (let s = 0; s < n; s++) {
+        const a = -Math.PI / 2 + s / n * Math.PI * 2;
+        const x = 320 + r * Math.cos(a), y = 180 + r * Math.sin(a);
+        pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+        const onset = (s * k) % n < k;
+        nodes.push(onset
+          ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6.5" class="fill-a"/>`
+          : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" fill="none" stroke="oklch(1 0 0 / .5)"/>`);
+      }
+      return `<g class="sk-spin" style="--dur:${(n * step).toFixed(2)}s;${ri === 1 ? 'animation-direction:reverse' : ''}">
+        <polygon points="${pts.join(' ')}" fill="none" stroke="oklch(1 0 0 / ${0.18 + ri * 0.06})" stroke-width="1.2"/>${nodes.join('')}</g>`;
+    }).join('');
+    return `<svg class="sketch" viewBox="0 0 640 360" width="640" height="360" aria-hidden="true" focusable="false">
+      ${g}
+      <line x1="320" x2="320" y1="12" y2="180" stroke="oklch(1 0 0 / .35)" stroke-dasharray="2 4"/>
+      <circle class="sk-tick fill-a" style="--dur:${step.toFixed(3)}s" cx="320" cy="26" r="4"/>
+      <text x="24" y="40">E(3,8)</text><text x="24" y="58">E(5,12)</text><text x="24" y="76">E(7,16)</text>
+    </svg>`;
+  },
+
+  /** Glassline: white light through an octahedron, a spectral fan, chiming partials. */
+  prism(p) {
+    const rays = Array.from({ length: 7 }, (_, i) => {
+      const y = 86 + i * 30;
+      return `<line class="sk-shimmer" style="--d:${-i * 0.3}s" x1="352" y1="184" x2="640" y2="${y}" stroke="oklch(0.78 0.16 ${20 + i * 45})" stroke-width="2.4"/>`;
+    }).join('');
+    const partials = Array.from({ length: 12 }, (_, i) => {
+      const n = i + 1, h = 90 / Math.sqrt(n) + 6;
+      return `<rect class="sk-chime" style="--d:${-(i % 4) * 0.45}s;--dur:${(4 * 60 / p.bpm).toFixed(2)}s" x="${24 + i * 14}" y="${318 - h}" width="8" height="${h.toFixed(1)}" rx="1" fill="oklch(0.8 0.12 ${200 + i * 12} / .85)"/>`;
+    }).join('');
+    return `<svg class="sketch" viewBox="0 0 640 360" width="640" height="360" aria-hidden="true" focusable="false">
+      <line x1="0" y1="196" x2="252" y2="182" stroke="oklch(0.97 0 0)" stroke-width="2.4"/>
+      ${rays}
+      <g fill="oklch(1 0 0 / .05)" stroke="oklch(0.92 0.02 ${p.hue})" stroke-width="1.4">
+        <polygon points="300,84 372,182 300,282 230,182"/>
+        <polyline points="230,182 314,170 372,182" fill="none"/>
+        <polyline points="300,84 314,170 300,282" fill="none"/>
+      </g>
+      ${partials}
+    </svg>`;
+  },
+};
+
+/** One-line captions shown under each sketch (in HTML, so they never collide with the art). */
+const SKETCH_LABEL = {
+  slices: (p) => `a 4-bar phrase at ${p.bpm} BPM, cut into blocks, not equal slices`,
+  formants: () => 'Tract morphs five formants from a to i; the sub stays put',
+  polyrhythm: () => 'E(3,8) · E(5,12) · E(7,16) from one held note',
+  prism: () => 'FM strike, additive partials 1–12',
+};
+
+/* ==========================================================================
+   4. RENDERERS (manifest → markup)
+   ========================================================================== */
+const motionDefault = () => (reducedMotion.matches ? 'off' : 'on');
+
+function mediaFrame(p, { decorative = true } = {}) {
+  const hasVideo = p.videoSources.length > 0;
+  // Decorative loops: muted, looping, no controls, hidden from AT; IntersectionObserver plays them only on screen.
+  const video = hasVideo ? html`<video ${raw(reducedMotion.matches ? '' : 'autoplay')} muted loop playsinline preload="none"
+      width="1280" height="720" ${p.poster ? raw(`poster="${esc(p.poster)}"`) : ''} aria-hidden="true">
+      ${p.videoSources.map((s) => html`<source src="${s.src}" type="${s.type}">`)}
+    </video>` : '';
+  return html`<div class="media${decorative ? ' plugin__media' : ''}" data-media data-motion="${motionDefault()}" data-sketch="${p.sketch}" data-plugin="${p.id}">
+    ${hasVideo ? video : raw(SKETCHES[p.sketch](p))}
+    <button class="media__toggle" type="button" aria-pressed="${reducedMotion.matches}" aria-label="Pause ${p.name} preview"></button>
+    ${hasVideo ? '' : html`<span class="media__caption">silent sketch · ${SKETCH_LABEL[p.sketch](p)}</span>`}
+  </div>`;
+}
+
+function downloadRows(p) {
+  const order = ['macos', 'windows', 'linux'].sort((a, b) => (b === userOS) - (a === userOS));
+  return order.map((os) => {
+    const d = p.downloads.find((x) => x.os === os);
+    const mine = os === userOS ? html`<span class="yours">your system</span>` : '';
+    if (!d) {
+      return html`<li class="dl-row is-unavailable"><span class="dl-row__os">${OS_LABEL[os]} ${mine}</span>
+        <span class="dl-row__detail">Not built yet</span></li>`;
+    }
+    return html`<li><a class="dl-row" href="${d.url}" download="${d.file}">
+      <span class="dl-row__os">${OS_LABEL[os]} ${mine}</span>
+      <span class="dl-row__detail">${d.detail}<br>${d.contents} · ${fmtBytes(d.bytes)} ·
+        <span class="${d.signing === 'unsigned' ? 'sign-none' : 'sign-ok'}">${SIGN_LABEL[d.signing]}</span></span>
+      <span class="dl-row__go" aria-hidden="true">↓</span></a></li>`;
+  });
+}
+
+function downloadPopover(p) {
+  const rel = p.releases[0];
+  const body = p.downloads.length
+    ? html`<ul class="dl-list" role="list">${downloadRows(p)}</ul>`
+    : html`<div class="build"><p class="dl-pop__sub">No binary release yet. ${p.build?.note ?? ''}</p><pre><code>${p.build?.commands ?? ''}</code></pre></div>`;
+  return html`<div class="dl-pop" id="dl-${p.id}" popover="auto" role="group" aria-labelledby="dl-${p.id}-title"
+      style="--hue:${p.hue}; position-anchor: --dl-${p.id}">
+    <div class="dl-pop__head">
+      <span class="dl-pop__title" id="dl-${p.id}-title">${p.name}${rel ? ` ${rel.version}` : ''}</span>
+      <span class="dl-pop__sub mono">${rel ? `${fmtDate(rel.date)} · ${p.formats.join(' · ')}` : `${p.statusLabel} · build from source`}</span>
+    </div>
+    ${body}
+    <div class="dl-pop__foot">
+      <button class="btn btn--quiet" type="button" commandfor="about-${p.id}" command="show-modal">Checksums &amp; details</button>
+      <a class="btn btn--quiet" href="${p.downloads.length ? `${p.repo}/releases` : p.repo}" rel="noopener">${p.downloads.length ? 'All releases' : 'Source'} ↗</a>
+    </div>
+  </div>`;
+}
+
+function loopsDrawer(p) {
+  const stemLink = (loop, s) => {
+    const isMidi = s.kind === 'midi';
+    const ext = isMidi ? 'mid' : 'wav';
+    const name = `${loop.slug}-${s.label.toLowerCase().replace(/\s+/g, '-')}.${ext}`;
+    const size = s.bytes ? fmtBytes(s.bytes) : isMidi ? 'MIDI' : `≈${fmtBytes(wavBytes(loop.bars, loop.bpm))}`;
+    return s.url
+      ? html`<a class="file-link" href="${s.url}" download="${name}">${s.label} <span class="mono">${size}</span></a>`
+      // Placeholder state: obvious during local preview, never a dead link.
+      : html`<span class="file-link is-pending" title="Add this file's URL to the manifest: ${name}">${s.label} <span class="mono">${size}</span></span>`;
+  };
+  const wired = p.loops.flatMap((l) => l.stems).filter((s) => s.url).length;
+  return html`<details class="loops">
+    <summary>Demo loops <span class="mono">${p.loops.length} ${p.loops.length === 1 ? 'loop' : 'loops'} · royalty-free</span>
+      ${wired ? '' : html`<span class="tag tag--pending">URLs pending</span>`}</summary>
+    <div class="loops__body">
+      <ul role="list">${p.loops.map((l) => html`<li class="loop">
+        <div><span class="loop__title">${l.title}</span>
+          <span class="loop__meta mono">${l.bpm} BPM · ${l.key} · ${l.bars} bars · ${l.format}</span></div>
+        <div class="loop__files">${l.stems.map((s) => stemLink(l, s))}</div></li>`)}</ul>
+      <div class="loops__all">
+        <span class="muted" style="font-size:var(--step--1)">Stems are trimmed to the bar and loop cleanly.</span>
+        ${p.loopsZip.url
+          ? html`<a class="btn" href="${p.loopsZip.url}" download="${p.loopsZip.file}">Download all loops (.zip)</a>`
+          : html`<span class="btn" aria-disabled="true" title="Add loopsZip.url to the manifest">Download all loops (.zip)</span>`}
+      </div>
+    </div>
+  </details>`;
+}
+
+function pluginCard(p) {
+  const rel = p.releases[0];
+  const statusTag = html`<span class="tag tag--${p.status}">${p.statusLabel}${rel ? html` · <span>${rel.version}</span>` : ''}</span>`;
+  return html`<article class="plugin" id="${p.id}" data-plugin="${p.id}" data-cats="${p.categories.join(' ')}"
+      style="--hue:${p.hue}; view-transition-name: plugin-${p.id}" aria-labelledby="${p.id}-name">
+    ${mediaFrame(p)}
+    <div class="plugin__body">
+      <header class="plugin__head">
+        <h3 class="plugin__name" id="${p.id}-name">${p.name}</h3>
+        ${statusTag}
+      </header>
+      <p class="plugin__kind">${kindText(p)}</p>
+      <p class="plugin__summary">${p.summary}</p>
+    </div>
+    <div class="plugin__facts">
+      <dl class="specs">
+        <dt>Formats</dt><dd>${p.formats.length ? p.formats.join(' · ') : '—'}</dd>
+        <dt>Runs on</dt><dd>${p.platformsText}</dd>
+        ${p.builtWith ? html`<dt>Built with</dt><dd>${p.builtWith}</dd>` : ''}
+        ${p.licence ? html`<dt>Licence</dt><dd>${p.licence}, source on GitHub</dd>` : ''}
+        ${rel ? html`<dt>Released</dt><dd>${fmtDate(rel.date)}</dd>` : ''}
+      </dl>
+      <div class="plugin__actions">
+        ${p.status === 'concept' ? '' : html`<button class="btn btn--accent" type="button" commandfor="dl-${p.id}" command="toggle-popover"
+            style="anchor-name: --dl-${p.id}">${p.downloads.length ? 'Download free' : 'Build from source'} <span class="btn__chev" aria-hidden="true"></span></button>`}
+        <button class="btn" type="button" commandfor="about-${p.id}" command="show-modal">Details</button>
+        <button class="btn btn--quiet" type="button" commandfor="video-${p.id}" command="show-modal">Watch demo</button>
+        ${p.repo ? html`<a class="btn btn--quiet" href="${p.repo}" rel="noopener">GitHub ↗</a>` : ''}
+      </div>
+    </div>
+    ${loopsDrawer(p)}
+  </article>
+  ${p.status === 'concept' ? '' : downloadPopover(p)}`;
+}
+
+function aboutDialog(p) {
+  const verifyCmd = (d) => d.os === 'windows'
+    ? `Get-FileHash $HOME\\Downloads\\${d.file} -Algorithm SHA256`
+    : d.os === 'macos' ? `shasum -a 256 ~/Downloads/${d.file}` : `sha256sum ~/Downloads/${d.file}`;
+  return html`<dialog class="sheet" id="about-${p.id}" closedby="any" aria-labelledby="about-${p.id}-title" style="--hue:${p.hue}">
+    <header class="sheet__head">
+      <div>
+        <h2 id="about-${p.id}-title">${p.name}</h2>
+        <p class="sheet__tagline">${p.tagline}</p>
+      </div>
+      <form method="dialog"><button class="btn btn--quiet" aria-label="Close ${p.name} details">Close</button></form>
+    </header>
+    <div class="sheet__body">
+      <section aria-labelledby="about-${p.id}-what">
+        <h3 id="about-${p.id}-what">What it does</h3>
+        <p style="margin-block-end:var(--space-4)">${p.summary}</p>
+        <dl class="defs">${p.highlights.map(([t, d]) => html`<div><dt>${t}</dt><dd>${d}</dd></div>`)}</dl>
+      </section>
+      <section aria-labelledby="about-${p.id}-specs">
+        <h3 id="about-${p.id}-specs">Specs</h3>
+        <dl class="specs">
+          <dt>Status</dt><dd>${p.statusLabel}</dd>
+          <dt>Formats</dt><dd>${p.formats.length ? p.formats.join(' · ') : '—'}</dd>
+          <dt>Runs on</dt><dd>${p.platformsText}</dd>
+          ${p.builtWith ? html`<dt>Built with</dt><dd>${p.builtWith}</dd>` : ''}
+          ${p.licence ? html`<dt>Licence</dt><dd>${p.licence}</dd>` : ''}
+          ${p.specs.map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}
+        </dl>
+      </section>
+      ${p.downloads.length ? html`<section aria-labelledby="about-${p.id}-files">
+        <h3 id="about-${p.id}-files">Files and SHA-256</h3>
+        ${p.downloads.map((d) => html`<div class="file-card">
+          <div class="file-card__top"><strong>${OS_LABEL[d.os]} · <span class="mono">${d.file}</span></strong>
+            <span class="tag ${d.signing === 'unsigned' ? '' : 'tag--released'}">${SIGN_LABEL[d.signing]}</span></div>
+          <span class="muted" style="font-size:var(--step--1)">${d.detail} · ${d.contents} · ${fmtBytes(d.bytes)}</span>
+          <div class="hash"><code>${d.sha256}</code>
+            <button class="btn copy" type="button" data-copy="${d.sha256}" aria-label="Copy SHA-256 for ${d.file}">Copy</button></div>
+          <div class="hash"><code>${verifyCmd(d)}</code>
+            <button class="btn btn--quiet copy" type="button" data-copy="${verifyCmd(d)}" aria-label="Copy the command that checks ${d.file}">Copy</button></div>
+        </div>`)}
+      </section>` : p.build ? html`<section aria-labelledby="about-${p.id}-build" class="build">
+        <h3 id="about-${p.id}-build">Build it</h3>
+        <p class="muted">No binary release yet. ${p.build.note}</p>
+        <pre><code>${p.build.commands}</code></pre>
+      </section>` : ''}
+      ${p.releases.length ? html`<section aria-labelledby="about-${p.id}-log">
+        <h3 id="about-${p.id}-log">Changelog</h3>
+        <div class="releases">${p.releases.map((r) => html`<article class="release">
+          <h4>${r.version} <span class="mono muted">· ${fmtDate(r.date)}</span></h4>
+          <ul>${r.notes.map((n) => html`<li>${n}</li>`)}</ul></article>`)}</div>
+      </section>` : ''}
+      ${p.credits ? html`<section aria-labelledby="about-${p.id}-credits"><h3 id="about-${p.id}-credits">Credits</h3><p>${p.credits}</p></section>` : ''}
+      <p class="status-live" role="status" data-copy-status></p>
+    </div>
+    <footer class="sheet__foot">
+      <button class="btn" type="button" commandfor="video-${p.id}" command="show-modal">Watch demo</button>
+      ${p.repo ? html`<a class="btn" href="${p.repo}" rel="noopener">Source on GitHub ↗</a>` : ''}
+      <form method="dialog"><button class="btn btn--primary">Done</button></form>
+    </footer>
+  </dialog>`;
+}
+
+function videoDialog(p) {
+  const hasVideo = p.videoSources.length > 0;
+  return html`<dialog class="sheet video-sheet" id="video-${p.id}" closedby="any" aria-labelledby="video-${p.id}-title" style="--hue:${p.hue}">
+    <header class="sheet__head">
+      <div><h2 id="video-${p.id}-title">${p.name}: demo</h2>
+        <p class="sheet__tagline">${hasVideo ? 'Sound is off until you press play. Captions are in the player menu.' : 'No video yet. This silent sketch shows the idea; a walkthrough with sound comes with the next release.'}</p></div>
+      <form method="dialog"><button class="btn btn--quiet" aria-label="Close ${p.name} demo">Close</button></form>
+    </header>
+    <div class="sheet__body">
+      ${hasVideo ? html`<video controls playsinline preload="none" width="1280" height="720" ${p.poster ? raw(`poster="${esc(p.poster)}"`) : ''}>
+          ${p.videoSources.map((s) => html`<source src="${s.src}" type="${s.type}">`)}
+          ${p.captions ? html`<track kind="captions" srclang="en" label="English" src="${p.captions}" default>` : ''}
+        </video>` : mediaFrame(p, { decorative: false })}
+    </div>
+  </dialog>`;
+}
+
+/* ==========================================================================
+   5. RENDER EVERYTHING FROM THE MANIFEST
+   ========================================================================== */
+const catalogEl = $('#catalog');
+catalogEl.innerHTML = PLUGINS.map(pluginCard).map(show).join('');
+document.body.insertAdjacentHTML('beforeend', PLUGINS.flatMap((p) => [aboutDialog(p), videoDialog(p)]).map(show).join(''));
+
+// Filter pills: only categories that have plugins, in taxonomy order.
+const usedCats = Object.keys(CATEGORIES).filter((c) => PLUGINS.some((p) => p.categories.includes(c)));
+$('#pills').innerHTML = show([
+  html`<label class="pill"><input type="radio" name="cat" value="all" checked>All <span class="count">${PLUGINS.length}</span></label>`,
+  ...usedCats.map((c) => html`<label class="pill"><input type="radio" name="cat" value="${c}">${CATEGORIES[c]}
+      <span class="count">${PLUGINS.filter((p) => p.categories.includes(c)).length}</span></label>`),
+]);
+
+// Sculpture chips in the dock.
+
+// Fine-print plate, computed from what has actually shipped.
+(() => {
+  const shipped = PLUGINS.flatMap((p) => p.downloads);
+  const formats = [...new Set(PLUGINS.filter((p) => p.downloads.length).flatMap((p) => p.formats))];
+  const licences = [...new Set(PLUGINS.map((p) => p.licence).filter(Boolean))];
+  const osRow = (os) => {
+    const files = shipped.filter((d) => d.os === os);
+    if (!files.length) return 'Not built yet';
+    const signing = files.every((d) => d.signing === 'notarized') ? 'signed & notarized'
+      : files.every((d) => d.signing !== 'unsigned') ? 'signed' : 'not code-signed yet';
+    return `${files[0].detail.split(' · ').pop()} · ${signing}`;
+  };
+  const rows = [
+    ['Price', 'Free. No trial, no tiers, no “pro” version.'],
+    ['Account', 'None. Files come straight from GitHub Releases.'],
+    ['DRM', `None. Open source: ${licences.join(' and ')}.`],
+    ['Formats', formats.join(' · ')],
+    ['macOS', osRow('macos')],
+    ['Windows', osRow('windows')],
+    ['Linux', osRow('linux')],
+    ['Checks', 'SHA-256 for every file, shown next to it.'],
+    ['Made with', 'Designed and tuned by ear; the code is written with AI assistance and tested before every release.'],
+  ];
+  $('#plate').innerHTML = rows.map(([k, v]) => show(html`<div><dt>${k}</dt><dd>${v}</dd></div>`)).join('');
+})();
+
+// Release notes, newest first, from every plugin's releases.
+(() => {
+  const all = PLUGINS.flatMap((p) => p.releases.map((r) => ({ ...r, p }))).sort((a, b) => b.date.localeCompare(a.date));
+  $('#notes-list').innerHTML = all.map((r) => show(html`<li class="note" style="--hue:${r.p.hue}">
+    <time datetime="${r.date}">${fmtDate(r.date)}</time>
+    <div><h3>${r.title} <span class="tag tag--released"><span class="dot" aria-hidden="true"></span>${r.p.name}</span></h3>
+      <ul>${r.notes.map((n) => html`<li>${n}</li>`)}</ul>
+      <a href="${r.url}" rel="noopener">Full notes and files on GitHub ↗</a></div></li>`)).join('');
+  const bench = PLUGINS.filter((p) => !p.releases.length);
+  $('#bench').innerHTML = bench.length ? show(html`Not released yet: ${bench.map((p, i) => html`${i ? ' · ' : ''}<strong>${p.name}</strong> (${p.statusLabel.toLowerCase()}${p.build ? ', build from source' : ''})`)}.`) : '';
+  const latest = all[0];
+  if (latest) $('#hero-latest').innerHTML = show(html`Latest: <a href="#${latest.p.id}">${latest.title}</a> · ${fmtDate(latest.date)}`);
+  $('#footer-repos').innerHTML = PLUGINS.filter((p) => p.repo).map((p) => show(html`<li><a href="${p.repo}" rel="noopener">${p.name} ↗</a></li>`)).join('');
+})();
+
+// Dev hint: one quiet line listing manifest URLs that still need wiring.
+{
+  const pending = PLUGINS.flatMap((p) => [...p.loops.flatMap((l) => l.stems), p.loopsZip]).filter((s) => !s.url).length;
+  if (pending && /^(localhost|127\.0\.0\.1|\[::1\])$|\.(localhost|test)$/.test(location.hostname)) {
+    console.info(`[manifest] ${pending} loop URLs are still placeholders; they render as dashed "pending" chips.`);
+  }
+}
+
+/* ==========================================================================
+   6. NATIVE OVERLAYS — invoker commands, popovers, dialogs
+   ========================================================================== */
+// Invoker Commands (command / commandfor) are native in current engines.
+// Only when missing do we load the polyfill — and if even that fails,
+// a tiny delegated listener covers the three commands this page uses.
+if (!('commandForElement' in HTMLButtonElement.prototype)) {
+  import('https://cdn.jsdelivr.net/npm/invokers-polyfill@1.0.4/index.js').catch(() => {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest?.('button[commandfor]');
+      const target = btn && document.getElementById(btn.getAttribute('commandfor'));
+      if (!target) return;
+      const cmd = btn.getAttribute('command');
+      if (cmd === 'show-modal' && !target.open) target.showModal();
+      else if (cmd === 'close') target.close();
+      else if (cmd === 'toggle-popover') target.togglePopover();
+    });
+  });
+}
+
+// closedby="any" gives light-dismiss natively; older engines get a bounds check.
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+  document.addEventListener('click', (e) => {
+    const d = e.target;
+    if (!(d instanceof HTMLDialogElement) || !d.open) return;
+    const r = d.getBoundingClientRect();
+    const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    if (outside && (e.clientX || e.clientY)) d.close();
+  });
+}
+
+// Closing a dialog pauses any video inside it (no sound left playing).
+document.addEventListener('close', (e) => {
+  if (e.target instanceof HTMLDialogElement) $$('video', e.target).forEach((v) => v.pause());
+}, true);
+
+// Copy buttons (checksums, commands).
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest?.('[data-copy]');
+  if (!btn) return;
+  const status = btn.closest('dialog')?.querySelector('[data-copy-status]');
+  const label = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.copy);
+    btn.textContent = 'Copied';
+    if (status) status.textContent = 'Copied to the clipboard.';
+  } catch {
+    const code = btn.previousElementSibling;
+    getSelection().selectAllChildren(code);
+    btn.textContent = 'Selected';
+    if (status) status.textContent = 'Selected. Press Command-C or Control-C to copy.';
+  }
+  setTimeout(() => { btn.textContent = label; }, 1800);
+});
+
+/* ==========================================================================
+   7. FILTERS + SEARCH with View Transitions
+   ========================================================================== */
+const cards = $$('.plugin', catalogEl);
+const form = $('#filters');
+const q = $('#q');
+const countOut = $('#result-count');
+const emptyEl = document.createElement('div');
+emptyEl.className = 'empty';
+emptyEl.hidden = true;
+catalogEl.append(emptyEl);
+
+const haystack = (p) => [p.name, p.tagline, p.summary, kindText(p), p.formats.join(' '), p.statusLabel, p.platformsText].join(' ').toLowerCase();
+function applyFilters() {
+  const cat = new FormData(form).get('cat') ?? 'all';
+  const term = q.value.trim().toLowerCase();
+  let visible = 0;
+  for (const card of cards) {
+    const p = byId[card.dataset.plugin];
+    const ok = (cat === 'all' || p.categories.includes(cat)) && (!term || haystack(p).includes(term));
+    card.hidden = !ok;
+    visible += ok;
+  }
+  countOut.value = `${visible} of ${PLUGINS.length}`;
+  emptyEl.hidden = visible > 0;
+  if (!visible) {
+    emptyEl.innerHTML = show(html`<p>Nothing matches “${term}”${cat !== 'all' ? html` in ${CATEGORIES[cat]}` : ''}. Try a format like VST3, or a word like bass.</p>
+      <button class="btn" type="button" data-reset-filters>Show all plugins</button>`);
+  }
+}
+function filterWithTransition() {
+  // Respect reduced motion: update the DOM directly, no animated rearrangement.
+  if (!document.startViewTransition || reducedMotion.matches) return applyFilters();
+  document.startViewTransition(applyFilters);
+}
+form.addEventListener('change', filterWithTransition);
+q.addEventListener('input', () => applyFilters());       // typing: instant, no transition per keystroke
+form.addEventListener('submit', (e) => e.preventDefault());
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('[data-reset-filters]')) return;
+  q.value = '';
+  form.elements.cat.value = 'all';
+  filterWithTransition();
+  q.focus();
+});
+applyFilters();
+
+/* ==========================================================================
+   8. MEDIA: play only while visible, pause off-screen, manual toggle
+   ========================================================================== */
+const mediaIO = new IntersectionObserver((entries) => {
+  for (const { target, isIntersecting } of entries) {
+    target.toggleAttribute('data-visible', isIntersecting);
+    const v = target.querySelector('video');
+    if (!v) continue;
+    if (isIntersecting && target.dataset.motion === 'on') v.play().catch(() => {});
+    else v.pause();
+  }
+}, { rootMargin: '10% 0px' });
+
+function wireMedia(frame) {
+  mediaIO.observe(frame);
+  const p = byId[frame.dataset.plugin];
+  // If every <source> fails, fall back to the procedural sketch.
+  const sources = $$('source', frame);
+  sources.at(-1)?.addEventListener('error', () => {
+    frame.querySelector('video')?.remove();
+    frame.insertAdjacentHTML('afterbegin', SKETCHES[p.sketch](p));
+  });
+  frame.querySelector('.media__toggle').addEventListener('click', (e) => {
+    const paused = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+    e.currentTarget.setAttribute('aria-pressed', String(paused));
+    frame.dataset.motion = paused ? 'off' : 'on';
+    frame.dataset.userSet = '';
+    const v = frame.querySelector('video');
+    if (v) paused ? v.pause() : v.play().catch(() => {});
+  });
+}
+$$('[data-media]').forEach(wireMedia);
+
+/* ==========================================================================
+   9. MACROS, SCULPTURE PICKER, STAGE STATE
+   ========================================================================== */
+/** Shared, render-agnostic state. The UI writes; the 3D stage reads each frame. */
+const stage = {
+  form: formOf(PLUGINS[0]),
+  pluginId: PLUGINS[0].id,
+  hue: PLUGINS[0].hue,
+  bpm: PLUGINS[0].bpm,
+  seed: seedOf(PLUGINS[0]),
+  macros: { slice: 0.5, formant: 0.6, open: 0.8, chaos: 0.15 },
+  frozen: reducedMotion.matches,
+  hit: 0,
+  wake: () => {},        // replaced by the renderer once it's running
+};
+
+const root = document.documentElement;
+const dock = $('.hero__dock');
+
+// Form chips: the shared library, not the plugin list.
+$('#form-picker').insertAdjacentHTML('beforeend', Object.entries(FORMS).map(([key, f]) => show(html`<label class="chip">
+  <input type="radio" name="form" value="${key}" ${key === stage.form ? 'checked' : ''}>
+  <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true">${raw(f.glyph)}</svg>${f.label}</label>`)).join(''));
+$('#form-picker').addEventListener('change', (e) => { stage.form = e.target.value; syncWindowLabel(); stage.wake(); });
+
+/* ---- Vowel space: the five-vowel F1/F2 chart. F1 (height) runs down, F2 (front→back) runs across. ---- */
+const VOWELS = [
+  { v: 'i', f1: 280, f2: 2250 }, { v: 'e', f1: 450, f2: 1950 }, { v: 'a', f1: 750, f2: 1300 },
+  { v: 'o', f1: 450, f2: 900 },  { v: 'u', f1: 310, f2: 800 },
+];
+const F2_FRONT = 2400, F2_BACK = 700, F1_CLOSE = 250, F1_OPEN = 800;
+const pad = $('[data-vowel-pad]');
+const padX = (x) => 8 + x * 84, padY = (y) => 9 + y * 58;                 // 0–1 → % of the pad (matches the CSS)
+for (const V of VOWELS) {
+  V.x = (F2_FRONT - V.f2) / (F2_FRONT - F2_BACK);
+  V.y = (V.f1 - F1_CLOSE) / (F1_OPEN - F1_CLOSE);
+  V.el = Object.assign(document.createElement('span'), { className: 'vowel__v', textContent: V.v });
+  V.el.style.cssText = `--vx:${V.x.toFixed(3)};--vy:${V.y.toFixed(3)}`;
+  pad.querySelector('.vowel__puck').before(V.el);
+}
+$('[data-arc]').setAttribute('points', VOWELS.map((V) => `${padX(V.x).toFixed(1)},${padY(V.y).toFixed(1)}`).join(' '));
+
+const LOG_LO = Math.log(80), LOG_HI = Math.log(5000);
+const fx = (f) => 2 + 96 * (Math.log(f) - LOG_LO) / (LOG_HI - LOG_LO);
+/** Spectral envelope with three formant peaks, as % coordinates along the bottom of the pad. */
+function envelope(f1, f2, f3) {
+  const peaks = [[f1, 1, 0.12], [f2, 0.78, 0.1], [f3, 0.5, 0.08]];
+  const amp = (f) => Math.min(1, 0.05 + peaks.reduce((a, [F, A, s]) => a + A * Math.exp(-((Math.log(f) - Math.log(F)) ** 2) / (2 * s * s)), 0));
+  const pts = Array.from({ length: 81 }, (_, i) => {
+    const f = Math.exp(LOG_LO + (LOG_HI - LOG_LO) * i / 80);
+    return `${fx(f).toFixed(2)} ${(99 - amp(f) * 25).toFixed(2)}`;
+  });
+  let comb = '';
+  for (let h = 110; h < 5000; h += 110) comb += `M${fx(h).toFixed(2)} 99V${(99 - amp(h) * 22).toFixed(2)}`;   // harmonics of A2
+  return { line: `M${pts.join('L')}`, fill: `M2 99L${pts.join('L')}L98 99Z`, comb };
+}
+const heightWord = (y) => (y < 0.33 ? 'close' : y < 0.66 ? 'mid' : 'open');
+const backWord = (x) => (x < 0.33 ? 'front' : x < 0.66 ? 'central' : 'back');
+function updateVowel() {
+  const { formant: x, open: y } = stage.macros;
+  pad.style.setProperty('--x', x); pad.style.setProperty('--y', y);
+  root.style.setProperty('--formant', x.toFixed(3));                       // the headline's width axis follows the vowel
+  let best = VOWELS[0], bestW = 0;
+  for (const V of VOWELS) {
+    const dx = (x - V.x) * 1.6, dy = y - V.y;                             // 1.6 ≈ the pad's aspect, so "near" is round
+    const w = Math.exp(-(dx * dx + dy * dy) / 0.07);
+    V.el.style.setProperty('--w', w.toFixed(3));
+    if (w > bestW) { bestW = w; best = V; }
+  }
+  const f2 = F2_FRONT - x * (F2_FRONT - F2_BACK), f1 = F1_CLOSE + y * (F1_OPEN - F1_CLOSE), f3 = 2500 + (f2 - 1500) * 0.3;
+  const env = envelope(f1, f2, f3);
+  $('[data-env-line]').setAttribute('d', env.line);
+  $('[data-env-fill]').setAttribute('d', env.fill);
+  $('[data-comb]').setAttribute('d', env.comb);
+  $('[data-readout="vowel"]').value = `${bestW > 0.55 ? '' : '≈ '}/${best.v}/`;
+  $('[data-readout="hz"]').textContent = `F1 ${Math.round(f1)} · F2 ${Math.round(f2)} Hz`;
+  $('#m-formant').setAttribute('aria-valuetext', `${backWord(x)}, F2 ${Math.round(f2)} hertz, nearest vowel ${best.v}`);
+  $('#m-open').setAttribute('aria-valuetext', `${heightWord(y)}, F1 ${Math.round(f1)} hertz, nearest vowel ${best.v}`);
+}
+
+const DIVS = [8, 16, 32, 64], DIV_NAMES = ['8ths', '16ths', '32nds', '64ths'];
+const noiseRand = (i) => { const v = Math.sin(i * 12.9898) * 43758.5453; return v - Math.floor(v); };
+function setMacro(name, v) {
+  stage.macros[name] = v;
+  const input = $(`[data-macro="${name}"]`);
+  if (name === 'formant' || name === 'open') updateVowel();
+  if (name === 'slice') {
+    const i = Math.min(3, Math.floor(v * 4));
+    dock.style.setProperty('--div', DIVS[i]);
+    $('[data-readout="slice"]').value = DIV_NAMES[i];
+    input.setAttribute('aria-valuetext', DIV_NAMES[i]);
+  }
+  if (name === 'chaos') {
+    dock.style.setProperty('--chaos', v.toFixed(3));
+    let d = 'M0 8';
+    for (let i = 1; i <= 60; i++) d += `L${i * 2} ${(8 + Math.sin(i * 0.55) * 3.2 * (1 - v) + (noiseRand(i) - 0.5) * 14 * v).toFixed(2)}`;
+    $('[data-noise]').setAttribute('d', d);
+    $('[data-readout="chaos"]').value = `${Math.round(v * 100)}%`;
+    input.setAttribute('aria-valuetext', `${Math.round(v * 100)} percent`);
+  }
+  stage.wake();
+}
+$$('[data-macro]').forEach((input) => {
+  input.addEventListener('input', () => setMacro(input.dataset.macro, input.valueAsNumber / 100));
+  setMacro(input.dataset.macro, input.valueAsNumber / 100);
+});
+
+// The pad is a pointer shortcut for the two edge sliders (which carry keyboard + AT access).
+pad.addEventListener('pointerdown', (e) => {
+  pad.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const r = pad.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, ((ev.clientX - r.left) / r.width * 100 - 8) / 84));
+    const y = Math.min(1, Math.max(0, ((ev.clientY - r.top) / r.height * 100 - 9) / 58));
+    $('#m-formant').value = Math.round(x * 100);
+    $('#m-open').value = Math.round(y * 100);
+    stage.macros.formant = x;
+    setMacro('open', y);
+  };
+  move(e);
+  const stop = () => { pad.removeEventListener('pointermove', move); pad.removeEventListener('pointerup', stop); pad.removeEventListener('pointercancel', stop); };
+  pad.addEventListener('pointermove', move);
+  pad.addEventListener('pointerup', stop);
+  pad.addEventListener('pointercancel', stop);
+});
+
+function syncWindowLabel() {
+  const p = byId[stage.pluginId];
+  $('[data-window-name]').textContent = p.name;
+  $('[data-window-kind]').textContent = `${FORMS[stage.form].label.toLowerCase()} · ${p.statusLabel.toLowerCase()}`;
+}
+/** A plugin doesn't own a sculpture: it picks a shared form, tints it with its hue and varies it with its seed. */
+function showPlugin(id) {
+  const p = byId[id];
+  if (!p || stage.pluginId === id) return;
+  Object.assign(stage, { form: formOf(p), pluginId: id, hue: p.hue, bpm: p.bpm, seed: seedOf(p) });
+  $('#stage').style.setProperty('--stage-hue', p.hue);
+  dock.style.setProperty('--hue', p.hue);
+  const radio = $(`input[name="form"][value="${stage.form}"]`);
+  if (radio) radio.checked = true;
+  $$('.plugin').forEach((c) => c.toggleAttribute('data-active', c.dataset.plugin === id));
+  syncWindowLabel();
+  stage.wake();
+}
+syncWindowLabel();
+
+// Hover / focus a plugin → its tinted form; otherwise whichever card crosses the centre line.
+let centreId = null, hoverId = null;
+for (const card of cards) {
+  card.addEventListener('pointerenter', () => { hoverId = card.dataset.plugin; showPlugin(hoverId); });
+  card.addEventListener('pointerleave', () => { hoverId = null; if (centreId) showPlugin(centreId); });
+  card.addEventListener('focusin', () => showPlugin(card.dataset.plugin));
+}
+const centreIO = new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) { centreId = e.target.dataset.plugin; if (!hoverId) showPlugin(centreId); }
+}, { rootMargin: '-48% 0px -48% 0px' });
+cards.forEach((c) => centreIO.observe(c));
+
+$('[data-hit]').addEventListener('click', () => { stage.hit = 1; stage.wake(); });
+const freezeBtn = $('[data-freeze]');
+const syncFreeze = () => freezeBtn.setAttribute('aria-pressed', String(stage.frozen));
+freezeBtn.addEventListener('click', () => { stage.frozen = !stage.frozen; syncFreeze(); stage.wake(); });
+syncFreeze();
+
+// Live response to the OS reduce-motion switch (without overriding explicit user toggles).
+reducedMotion.addEventListener('change', () => {
+  stage.frozen = reducedMotion.matches; syncFreeze();
+  $$('[data-media]').forEach((f) => {
+    if ('userSet' in f.dataset) return;
+    f.dataset.motion = motionDefault();
+    f.querySelector('.media__toggle').setAttribute('aria-pressed', String(reducedMotion.matches));
+    const v = f.querySelector('video');
+    if (v) reducedMotion.matches ? v.pause() : (f.hasAttribute('data-visible') && v.play().catch(() => {}));
+  });
+  stage.wake();
+});
+
+/* ==========================================================================
+   10. THE 3D STAGE — Three.js r187, WebGPURenderer (auto WebGL 2 fallback), TSL
+   Loaded lazily so the catalog never waits on ~1 MB of GPU code, and isolated
+   in try/catch so a missing GPU just leaves the CSS orb in place.
+   No AudioContext anywhere: the page is silent by construction.
+   ========================================================================== */
+const backendEl = $('[data-backend]');
+startStage().catch((err) => {
+  root.dataset.stage = 'fallback';
+  backendEl.textContent = '3D: off (static)';
+  console.warn('[stage] 3D disabled, showing the static sculpture instead:', err?.message ?? err);
+});
+
+async function startStage() {
+  const THREE = await import('three/webgpu');
+  const TSL = await import('three/tsl');
+  const { bloom } = await import('three/addons/tsl/display/BloomNode.js');
+  const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+  const {
+    Fn, uniform, float, vec3, vec4, mix, step, smoothstep, floor, fract, sin, cos, abs, max, clamp, pow, exp, dot,
+    atan, hash, mx_noise_float, rotate, mod, instanceIndex, positionLocal, positionGeometry, normalLocal,
+    normalView, positionViewDirection, pass, mrt, output, emissive, PI, TWO_PI,
+  } = TSL;
+
+  const canvas = $('#stage-canvas');
+  const host = $('#stage');
+  // ?webgl forces the WebGL 2 backend — handy for checking the fallback path.
+  const forceWebGL = new URLSearchParams(location.search).has('webgl');
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, alpha: true, forceWebGL });
+  await renderer.init();
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+
+  const isWebGPU = Boolean(renderer.backend?.isWebGPUBackend);
+  backendEl.textContent = `3D: ${isWebGPU ? 'WebGPU' : 'WebGL 2'}`;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(3, 4, 5); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffffff, 1.3); rim.position.set(-4, 1.5, -3); scene.add(rim);
+
+  /* ---- shared uniforms (the macros, drag springs and clock) ----
+     Photosensitivity rule for everything below: light never switches on/off.
+     Rhythm shows as motion that glides and holds; brightness only rises and falls
+     with that motion or with one slow swell every two bars (well under 1 Hz).
+     WCAG 2.3.1 caps flashing at 3 per second — this stays far below it. */
+  const U = {
+    time: uniform(0),            // seconds of motion (stops while frozen)
+    bars: uniform(0),            // musical time in bars at the active plugin's tempo (no jumps when tempo changes)
+    slice: uniform(0.5), formant: uniform(0.5), open: uniform(0.6), chaos: uniform(0.15),
+    twist: uniform(0), squash: uniform(0), hit: uniform(0), swell: uniform(0), seed: uniform(0),
+  };
+  const spectrum = Fn(([t]) => vec3(0.5).add(vec3(0.5).mul(cos(TWO_PI.mul(vec3(t).add(vec3(0.0, 0.33, 0.67)))))));
+  const fresnel = Fn(() => pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 3));
+  const seedInt = floor(U.seed.mul(4096));
+
+  /** Drag deformation shared by every form: twist about Y + volume-ish squash. */
+  const deform = Fn(([p]) => {
+    const q = rotate(p, vec3(0, U.twist.mul(p.y), 0));
+    return q.mul(vec3(float(1).sub(U.squash.mul(0.45)), float(1).add(U.squash), float(1).sub(U.squash.mul(0.45))));
+  });
+
+  /** Wireframe → solid crystallisation mask driven by a presence uniform. */
+  const crystal = (presence, seed) => {
+    const n = mx_noise_float(positionGeometry.mul(2.4).add(seed)).mul(0.5).add(0.5);
+    const thr = presence.mul(1.25).sub(0.12);
+    const mask = step(n, thr);
+    const edge = smoothstep(thr.sub(0.12), thr, n).mul(mask).mul(step(presence, 0.995));
+    return { mask, edge };
+  };
+
+  /** Thin-film thickness (nm) varies across the surface and slides with the vowel → prismatic, not flat. */
+  const filmThickness = (lo, hi) => mix(float(lo), float(hi),
+    clamp(U.formant.mul(0.65).add(mx_noise_float(TSL.positionWorld.mul(1.4)).mul(0.35).add(0.2)), 0, 1));
+
+  // Liquid chrome with a thin-film coat by default; forms override toward pearl or dark glass.
+  const glassMaterial = (opts = {}) => new THREE.MeshPhysicalNodeMaterial({
+    color: 0xe8e6f4, metalness: 0.92, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05,
+    iridescence: 0.9, iridescenceIOR: 1.6, ...opts,
+  });
+  const wireMaterial = (glow, opacity) => {
+    const m = new THREE.MeshStandardNodeMaterial({ wireframe: true, transparent: true, depthWrite: false, color: 0x000000, roughness: 1, metalness: 0 });
+    m.colorNode = vec3(0);
+    m.emissiveNode = glow.mul(opacity).mul(1.4);
+    m.opacityNode = opacity;
+    return m;
+  };
+
+  /** One form = a group + its presence springs + per-frame update. Forms are a small
+      library shared by every plugin; a plugin only picks one and tints it. */
+  const forms = {};
+  function defineForm(name, build) {
+    const solid = uniform(0), wire = uniform(0);
+    const accent = uniform(new THREE.Color());
+    const group = new THREE.Group();
+    const wireOpacity = wire.mul(float(1).sub(solid.mul(0.86))).add(U.swell.mul(0.06).mul(solid));
+    const update = build({ group, solid, wire, wireOpacity, accent }) ?? (() => {});
+    group.visible = false;
+    scene.add(group);
+    forms[name] = { group, solid, wire, accent, update, s: 0, w: 0 };
+  }
+
+  /* ---- Monoliths: blocks of cuts. Once per bar the blocks glide to a new re-edit and hold. ---- */
+  defineForm('monoliths', ({ group, solid, wireOpacity, accent }) => {
+    const SL = 16, inner = 5, outer = 7, cols = inner + outer, count = cols * SL;
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
+    const cutAt = (col, grp, phrase) => {
+      const s = col.mul(97).add(grp.mul(13)).add(phrase.mul(7919)).add(seedInt);
+      const cut = step(float(0.84).sub(U.chaos.mul(0.45)), hash(s));
+      return {
+        cut,
+        slide: hash(s.add(1)).sub(0.5).mul(float(0.2).add(U.chaos.mul(0.5))).mul(cut),
+        push: hash(s.add(2)).mul(float(0.04).add(U.chaos.mul(0.16))).mul(cut),
+      };
+    };
+    // Shared per-instance maths for position and glow.
+    const i = instanceIndex.toFloat();
+    const col = floor(i.div(SL));
+    const sl = i.sub(col.mul(SL));
+    const ring = step(inner - 0.5, col);
+    const k = col.sub(ring.mul(inner));
+    const a = k.div(mix(float(inner), float(outer), ring)).mul(TWO_PI).add(ring.mul(PI.div(outer)));
+    const gs = pow(float(2), floor(mix(float(3.99), float(0), U.slice)));   // slice density = block size
+    const grp = floor(sl.div(gs));
+    const phrase = floor(U.bars);
+    const glide = smoothstep(0.0, 0.42, fract(U.bars));                       // move early in the bar, then hold
+    const A0 = cutAt(col, grp, phrase), A1 = cutAt(col, grp, phrase.add(1));
+    const cutAmt = mix(A0.cut, A1.cut, glide);
+    const openK = mix(float(0.55), float(1.6), U.open);
+
+    const pos = Fn(() => {
+      const dir = vec3(cos(a), 0, sin(a));
+      const tan = vec3(sin(a).negate(), 0, cos(a));
+      const slide = mix(A0.slide, A1.slide, glide).mul(openK);
+      const push = mix(A0.push, A1.push, glide).mul(openK).add(U.hit.mul(0.22));
+      const p = positionLocal.add(tan.mul(slide)).add(dir.mul(push));
+      // A slow, continuous orbit: 1/32 of a turn per bar, rings counter-rotating.
+      const ang = U.bars.mul(TWO_PI.div(32)).mul(mix(float(1), float(-0.6), ring));
+      return deform(rotate(p, vec3(0, ang, 0)));
+    })();
+
+    const { mask, edge } = crystal(solid, vec3(i.mul(1.31)));
+    const mat = glassMaterial({ flatShading: true });
+    mat.positionNode = pos;
+    mat.opacityNode = mask; mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(240, 820);
+    // Displaced blocks hold a soft glow that fades in and out with their glide — no flashes.
+    mat.emissiveNode = accent.mul(cutAmt.mul(0.24).add(edge.mul(3)).add(U.hit.mul(0.8)));
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    const wire = new THREE.InstancedMesh(geo, wireMaterial(accent, wireOpacity), count);
+    wire.material.positionNode = pos;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    for (let c = 0; c < cols; c++) {
+      const outerRing = c >= inner, n = outerRing ? outer : inner, kk = outerRing ? c - inner : c;
+      const ang = kk / n * Math.PI * 2 + (outerRing ? Math.PI / outer : 0);
+      const R = outerRing ? 1.3 : 0.55, H = outerRing ? 1.35 : 2.05, w = outerRing ? 0.15 : 0.2;
+      for (let j = 0; j < SL; j++) {
+        const h = H / SL;
+        v.set(Math.cos(ang) * R, -H / 2 + (j + 0.5) * h, Math.sin(ang) * R);
+        q.setFromAxisAngle(Y, -ang);
+        s.set(w, h * 0.84, w);
+        m.compose(v, q, s);
+        mesh.setMatrixAt(c * SL + j, m);
+      }
+    }
+    wire.instanceMatrix = mesh.instanceMatrix;          // one buffer, two draws
+    group.add(mesh, wire);
+    group.rotation.x = 0.22;
+  });
+
+  /* ---- Tube: a vowel-rippled tube around a ring that never moves ---- */
+  defineForm('tube', ({ group, solid, wireOpacity, accent }) => {
+    const amber = vec3(0.96, 0.62, 0.2);
+    // Ripple counts per formant for a front vowel (i) and a back vowel (u); the vowel space blends them.
+    const FRONT = [1.1, 9.2, 12, 14, 18], BACK = [1.3, 3.2, 9.4, 13, 18], AMP = [0.075, 0.055, 0.04, 0.03, 0.022];
+    const ripple = Fn(() => {
+      const u = atan(positionGeometry.y, positionGeometry.x);
+      let r = float(0);
+      for (let j = 0; j < 5; j++) {
+        // Blend neighbouring integer ripple counts so the morph is smooth AND the ring stays seamless.
+        const kf = mix(float(FRONT[j]), float(BACK[j]), U.formant);
+        const k0 = floor(kf), w = fract(kf);
+        const ph = U.time.mul(0.45 + j * 0.25);
+        r = r.add(mix(sin(u.mul(k0).add(ph)), sin(u.mul(k0.add(1)).add(ph)), w).mul(AMP[j]));
+      }
+      r = r.mul(mix(float(0.55), float(1.7), U.open));                     // open vowels ripple wider
+      r = r.add(sin(u.mul(floor(mix(float(16), float(40), U.slice))).sub(U.time.mul(1.2))).mul(0.018).mul(U.slice.add(0.2)));
+      r = r.add(mx_noise_float(positionGeometry.mul(2.2).add(vec3(U.seed.mul(9), 0, U.time.mul(0.5)))).mul(U.chaos.mul(0.17)));
+      return r.mul(float(1).add(U.hit.mul(0.9)));
+    })();
+    const pos = deform(positionLocal.add(normalLocal.mul(ripple)));
+    const tubeGeo = new THREE.TorusGeometry(0.95, 0.22, 40, 260);
+    const { mask, edge } = crystal(solid, vec3(0.0));
+    const mat = glassMaterial({ color: 0xf3e9dc, metalness: 0.7, roughness: 0.14 });   // warm chrome-pearl
+    mat.positionNode = pos;
+    mat.opacityNode = mask; mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(300, 860);
+    mat.emissiveNode = amber.mul(smoothstep(0.06, 0.16, ripple).mul(1.2)).add(accent.mul(edge.mul(3)));
+    const tube = new THREE.Mesh(tubeGeo, mat);
+    const tubeWire = new THREE.Mesh(tubeGeo, wireMaterial(amber, wireOpacity));
+    tubeWire.material.positionNode = pos;
+    // The still ring: no twist, no chaos, no ripple. It just glows, dead steady.
+    const subGeo = new THREE.TorusGeometry(0.46, 0.03, 12, 160);
+    const subMask = crystal(solid, vec3(3.0));
+    const subMat = new THREE.MeshStandardNodeMaterial({ color: 0x0a0d12, roughness: 0.4, metalness: 0.2 });
+    subMat.emissiveNode = accent.mul(1.8);
+    subMat.opacityNode = subMask.mask; subMat.alphaTest = 0.5;
+    const sub = new THREE.Mesh(subGeo, subMat);
+    group.add(tube, tubeWire, sub);
+    group.rotation.x = -1.05;
+    return (dt, moving) => { if (moving) tube.rotation.z = tubeWire.rotation.z += dt * 0.1; };
+  });
+
+  /* ---- Rings: interlocking Euclidean rings; a soft light travels them, never strobes ---- */
+  defineForm('rings', ({ group, solid, wireOpacity, accent }) => {
+    const rings = [
+      { n: 8, k: 3, r: 0.62, tilt: [0.95, 0.1, 0.2] },
+      { n: 12, k: 5, r: 0.98, tilt: [-0.45, 0.65, 0] },
+      { n: 16, k: 7, r: 1.34, tilt: [0.25, -0.3, 0.85] },
+    ];
+    const groups = rings.map(({ n, k, r, tilt }, ri) => {
+      const g = new THREE.Group();
+      g.rotation.set(...tilt);
+      const ringGeo = new THREE.TorusGeometry(r, 0.022, 6, n);
+      const { mask, edge } = crystal(solid, vec3(ri * 2.1));
+      const ringMat = glassMaterial({ metalness: 0.85, roughness: 0.18, color: 0xdedcf0 });
+      ringMat.positionNode = deform(positionLocal);
+      ringMat.opacityNode = mask; ringMat.alphaTest = 0.5;
+      ringMat.emissiveNode = accent.mul(edge.mul(3));
+      const wire = new THREE.Mesh(ringGeo, wireMaterial(accent, wireOpacity));
+      wire.material.positionNode = deform(positionLocal);
+      // Nodes: onset = (s·k mod n) < k — the Bresenham form of a Euclidean rhythm.
+      const nodeGeo = new THREE.IcosahedronGeometry(1, 0);
+      const nodeMat = glassMaterial({ flatShading: true, color: 0xffffff });
+      const s = instanceIndex.toFloat();
+      const kEff = clamp(floor(mix(float(k * 0.5), float(Math.min(n, k * 1.7)), U.slice)), 1, n);
+      const onset = step(mod(s.mul(kEff), float(n)), kEff.sub(0.5));
+      // A continuous "playhead" goes round once every two bars; each node brightens smoothly as it passes.
+      const head = fract(U.bars.mul(ri % 2 ? -0.5 : 0.5).add(ri * 0.13));
+      const dist = abs(fract(s.div(n).sub(head).add(0.5)).sub(0.5)).mul(n);     // in steps, wrapped
+      const glow = exp(dist.mul(dist).mul(-0.7)).mul(onset);
+      nodeMat.positionNode = deform(positionLocal.add(normalLocal.mul(onset.mul(mix(float(0.015), float(0.045), U.open)).add(glow.mul(0.03)))));
+      nodeMat.emissiveNode = accent.mul(glow.mul(1.4).add(onset.mul(0.25)).add(U.hit.mul(0.8)));
+      const nodeMask = crystal(solid, vec3(ri * 5.0));
+      nodeMat.opacityNode = nodeMask.mask; nodeMat.alphaTest = 0.5;
+      const nodes = new THREE.InstancedMesh(nodeGeo, nodeMat, n);
+      const m = new THREE.Matrix4();
+      for (let j = 0; j < n; j++) {
+        const ang = j / n * Math.PI * 2;
+        m.makeScale(0.055, 0.055, 0.055).setPosition(Math.cos(ang) * r, Math.sin(ang) * r, 0);
+        nodes.setMatrixAt(j, m);
+      }
+      g.add(new THREE.Mesh(ringGeo, ringMat), wire, nodes);
+      group.add(g);
+      return { g, tilt };
+    });
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 1), glassMaterial({ flatShading: true }));
+    const coreMask = crystal(solid, vec3(9.0));
+    core.material.opacityNode = coreMask.mask; core.material.alphaTest = 0.5;
+    core.material.emissiveNode = accent.mul(U.swell.mul(0.35).add(U.hit.mul(1.2)));
+    group.add(core);
+    let spin = 0;
+    return (dt, moving) => {
+      if (moving) spin += dt;
+      const open = 0.6 + stage.macros.open * 0.8;                          // open vowels splay the rings apart
+      groups.forEach(({ g, tilt }, i) => {
+        g.rotation.x = tilt[0] * open; g.rotation.y = tilt[1] * open + spin * 0.03 * (i + 1);
+        g.rotation.z = tilt[2] + spin * (0.12 + i * 0.05) * (i % 2 ? -1 : 1);
+      });
+    };
+  });
+
+  /* ---- Prisms: an octahedron cluster with slow glints and a spectral fan ---- */
+  defineForm('prisms', ({ group, solid, wireOpacity, accent }) => {
+    const geo = new THREE.OctahedronGeometry(1, 0);
+    let seedState = 7;
+    const rand = () => ((seedState = (seedState * 16807) % 2147483647) / 2147483647);
+    const base = [{ p: new THREE.Vector3(0, 0, 0), s: 0.6, r: new THREE.Euler(0.2, 0.4, 0) }];
+    for (let i = 0; i < 8; i++) {
+      const ang = i / 8 * Math.PI * 2 + rand() * 0.4, y = (rand() - 0.5) * 1.2, R = 0.75 + rand() * 0.3;
+      base.push({ p: new THREE.Vector3(Math.cos(ang) * R, y, Math.sin(ang) * R), s: 0.18 + rand() * 0.2, r: new THREE.Euler(rand() * 3, rand() * 3, rand() * 3) });
+    }
+    const { mask, edge } = crystal(solid, vec3(instanceIndex.toFloat().mul(2.7)));
+    const mat = new THREE.MeshPhysicalNodeMaterial({
+      color: 0x1b1a26, metalness: 0, roughness: 0.03, clearcoat: 1, clearcoatRoughness: 0.02,
+      iridescence: 1, iridescenceIOR: 2.0, ior: 2.3, specularIntensity: 1, flatShading: true,
+    });
+    // Each crystal glints on its own slow cycle (6–9 s): a rise and fall, never a blink.
+    const ii = instanceIndex.toFloat();
+    const glint = pow(sin(U.time.mul(float(0.7).add(hash(ii.add(seedInt)).mul(0.35))).add(ii.mul(2.4))).mul(0.5).add(0.5), 6);
+    mat.positionNode = deform(positionLocal);
+    mat.opacityNode = mask; mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(200, 900);
+    mat.emissiveNode = spectrum(dot(normalView, positionViewDirection).mul(1.6).add(U.formant).add(U.time.mul(0.03)))
+      .mul(fresnel().mul(0.7)).add(accent.mul(glint.mul(0.9).add(edge.mul(3)).add(U.hit.mul(0.8))));
+    const mesh = new THREE.InstancedMesh(geo, mat, base.length);
+    const wire = new THREE.InstancedMesh(geo, wireMaterial(accent, wireOpacity), base.length);
+    wire.material.positionNode = deform(positionLocal);
+    wire.instanceMatrix = mesh.instanceMatrix;
+    // Spectral fan: thin rays, each a hue of the spectrum, breathing slowly.
+    const RAYS = 11;
+    const rayGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
+    const rayMat = new THREE.MeshStandardNodeMaterial({ color: 0x000000, transparent: true, depthWrite: false });
+    const ri = instanceIndex.toFloat();
+    const shimmer = sin(U.time.mul(0.8).add(ri.mul(0.9))).mul(0.2).add(0.8);
+    const along = float(1).sub(positionGeometry.z.add(0.5).mul(0.5).add(0.25));
+    rayMat.colorNode = vec3(0);
+    rayMat.emissiveNode = spectrum(ri.div(RAYS).mul(0.85)).mul(shimmer).mul(1.4);
+    rayMat.opacityNode = solid.mul(along).mul(float(0.3).add(U.slice.mul(0.5)));
+    rayMat.positionNode = deform(positionLocal);
+    const rays = new THREE.InstancedMesh(rayGeo, rayMat, RAYS);
+    const rm = new THREE.Matrix4(), rq = new THREE.Quaternion(), rs = new THREE.Vector3();
+    for (let i = 0; i < RAYS; i++) {
+      rq.setFromEuler(new THREE.Euler(-0.55 + i * 0.11, 1.15, 0));
+      rs.set(0.012, 0.012, 3.2);
+      rm.compose(new THREE.Vector3(0.2, 0, 0), rq, rs);
+      rays.setMatrixAt(i, rm);
+    }
+    group.add(mesh, wire, rays);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3(), e = new THREE.Euler();
+    let t = 0;
+    return (dt, moving) => {
+      if (moving) t += dt;
+      const spread = 0.85 + stage.macros.open * 0.55 + U.hit.value * 0.3;   // open vowels open the cluster
+      base.forEach((b, i) => {
+        pv.copy(b.p).multiplyScalar(spread); pv.y += Math.sin(t * 0.7 + i) * 0.04;
+        e.set(b.r.x + t * 0.12 * (i % 3 - 1), b.r.y + t * 0.16, b.r.z);
+        q.setFromEuler(e); sv.setScalar(b.s);
+        m.compose(pv, q, sv); mesh.setMatrixAt(i, m);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      group.rotation.y += moving ? dt * 0.08 : 0;
+    };
+  });
+
+  /* ---- floor rings: a faint polar grid (the gallery plinth) ---- */
+  const gridColor = uniform(new THREE.Color());
+  {
+    const pts = [];
+    for (let r = 1; r <= 4; r++) for (let i = 0; i < 128; i++) {
+      const a0 = i / 128 * Math.PI * 2, a1 = (i + 1) / 128 * Math.PI * 2, R = r * 0.55;
+      pts.push(Math.cos(a0) * R, 0, Math.sin(a0) * R, Math.cos(a1) * R, 0, Math.sin(a1) * R);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const lm = new THREE.LineBasicNodeMaterial({ transparent: true, depthWrite: false });
+    lm.colorNode = gridColor;
+    lm.opacityNode = float(0.22).mul(float(1).sub(TSL.length(positionGeometry.xz).div(2.4)));
+    const floorLines = new THREE.LineSegments(g, lm);
+    floorLines.position.y = -1.55;
+    scene.add(floorLines);
+  }
+
+  /* ---- render pipeline: MRT { output, emissive } → bloom only the emissive ---- */
+  const scenePass = pass(scene, camera);
+  const mrtNode = mrt({ output, emissive: vec4(emissive, output.a) });
+  mrtNode.setBlendMode('emissive', new THREE.BlendMode(THREE.NormalBlending));
+  scenePass.setMRT(mrtNode);
+  scenePass.getTexture('emissive').type = THREE.UnsignedByteType;   // bandwidth: 8-bit is plenty for glow
+  const colorTex = scenePass.getTextureNode('output');
+  const glow = bloom(scenePass.getTextureNode('emissive'), 1.1, 0.55, 0);
+  const pipeline = new THREE.RenderPipeline(renderer);
+  // Keep the canvas transparent: glow carries its own (premultiplied) alpha,
+  // so the CSS page colour shows through wherever there's no sculpture.
+  pipeline.outputNode = Fn(() => {
+    const g = glow;
+    const a = max(colorTex.a, clamp(max(g.r, max(g.g, g.b)), 0, 1));
+    return vec4(colorTex.rgb.add(g.rgb), a);
+  })();
+
+  /* ---- theme ---- */
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const applyTheme = () => {
+    glow.strength.value = dark.matches ? 1.15 : 0.55;
+    gridColor.value.set(dark.matches ? 0xc9c6e0 : 0x2b2840);
+    scene.environmentIntensity = dark.matches ? 0.85 : 1.05;
+    host.style.setProperty('--stage-light', dark.matches ? '24%' : '30%');
+    stage.wake();
+  };
+  dark.addEventListener('change', applyTheme);
+
+  /* ---- sizing ---- */
+  let W = 1, H = 1;
+  new ResizeObserver(([entry]) => {
+    const box = entry.contentBoxSize?.[0];
+    W = Math.max(1, Math.round(box ? box.inlineSize : host.clientWidth));
+    H = Math.max(1, Math.round(box ? box.blockSize : host.clientHeight));
+    renderer.setSize(W, H, false);
+    camera.aspect = W / H;
+    camera.updateProjectionMatrix();
+    stage.wake();
+  }).observe(host);
+
+  /* ---- input: pointer parallax, drag-to-twist with spring return, tap-to-hit ---- */
+  const pointer = { x: 0, y: 0, sx: 0, sy: 0 };
+  addEventListener('pointermove', (e) => {
+    pointer.x = e.clientX / innerWidth * 2 - 1;
+    pointer.y = e.clientY / innerHeight * 2 - 1;
+    if (!stage.frozen) stage.wake();
+  }, { passive: true });
+
+  const spring = { twist: 0, tv: 0, squash: 0, sv: 0, tTarget: 0, sTarget: 0, dragging: false };
+  for (const zone of $$('[data-grab]')) {
+    let start = null;
+    zone.addEventListener('pointerdown', (e) => {
+      start = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+      spring.dragging = true;
+      stage.wake();
+    });
+    zone.addEventListener('pointermove', (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (Math.abs(dx) > 6 && !zone.hasPointerCapture(e.pointerId)) zone.setPointerCapture(e.pointerId);
+      spring.tTarget = Math.max(-2.6, Math.min(2.6, dx / 140));
+      spring.sTarget = e.pointerType === 'touch' ? 0 : Math.max(-0.35, Math.min(0.35, -dy / 600));
+      stage.wake();
+    });
+    const end = (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+      if (moved < 6 && performance.now() - start.t < 400) stage.hit = 1;    // a tap is a hit
+      start = null; spring.dragging = false; spring.tTarget = 0; spring.sTarget = 0;
+      stage.wake();
+    };
+    zone.addEventListener('pointerup', end);
+    zone.addEventListener('pointercancel', end);
+  }
+
+  /* ---- scroll choreography: each section has a "shot"; the camera blends between them ---- */
+  // The CSS layout decides where the sculpture sits and how big it is: each
+  // shot names an anchor element, and the camera frames the sculpture inside
+  // that element's rect (via setViewOffset + distance). No magic numbers per breakpoint.
+  const SCULPT = 3.0;                       // world-space extent of the largest preset
+  const shots = [
+    // Hero: frame the whole right column (drag area + dock); the dock's frosted glass sits over the sculpture's base.
+    { el: $('.hero'),    anchor: [$('.hero__grab'), $('.hero__dock')], zoom: 1.32, az: 0.0, elv: 0.14 },
+    { el: $('#plugins'), anchor: [$('[data-anchor="catalog"]')],       zoom: 1.15, az: 0.65, elv: 0.3 },
+    { el: $('#notes'),   anchor: [$('[data-anchor="notes"]')],         zoom: 1.35, az: 1.5, elv: 0.75 },
+  ];
+  const cam = { dist: 8, az: 0, elv: 0.12, x: 0, y: 0 };
+  const place = (shot) => {
+    // On wide screens the hero frames grab area + dock together; stacked layouts frame the grab area alone.
+    const els = W >= 1024 ? shot.anchor : shot.anchor.slice(0, 1);
+    const rects = els.filter(Boolean).map((el) => el.getBoundingClientRect()).filter((r) => r.width);
+    if (!rects.length) return { x: W / 2, y: H / 2, size: Math.min(W, H) * 0.85 };   // narrow screens: centred, behind content
+    // Centre on the first anchor; size to the union of all of them.
+    const [first] = rects;
+    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
+    const cy = first.top + first.height * (rects.length > 1 ? 0.62 : 0.5);
+    return { x: first.left + first.width / 2, y: Math.min(H * 0.7, Math.max(H * 0.2, cy)), size: Math.min(right - left, bottom - top) };
+  };
+  const shotTarget = () => {
+    const mid = innerHeight * 0.5;
+    let i = 0;
+    for (let k = 0; k < shots.length; k++) if (shots[k].el.getBoundingClientRect().top <= mid) i = k;
+    const a = shots[i], b = shots[Math.min(i + 1, shots.length - 1)];
+    const ra = a.el.getBoundingClientRect(), rb = b.el.getBoundingClientRect();
+    const t = a === b ? 0 : THREE.MathUtils.smootherstep(Math.min(1, Math.max(0, (mid - ra.top) / Math.max(1, rb.top - ra.top))), 0, 1);
+    const pa = place(a), pb = place(b);
+    const lerp = THREE.MathUtils.lerp;
+    const size = Math.max(140, lerp(pa.size, pb.size, t));
+    const dist = (SCULPT * H) / (size * 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * lerp(a.zoom, b.zoom, t);
+    return { dist, az: lerp(a.az, b.az, t), elv: lerp(a.elv, b.elv, t), x: lerp(pa.x, pb.x, t), y: lerp(pa.y, pb.y, t) };
+  };
+  addEventListener('scroll', () => stage.wake(), { passive: true });
+
+  /** OKLCH → linear sRGB (Björn Ottosson's OKLab matrices), gamut-clipped. Same
+      colour space as the CSS tokens, so the sculpture and the UI agree on a hue. */
+  const tmpColor = new THREE.Color();
+  function oklchToLinear(L, C, hDeg, out) {
+    const h = hDeg * Math.PI / 180, a = C * Math.cos(h), b = C * Math.sin(h);
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+    const clip = (v) => Math.min(1, Math.max(0, v));
+    return out.setRGB(
+      clip(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+      clip(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+      clip(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s),
+      THREE.LinearSRGBColorSpace,
+    );
+  }
+
+  /* ---- frame loop with pause/resume ---- */
+  let running = false, visibleStage = true, last = performance.now(), simTime = 0, idleAz = 0, awakeUntil = 0, firstFrame = true;
+  const lightPos = { x: '', y: '' };
+  const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+
+  function frame() {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const moving = !stage.frozen;
+    if (moving) simTime += dt;
+
+    // Macros (smoothed so slider jumps glide).
+    for (const k of ['slice', 'formant', 'open', 'chaos']) U[k].value = damp(U[k].value, stage.macros[k], 10, dt);
+    U.seed.value = stage.seed;
+    U.time.value = simTime;
+    // Musical clock in bars, integrated so a tempo change (another plugin hovered) never jumps.
+    if (moving) U.bars.value += dt * (stage.bpm || 120) / 240;
+    // One slow swell every two bars — the only "beat" light, and well under 1 Hz.
+    U.swell.value = moving ? 0.5 - 0.5 * Math.cos(Math.PI * U.bars.value) : 0;
+    stage.hit = Math.max(0, stage.hit - dt * 3.2);
+    U.hit.value = Math.pow(stage.hit, 2);
+
+    // Damped springs for drag twist / squash.
+    spring.tv += ((spring.tTarget - spring.twist) * 38 - spring.tv * 8.5) * dt;
+    spring.twist += spring.tv * dt;
+    spring.sv += ((spring.sTarget - spring.squash) * 46 - spring.sv * 9) * dt;
+    spring.squash += spring.sv * dt;
+    U.twist.value = spring.twist; U.squash.value = spring.squash;
+
+    // Presets: the incoming one draws its wireframe first, then crystallises solid.
+    let settled = Math.abs(spring.tv) < 1e-3 && Math.abs(spring.twist - spring.tTarget) < 1e-3 && stage.hit === 0;
+    for (const [name, P] of Object.entries(forms)) {
+      const on = name === stage.form;
+      if (reducedMotion.matches || firstFrame) { P.w = on ? 1 : 0; P.s = on ? 1 : 0; }
+      else {
+        P.w = damp(P.w, on ? 1 : 0, on ? 7 : 5, dt);
+        P.s = damp(P.s, on && P.w > 0.55 ? 1 : 0, on ? 2.4 : 5, dt);
+      }
+      P.wire.value = P.w; P.solid.value = P.s;
+      P.group.visible = P.w > 0.003 || P.s > 0.003;
+      P.group.scale.setScalar(0.9 + 0.1 * P.s);
+      if (P.group.visible) P.update(dt, moving);
+      settled &&= Math.abs(P.w - (on ? 1 : 0)) < 0.002 && Math.abs(P.s - (on ? 1 : 0)) < 0.002;
+    }
+    const accentColor = oklchToLinear(0.78, 0.16, stage.hue, tmpColor);
+    for (const P of Object.values(forms)) P.accent.value.lerp(accentColor, 1 - Math.exp(-6 * dt));
+    rim.color.lerp(accentColor, 1 - Math.exp(-4 * dt));
+
+    // Camera: scroll shot + pointer parallax + idle drift (motion only).
+    const target = shotTarget();
+    const motionOK = moving && !reducedMotion.matches;
+    pointer.sx = damp(pointer.sx, motionOK ? pointer.x : 0, 4, dt);
+    pointer.sy = damp(pointer.sy, motionOK ? pointer.y : 0, 4, dt);
+    if (motionOK) idleAz += dt * 0.05;
+    const r = reducedMotion.matches || firstFrame ? 1 : 1 - Math.exp(-5 * dt);
+    cam.dist += (target.dist - cam.dist) * r; cam.az += (target.az - cam.az) * r; cam.elv += (target.elv - cam.elv) * r;
+    cam.x += (target.x - cam.x) * r; cam.y += (target.y - cam.y) * r;
+    const az = cam.az + idleAz + pointer.sx * 0.18, elv = cam.elv + pointer.sy * 0.08;
+    camera.position.set(Math.sin(az) * Math.cos(elv) * cam.dist, Math.sin(elv) * cam.dist, Math.cos(az) * Math.cos(elv) * cam.dist);
+    camera.lookAt(0, 0, 0);
+    camera.setViewOffset(W, H, W / 2 - cam.x, H / 2 - cam.y, W, H);
+    // Only touch style when the light pool actually moves (a style write per frame costs a recalc).
+    const lx = `${(cam.x / W * 100).toFixed(1)}%`, ly = `${(cam.y / H * 100).toFixed(1)}%`;
+    if (lx !== lightPos.x) host.style.setProperty('--stage-x', (lightPos.x = lx));
+    if (ly !== lightPos.y) host.style.setProperty('--stage-y', (lightPos.y = ly));
+    settled &&= Math.abs(target.x - cam.x) < 0.5 && Math.abs(target.dist - cam.dist) < 0.01;
+
+    pipeline.render();
+    if (firstFrame) { firstFrame = false; root.dataset.stage = 'live'; }
+
+    // Reduced motion / frozen: render on demand, then stop the loop when everything settles.
+    if (!moving && settled && now > awakeUntil) setRunning(false);
+  }
+
+  function setRunning(on) {
+    on = on && visibleStage && !document.hidden;
+    if (on === running) return;
+    running = on;
+    if (on) last = performance.now();
+    renderer.setAnimationLoop(on ? frame : null);
+    // r187: setAnimationLoop(null) only clears the callback — the renderer's internal
+    // requestAnimationFrame keeps ticking for node-frame bookkeeping, and there is no
+    // public stop. Halt it too, so a paused stage costs zero GPU work AND zero wake-ups.
+    // (setAnimationLoop(frame) restarts it.) Guarded in case the private field moves.
+    if (!on) renderer._animation?.stop?.();
+  }
+  stage.wake = () => { awakeUntil = performance.now() + 400; setRunning(true); };
+
+  // Pause when the stage can't be seen or the tab is hidden.
+  // • contentvisibilityautostatechange: the platform's own "skipped" signal for this subtree.
+  // • A zero-margin IntersectionObserver as well: content-visibility keeps elements
+  //   "relevant" within a generous margin (~half a viewport in Chromium), and the stage
+  //   should stop drawing the moment its last pixel leaves the screen.
+  let cvRelevant = true, onScreen = true;
+  const updateVisibility = () => { visibleStage = cvRelevant && onScreen; visibleStage ? stage.wake() : setRunning(false); };
+  if ('contentVisibility' in root.style) {
+    host.addEventListener('contentvisibilityautostatechange', (e) => { cvRelevant = !e.skipped; updateVisibility(); });
+  }
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; updateVisibility(); }).observe(host);
+  document.addEventListener('visibilitychange', () => (document.hidden ? setRunning(false) : stage.wake()));
+
+  // Compile every preset's pipelines up front so switching never stutters.
+  for (const P of Object.values(forms)) P.group.visible = true;
+  await renderer.compileAsync(scene, camera);
+  applyTheme();
+  stage.wake();
+}
+/* ==========================================================================
+   11. HOBERMAN CURSOR — a little expanding-linkage sphere that trails the pointer
+   Decorative only: the native cursor stays, the canvas ignores pointer events and
+   is hidden from assistive tech. Mouse/pen only, off under reduced motion and
+   forced colours, and it sleeps (no rAF) whenever it has nothing left to settle.
+   ========================================================================== */
+startHoberman();
+
+function startHoberman() {
+  const fine = matchMedia('(hover: hover) and (pointer: fine)');
+  const forced = matchMedia('(forced-colors: active)');
+  let toy = null;
+  const sync = () => {
+    const want = fine.matches && !reducedMotion.matches && !forced.matches;
+    if (want && !toy) toy = createHoberman();
+    else if (!want && toy) { toy.destroy(); toy = null; }
+  };
+  [fine, forced, reducedMotion].forEach((mq) => mq.addEventListener('change', sync));
+  sync();
+}
+
+function createHoberman() {
+  const SIZE = 180, HALF = SIZE / 2, N = 10;          // canvas px; scissor units per great circle
+  const canvas = Object.assign(document.createElement('canvas'), { className: 'hoberman' });
+  canvas.setAttribute('aria-hidden', 'true');
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = canvas.height = Math.round(SIZE * dpr);
+  document.body.append(canvas);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineCap = 'round';
+
+  // Six great circles whose normals sit on the icosahedron's five-fold axes — the real toy's layout.
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const rings = [[0, 1, PHI], [0, 1, -PHI], [1, PHI, 0], [1, -PHI, 0], [PHI, 0, 1], [-PHI, 0, 1]].map((axis) => {
+    const n = norm(axis);
+    const u = norm(cross(n, Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+    const v = cross(n, u);
+    return Array.from({ length: N }, (_, i) => {
+      const t = (i / N) * Math.PI * 2;
+      return [0, 1, 2].map((k) => u[k] * Math.cos(t) + v[k] * Math.sin(t));
+    });
+  });
+
+  const CLICKABLE = 'a[href], button:not(:disabled), summary, label, [role="button"], input[type="range"], select';
+  const HIDE_OVER = 'input[type="search"], input[type="text"], textarea, [data-vowel-pad], dialog';
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const s = {
+    x: innerWidth / 2, y: innerHeight / 2, vx: 0, vy: 0, px: innerWidth / 2, py: innerHeight / 2,
+    R: 10, rv: 0, open: 0.1, ov: 0, ax: 0.5, ay: 0, az: 0,
+    hue: 285, alpha: 0, squeeze: 1, target: null, mode: 'free', seen: false, lastMove: 0,
+  };
+  let raf = 0, last = performance.now();
+
+  const hueOf = (el) => {
+    const scope = el?.closest?.('[style*="--hue"]');
+    const h = scope && parseFloat(getComputedStyle(scope).getPropertyValue('--hue'));
+    return Number.isFinite(h) ? h : 285;
+  };
+  const onMove = (e) => {
+    if (e.pointerType === 'touch') return;
+    if (s.seen && e.clientX === s.px && e.clientY === s.py) return;   // hover refreshes at a parked cursor aren't movement
+    s.px = e.clientX; s.py = e.clientY; s.lastMove = performance.now();
+    if (!s.seen) { s.x = s.px; s.y = s.py; s.seen = true; }
+    wake();
+  };
+  const onOver = (e) => {
+    const el = e.target;
+    if (el.closest?.(HIDE_OVER)) { s.mode = 'hidden'; s.target = null; }
+    else if (el.closest?.('[data-grab]')) { s.mode = 'grab'; s.target = null; }
+    else {
+      const hit = el.closest?.(CLICKABLE);
+      s.mode = hit ? 'over' : 'free';
+      s.target = hit || null;
+    }
+    s.hueTarget = hueOf(s.target || el);
+    wake();
+  };
+  const onDown = () => { s.squeeze = 0.55; wake(); };
+  const onUp = () => { s.squeeze = 1; wake(); };
+  const onLeave = () => { s.mode = 'hidden'; wake(); };
+  addEventListener('pointermove', onMove, { passive: true });
+  addEventListener('pointerover', onOver, { passive: true });
+  addEventListener('pointerdown', onDown, { passive: true });
+  addEventListener('pointerup', onUp, { passive: true });
+  document.documentElement.addEventListener('pointerleave', onLeave);
+  addEventListener('blur', onLeave);
+
+  function wake() { if (!raf && !document.hidden) { last = performance.now(); raf = requestAnimationFrame(tick); } }
+
+  function tick(now) {
+    raf = 0;
+    const dt = Math.min(0.04, (now - last) / 1000);
+    last = now;
+
+    // Where to be, how big, how open.
+    let tx = s.px, ty = s.py, RT = 10, openT = 0.12;
+    if (s.mode === 'over' && s.target?.isConnected) {
+      const r = s.target.getBoundingClientRect();
+      if (r.width < 340 && r.height < 140) {                       // magnetise toward small controls
+        tx += (r.left + r.width / 2 - tx) * 0.28;
+        ty += (r.top + r.height / 2 - ty) * 0.28;
+      }
+      RT = Math.min(48, Math.max(22, Math.min(r.width, r.height) * 0.62 + 6));
+      openT = 1;
+    } else if (s.mode === 'grab') { RT = 56; openT = 0.85; }
+    const modal = document.querySelector('dialog:modal');
+    // Over a control it stays a little translucent, so the control's own label always reads first.
+    const alphaT = s.seen && s.mode !== 'hidden' && !modal ? (s.mode === 'over' ? 0.7 : 1) : 0;
+
+    // Springs: a little overshoot so the opening reads as mechanical, not a fade.
+    s.vx += ((tx - s.x) * 210 - s.vx * 24) * dt; s.x += s.vx * dt;
+    s.vy += ((ty - s.y) * 210 - s.vy * 24) * dt; s.y += s.vy * dt;
+    s.rv += ((RT * s.squeeze - s.R) * 170 - s.rv * 15) * dt; s.R += s.rv * dt;
+    s.ov += ((openT * s.squeeze - s.open) * 120 - s.ov * 13) * dt; s.open += s.ov * dt;
+    s.alpha += (alphaT - s.alpha) * (1 - Math.exp(-10 * dt));
+    s.hue += (((s.hueTarget ?? 285) - s.hue + 540) % 360 - 180) * (1 - Math.exp(-6 * dt));
+    const speed = Math.hypot(s.vx, s.vy);
+    s.ay += dt * (0.35 + Math.min(speed, 2500) * 0.0012 + (s.mode === 'grab' ? 0.8 : 0));
+    s.ax += ((0.45 + s.vy * 0.0008) - s.ax) * (1 - Math.exp(-4 * dt));
+    s.az += ((-s.vx * 0.0006) - s.az) * (1 - Math.exp(-4 * dt));
+
+    draw();
+    canvas.style.transform = `translate3d(${(s.x - HALF).toFixed(1)}px, ${(s.y - HALF).toFixed(1)}px, 0)`;
+
+    const settled = speed < 2 && Math.abs(s.rv) < 0.05 && Math.abs(s.ov) < 0.01 && Math.abs(s.alpha - alphaT) < 0.01;
+    if (!(settled && now - s.lastMove > 1400)) raf = requestAnimationFrame(tick);   // sleep when idle
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    if (s.alpha < 0.01) return;
+    const open = Math.min(1.2, Math.max(0, s.open));
+    const R = Math.max(4, s.R);
+    const d = R * (0.5 - 0.42 * Math.min(1, open));                // collapsed: chunky scissors; open: a thin lattice
+    const [cx, sx] = [Math.cos(s.ax), Math.sin(s.ax)], [cy, sy] = [Math.cos(s.ay), Math.sin(s.ay)], [cz, sz] = [Math.cos(s.az), Math.sin(s.az)];
+    const rot = ([x, y, z]) => {
+      let X = x * cy + z * sy, Z = -x * sy + z * cy;                // yaw
+      let Y = y * cx - Z * sx; Z = y * sx + Z * cx;                  // pitch
+      return [X * cz - Y * sz, X * sz + Y * cz, Z];                 // roll
+    };
+    const F = 260;
+    const proj = (v, r) => { const [x, y, z] = rot(v); const k = F / (F - z * r); return [HALF + x * r * k, HALF + y * r * k, z]; };
+    const L = dark.matches ? 0.82 : 0.55;
+    ctx.lineWidth = 1.15;
+    rings.forEach((ring, k) => {
+      const hue = (s.hue + k * 24) % 360;
+      for (let i = 0; i < N; i++) {
+        const a = ring[i], b = ring[(i + 1) % N];
+        const p1 = proj(a, R + d), p2 = proj(b, R - d), p3 = proj(a, R - d), p4 = proj(b, R + d);
+        const depth = (p1[2] + p2[2] + 1) / 2;                       // 0 = back, 1 = front
+        ctx.strokeStyle = `oklch(${L} 0.15 ${hue.toFixed(0)} / ${(s.alpha * (0.18 + 0.82 * depth)).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]);
+        ctx.moveTo(p3[0], p3[1]); ctx.lineTo(p4[0], p4[1]);
+        ctx.stroke();
+        if (depth > 0.55) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(p1[0] - 1, p1[1] - 1, 2, 2); }   // hub joints
+      }
+    });
+  }
+
+  return {
+    destroy() {
+      cancelAnimationFrame(raf);
+      removeEventListener('pointermove', onMove);
+      removeEventListener('pointerover', onOver);
+      removeEventListener('pointerdown', onDown);
+      removeEventListener('pointerup', onUp);
+      document.documentElement.removeEventListener('pointerleave', onLeave);
+      removeEventListener('blur', onLeave);
+      canvas.remove();
+    },
+  };
+}
+
+</script>
+</body>
+</html>
