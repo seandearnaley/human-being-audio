@@ -1347,7 +1347,7 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     const records = await response.json();
     const platforms = {
       macos: { detail: 'Apple Silicon + Intel', contents: 'Installer (.pkg) · VST3, AU, Standalone', signing: 'notarized' },
-      windows: { detail: 'Windows x64', contents: 'Installer (.msi) · VST3, Standalone', signing: 'signed' },
+      windows: { detail: 'Windows x64', contents: 'Installer (.exe) · VST3, Standalone', signing: 'signed' },
       linux: { detail: 'Ubuntu 26.04 · x86_64', contents: 'Archive (.tar.gz) · VST3, Standalone', signing: 'attested' },
     };
     for (const record of records) {

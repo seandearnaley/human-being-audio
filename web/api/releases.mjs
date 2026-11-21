@@ -1,6 +1,6 @@
 const repository = 'seandearnaley/human-being-audio';
 const products = new Set(['livecut-redux', 'tract-form']);
-const formats = { macos: '.pkg', windows: '-windows-x64.msi', linux: '-ubuntu-26.04-x86_64.tar.gz' };
+const formats = { macos: '.pkg', windows: '-windows-x64.exe', linux: '-ubuntu-26.04-x86_64.tar.gz' };
 
 async function readJson(url) {
   const response = await fetch(url, { headers: { 'User-Agent': 'Human-Being-Audio-catalog' } });
