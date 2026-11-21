@@ -30,3 +30,14 @@ class ReleaseRecordTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ProductNotesTests(unittest.TestCase):
+    def test_notes_bind_current_product_to_exact_source(self):
+        sha = "f" * 40
+        for slug in release.PRODUCTS:
+            item = release.product(slug)
+            text = release.notes(item, sha)
+            self.assertIn(item["name"], text)
+            self.assertIn(item["version"], text)
+            self.assertIn(f"/tree/{sha}/products/{slug}", text)
+            self.assertIn("SHA256SUMS", text)

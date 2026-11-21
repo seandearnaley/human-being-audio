@@ -40,12 +40,23 @@ def record(item, directory, sha):
     (directory / "SHA256SUMS").write_text("\n".join(sums) + "\n")
 
 
+def notes(item, sha):
+    source = ROOT / "products" / item["slug"]
+    changelog = (source / "docs/releases" / (item["version"] + ".md")).read_text(encoding="utf-8").strip()
+    return (changelog + "\n\n[Source and build instructions](" + STUDIO["repository"] +
+            f"/tree/{sha}/products/{item['slug']}). Verify downloads with SHA256SUMS or GitHub artifact attestations.")
+
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("env", "record"))
+    parser.add_argument("command", choices=("env", "record", "notes"))
     parser.add_argument("slug", choices=PRODUCTS)
     args = parser.parse_args()
     item = product(args.slug)
+    if args.command == "notes":
+        print(notes(item, os.environ["GITHUB_SHA"]))
+        return
     if args.command == "record":
         record(item, Path("dist"), os.environ["GITHUB_SHA"])
         return

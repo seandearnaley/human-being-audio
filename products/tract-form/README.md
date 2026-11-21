@@ -27,6 +27,10 @@ VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on
 - **Resample** renders four bars offline at 16× and hands you the file to drag
   into your session.
 
+## Install and release
+
+The [studio downloads page](https://humanbeingaudio.com/#tract-form) lists the Mac PKG, Windows x64 installer and Ubuntu 26.04 x86_64 archive. See the [studio release guide](../../factory/release/README.md) for packaging, signing and verification.
+
 ## Building
 
 Needs CMake 3.25+, Ninja and the Xcode Command Line Tools. Dependencies are

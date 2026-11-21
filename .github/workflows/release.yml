@@ -196,6 +196,6 @@ jobs:
         run: |
           (cd dist && sha256sum -c SHA256SUMS)
           for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest "$GITHUB_SHA"; done
-          printf '%s\n' "$NAME $VERSION by $PUBLISHER" "" "Install the signed and notarized universal PKG on macOS, the signed x64 installer on Windows, or unpack the x86_64 archive on Ubuntu 26.04. Close your host before installing and rescan plug-ins afterwards." "" "This release adds the studio About screen and installer branding. The plug-in retains its host IDs for existing projects." "" "Source and build instructions: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" "" "Verify downloads with SHA256SUMS or gh attestation verify FILE --repo $GITHUB_REPOSITORY." > "$RUNNER_TEMP/notes"
+          python3 factory/release/release.py notes "$PRODUCT" > "$RUNNER_TEMP/notes"
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
 

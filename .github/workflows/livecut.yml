@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'products/livecut-redux/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
       - 'cmake/**'
       - 'modules/**'
       - 'studio.json'
@@ -13,6 +15,8 @@ on:
   pull_request:
     paths:
       - 'products/livecut-redux/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
       - 'cmake/**'
       - 'modules/**'
       - 'studio.json'

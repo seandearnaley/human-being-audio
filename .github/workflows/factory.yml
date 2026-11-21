@@ -1,0 +1,16 @@
+name: Release factory
+on:
+  pull_request:
+    paths: ['factory/**', 'studio.json', 'products/*/docs/releases/**', 'products/*/CMakeLists.txt', 'design/studio/**', '.github/workflows/release.yml', '.github/workflows/factory.yml']
+  push:
+    branches: [main]
+    paths: ['factory/**', 'studio.json', 'products/*/docs/releases/**', 'products/*/CMakeLists.txt', 'design/studio/**', '.github/workflows/release.yml', '.github/workflows/factory.yml']
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  release-metadata:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m unittest discover -s factory/release
