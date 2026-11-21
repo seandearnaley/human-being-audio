@@ -1,13 +1,15 @@
 import CoreGraphics
 import Foundation
 
-// Test the installed app through Launch Services, as a musician opening it would.
-import AppKit
+// Open the executable inside the installed bundle and identify its window by PID.
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
-let app = try await NSWorkspace.shared.openApplication(at: url, configuration: .init())
-defer { app.terminate() }
+guard let executable = Bundle(url: url)?.executableURL else { fatalError("Missing app executable") }
+let app = Process()
+app.executableURL = executable
+try app.run()
+defer { if app.isRunning { app.terminate() } }
 let deadline = Date().addingTimeInterval(30)
-while Date() < deadline && !app.isTerminated {
+while Date() < deadline && app.isRunning {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     if windows.contains(where: {
         guard $0[kCGWindowOwnerPID as String] as? pid_t == app.processIdentifier,
@@ -20,6 +22,6 @@ while Date() < deadline && !app.isTerminated {
     }
     try await Task.sleep(for: .milliseconds(100))
 }
-if Date() >= deadline || app.isTerminated {
+if Date() >= deadline || !app.isRunning {
     throw NSError(domain: "StudioStandalone", code: 1, userInfo: [NSLocalizedDescriptionKey: "No standalone window appeared for " + url.path])
 }
