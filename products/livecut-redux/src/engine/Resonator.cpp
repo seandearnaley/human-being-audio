@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <hba/dsp/gain.h>
 #include "engine/Resonator.h"
 
 #include <algorithm>
@@ -44,7 +45,7 @@ void Resonator::configure (Bank& bank, const ResonatorParameters& p)
     bank = {};
     bank.parameters = p;
     bank.radius = std::exp (-std::log (1000.0) / (rate * .001 * p.decayMs));
-    bank.excitation = std::pow (10.0, p.excitationDb / 20.0);
+    bank.excitation = hba::dsp::dbToGain (p.excitationDb);
     double sum = 0;
     for (auto weight : p.weights)
         sum += weight;

@@ -4,6 +4,7 @@
 // CutProc11's stutter (one block whose cuts replay the block's first frame) with
 // an exact length that ends on the bar line, and WarpCut's geometric curve.
 
+#include <hba/dsp/gain.h>
 #include "engine/CutProcedures.h"
 
 #include <algorithm>
@@ -177,7 +178,7 @@ void Rush::chooseBlock (Random&, const CutParameters& params, const BlockContext
         cut.cents = static_cast<float> (params.rollCents * static_cast<double> (k) / static_cast<double> (n - 1));
         // The hit at full level; its repeats swell from swellDb back to full, even in decibels.
         const auto db = k == 0 || n == 2 ? 0.0 : swellDb * (1.0 - static_cast<double> (k - 1) / static_cast<double> (n - 2));
-        cut.amp = static_cast<float> (std::pow (10.0, db / 20.0));
+        cut.amp = static_cast<float> (hba::dsp::dbToGain (db));
     }
 }
 

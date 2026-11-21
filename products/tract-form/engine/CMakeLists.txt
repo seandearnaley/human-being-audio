@@ -19,6 +19,7 @@ if(NOT TF_HAS_NONBLOCKING OR TF_ACCEPTS_NONBLOCKING_ALLOCATION)
     message(FATAL_ERROR "Tract Form requires Clang with enforced nonblocking checks. See the studio README for the native toolchain.")
 endif()
 
+add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
 add_library(tf_engine STATIC
     include/tf/engine.h
     include/tf/nonblocking.h
@@ -45,7 +46,7 @@ target_include_directories(tf_engine
 # HIIR is a SYSTEM include so our warning set does not apply to it.
 target_include_directories(tf_engine SYSTEM PUBLIC third_party/hiir)
 target_compile_features(tf_engine PUBLIC cxx_std_20)
-target_link_libraries(tf_engine PUBLIC tf_core PRIVATE tf_warnings)
+target_link_libraries(tf_engine PUBLIC tf_core hba_dsp PRIVATE tf_warnings)
 
 # The audio path is checked by the compiler: Engine::process and everything it
 # calls must be provably non-blocking (no allocation, locks, throws, syscalls).

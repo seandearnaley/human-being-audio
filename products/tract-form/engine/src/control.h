@@ -4,6 +4,7 @@
 
 #include "tf/nonblocking.h"
 
+#include <hba/dsp/gain.h>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -14,7 +15,7 @@ namespace tf::dsp {
 inline constexpr double kPi = 3.14159265358979323846;
 inline constexpr double kTwoPi = 2.0 * kPi;
 
-inline double dbToGain(double db) noexcept TF_NONBLOCKING { return std::pow(10.0, db / 20.0); }
+using hba::dsp::dbToGain;
 inline double gainToDb(double gain) noexcept TF_NONBLOCKING { return 20.0 * std::log10(std::max(gain, 1e-30)); }
 
 // x - floor(x): the fractional part, in [0, 1) also for negative x.
