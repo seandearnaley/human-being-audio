@@ -1346,7 +1346,9 @@ struct Wrapped
 // `jumps` lists frames where the host jumps back `jumpBeats`, as a seek does; with
 // none, the host wraps an arrangement loop of `bars` bars on the frame nearest its
 // end (the later frame where the end falls half a sample between two).
-Wrapped wrapLoop (StereoFrame (*material) (std::int64_t), int bars, double meter, double bpm, int early, double rate = 48000.0,
+using LoopMaterial = StereoFrame (*) (std::int64_t);
+
+Wrapped wrapLoop (LoopMaterial material, int bars, double meter, double bpm, int early, double rate = 48000.0,
                   const CutParameters& params = loops (.25, 3), Procedure procedure = Procedure::loops,
                   std::vector<std::int64_t> jumps = {}, double jumpBeats = 0.0)
 {
