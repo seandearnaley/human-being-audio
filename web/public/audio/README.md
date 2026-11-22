@@ -1,6 +1,6 @@
 # Catalogue audio examples
 
-The three-second stereo examples are captured from the studio's gain study with the production engines at 48 kHz and a 64-frame host block. Livecut Redux uses a synthetic drum loop and the Rush pad. Tract Form plays MIDI note 29. Playback is opt-in.
+The three-second stereo examples are captured from the production engines at 48 kHz and a 64-frame host block. Livecut Redux uses a synthetic drum loop and the Rush pad. Tract Form plays MIDI note 29. Pole Field runs Tract Form's MIDI note 29 through Neuro Chew with inter-stage Buchla ADAA2 drive and Sub Lock. Playback is opt-in.
 
 From the studio root, after running the study, convert each interleaved stereo render to 16-bit FLAC with a fixed −6 dB trim. For example:
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="334" height="334" viewBox="0 0 334 334">
+  <circle cx="167" cy="167" r="126" fill="none" stroke="#e6ebf0" stroke-width="26"/>
+  <line x1="28" y1="167" x2="306" y2="167" stroke="#566170" stroke-width="14" stroke-linecap="round"/>
+  <line x1="167" y1="28" x2="167" y2="306" stroke="#566170" stroke-width="14" stroke-linecap="round"/>
+  <!-- Conjugate pole pair (magenta X) -->
+  <path d="M204,88 L244,128 M244,88 L204,128" fill="none" stroke="#e85bc4" stroke-width="26" stroke-linecap="round"/>
+  <path d="M204,206 L244,246 M244,206 L204,246" fill="none" stroke="#e85bc4" stroke-width="26" stroke-linecap="round"/>
+  <!-- Conjugate zero pair (cyan O) -->
+  <circle cx="112" cy="112" r="22" fill="none" stroke="#3fd9e8" stroke-width="22"/>
+  <circle cx="112" cy="222" r="22" fill="none" stroke="#3fd9e8" stroke-width="22"/>
+</svg>

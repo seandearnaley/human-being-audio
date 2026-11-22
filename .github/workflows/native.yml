@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [livecut-redux, tract-form]
+        product: [livecut-redux, tract-form, pole-field]
     env:
       CC: clang-22
       CXX: clang++-22
@@ -72,3 +72,15 @@ jobs:
       - name: Build and test from the x64 developer shell
         shell: pwsh
         run: ./cmake/windows-release.ps1 -Product tract-form
+
+  windows-pole:
+    name: Pole Field · Windows x64
+    runs-on: windows-2025-vs2026
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test from the x64 developer shell
+        shell: pwsh
+        run: ./cmake/windows-release.ps1 -Product pole-field

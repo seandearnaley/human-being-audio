@@ -1,0 +1,87 @@
+name: Pole Field
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'products/pole-field/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.github/workflows/pole-field.yml'
+  pull_request:
+    paths:
+      - 'products/pole-field/**'
+      - '!products/**/*.md'
+      - '!products/*/press/**'
+      - 'cmake/**'
+      - 'modules/**'
+      - 'studio.json'
+      - '.github/workflows/pole-field.yml'
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGINVAL_VERSION: v1.0.4
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  ARTEFACTS: build/dev/plugin/PoleField_artefacts/RelWithDebInfo
+
+defaults:
+  run:
+    working-directory: products/pole-field
+
+jobs:
+  engine:
+    name: Core and engine
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-pf-engine-${{ hashFiles('products/pole-field/CMakeLists.txt', 'products/pole-field/cmake/CPM.cmake') }}
+      - run: cmake --preset engine -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset engine
+      - run: ctest --preset engine
+
+  plugin:
+    name: Plugin
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-pf-plugin-${{ hashFiles('products/pole-field/CMakeLists.txt', 'products/pole-field/cmake/CPM.cmake') }}
+      - run: cmake --preset dev -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset dev
+      - run: ctest --preset dev
+
+      - name: Validate with pluginval
+        run: |
+          curl -fsSL -o pluginval.zip \
+            "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+          unzip -q pluginval.zip
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            --skip-gui-tests --timeout-ms 300000 --validate "$ARTEFACTS/VST3/Pole Field.vst3"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: PoleField-macOS
+          path: |
+            products/pole-field/${{ env.ARTEFACTS }}/VST3
+            products/pole-field/${{ env.ARTEFACTS }}/AU
+            products/pole-field/${{ env.ARTEFACTS }}/Standalone
+          if-no-files-found: error
