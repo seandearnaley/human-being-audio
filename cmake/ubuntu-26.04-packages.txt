@@ -27,7 +27,7 @@ ninja-build
 openbox
 pkg-config
 python3-pil
+python3-xlib
 wayland-protocols
 xauth
-xdotool
 xvfb
