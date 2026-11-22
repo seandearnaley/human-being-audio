@@ -44,7 +44,7 @@ class AboutSheet final : public hba::StudioAbout
 public:
     AboutSheet();
 
-    // Fades the sheet in and gives the keyboard to its Close button.
+    // Fades the sheet in and moves keyboard focus onto the sheet.
     void open() override;
 
     // Fades it out. Once it has gone, onClosed is called.

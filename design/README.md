@@ -1,12 +1,12 @@
 # Studio design and product handoff
 
-The [studio mark](studio/mark.svg) appears in both native About screens, the website header and browser tab. It also supplies the installers’ welcome and header artwork. Rebuild the committed Windows bitmaps and macOS PNG with `bash design/studio/render-installers.sh` and ImageMagick. Both products use the same [About controls](../modules/studio-ui/StudioAbout.h). Product-specific art and instrument controls live next to the product.
+The [studio mark](studio/mark.svg) appears in both native About screens, the website header and browser tab. It also supplies the installers’ welcome and header artwork. Rebuild the shared high-density PNG and the native installer images with `bash design/studio/render-installers.sh` using resvg and ImageMagick. Both products use the same [About controls](../modules/studio-ui/StudioAbout.h). Product-specific art and instrument controls live next to the product.
 
 | Surface | Editable source | Inspect the result |
 | --- | --- | --- |
 | Studio identity and download names | [Studio catalogue](../studio.json) | Inspect the installed VST3 factory, About sheet, installer and website |
 | Livecut Redux | [Editor and drawing code](../products/livecut-redux/src/ui), [skin guide](../products/livecut-redux/docs/skin.md) | Open the editor, press its wordmark, use Close or Escape |
-| Tract Form | [Visage interface](../products/tract-form/ui), [brand sources](../products/tract-form/brand) | Open About from the top bar. Build the dev preset, then run `./brand/build.py --screenshots` from the product directory |
+| Tract Form | [Visage interface](../products/tract-form/ui), [brand sources](../products/tract-form/brand) | Click the Tract Form wordmark to open About. Build the dev preset, then run `./brand/build.py --screenshots` from the product directory |
 | Product photography and audio | Product screenshots, offline renders in [research](../research) | The website displays actual editor captures and short lossless examples from the engines |
 
 ## From a control concept to a native editor

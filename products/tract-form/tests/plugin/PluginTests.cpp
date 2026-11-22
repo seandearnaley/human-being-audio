@@ -270,8 +270,12 @@ TEST_CASE("About identifies the studio, links to this synth and returns to the s
     auto* sheet = editor.findChildWithID("aboutSheet");
     REQUIRE(sheet != nullptr);
     CHECK_FALSE(sheet->isVisible());
+    auto* instrument = editor.findChildWithID("instrumentSurface");
+    REQUIRE(instrument != nullptr);
+    REQUIRE(instrument->isVisible());
     editor.showAbout();
     REQUIRE(sheet->isVisible());
+    CHECK_FALSE(instrument->isVisible());
     CHECK(sheet->getTitle() == "About Tract Form");
     juce::Image header(juce::Image::ARGB, 128, 64, true, juce::SoftwareImageType{});
     {
@@ -286,5 +290,6 @@ TEST_CASE("About identifies the studio, links to this synth and returns to the s
     CHECK(sheet->getDescription().contains("AGPL"));
     CHECK(sheet->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)));
     CHECK_FALSE(sheet->isVisible());
+    CHECK(instrument->isVisible());
     CHECK(host.processor.getCurrentProgram() == preset);
 }

@@ -182,7 +182,7 @@ ear.
 One screen, no tabs, 16:9, resizable with a fixed aspect ratio. Default
 1280×720 logical pixels, minimum 960×540.
 
-- **Top bar**: wordmark, preset name with previous/next and save, six macro
+- **Top bar**: clickable product wordmark opening the studio About page, preset name with previous/next and save, six macro
   knobs.
 - **Signal graph**: Master, Reese A, Reese B with the feedback loop, Tract, Fold,
   Sculpt, Mid/side, Out. The sub path runs underneath from Master to Out. Each node draws
@@ -386,4 +386,8 @@ number like Reach and Sculpt. With a fixed 120 Hz split the growl came out 3 to
 default, ×2.75, is 120 Hz at F1. The mid/side crossover stays in Hz, because
 keeping the low end mono is about speakers and rooms, not the note.
 
-On Windows a JUCE HWNDComponent confines the native Visage window to the editor bounds so host controls remain visible at any display scale. On Linux the editor embeds its Visage window inside a JUCE XEmbedComponent. The JUCE message loop monitors the Visage X11 file descriptor for rendering and input. Opening About unregisters that descriptor before releasing the child window. Closing About attaches the instrument again.
+### Native editor ownership
+
+The host owns the top-level window. Drawing Visage directly into that window let it cover standalone controls on Windows and the About sheet on macOS. Visage deliberately ignores a close request for an embedded Mac view. Each plugin instance therefore owns a native child surface whose visibility and bounds follow the JUCE editor.
+
+On Windows a JUCE HWNDComponent confines the native Visage window to the editor bounds so host controls remain visible at any display scale. On Linux the editor embeds its Visage window inside a JUCE XEmbedComponent. The JUCE message loop monitors the Visage X11 file descriptor for rendering and input. On macOS a JUCE NSViewComponent owns the embedded instrument view. Opening About hides the native surface on all three platforms. Closing the sheet or pressing Escape reveals the same instrument without rebuilding its renderer or changing the preset.

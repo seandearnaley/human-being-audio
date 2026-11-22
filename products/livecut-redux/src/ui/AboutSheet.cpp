@@ -156,11 +156,6 @@ void AboutSheet::paint (juce::Graphics& g)
     const auto redux = uiFont (40.0f, weight::medium);
     g.setFont (redux);
     g.drawText ("Redux", juce::Rectangle<float> (left - sideBearing (redux, "Redux"), 176.0f, 200.0f, 44.0f), juce::Justification::centredLeft);
-    g.setColour (palette::inkMuted);
-    g.setFont (numberFont (bodyHeight));
-    g.drawText (JucePlugin_VersionString,
-                juce::Rectangle<float> (left + juce::GlyphArrangement::getStringWidth (redux, "Redux") + 12.0f, 186.0f, 200.0f, 30.0f),
-                juce::Justification::centredLeft);
 
     text.draw (g, { left - sideBearing (uiFont (bodyHeight), "L"), static_cast<float> (storyTop), static_cast<float> (textWidth),
                     static_cast<float> (getHeight() - storyTop) });

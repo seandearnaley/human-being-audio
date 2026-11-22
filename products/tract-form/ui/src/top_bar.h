@@ -2,6 +2,7 @@
 #pragma once
 
 #include "controls.h"
+#include <visage_widgets/button.h>
 
 #include <array>
 #include <memory>
@@ -15,7 +16,7 @@ public:
     ~TopBar() override;
 
     void tick() override;
-    void draw(visage::Canvas& canvas) override;
+    void drawWordmark(visage::Canvas& canvas);
     void resized() override;
 
 private:
@@ -26,7 +27,7 @@ private:
     Button name_;
     Button next_;
     Button save_;
-    Button about_;
+    visage::Button wordmark_ { "About Tract Form" };
     std::vector<std::unique_ptr<Knob>> macros_;
     std::string shownPreset_;
 };

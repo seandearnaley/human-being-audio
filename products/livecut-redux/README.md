@@ -116,7 +116,7 @@ Follow the [studio release guide](../../factory/release/README.md). Select Livec
 To inspect the Mac installer locally, use a universal Release build and the version from this product's CMake project:
 
 ```sh
-packaging/macos/make-installer.sh build/release/Livecut_artefacts/Release 1.0.1 dist --unsigned
+packaging/macos/make-installer.sh build/release/Livecut_artefacts/Release 1.0.2 dist --unsigned
 ```
 
 Before it installs, the installer

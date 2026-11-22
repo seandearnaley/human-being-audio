@@ -9,6 +9,9 @@ add_subdirectory(engine)
 
 if(TF_BUILD_PLUGIN)
     add_executable(tf_plugin_tests plugin/PluginTests.cpp)
+    if(APPLE)
+        target_sources(tf_plugin_tests PRIVATE plugin/MacAboutTests.mm)
+    endif()
     # The JucePlugin_* definitions only exist on the plugin target, so copy them.
     target_compile_definitions(tf_plugin_tests PRIVATE $<TARGET_PROPERTY:TractForm,COMPILE_DEFINITIONS> JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(tf_plugin_tests PRIVATE TractFormCode Catch2::Catch2WithMain tf_warnings)
