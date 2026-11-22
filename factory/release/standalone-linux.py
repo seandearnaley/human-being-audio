@@ -1,50 +1,58 @@
 """Verify that a packaged standalone paints its instrument in a visible X11 window."""
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import time
 
 from PIL import ImageGrab
+from Xlib import X, Xatom, display, error
 
 
-def editor_paints(window):
-    geometry = subprocess.run(
-        ["xdotool", "getwindowgeometry", "--shell", window], capture_output=True, text=True,
-    )
-    if geometry.returncode and ("BadWindow" in geometry.stderr or "BadDrawable" in geometry.stderr):
-        return False  # A temporary renderer window closed during enumeration.
-    geometry.check_returncode()
-    bounds = dict(line.split("=", 1) for line in geometry.stdout.splitlines())
-    x, y, width, height = (int(bounds[key]) for key in ("X", "Y", "WIDTH", "HEIGHT"))
-    if width < 200 or height < 100:
+def editor_paints(root, window, pid, name, atoms):
+    try:
+        owner = window.get_full_property(atoms["_NET_WM_PID"], Xatom.CARDINAL)
+        if owner is None or list(owner.value) != [pid]:
+            return False
+        title = window.get_full_property(Xatom.WM_NAME, X.AnyPropertyType)
+        if title is None or title.value != name or window.get_attributes().map_state != X.IsViewable:
+            return False
+        size = window.get_geometry()
+        origin = root.translate_coords(window, 0, 0)
+    except (error.BadWindow, error.BadDrawable):
+        # A client may close between the manager's snapshot and the property request.
         return False
-    # The title bar paints even when the instrument itself has no working renderer.
-    region = (x + width // 4, y + height // 4, x + 3 * width // 4, y + 3 * height // 4)
-    image = ImageGrab.grab(bbox=region, xdisplay=os.environ["DISPLAY"]).convert("L")
-    return image.getcolors(16) is None
+    w, h = size.width, size.height
+    if w < 200 or h < 100:
+        return False
+    # Exclude the title bar, which paints even if the instrument renderer fails.
+    region = (origin.x + w // 4, origin.y + h // 4, origin.x + 3 * w // 4, origin.y + 3 * h // 4)
+    return ImageGrab.grab(bbox=region, xdisplay=os.environ["DISPLAY"]).convert("L").getcolors(16) is None
 
 
 def verify(executable):
     deadline = time.monotonic() + 30
-    with subprocess.Popen([executable]) as app:
-        try:
-            search = ["xdotool", "search", "--onlyvisible", "--all", "--pid", str(app.pid),
-                      "--name", "^" + re.escape(executable.name) + "$"]
-            while app.poll() is None and time.monotonic() < deadline:
-                windows = subprocess.run(search, capture_output=True, text=True)
-                # xdotool returns 1 with no output when no window matches.
-                if windows.returncode and (windows.returncode != 1 or windows.stderr.strip()):
-                    windows.check_returncode()
-                if any(editor_paints(window) for window in windows.stdout.splitlines()):
-                    print(f"{executable.name} opened and painted its editor")
-                    return
-                time.sleep(0.1)
-            raise RuntimeError(f"{executable.name} did not paint its editor")
-        finally:
-            if app.poll() is None:
-                app.terminate()
+    screen = display.Display()
+    root = screen.screen().root
+    atoms = {name: screen.intern_atom(name) for name in ("_NET_CLIENT_LIST", "_NET_WM_PID")}
+    try:
+        with subprocess.Popen([executable]) as app:
+            try:
+                while app.poll() is None and time.monotonic() < deadline:
+                    clients = root.get_full_property(atoms["_NET_CLIENT_LIST"], Xatom.WINDOW)
+                    if clients is not None:
+                        for xid in clients.value:
+                            window = screen.create_resource_object("window", xid)
+                            if editor_paints(root, window, app.pid, executable.name.encode(), atoms):
+                                print(f"{executable.name} opened and painted its editor")
+                                return
+                    time.sleep(0.1)
+                raise RuntimeError(f"{executable.name} did not paint its editor")
+            finally:
+                if app.poll() is None:
+                    app.terminate()
+    finally:
+        screen.close()
 
 
 if __name__ == "__main__":
