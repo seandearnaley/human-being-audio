@@ -121,7 +121,7 @@ static void checkReferenceRender(const Setup& setup, const char* filename, std::
 
 TEST_CASE("lanes: default targets reproduce the original fixed-lane audio", "[engine][lanes]") {
     Setup a;
-    checkReferenceRender(a, "default.f32", 0xd6bbcf9a9b7ff560ULL);
+    checkReferenceRender(a, "default.f32", 0x863577ad63736c4cULL);
     Setup b;
     b.params[ParamId::motion] = 1.0f;
     for (int i = 0; i < kLaneCount; ++i) {
@@ -129,7 +129,7 @@ TEST_CASE("lanes: default targets reproduce the original fixed-lane audio", "[en
         b.params[laneParam(i, LaneField::depth)] = 1.0f;
         b.params[laneParam(i, LaneField::shape)] = static_cast<float>(i + 1);
     }
-    checkReferenceRender(b, "movement.f32", 0x89f7ad505b11fe61ULL);
+    checkReferenceRender(b, "movement.f32", 0x1b5e5f8218bc7398ULL);
 }
 
 // ---- Retargeting -----------------------------------------------------------------------

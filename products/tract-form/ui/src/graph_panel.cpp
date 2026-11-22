@@ -7,6 +7,8 @@
 #include "tf/lanes.h"
 #include "tf/vowels.h"
 
+#include <hba/dsp/adaa.h>
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -198,20 +200,20 @@ Curve<kShapePoints> formantResponse(int vowelA, int vowelB, float morph) {
 // The folder's transfer curve over inputs -extent..extent.
 Curve<kShapePoints> foldTransfer(FoldType type, float drive, float asym, float extent) {
     const float gain = feel::driveGain(drive);
+    const double bias = 0.5 * static_cast<double>(asym);
     Curve<kShapePoints> values {};
     for (std::size_t i = 0; i < values.size(); ++i) {
-        const float x = lerp(-extent, extent, static_cast<float>(i) / static_cast<float>(values.size() - 1));
-        const float shaped = gain * x + 0.5f * asym;
+        const double x = static_cast<double>(lerp(-extent, extent, static_cast<float>(i) / static_cast<float>(values.size() - 1)));
+        const double shaped = static_cast<double>(gain) * x + bias;
+        double y = shaped;
         switch (type) {
-            case FoldType::fold: {
-                float m = std::fmod(shaped + 1.0f, 4.0f);
-                if (m < 0.0f) m += 4.0f;
-                values[i] = 1.0f - std::abs(m - 2.0f);
-                break;
-            }
-            case FoldType::sine: values[i] = std::sin(0.5f * kPi * shaped); break;
-            case FoldType::tube: values[i] = std::tanh(shaped); break;
+            case FoldType::fold: y = hba::dsp::TriangleFoldShaper::eval(shaped) - hba::dsp::TriangleFoldShaper::eval(bias); break;
+            case FoldType::sine: y = hba::dsp::SineFoldShaper::eval(shaped) - hba::dsp::SineFoldShaper::eval(bias); break;
+            case FoldType::tube: y = hba::dsp::TanhShaper::eval(shaped) - hba::dsp::TanhShaper::eval(bias); break;
+            case FoldType::buchla: y = hba::dsp::Buchla259Shaper::eval(shaped) - hba::dsp::Buchla259Shaper::eval(bias); break;
+            case FoldType::clip: y = hba::dsp::HardClipShaper::eval(shaped) - hba::dsp::HardClipShaper::eval(bias); break;
         }
+        values[i] = static_cast<float>(std::clamp(y, -1.15, 1.15));
     }
     return values;
 }

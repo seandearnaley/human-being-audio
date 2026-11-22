@@ -155,6 +155,7 @@ struct Engine::Impl {
     TractCoefs tractCoefs;
     TractChannel tractA, tractB;
     Folder foldA, foldB;
+    float subFoldDelay = 0.0f;
     ReachFilter reachA, reachB;
     WeightFilter weightA, weightB;
     SculptCoefs sculptCoefs;
@@ -237,14 +238,15 @@ struct Engine::Impl {
         decSub.prepare(factor);
         decL.prepare(factor);
         decR.prepare(factor);
-        localSub.prepare(factor);
-        localA.prepare(factor);
-        localB.prepare(factor);
+        constexpr int kFoldTargetRate = 16;
+        localSub.prepare(factor, kFoldTargetRate);
+        localA.prepare(factor, kFoldTargetRate);
+        localB.prepare(factor, kFoldTargetRate);
         clip2xL.prepare();
         clip2xR.prepare();
         clip2xSub.prepare();
         clip2xMaster.prepare();
-        decimatorDelayExact = measureDecimatorDelay(factor) + measureClipTripDelay();
+        decimatorDelayExact = measureDecimatorDelay(factor, kFoldTargetRate) + measureClipTripDelay();
         decimatorDelay = static_cast<int>(std::lround(decimatorDelayExact));
 
         feedback.prepare(static_cast<int>(std::ceil(kMaxFeedbackDelaySeconds * fo)));
@@ -279,16 +281,22 @@ struct Engine::Impl {
 
     // Group delay at DC of the sub's trip (local oversampler, then decimator),
     // which the growl shares by construction, in base-rate samples.
-    static double measureDecimatorDelay(int factor) {
+    static double measureDecimatorDelay(int factor, int foldTargetRate) {
         Decimator d;
         d.prepare(factor);
         LocalOversampler local;
-        local.prepare(factor);
+        local.prepare(factor, foldTargetRate);
         std::array<float, kMaxOversampling> buf {}, scratch {};
         double moment = 0.0, sum = 0.0;
+        float delay1 = 0.0f;
         for (int n = 0; n < 4096; ++n) {
             for (int j = 0; j < factor; ++j) {
                 local.up(n == 0 && j == 0 ? 1.0f : 0.0f, scratch.data());
+                for (int k = 0; k < local.factor(); ++k) {
+                    const float prev = delay1;
+                    delay1 = scratch[static_cast<std::size_t>(k)];
+                    scratch[static_cast<std::size_t>(k)] = prev;
+                }
                 buf[static_cast<std::size_t>(j)] = local.down(scratch.data());
             }
             const double y = d.process(buf.data());
@@ -316,6 +324,7 @@ struct Engine::Impl {
         tractB.reset();
         foldA.reset();
         foldB.reset();
+        subFoldDelay = 0.0f;
         reachA.reset();
         reachB.reset();
         weightA.reset();
@@ -669,7 +678,8 @@ struct Engine::Impl {
         else tractCoefs.setTarget(f, fo, controlOs);
 
         // Fold type: crossfade on change.
-        const auto type = static_cast<FoldType>(std::clamp(p.choice(ParamId::foldType), 0, 2));
+        const auto type = static_cast<FoldType>(
+            std::clamp(p.choice(ParamId::foldType), 0, static_cast<int>(choices::foldType.size()) - 1));
         if (snap) {
             foldFrom = foldTo = type;
             foldMix = 1.0;
@@ -775,6 +785,11 @@ struct Engine::Impl {
         for (int k = 0; k < local; ++k) buf[k] = static_cast<float>(foldB.process(buf[k], g, off, warp, foldFrom, foldTo, foldMix));
         double yb = localB.down(buf);
         localSub.up(subSine, buf);
+        for (int k = 0; k < local; ++k) {
+            const float prev = subFoldDelay;
+            subFoldDelay = buf[k];
+            buf[k] = prev;
+        }
         const float sub = localSub.down(buf);
 
         // Reach, Weight and Sculpt, per voice.

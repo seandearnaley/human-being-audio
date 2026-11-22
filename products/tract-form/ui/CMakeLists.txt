@@ -27,7 +27,7 @@ add_library(tf_ui STATIC
     src/top_bar.h)
 target_include_directories(tf_ui PUBLIC include)
 target_compile_features(tf_ui PUBLIC cxx_std_20)
-target_link_libraries(tf_ui PUBLIC tf_core PRIVATE visage tf_ui_fonts tf_ui_brand tf_warnings)
+target_link_libraries(tf_ui PUBLIC tf_core PRIVATE hba_dsp visage tf_ui_fonts tf_ui_brand tf_warnings)
 
 add_executable(tf-ui-snapshot tools/snapshot.cpp)
 target_link_libraries(tf-ui-snapshot PRIVATE tf_ui tf_warnings)

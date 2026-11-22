@@ -307,7 +307,7 @@ TEST_CASE("ceiling with limit off: only the output soft clip bounds the peaks", 
 TEST_CASE("aliasing: inharmonic energy is 70 dB under the harmonics at 4x", "[engine][spec]") {
     // A 1 kHz note at 44.1 kHz (aliases land between the harmonics), drive and
     // coupling at 1, detune 0. Feedback and lanes off so the note is periodic.
-    const auto type = GENERATE(0, 1, 2);
+    const auto type = GENERATE(0, 1, 2, 3, 4);
     CAPTURE(type);
     Setup s;
     s.sampleRate = 44100.0;
@@ -354,7 +354,7 @@ TEST_CASE("the growl clipper's inharmonic products, default and hot growl", "[en
     // the 2x ADAA clipper's aliasing plus its intermodulation with the
     // decimator's own (-65 dB) transition-band images. Reported; the bound
     // only guards against regressions.
-    const auto type = GENERATE(0, 1, 2);
+    const auto type = GENERATE(0, 1, 2, 3, 4);
     const float growl = GENERATE(0.76f, 1.0f);
     Setup s;
     s.sampleRate = 44100.0;
@@ -474,7 +474,7 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     // gain staging is fitted out (least squares).
     const auto from = static_cast<std::size_t>(out.latency) + static_cast<std::size_t>(0.25 * fs);
     const Signal a = slice(out.growl, from, out.growl.size() - 1);  // the rotation has no last sample
-    const auto residual = [&](std::size_t offset) {
+    const auto residual = [&](std::size_t offset, double* rmsOut = nullptr) {
         const Signal b = slice(expected, from - offset, expected.size() - 1 - offset);
         double ab = 0, bb = 0;
         for (std::size_t i = 0; i < a.size(); ++i) {
@@ -482,13 +482,23 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
             bb += b[i] * b[i];
         }
         const double gain = ab / bb;
-        double worst = 0;
-        for (std::size_t i = 0; i < a.size(); ++i) worst = std::max(worst, std::abs(a[i] - gain * b[i]));
+        double worst = 0, sqErr = 0;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            const double diff = a[i] - gain * b[i];
+            worst = std::max(worst, std::abs(diff));
+            sqErr += diff * diff;
+        }
+        if (rmsOut != nullptr) *rmsOut = std::sqrt(sqErr / std::max(gain * gain * bb, 1e-30));
         return worst / (std::abs(gain) * maxAbs(b));
     };
-    const double err = residual(0);
-    INFO("relative error " << err);
-    CHECK(err < 5e-3);
+    double rmsErr = 0;
+    const double err = residual(0, &rmsErr);
+    INFO("relative error " << err << " (rms " << rmsErr << ")");
+    // At note 45, 5 cascaded LR4 high-passes attenuate f0 to ~1.5e-5, where
+    // single-precision HIIR rounding (~7e-8) puts single-sample peaks near 5e-3
+    // (slightly above on non-FMA x86_64); check both RMS and peak bounds.
+    CHECK(rmsErr < 4.5e-3);
+    CHECK(err < 7e-3);
     // A one-sample offset would be glaring: check the test can see it.
     CHECK(residual(1) > 1e-2);
 }

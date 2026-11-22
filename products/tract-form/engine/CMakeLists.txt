@@ -43,8 +43,6 @@ add_library(tf_engine STATIC
 target_include_directories(tf_engine
     PUBLIC include
     PRIVATE src)
-# HIIR is a SYSTEM include so our warning set does not apply to it.
-target_include_directories(tf_engine SYSTEM PUBLIC third_party/hiir)
 target_compile_features(tf_engine PUBLIC cxx_std_20)
 target_link_libraries(tf_engine PUBLIC tf_core hba_dsp PRIVATE tf_warnings)
 
