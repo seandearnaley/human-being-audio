@@ -24,5 +24,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+        env:
+          STUDIO_RELEASES_TOKEN: ${{ github.token }}
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+        env:
+          STUDIO_RELEASES_TOKEN: ${{ github.token }}
