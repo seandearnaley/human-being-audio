@@ -61,7 +61,7 @@ Both products include [the studio CMake presets](cmake/native-presets.json) and 
 
 ## Source history and licenses
 
-Both original main commits are ancestors of the studio import. To follow a file across the import boundary, use its original path at the pinned commit. The 45 original public branch and tag tips are preserved as archival tags under `archive/<product>/heads/` and `archive/<product>/tags/`. Existing releases and their download links remain at their original repositories.
+Both original main commits are ancestors of the studio import. To follow a file across the import boundary, use its original path at the pinned commit. The 45 original public branch and tag tips are preserved as archival tags under `archive/<product>/heads/` and `archive/<product>/tags/`. The original repositories are read-only archives. Use the [studio releases](https://github.com/seandearnaley/human-being-audio/releases) for current downloads and the [studio issue tracker](https://github.com/seandearnaley/human-being-audio/issues) for both plugins.
 
 | Product | Imported source | License |
 | --- | --- | --- |
