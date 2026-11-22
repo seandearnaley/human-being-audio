@@ -19,7 +19,7 @@ std::uint32_t nextRand(std::uint32_t& s) {
 float randFloat(std::uint32_t& s) { return static_cast<float>(nextRand(s) >> 8) * (1.0f / 16777216.0f); }
 }
 
-TEST_CASE("Block-size independence across 1, 7, 64, and 512 sample chunks", "[engine]") {
+TEST_CASE("Block-size independence across regular and irregular host buffers", "[engine]") {
     constexpr double fs = 48000.0;
     constexpr int total = 2048;
 
@@ -51,7 +51,7 @@ TEST_CASE("Block-size independence across 1, 7, 64, and 512 sample chunks", "[en
     };
 
     const auto [refL, refR] = renderWithChunk(512);
-    for (int chunk : { 1, 7, 64 }) {
+    for (int chunk : {1, 7, 64, 257}) {
         const auto [curL, curR] = renderWithChunk(chunk);
         for (int i = 0; i < total; ++i) {
             REQUIRE(curL[static_cast<std::size_t>(i)] == refL[static_cast<std::size_t>(i)]);
