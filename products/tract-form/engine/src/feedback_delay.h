@@ -64,23 +64,4 @@ private:
     int written_ = 0;
 };
 
-// One-pole DC blocker: y = x - x1 + r y1, r = 1 - 2 pi fc / fs.
-class DcBlocker {
-public:
-    void prepare(double cutoffHz, double sampleRate) noexcept TF_NONBLOCKING {
-        r_ = 1.0 - kTwoPi * cutoffHz / sampleRate;
-    }
-    void reset() noexcept TF_NONBLOCKING { x1_ = y1_ = 0.0; }
-    double process(double x) noexcept TF_NONBLOCKING {
-        const double y = x - x1_ + r_ * y1_;
-        x1_ = x;
-        y1_ = y;
-        return y;
-    }
-
-private:
-    double r_ = 0.999;
-    double x1_ = 0.0, y1_ = 0.0;
-};
-
 }

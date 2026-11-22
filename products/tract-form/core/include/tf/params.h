@@ -75,7 +75,7 @@ inline constexpr std::array<std::string_view, 9> beatLock {
     "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/32"
 };
 inline constexpr std::array<std::string_view, 6> vowel { "a", "æ", "e", "i", "o", "u" };
-inline constexpr std::array<std::string_view, 3> foldType { "Fold", "Sine", "Tube" };
+inline constexpr std::array<std::string_view, 5> foldType { "Fold", "Sine", "Tube", "Buchla", "Clip" };
 inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
 inline constexpr std::array<std::string_view, 12> laneRate {
@@ -104,7 +104,7 @@ inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
 // How many times faster than its leader a following lane runs.
 inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
 
-enum class FoldType : std::uint8_t { fold, sine, tube };
+enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
 
 namespace detail {

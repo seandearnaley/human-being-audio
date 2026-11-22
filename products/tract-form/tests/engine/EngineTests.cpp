@@ -307,7 +307,7 @@ TEST_CASE("ceiling with limit off: only the output soft clip bounds the peaks", 
 TEST_CASE("aliasing: inharmonic energy is 70 dB under the harmonics at 4x", "[engine][spec]") {
     // A 1 kHz note at 44.1 kHz (aliases land between the harmonics), drive and
     // coupling at 1, detune 0. Feedback and lanes off so the note is periodic.
-    const auto type = GENERATE(0, 1, 2);
+    const auto type = GENERATE(0, 1, 2, 3, 4);
     CAPTURE(type);
     Setup s;
     s.sampleRate = 44100.0;
@@ -354,7 +354,7 @@ TEST_CASE("the growl clipper's inharmonic products, default and hot growl", "[en
     // the 2x ADAA clipper's aliasing plus its intermodulation with the
     // decimator's own (-65 dB) transition-band images. Reported; the bound
     // only guards against regressions.
-    const auto type = GENERATE(0, 1, 2);
+    const auto type = GENERATE(0, 1, 2, 3, 4);
     const float growl = GENERATE(0.76f, 1.0f);
     Setup s;
     s.sampleRate = 44100.0;

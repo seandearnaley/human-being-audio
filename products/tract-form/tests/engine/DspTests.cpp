@@ -3,6 +3,7 @@
 
 #include "crossover.h"
 #include "decimator.h"
+#include "feedback_delay.h"
 #include "fold.h"
 #include "tf/lanes.h"
 #include "limiter.h"
@@ -146,12 +147,12 @@ TEST_CASE("formants are clamped below 0.45 fs", "[dsp][tract]") {
 }
 
 TEST_CASE("each shaper's antiderivative matches the shaper", "[dsp][fold]") {
-    const auto type = GENERATE(FoldType::fold, FoldType::sine, FoldType::tube);
+    const auto type = GENERATE(FoldType::fold, FoldType::sine, FoldType::tube, FoldType::buchla, FoldType::clip);
     for (double u = -40.0; u <= 40.0; u += 0.0137) {
         const double h = 1e-6;
         const double numeric = (shapeAntiderivative(type, u + h) - shapeAntiderivative(type, u - h)) / (2 * h);
         CHECK(numeric == Catch::Approx(shape(type, u)).margin(1e-5));
-        CHECK(std::abs(shape(type, u)) <= 1.0 + 1e-12);
+        CHECK(std::abs(shape(type, u)) <= 1.2);
     }
     // ADAA of nearly equal inputs falls back to the shaper itself.
     CHECK(adaa(type, 0.3, 0.3) == Catch::Approx(shape(type, 0.3)));

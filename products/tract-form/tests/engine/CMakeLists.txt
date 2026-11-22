@@ -1,5 +1,6 @@
 add_executable(tf_engine_tests
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
+    "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/AdaaTests.cpp"
     helpers.h
     helpers.cpp
     DspTests.cpp
