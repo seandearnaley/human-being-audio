@@ -57,6 +57,7 @@ test("browse both real products, inspect images and open install notes", async (
     await detail.locator("summary").click();
     await expect(detail).toHaveAttribute("open", "");
   }
+  await expect(page.locator("#install")).toContainText("~/Library/Audio/Plug-Ins");
   const viewport = page.viewportSize()!;
   const widths = test.info().project.name === "mobile" ? [320, 390, viewport.width] : [viewport.width];
   for (const width of widths) {

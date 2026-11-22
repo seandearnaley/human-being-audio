@@ -271,6 +271,12 @@ export default async function Page() {
                 the standalone in Applications. Livecut Redux requires macOS 11
                 or later. Tract Form requires macOS 12 or later. Both packages
                 contain Apple Silicon and Intel binaries.
+                <p>
+                  If Tract Form still shows the old publisher, quit your host.
+                  In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for
+                  older Tract Form bundles. Move those copies to a backup folder
+                  outside the plug-in folders, then reopen your host and rescan.
+                </p>
               </div>
             </details>
             <details>
