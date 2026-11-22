@@ -2,7 +2,7 @@
 
 * all plugins made with AI assistance by professional engineers with audio experience for free, made with love, care and support.
 
-Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, and [Tract Form](products/tract-form), the bass synthesizer. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
+Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, [Tract Form](products/tract-form), the bass synthesizer, and [Pole Field](products/pole-field), the morphing filterbank. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
 
 ## First build
 
@@ -86,7 +86,7 @@ For the next product, reserve its slug and stable identifiers in the catalogue, 
 
 The protected `main` branch requires an up-to-date pull request and the GitHub Actions check
 `Studio PR checks`. That check waits for every job selected for the change. A documentation-only
-PR runs the workflow planner and the required check.
+PR runs the workflow planner and the required check. See the [measured PR timings](docs/native-pr-timing.md).
 
 ## Website development
 
