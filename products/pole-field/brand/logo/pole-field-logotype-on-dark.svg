@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="334" viewBox="0 0 1640 334">
+  <g transform="translate(26, 260)" fill="none" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <!-- p -->
+    <path d="M0,-144 V56" stroke="#e6ebf0"/>
+    <path d="M0,-72 a72,72 0 1 0 144,0 a72,72 0 1 0 -144,0" stroke="#e6ebf0"/>
+    <!-- o (unit circle with pole X inside, magenta) -->
+    <path d="M214,-72 a72,72 0 1 0 144,0 a72,72 0 1 0 -144,0" stroke="#e85bc4"/>
+    <path d="M262,-96 L310,-48 M310,-96 L262,-48" stroke="#3fd9e8" stroke-width="26"/>
+    <!-- l -->
+    <path d="M430,-228 V0" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M500,-72 H644 A72,72 0 1 0 622,-18" stroke="#e6ebf0"/>
+    <!-- f (magenta stem) -->
+    <path d="M776,0 V-168 Q776,-228 836,-228 H856" stroke="#e85bc4"/>
+    <path d="M726,-132 H848" stroke="#e6ebf0"/>
+    <!-- i -->
+    <path d="M926,-132 V0" stroke="#e6ebf0"/>
+    <circle cx="926" cy="-214" r="14" fill="#3fd9e8" stroke="none"/>
+    <!-- e -->
+    <path d="M1002,-72 H1146 A72,72 0 1 0 1124,-18" stroke="#e6ebf0"/>
+    <!-- l -->
+    <path d="M1220,-228 V0" stroke="#e6ebf0"/>
+    <!-- d -->
+    <path d="M1436,-228 V0" stroke="#e6ebf0"/>
+    <path d="M1292,-72 a72,72 0 1 0 144,0 a72,72 0 1 0 -144,0" stroke="#e6ebf0"/>
+  </g>
+</svg>

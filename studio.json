@@ -18,6 +18,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Trfm",
       "license": "AGPL-3.0-or-later"
+    },
+    "pole-field": {
+      "name": "Pole Field",
+      "artifacts": "plugin/PoleField_artefacts/Release",
+      "bundle": "com.humanbeingmusic.polefield",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Plfd",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

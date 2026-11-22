@@ -2,6 +2,7 @@ import Image from "next/image";
 import studio from "../../studio.json";
 import livecutImage from "../../products/livecut-redux/docs/editor.png";
 import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
+import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
 
@@ -51,7 +52,31 @@ const products = {
         "Render four bars offline with 16× oversampling and drag the WAV into a session.",
       ],
     ],
-    credits: "Includes 28 factory presets and eight performance macros.",
+    credits: "Includes 30 factory presets and eight performance macros.",
+  },
+  "pole-field": {
+    kind: "Morphing filterbank",
+    hue: 318,
+    bpm: 172,
+    form: "rings",
+    image: poleFieldImage,
+    alt: "Pole Field’s 2D Z-plane unit circle, 14-pole magnitude curve, stereo goniometer and four movement lanes",
+    body: "Morph fourteen poles and fourteen zeros across 3D filter cubes with polar interpolation, inter-stage ADAA2 drive, mono Sub Lock and Burg LPC audio imprinting.",
+    features: [
+      [
+        "14-pole Z-plane lattice",
+        "Seven cascaded TPT pole-zero sections in Serial, Hybrid or Parallel topology across eight curated morph cubes, plus MIDI formant pitch tracking.",
+      ],
+      [
+        "Inter-stage ADAA2 drive",
+        "Place Tube, Clip, Fold, Buchla or Sine saturation before, between or after filter stages with matched 2×/4×/8× HIIR oversampling and clean mono Sub Lock.",
+      ],
+      [
+        "Audio imprint and movement",
+        "Load a WAV one-shot to stamp its 14th-order Burg LPC pole structure into the Imprint Cube, and animate parameters with four tempo-locked curve lanes.",
+      ],
+    ],
+    credits: "Includes 12 factory presets and eight performance macros.",
   },
 };
 const platforms = {
@@ -87,7 +112,9 @@ function Product({ slug, release, unavailable }) {
           <figcaption>
             {slug === "livecut-redux"
               ? "Hear Rush on a drum loop"
-              : "Hear Tract Form on MIDI note 29"}
+              : slug === "pole-field"
+                ? "Hear Neuro Chew on a bassline"
+                : "Hear Tract Form on MIDI note 29"}
           </figcaption>
           <audio
             controls
@@ -269,8 +296,8 @@ export default async function Page() {
                 Close your host and open the signed, notarized PKG. It installs
                 the Audio Unit and VST3 in the system Audio Plug-Ins folder and
                 the standalone in Applications. Livecut Redux requires macOS 11
-                or later. Tract Form requires macOS 12 or later. Both packages
-                contain Apple Silicon and Intel binaries.
+                or later. Tract Form and Pole Field require macOS 12 or later.
+                Packages contain Apple Silicon and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for
