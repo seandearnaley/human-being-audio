@@ -3,11 +3,14 @@ import studio from "../../studio.json";
 import Image from "next/image";
 import mark from "../../design/studio/mark.svg";
 import "./globals.css";
+const productNames = new Intl.ListFormat("en").format(
+  Object.values(studio.products).map((product) => product.name),
+);
+
 export const metadata: Metadata = {
   metadataBase: new URL(studio.website),
   title: "Human Being Audio · Free audio plugins",
-  description:
-    "Livecut Redux and Tract Form. Open-source audio effects and instruments for macOS, Windows and Ubuntu.",
+  description: `${productNames}. Open-source audio effects and instruments for macOS, Windows and Ubuntu.`,
   alternates: { canonical: "/" },
   icons: { icon: mark.src },
 };

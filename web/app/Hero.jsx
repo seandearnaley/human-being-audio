@@ -13,7 +13,7 @@ export default function Hero() {
           <span>Human Being Audio.</span>
         </h1>
         <p className="hero__lede">
-          A live breakbeat cutter and a monophonic bass synth. Free to download,
+          Cut up a breakbeat, synthesize a bassline or morph it through a filterbank. Free to download,
           open to study, built for making music.
         </p>
         <div className="hero__actions">
