@@ -337,14 +337,13 @@ struct Activated
 
 // Loops through a Cutter, engaged from `engage` (a frame), with a host whose
 // position is the integral of its tempo. Records every frame and every block.
-struct LoopsHost final : Cutter::Observer
-{
+struct LoopsHost {
     Cutter cutter;
     OnsetDetector detector;
     Epoch bounds;
     double rate, bpm, meter;
     bool analysed = false;
-    std::int64_t frame = 0, bufferStart = 0;
+    std::int64_t frame = 0;
     // The host's position: counted from the last tempo change, as a host does, so
     // every buffer size sees the same position at the same frame.
     std::int64_t tempoFrame = 0;
@@ -373,14 +372,9 @@ struct LoopsHost final : Cutter::Observer
         cutter.setParameters (params);
     }
 
-    void discontinuity (int) override {}
-    void phraseCompleted (int) override {}
-    void phraseStarted (int, bool) override {}
-    void processOutput (int offset, float, float, float& left, float& right) override
-    {
+    void recordBlock(std::int64_t at) {
         if (! cutter.isCutting())
             return;
-        const auto at = bufferStart + offset;
         const auto source = cutter.activeSourceRegion();
         if (blocks.empty() || blocks.back().start != cutter.blockStartUnits() || blocks.back().phraseBar != cutter.phraseStartBar()
             || blocks.back().source.firstFrame != source.firstFrame)
@@ -388,8 +382,6 @@ struct LoopsHost final : Cutter::Observer
             const auto cuts = cutter.currentCuts();
             blocks.push_back ({ at, cutter.phraseStartBar(), cutter.blockStartUnits(), source, { cuts.begin(), cuts.end() }, cutter.loopDiagnostics() });
         }
-        (void) left;
-        (void) right;
     }
 
     // `count` frames in buffers from `size`, with `ramp` bpm per beat added at each buffer.
@@ -422,8 +414,15 @@ struct LoopsHost final : Cutter::Observer
                     detector.process (frame + i, in.left, in.right);
             }
             const auto bar = static_cast<std::int64_t> (std::floor (beats / meter));
-            bufferStart = frame;
-            cutter.process (left.data(), right.data(), n, { bpm, meter }, { bar, beats - meter * static_cast<double> (bar) }, this);
+            // Snapshot the completed sample outside the realtime callback, using the same split API as the plug-in.
+            cutter.beginRenderContext({bpm, meter}, {bar, beats - meter * static_cast<double>(bar)}, frame, 0, nullptr);
+            for (int i = 0; i < n; ++i) {
+                const auto j = static_cast<std::size_t>(i);
+                cutter.ingestInputFrame(frame + i, {left[j], right[j]});
+                cutter.renderOne(frame + i, left[j], right[j], i, nullptr);
+                recordBlock(frame + i);
+            }
+            cutter.endRenderContext(n, nullptr);
             REQUIRE (cutter.error() == Cutter::Error::none);
             REQUIRE_FALSE (cutter.player().hasSourceError());
             for (int i = 0; i < n; ++i)

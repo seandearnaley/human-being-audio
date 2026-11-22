@@ -7,9 +7,10 @@ add_executable(pf-engine-tests
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/AdaaTests.cpp")
 target_link_libraries(pf-engine-tests PRIVATE pf_engine_internal Catch2::Catch2WithMain pf_warnings)
-catch_discover_tests(pf-engine-tests DISCOVERY_MODE PRE_TEST)
 if(HBA_RTSAN)
     hba_realtime_suite(pf-engine-tests "[engine]")
+else()
+    catch_discover_tests(pf-engine-tests DISCOVERY_MODE PRE_TEST)
 endif()
 
 if(PF_BUILD_PLUGIN)

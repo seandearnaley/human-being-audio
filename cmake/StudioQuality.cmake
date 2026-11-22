@@ -9,7 +9,6 @@ add_custom_target(studio-lint
     USES_TERMINAL VERBATIM)
 
 function(hba_realtime_suite target filter)
-    add_custom_target(check-realtime
-        COMMAND "$<TARGET_FILE:${target}>" "${filter}"
-        DEPENDS ${target} USES_TERMINAL VERBATIM)
+    catch_discover_tests(${target} TEST_SPEC "${filter}" DISCOVERY_MODE PRE_TEST PROPERTIES LABELS realtime)
+    add_custom_target(realtime-engine DEPENDS ${target})
 endfunction()

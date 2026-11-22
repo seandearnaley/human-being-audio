@@ -108,8 +108,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends libclang-rt-22-dev
-      - run: cmake --preset rtsan
-      - run: cmake --build --preset rtsan
+      - run: cmake --workflow --preset rtsan
+        env:
+          CTEST_PARALLEL_LEVEL: 4
 
   windows:
     needs: plan

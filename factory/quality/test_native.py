@@ -15,6 +15,10 @@ class NativeQualityTests(unittest.TestCase):
         self.assertEqual(native.affected(self.products, ["web/src/example.ts"]), [])
         self.assertEqual(native.affected(self.products, [".clang-tidy"]), self.products)
 
+    def test_editor_probe_and_research_formats_trigger_their_consumers(self):
+        self.assertEqual(native.affected(self.products, ["factory/release/standalone-linux.py"]), self.products)
+        self.assertEqual(native.plan_checks(self.products, ["research/idea.cpp"])["jobs"], ["format"])
+
     def test_header_checks_consumers_and_source_change_only_checks_its_translation_unit(self):
         sources = {"products/p/src/a.cpp", "products/p/src/b.cpp", "modules/dsp/tests/Gain.cpp"}
         self.assertEqual(native.lint_inputs("p", sources, ["products/p/src/a.cpp"]), {"products/p/src/a.cpp"})
@@ -37,7 +41,9 @@ class NativeQualityTests(unittest.TestCase):
             build = product / "build" / "dev"
             build.mkdir(parents=True)
             command = dict(directory=str(build), file=str(product / "engine.cpp"), arguments=["clang++", "-c", "engine.cpp"])
-            (build / "compile_commands.json").write_text(json.dumps([command]))
+            vendor = dict(command, file=str(product / "libs/JUCE/vendor.cpp"))
+            generated = dict(command, file=str(build / "BinaryData.cpp"))
+            (build / "compile_commands.json").write_text(json.dumps([command, vendor, generated, command]))
             self.assertEqual(native.editor_commands(root, ["new"]), [command])
             with self.assertRaises(FileNotFoundError):
                 native.editor_commands(root, ["missing"])

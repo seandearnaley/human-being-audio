@@ -4,12 +4,13 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SHARED = {".clang-format", ".clang-format-ignore", ".clang-tidy", ".clangd", "studio.json",
-          ".github/workflows/native.yml", ".gitmodules"}
+          ".github/workflows/native.yml", ".gitmodules", "factory/release/standalone-linux.py"}
 VENDOR = {"third_party", "libs", "build", "_deps", ".cpm-cache"}
 TRANSLATIONS = {".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
 
@@ -29,6 +30,9 @@ def plan_checks(products, changes):
     extra = {"livecut-redux": "livecut", "tract-form": "tract-form", "pole-field": "pole-field"}
     windows = [p for p in native if p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []
+    if not native and any(p.startswith("research/") and Path(p).suffix in
+            TRANSLATIONS | {".h", ".hh", ".hpp", ".hxx", ".inl"} for p in paths):
+        jobs.append("format")
     if windows:
         jobs.append("windows")
     for name, workflow in extra.items():
@@ -62,32 +66,41 @@ def changed_files(base):
     return [os.fsdecode(p) for p in output.split(b"\0") if p]
 
 
+def studio_commands(root, product, build):
+    root = root.resolve()
+    for command in json.loads((build / "compile_commands.json").read_text()):
+        absolute = os.path.abspath(os.path.join(command["directory"], command["file"]))
+        path = Path(absolute).resolve()
+        if not path.is_relative_to(root):
+            continue
+        relative = path.relative_to(root)
+        if (relative.parts[:2] == ("products", product) or relative.parts[:1] == ("modules",)) and (
+                path.suffix in TRANSLATIONS and not VENDOR.intersection(relative.parts)):
+            yield relative.as_posix(), absolute, command
+
+
 def editor_commands(root, products):
-    commands = []
+    commands = {}
     for product in products:
-        database = root / "products" / product / "build/dev/compile_commands.json"
-        commands.extend(json.loads(database.read_text()))
-    return commands
+        build = root / "products" / product / "build/dev"
+        for path, _, command in studio_commands(root, product, build):
+            commands.setdefault(path, command)
+    if not commands:
+        raise ValueError("No studio source files in the selected compilation databases")
+    return list(commands.values())
 
 
 def lint(product, build, changes, runner, tidy):
-    tracked = subprocess.check_output(["git", "ls-files", "-z", "--", f"products/{product}", "modules"], cwd=ROOT)
-    owned = {os.fsdecode(p) for p in tracked.split(b"\0") if p}
-    commands = json.loads((build / "compile_commands.json").read_text())
-    paths = set()
-    for command in commands:
-        path = (Path(command["directory"]) / command["file"]).resolve()
-        if path.is_relative_to(ROOT):
-            relative = path.relative_to(ROOT)
-            if relative.as_posix() in owned and path.suffix in TRANSLATIONS and not VENDOR.intersection(relative.parts):
-                paths.add(relative.as_posix())
+    paths = {}
+    for path, absolute, _ in studio_commands(ROOT, product, build):
+        paths.setdefault(path, set()).add(absolute)
     if not paths:
         raise SystemExit(f"No studio translation units in {build} for {product}")
-    selected = sorted(lint_inputs(product, paths, changes))
+    selected = sorted(lint_inputs(product, set(paths), changes))
     print(f"{product}: checking {len(selected)} of {len(paths)} studio translation units", flush=True)
     if selected:
-        pattern = "^(?:" + "|".join(re.escape(str(ROOT / path)) for path in selected) + ")$"
-        subprocess.run([runner, "-clang-tidy-binary", tidy, "-p", str(build), "-quiet", "-source-filter", pattern], check=True)
+        pattern = "^(?:" + "|".join(re.escape(alias) for path in selected for alias in sorted(paths[path])) + ")$"
+        subprocess.run([sys.executable, runner, "-clang-tidy-binary", tidy, "-p", str(build), "-quiet", "-source-filter", pattern], check=True)
 
 
 def main():
