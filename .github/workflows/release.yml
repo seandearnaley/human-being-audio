@@ -169,6 +169,8 @@ jobs:
           if-no-files-found: error
 
   publish:
+    outputs:
+      tag: ${{ steps.published.outputs.tag }}
     needs: package
     runs-on: ubuntu-26.04
     permissions:
@@ -190,6 +192,7 @@ jobs:
         with:
           subject-path: dist/*
       - name: Verify and publish the signed release
+        id: published
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -197,4 +200,13 @@ jobs:
           for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest "$GITHUB_SHA"; done
           python3 factory/release/release.py notes "$PRODUCT" > "$RUNNER_TEMP/notes"
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+  verify-downloads:
+    needs: publish
+    permissions:
+      contents: read
+      attestations: read
+    uses: ./.github/workflows/verify-downloads.yml
+    with:
+      tag: ${{ needs.publish.outputs.tag }}
