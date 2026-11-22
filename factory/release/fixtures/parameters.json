@@ -1,0 +1,5 @@
+{
+  "livecut-redux": { "max_amp": 0.89, "min_amp": 0.74 },
+  "tract-form": { "coupling": 0.42, "warp": 0.83 },
+  "pole-field": { "morph_x": 0.71, "drive": 0.23 }
+}
