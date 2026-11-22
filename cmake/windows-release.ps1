@@ -1,6 +1,8 @@
-param([Parameter(Mandatory)][ValidateSet('livecut-redux', 'tract-form', 'pole-field')][string]$Product)
+param([Parameter(Mandatory)][string]$Product)
 $ErrorActionPreference = 'Stop'
-Set-Location "$PSScriptRoot/../products/$Product"
+$catalogue = Get-Content -Raw "$PSScriptRoot/../studio.json" | ConvertFrom-Json -AsHashtable
+if (!$catalogue.products.ContainsKey($Product)) { throw "Unknown studio product: $Product" }
+Set-Location -LiteralPath "$PSScriptRoot/../products/$Product"
 $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'

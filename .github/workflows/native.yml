@@ -1,44 +1,62 @@
-name: Native desktop builds
-
+name: Studio checks
 on:
   pull_request:
-    paths:
-      - 'products/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.gitmodules'
-      - '.github/workflows/native.yml'
   merge_group:
   push:
     branches: [main]
-    paths:
-      - 'products/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.gitmodules'
-      - '.github/workflows/native.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: studio-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  plan:
+    runs-on: ubuntu-26.04
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+      products: ${{ steps.plan.outputs.products }}
+      windows: ${{ steps.plan.outputs.windows }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: python3 -m unittest discover -s factory/quality
+      - id: plan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          python3 factory/quality/native.py plan --base "$BASE" >> "$GITHUB_OUTPUT"
+
+  format:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'format')
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends clang-format-22
+      - name: Check changed studio C++ lines
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
+        run: |
+          git-clang-format-22 --binary clang-format-22 --diff "$BASE" HEAD -- products modules research \
+            ':(exclude,glob)**/third_party/**' ':(exclude,glob)**/libs/**'
+
   ubuntu:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'ubuntu')
     name: ${{ matrix.product }} · Ubuntu x64
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
-        product: [livecut-redux, tract-form, pole-field]
+        product: ${{ fromJSON(needs.plan.outputs.products) }}
     env:
       CC: clang-22
       CXX: clang++-22
@@ -51,36 +69,106 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: ${{ matrix.product == 'livecut-redux' }}
+          fetch-depth: 0
+          submodules: true
       - name: Install build dependencies
         working-directory: .
         run: |
           sudo apt-get update -qq
-          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends
+          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends clang-tidy-22
       - run: cmake --preset release
       - run: cmake --build --preset release
       - run: xvfb-run -a ../../cmake/with-window-manager.sh ctest --preset release
+      - name: Check studio C++ with clang-tidy
+        env:
+          HBA_QUALITY_BASE: ${{ needs.plan.outputs.base }}
+        run: cmake --build build/release --target studio-lint
 
-  windows-tract:
-    name: Tract Form · Windows x64
+  realtime:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'realtime')
+    name: ${{ matrix.product }} · RealtimeSanitizer
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        product: ${{ fromJSON(needs.plan.outputs.products) }}
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    defaults:
+      run:
+        working-directory: products/${{ matrix.product }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install LLVM and engine build dependencies
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends libclang-rt-22-dev
+      - run: cmake --workflow --preset rtsan
+        env:
+          CTEST_PARALLEL_LEVEL: 4
+
+  windows:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'windows')
+    name: ${{ matrix.product }} · Windows x64
     runs-on: windows-2025-vs2026
+    strategy:
+      fail-fast: false
+      matrix:
+        product: ${{ fromJSON(needs.plan.outputs.windows) }}
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v7
-      - name: Build and test from the x64 developer shell
-        shell: pwsh
-        run: ./cmake/windows-release.ps1 -Product tract-form
+      - shell: pwsh
+        env:
+          PRODUCT: ${{ matrix.product }}
+        run: ./cmake/windows-release.ps1 -Product $env:PRODUCT
 
-  windows-pole:
-    name: Pole Field · Windows x64
-    runs-on: windows-2025-vs2026
-    env:
-      CMAKE_BUILD_PARALLEL_LEVEL: 4
-      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  livecut:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'livecut')
+    uses: ./.github/workflows/livecut.yml
+
+  tract-form:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'tract-form')
+    uses: ./.github/workflows/tract-form.yml
+
+  pole-field:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'pole-field')
+    uses: ./.github/workflows/pole-field.yml
+
+  website:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'website')
+    uses: ./.github/workflows/website.yml
+
+  factory:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'factory')
+    uses: ./.github/workflows/factory.yml
+
+  required:
+    name: Studio PR checks
+    if: always()
+    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, website, factory]
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
-      - name: Build and test from the x64 developer shell
-        shell: pwsh
-        run: ./cmake/windows-release.ps1 -Product pole-field
+      - name: Require success from every selected job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '
+            ((.plan.outputs.jobs | fromjson) + ["plan"]) as $expected |
+            (keys | contains($expected)) and
+            all(to_entries[]; .key as $job |
+              .value.result == (if $expected | index($job) then "success" else "skipped" end))
+          ' <<< "$RESULTS"

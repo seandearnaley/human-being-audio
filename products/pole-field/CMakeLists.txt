@@ -14,7 +14,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(PF_BUILD_PLUGIN "Build the interface and the plugin (fetches JUCE and Visage)" ON)
+include(CMakeDependentOption)
+cmake_dependent_option(PF_BUILD_PLUGIN "Build the interface and the plugin (fetches JUCE and Visage)" ON "NOT HBA_RTSAN" OFF)
 option(PF_BUILD_TESTS "Build the tests" ON)
 option(PF_INSTALL_PLUGIN "Copy the plugins into ~/Library/Audio/Plug-Ins after building" OFF)
 

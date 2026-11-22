@@ -1,0 +1,5 @@
+**/libs/**
+**/third_party/**
+**/build/**
+**/_deps/**
+**/.cpm-cache/**

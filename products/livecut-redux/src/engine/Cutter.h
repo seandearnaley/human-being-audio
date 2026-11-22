@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include "engine/CutProcedures.h"
 #include "engine/Effects.h"
 #include "engine/ImpactEffects.h"
@@ -130,16 +132,18 @@ public:
     };
 
     // Cuts a stereo buffer in place. `position` is the host's position at its first sample.
-    void process (float* left, float* right, int numSamples, const Timing& timing, const Position& position, Observer* observer = nullptr);
+    void process(float* left, float* right, int numSamples, const Timing& timing, const Position& position,
+                 Observer* observer = nullptr) HBA_NONBLOCKING;
 
     // One physical input clock, independent of the renderer's original contexts.
     bool ingestInputFrame (std::int64_t frame, StereoFrame raw);
     std::int64_t nextInputFrame() const { return livePlayer.sourceForNextFrame().firstFrame; }
     std::optional<StereoFrame> rawInputFrame (std::int64_t frame) const { return livePlayer.rawFrame (frame); }
     // A context is an ORIGINAL host segment, possibly split over output buffers.
-    void beginRenderContext (const Timing&, const Position&, std::int64_t firstFrame, int sampleOffset, Observer*);
-    void renderOne (std::int64_t frame, float& left, float& right, int sampleOffset, Observer*);
-    void endRenderContext (int sampleOffset, Observer*);
+    void beginRenderContext(const Timing&, const Position&, std::int64_t firstFrame, int sampleOffset,
+                            Observer*) HBA_NONBLOCKING;
+    void renderOne(std::int64_t frame, float& left, float& right, int sampleOffset, Observer*) HBA_NONBLOCKING;
+    void endRenderContext(int sampleOffset, Observer*) HBA_NONBLOCKING;
 
     // Next sample's position, including a pending bar wrap; valid within a render context.
     Position renderPosition() const;

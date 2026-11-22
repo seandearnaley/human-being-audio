@@ -1,33 +1,9 @@
 name: Pole Field
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'products/pole-field/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.github/workflows/pole-field.yml'
-  pull_request:
-    paths:
-      - 'products/pole-field/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.github/workflows/pole-field.yml'
-  merge_group:
+on: workflow_call
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   PLUGINVAL_VERSION: v1.0.4

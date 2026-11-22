@@ -1,35 +1,9 @@
 name: Livecut Redux
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'products/livecut-redux/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.gitmodules'
-      - '.github/workflows/livecut.yml'
-  pull_request:
-    paths:
-      - 'products/livecut-redux/**'
-      - '!products/**/*.md'
-      - '!products/*/press/**'
-      - 'cmake/**'
-      - 'modules/**'
-      - 'studio.json'
-      - '.gitmodules'
-      - '.github/workflows/livecut.yml'
-  merge_group:
+on: workflow_call
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   CTEST_PARALLEL_LEVEL: 4

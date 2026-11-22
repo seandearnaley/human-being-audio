@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: .
+  # clangd skips inline function bodies. The full compiler enforces these effects on DSP targets.
+  Remove: [-Wfunction-effects, -Werror=function-effects]
+  Add: [-Wno-function-effects]
+Diagnostics:
+  ClangTidy:
+    FastCheckFilter: Strict

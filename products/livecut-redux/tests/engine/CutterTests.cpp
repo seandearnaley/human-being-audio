@@ -585,10 +585,11 @@ TEST_CASE ("Phrase events report every in-buffer boundary before its output samp
     struct Events final : Cutter::Observer
     {
         void discontinuity (int offset) override { resets.push_back (offset); }
-        void phraseCompleted (int offset) override { ends.push_back (offset); }
+        void phraseCompleted(int) override {}
         void phraseStarted (int offset, bool full) override { starts.push_back ({ offset, full }); }
-        void processOutput (int offset, float, float, float&, float&) override { samples.push_back (offset); }
-        std::vector<int> resets, samples, ends;
+        void processOutput(int, float, float, float&, float&) override { ++samples; }
+        std::vector<int> resets;
+        int samples = 0;
         std::vector<std::pair<int, bool>> starts;
     } events;
     Cutter cutter;
@@ -596,6 +597,8 @@ TEST_CASE ("Phrase events report every in-buffer boundary before its output samp
     CutParameters params;
     params.minPhraseBars = params.maxPhraseBars = 1;
     cutter.setParameters (params);
+    events.starts.reserve(4);
+    events.resets.reserve(1);
     Buffer buffer (49001);
     cutter.process (buffer.left.data(), buffer.right.data(), 49001, { 120.0, 4.0 }, { 0, 0.0 }, &events);
     REQUIRE (events.starts.size() == 4);
@@ -604,7 +607,7 @@ TEST_CASE ("Phrase events report every in-buffer boundary before its output samp
         CHECK (events.starts[static_cast<std::size_t> (phrase)].first == phrase * 16000);
         CHECK (events.starts[static_cast<std::size_t> (phrase)].second);
     }
-    CHECK (events.samples.size() == 49001);
+    CHECK(events.samples == 49001);
     REQUIRE (events.resets.size() == 1);
     CHECK (events.resets[0] == 0);
 

@@ -1,11 +1,6 @@
 name: Release factory
-on:
-  pull_request:
-    paths: ['factory/**', 'studio.json', 'products/*/docs/releases/**', 'products/*/CMakeLists.txt', 'design/studio/**', '.github/workflows/release.yml', '.github/workflows/factory.yml']
-  push:
-    branches: [main]
-    paths: ['factory/**', 'studio.json', 'products/*/docs/releases/**', 'products/*/CMakeLists.txt', 'design/studio/**', '.github/workflows/release.yml', '.github/workflows/factory.yml']
-  merge_group:
+on: workflow_call
+
 permissions:
   contents: read
 jobs:
