@@ -7,7 +7,7 @@ on:
       product:
         description: Product to package
         type: choice
-        options: [livecut-redux, tract-form, pole-field]
+        options: [livecut-redux, tract-form, pole-field, cutline]
         required: true
 
 permissions:

@@ -26,6 +26,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Plfd",
       "license": "AGPL-3.0-or-later"
+    },
+    "cutline": {
+      "name": "Cutline",
+      "artifacts": "plugin/Cutline_artefacts/Release",
+      "bundle": "com.humanbeingmusic.cutline",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Ctln",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

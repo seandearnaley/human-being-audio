@@ -1,0 +1,18 @@
+{
+    "name": "Swung 808 Slide",
+    "category": "Halftime",
+    "grammar": "Halftime",
+    "gravity": 0.68,
+    "ratchet": 0.34,
+    "glide": 0.92,
+    "density": 0.46,
+    "mutate": 0.38,
+    "motion": 0.62,
+    "velArc": 0.7,
+    "seed": 388,
+    "attractor": "Backbeat",
+    "rootNote": "E",
+    "octave": "1",
+    "scale": "Pent Min",
+    "legato": 0.84
+}
