@@ -52,7 +52,9 @@ for (const [os, label] of platforms) {
     });
     // The public page and release feed each revalidate every 60 seconds.
     await expect.poll(async () => {
-      const response = await page.goto(site, { waitUntil: "domcontentloaded" });
+      const response = page.url() === site
+        ? await page.reload({ waitUntil: "domcontentloaded" })
+        : await page.goto(site, { waitUntil: "domcontentloaded" });
       expect(response?.status(), site).toBe(200);
       return heading.isVisible();
     }, { message: `Waiting for ${tag} on ${site}`, intervals: [10_000], timeout: 180_000 }).toBe(true);
@@ -60,6 +62,7 @@ for (const [os, label] of platforms) {
     const { file, bytes, sha256 } = downloads[os];
     expect(basename(file)).toBe(file);
     const button = card.getByRole("link", { name: label, exact: true });
+    await expect(button).toHaveCount(1);
     const href = await button.getAttribute("href");
     expect(decodeURIComponent(href ?? "")).toBe(`${studio.repository}/releases/download/${tag}/${file}`);
 
