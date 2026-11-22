@@ -34,6 +34,7 @@ target_compile_options(tf_warnings INTERFACE -Wall -Wextra -Wpedantic -Wconversi
 include(cmake/CPM.cmake)
 CPMAddPackage(NAME nlohmann_json GITHUB_REPOSITORY nlohmann/json VERSION 3.12.0 SYSTEM YES)
 
+add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
 add_subdirectory(core)
 add_subdirectory(engine)
 add_subdirectory(tools)

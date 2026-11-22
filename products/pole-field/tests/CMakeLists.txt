@@ -5,7 +5,8 @@ catch_discover_tests(pf-core-tests DISCOVERY_MODE PRE_TEST)
 add_executable(pf-engine-tests
     engine/EngineTests.cpp
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
-    "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/AdaaTests.cpp")
+    "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/AdaaTests.cpp"
+    "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/CurveTests.cpp")
 target_link_libraries(pf-engine-tests PRIVATE pf_engine_internal Catch2::Catch2WithMain pf_warnings)
 if(HBA_RTSAN)
     hba_realtime_suite(pf-engine-tests "[engine]")

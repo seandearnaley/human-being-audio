@@ -19,7 +19,6 @@ if(NOT TF_HAS_NONBLOCKING OR TF_ACCEPTS_NONBLOCKING_ALLOCATION)
     message(FATAL_ERROR "Tract Form requires Clang with enforced nonblocking checks. See the studio README for the native toolchain.")
 endif()
 
-add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
 add_library(tf_engine STATIC
     include/tf/engine.h
     include/tf/nonblocking.h
