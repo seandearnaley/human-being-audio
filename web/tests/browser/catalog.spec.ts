@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-test("browse both real products, inspect images and open install notes", async ({
+test("browse the studio products, inspect images and open install notes", async ({
   page,
   request,
 }) => {
@@ -21,6 +21,7 @@ test("browse both real products, inspect images and open install notes", async (
     [1, "tract-form", "Tract Form"],
     [2, "pole-field", "Pole Field"],
   ] as const) {
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", new RegExp(name));
     const card = cards.nth(index);
     await expect(
       card.getByRole("heading", { name, exact: true }),
