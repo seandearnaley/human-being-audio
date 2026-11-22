@@ -22,9 +22,12 @@ libxinerama-dev
 libxkbcommon-dev
 libxrandr-dev
 libxrender-dev
+mesa-vulkan-drivers
 ninja-build
 openbox
 pkg-config
+python3-pil
 wayland-protocols
 xauth
+xdotool
 xvfb

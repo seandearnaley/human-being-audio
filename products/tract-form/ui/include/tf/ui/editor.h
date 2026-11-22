@@ -25,6 +25,11 @@ public:
     void detach();
     void setSize(int width, int height);
 
+#if defined(__linux__)
+    int eventFd() const;
+    void dispatchEvents();
+#endif
+
     // Draws one frame without a window and saves it. For snapshot tests.
     void renderToPng(const std::string& path, int width, int height);
 

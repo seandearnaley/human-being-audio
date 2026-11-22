@@ -81,6 +81,15 @@ void Editor::detach() {
 
 void Editor::setSize(int width, int height) { impl_->window.setWindowDimensionsFromHost(width, height); }
 
+#if defined(__linux__)
+int Editor::eventFd() const {
+    auto* window = impl_->window.window();
+    return window != nullptr ? window->posixFd() : -1;
+}
+
+void Editor::dispatchEvents() { impl_->window.window()->processPluginFdEvents(); }
+#endif
+
 void Editor::renderToPng(const std::string& path, int width, int height) {
     impl_->timerCallback();
     impl_->window.setWindowless(width, height);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "studio/Product.h"
+#include "HbaStudioArt.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <functional>
 
@@ -17,6 +18,7 @@ public:
         setWantsKeyboardFocus(true);
         setFocusContainerType(FocusContainerType::keyboardFocusContainer);
         source.setComponentID("aboutSource");
+        source.setFont(juce::Font(juce::FontOptions(15.0f)), false);
         source.setTitle(juce::String(product::name) + " source code on GitHub");
         source.setColour(juce::HyperlinkButton::textColourId, juce::Colours::white);
         closeButton.setComponentID("closeAbout");
@@ -51,9 +53,10 @@ public:
 
     void paintOverChildren(juce::Graphics& g) override {
         // Only paint the left-hand masthead; the buttons own the right-hand side.
+        mark->drawWithin(g, {24.0f, 16.0f, 32.0f, 32.0f}, juce::RectanglePlacement::centred, 1.0f);
         auto header = getLocalBounds().removeFromTop(64);
         header.removeFromRight(218);
-        header = header.reduced(24, 0);
+        header.removeFromLeft(68);
         g.setColour(juce::Colour(0xffeabe72));
         g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
         g.drawText(product::publisher, header.removeFromTop(34), juce::Justification::bottomLeft);
@@ -70,6 +73,8 @@ public:
     std::function<void()> onClosed;
 
 private:
+    std::unique_ptr<juce::Drawable> mark = juce::Drawable::createFromImageData(
+        HbaStudioArt::mark_svg, HbaStudioArt::mark_svgSize);
     juce::TextButton closeButton { "Close" };
     juce::HyperlinkButton source { "Source code", juce::URL(product::source) };
 };

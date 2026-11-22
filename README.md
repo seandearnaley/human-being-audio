@@ -1,6 +1,6 @@
 # Human Being Audio
 
-Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, and [Tract Form](products/tract-form), the bass synthesizer. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](web/index.html) lives in the same checkout.
+Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, and [Tract Form](products/tract-form), the bass synthesizer. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
 
 ## First build
 
@@ -41,7 +41,19 @@ Release targets produce a VST3 bundle and standalone application on all three pl
 
 CTest covers both products on each OS. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
 
-## Website and shared code
+## Working across the studio
+
+| When you are working on… | Start here | What belongs there |
+| --- | --- | --- |
+| A product name, publisher, website or plug-in identity | [Studio catalogue](studio.json) and [CMake integration](cmake/StudioProduct.cmake) | The catalogue feeds both products. Bundle and host IDs are permanent once shipped. |
+| Shared About screens and installation artwork | [Studio UI](modules/studio-ui) and [design handoff](design/README.md) | Change the masthead, source link and keyboard behavior once. Each product owns the controls that make it an instrument or effect. |
+| A sound or algorithm | [Research](research/README.md), [gain study](research/gain/README.md) and [shared DSP](modules/dsp) | Compare a reference render with the candidate before moving an operation into both engines. |
+| A release | [Factory guide](factory/release/README.md) and [Studio release workflow](.github/workflows/release.yml) | Each product has its own version and musician-facing notes. One dispatch builds, signs, validates and publishes the three packages. |
+| The catalogue | [Website source](web) and [live downloads](https://humanbeingaudio.com/#plugins) | Product descriptions and demos live with the site. Published platform links and checksums come from the release records. |
+
+For the next product, reserve its slug and stable identifiers in the catalogue, then implement its processor and editor under `products/<slug>`. Follow an existing product's CMake integration for the shared UI and native presets. Put its own DSP regression tests and a host-state fixture beside the integration, register it in the native build matrix and release selector, and add catalogue copy and media when it is ready to show. The first release should exercise the same installed-package checks as these two products.
+
+## Website development
 
 The [live website](https://humanbeingaudio.com) is a Next.js App Router application in [web/](web). From that directory run `npm ci` and `npm run dev`. For a production check, run `npm test`, `npm run build`, `npx playwright install chromium` and `npm run test:e2e`. Vercel builds the site from the studio repository. The server reads public release manifests, verifies asset sizes and SHA-256 digests against GitHub, and revalidates the catalogue every minute. The download and source links work without JavaScript.
 

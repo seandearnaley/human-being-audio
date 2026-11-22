@@ -12,7 +12,7 @@ shell and the interface. Change it in the same commit as the code it describes.
 | Area | Choice | Reason |
 |---|---|---|
 | Shell | JUCE 9.0.5 | Canonical VST3/AU/Standalone, parameters, state. |
-| Interface | Visage 1.0.0 (Metal) | GPU vector rendering, headless screenshots. |
+| Interface | Visage 1.0.0 (Metal, Direct3D, Vulkan) | GPU vector rendering, headless screenshots. |
 | Engine | Plain C++20, no JUCE | Fast tests, portable. |
 | Licence | AGPL-3.0-or-later | Matches JUCE's open-source terms. |
 | Formats | VST3, AU, Standalone | Ableton Live 12 hosts VST3 and AU, not CLAP. |
@@ -385,3 +385,5 @@ number like Reach and Sculpt. With a fixed 120 Hz split the growl came out 3 to
 4 dB hotter at A1 than at E1; now a bassline keeps its balance as it moves. The
 default, ×2.75, is 120 Hz at F1. The mid/side crossover stays in Hz, because
 keeping the low end mono is about speakers and rooms, not the note.
+
+On Windows a JUCE HWNDComponent confines the native Visage window to the editor bounds so host controls remain visible at any display scale. On Linux the editor embeds its Visage window inside a JUCE XEmbedComponent. The JUCE message loop monitors the Visage X11 file descriptor for rendering and input. Opening About unregisters that descriptor before releasing the child window. Closing About attaches the instrument again.
