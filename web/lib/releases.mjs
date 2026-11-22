@@ -10,12 +10,15 @@ const suffix = {
 };
 
 async function readJson(url) {
+  const headers = { "User-Agent": "human-being-audio-catalogue" };
+  if (new URL(url).origin === "https://api.github.com" && process.env.STUDIO_RELEASES_TOKEN)
+    headers.Authorization = "Bearer " + process.env.STUDIO_RELEASES_TOKEN;
   const result = await fetch(url, {
     next: { revalidate: 60 },
-    headers: { "User-Agent": "human-being-audio-catalogue" },
+    headers,
   });
   if (!result.ok)
-    throw new Error("GitHub release request returned " + result.status);
+    throw new Error(new URL(url).hostname + " release request returned " + result.status);
   return result.json();
 }
 function assetFor(row, name) {

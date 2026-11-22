@@ -101,3 +101,20 @@ test("invalid asset digest, source, size or old repository URL fails explicitly"
     );
   }
 });
+
+test("the CI credential only accompanies release API requests", async (t) => {
+  const { row, record } = fixture();
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    const apiRequest = new URL(url).origin === "https://api.github.com";
+    assert.equal(new Headers(init.headers).get("authorization"), apiRequest ? "Bearer test-token" : null);
+    return Response.json(apiRequest ? [row] : record);
+  });
+  const previous = process.env.STUDIO_RELEASES_TOKEN;
+  process.env.STUDIO_RELEASES_TOKEN = "test-token";
+  t.after(() => {
+    if (previous === undefined) delete process.env.STUDIO_RELEASES_TOKEN;
+    else process.env.STUDIO_RELEASES_TOKEN = previous;
+  });
+  const [release] = await readCatalog();
+  assert.equal(release.downloads.length, 3);
+});
