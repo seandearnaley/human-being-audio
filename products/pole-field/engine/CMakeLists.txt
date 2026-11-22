@@ -19,8 +19,6 @@ if(NOT PF_HAS_NONBLOCKING OR PF_ACCEPTS_NONBLOCKING_ALLOCATION)
     message(FATAL_ERROR "Pole Field requires Clang with enforced nonblocking checks.")
 endif()
 
-add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
-
 add_library(pf_engine STATIC
     include/pf/engine.h
     src/control.h
