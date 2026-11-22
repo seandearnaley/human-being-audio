@@ -1,5 +1,7 @@
 # Human Being Audio
 
+* all plugins made with AI assistance by professional engineers with audio experience for free, made with love, care and support.
+
 Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, and [Tract Form](products/tract-form), the bass synthesizer. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
 
 ## First build
