@@ -14,3 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s factory/release
+      - name: Check the native artwork used in installers and plugins
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pil
+          /usr/bin/python3 design/studio/test_artwork.py

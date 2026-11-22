@@ -6,8 +6,7 @@
 
 namespace tf {
 
-// A JUCE editor that owns no pixels: it hands its native view to the Visage
-// interface and forwards size changes.
+// The native instrument and studio About page occupy the same editor bounds.
 class PluginEditor final : public juce::AudioProcessorEditor {
 public:
     explicit PluginEditor(PluginProcessor& processor);
@@ -23,14 +22,19 @@ private:
     void detachView();
 
     PluginModel model_;
-#if JUCE_LINUX
+#if JUCE_MAC
+    struct MacSurface : juce::NSViewComponent { MacSurface(); } nativeHost_;
+#elif JUCE_LINUX
     juce::XEmbedComponent nativeHost_ { juce::XEmbedComponentOptions{} };
 #elif JUCE_WINDOWS
     juce::HWNDComponent nativeHost_;
 #endif
     ui::Editor view_;
-    hba::StudioAbout about_;
-    juce::Label aboutText_;
+    struct AboutPage : hba::StudioAbout {
+        AboutPage();
+        void paint(juce::Graphics& g) override;
+        std::unique_ptr<juce::Drawable> wordmark, monogram;
+    } about_;
     void* attachedTo_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)

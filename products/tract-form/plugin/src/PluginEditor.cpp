@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <embedded/tf_brand.h>
 
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
@@ -11,28 +12,51 @@
 namespace tf {
 
 PluginEditor::PluginEditor(PluginProcessor& processor)
-    : AudioProcessorEditor(processor), model_(processor), view_(model_, [safe = juce::Component::SafePointer<PluginEditor>(this)] {
-          // Leave the native mouse callback before closing its Visage window.
-          juce::MessageManager::callAsync([safe] { if (safe != nullptr) safe->showAbout(); });
-      }) {
-#if JUCE_LINUX || JUCE_WINDOWS
+    : AudioProcessorEditor(processor), model_(processor), view_(model_, [this] { showAbout(); }) {
+    nativeHost_.setComponentID("instrumentSurface");
     addAndMakeVisible(nativeHost_);
-#endif
     addChildComponent(about_);
-    aboutText_.setText("Tract Form\n\nMonophonic bass synthesizer\n\n"
-                       "One master sine drives two reese voices and a clean sub. Shape the growl "
-                       "with a five-formant tract, wavefolding and four movement lanes.",
-                       juce::dontSendNotification);
-    aboutText_.setFont(juce::FontOptions(24.0f));
-    aboutText_.setColour(juce::Label::textColourId, juce::Colours::white);
-    about_.addAndMakeVisible(aboutText_);
-    about_.onClosed = [this] { attachWhenOnScreen(); };
+    about_.onClosed = [this] {
+        nativeHost_.setVisible(true);
+        attachWhenOnScreen();
+    };
     model_.setDragSource(this);
     setOpaque(true);
     setResizable(true, true);
     setResizeLimits(ui::kMinWidth, ui::kMinHeight, ui::kDefaultWidth * 2, ui::kDefaultHeight * 2);
     getConstrainer()->setFixedAspectRatio(static_cast<double>(ui::kDefaultWidth) / ui::kDefaultHeight);
     setSize(ui::kDefaultWidth, ui::kDefaultHeight);
+}
+
+PluginEditor::AboutPage::AboutPage() {
+    const auto& art = ui::brand::tract_form_logotype_on_dark_svg;
+    wordmark = juce::Drawable::createFromImageData(art.data, static_cast<size_t>(art.size));
+    const auto& symbol = ui::brand::tract_form_mark_on_dark_svg;
+    monogram = juce::Drawable::createFromImageData(symbol.data, static_cast<size_t>(symbol.size));
+    setDescription(getDescription() + ". Monophonic bass synthesizer.");
+}
+
+void PluginEditor::AboutPage::paint(juce::Graphics& g) {
+    g.fillAll(juce::Colour(0xff0b0e13));
+    StudioAbout::paint(g);
+    auto body = getLocalBounds().toFloat().withTrimmedTop(64).reduced(static_cast<float>(getWidth()) * 0.075f, 0);
+    const float illustrationSize = juce::jmin(224.0f, body.getWidth() * 0.24f);
+    auto illustration = body.removeFromRight(illustrationSize);
+    body.removeFromRight(32);
+    body.removeFromTop(body.getHeight() * 0.19f);
+    monogram->drawWithin(g, { illustration.getX(), body.getY(), illustrationSize, illustrationSize },
+                         juce::RectanglePlacement::centred, 1.0f);
+    wordmark->drawWithin(g, body.removeFromTop(60).withWidth(310), juce::RectanglePlacement::xLeft, 1.0f);
+    body.removeFromTop(22);
+    g.setFont(juce::FontOptions(23.0f));
+    g.setColour(juce::Colour(0xffe6ebf0));
+    g.drawText("Monophonic bass synthesizer", body.removeFromTop(34), juce::Justification::centredLeft);
+    body.removeFromTop(12);
+    g.setColour(juce::Colour(0xffb2bbc8));
+    g.setFont(juce::FontOptions(17.0f));
+    g.drawFittedText("One master sine drives two reese voices and a clean sub. Shape the growl with a five-formant tract, wavefolding and four movement lanes.",
+                     body.removeFromTop(70).withWidth(juce::jmin(480.0f, body.getWidth())).toNearestInt(),
+                     juce::Justification::topLeft, 3);
 }
 
 PluginEditor::~PluginEditor() { detachView(); }
@@ -49,11 +73,8 @@ void PluginEditor::detachView() {
 void PluginEditor::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff0b0e13)); }
 
 void PluginEditor::resized() {
-#if JUCE_LINUX || JUCE_WINDOWS
     nativeHost_.setBounds(getLocalBounds());
-#endif
     about_.setBounds(getLocalBounds());
-    aboutText_.setBounds(about_.getLocalBounds().reduced(40).withTrimmedTop(64));
     if (attachedTo_ != nullptr) view_.setSize(getWidth(), getHeight());
 }
 
@@ -61,24 +82,20 @@ void PluginEditor::parentHierarchyChanged() { attachWhenOnScreen(); }
 
 void PluginEditor::showAbout() {
     if (about_.isVisible()) return;
-    detachView();
-#if JUCE_LINUX || JUCE_WINDOWS
     nativeHost_.setVisible(false);
-#endif
     about_.open();
 }
 
 void PluginEditor::attachWhenOnScreen() {
-    if (about_.isVisible()) return;
     auto* peer = getPeer();
     if (peer == nullptr) {
         detachView();
         return;
     }
-#if JUCE_LINUX || JUCE_WINDOWS
-    nativeHost_.setVisible(true);
-#endif
-#if JUCE_LINUX
+    if (about_.isVisible()) return;
+#if JUCE_MAC
+    auto* nativeView = nativeHost_.getView();
+#elif JUCE_LINUX
     auto* nativeView = reinterpret_cast<void*>(nativeHost_.getHostWindowID());
 #elif JUCE_WINDOWS
     if (nativeHost_.getHWND() == nullptr) {
@@ -91,8 +108,6 @@ void PluginEditor::attachWhenOnScreen() {
         nativeHost_.setHWND(window);
     }
     auto* nativeView = nativeHost_.getHWND();
-#else
-    auto* nativeView = peer->getNativeHandle();
 #endif
     if (nativeView == attachedTo_) return;
 

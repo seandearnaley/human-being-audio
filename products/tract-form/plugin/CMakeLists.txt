@@ -42,12 +42,16 @@ target_sources(TractFormCode INTERFACE
     src/Presets.h
     src/Resampler.cpp
     src/Resampler.h)
+if(APPLE)
+    target_sources(TractFormCode INTERFACE src/MacSurface.mm)
+endif()
 target_include_directories(TractFormCode INTERFACE src)
 target_link_libraries(TractFormCode INTERFACE hba_studio_ui
     tf_analysis
     tf_core
     tf_engine
     tf_ui
+    tf_ui_brand
     TractFormPresets
     juce::juce_audio_utils
     juce::juce_dsp)

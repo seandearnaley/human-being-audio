@@ -14,7 +14,7 @@ resources = directory / "resources"
 resources.mkdir()
 shutil.copyfile(ROOT / "design/studio/welcome.png", resources / "welcome.png")
 (resources / "welcome.html").write_text(f"""<!doctype html><html lang="en"><meta charset="utf-8">
-<style>body {{font: 13px -apple-system, sans-serif}} header {{background:#21211f;color:#eabe72;padding:12px;font-weight:bold}}</style>
+<style>body {{font: 13px -apple-system, sans-serif}} header {{font-weight:600}} h2 {{font-size:24px;margin:6px 0}}</style>
 <header>{publisher}</header><h2>{name}</h2><p>Version {item["version"]} · {item["license"]}</p>
 <p>Install the Audio Unit, VST3 plug-in and standalone app. Close your audio host before installing.</p>
 <p>The plug-ins go into the system Audio Plug-Ins folder and the app goes into Applications.</p>

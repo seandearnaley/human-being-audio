@@ -14,7 +14,7 @@ function(hba_product slug)
     endforeach()
     configure_file("${root}/modules/studio-ui/Product.h.in" "studio/Product.h" @ONLY)
     juce_add_binary_data(hba_studio_art HEADER_NAME HbaStudioArt.h NAMESPACE HbaStudioArt
-        SOURCES "${root}/design/studio/mark.svg")
+        SOURCES "${root}/design/studio/mark.png")
     add_library(hba_studio_ui INTERFACE)
     target_link_libraries(hba_studio_ui INTERFACE hba_studio_art)
     target_include_directories(hba_studio_ui INTERFACE "${root}/modules/studio-ui" "${CMAKE_CURRENT_BINARY_DIR}")
