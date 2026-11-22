@@ -1,0 +1,4 @@
+Checks: '-*,bugprone-use-after-move,bugprone-sizeof-expression,bugprone-infinite-loop,performance-for-range-copy,performance-move-const-arg'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*[/\\](products|modules)[/\\].*'
+ExcludeHeaderFilterRegex: '.*[/\\](libs|third_party|build|_deps|\.cpm-cache)[/\\].*'

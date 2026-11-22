@@ -7,13 +7,27 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_PROJECT_TOP_LEVEL_INCLUDES": "${sourceDir}/../../cmake/StudioQuality.cmake" }
     },
     {
       "name": "dev",
       "inherits": "base",
       "displayName": "Native development build",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "CMAKE_OSX_ARCHITECTURES": "" }
+    },
+    {
+      "name": "rtsan",
+      "displayName": "Ubuntu DSP with LLVM RealtimeSanitizer",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++-22",
+        "CMAKE_C_COMPILER": "clang-22",
+        "CMAKE_CXX_FLAGS": "-fsanitize=realtime",
+        "HBA_RTSAN": "ON"
+      }
     },
     {
       "name": "release",
@@ -23,6 +37,8 @@
     }
   ],
   "buildPresets": [
+    { "name": "lint", "configurePreset": "dev", "targets": ["studio-lint"] },
+    { "name": "rtsan", "configurePreset": "rtsan", "targets": ["check-realtime"] },
     { "name": "dev", "configurePreset": "dev" },
     { "name": "release", "configurePreset": "release" }
   ],

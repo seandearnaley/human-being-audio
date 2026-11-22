@@ -247,4 +247,7 @@ if(LIVECUT_BUILD_TESTS)
             juce::juce_recommended_warning_flags)
 
     catch_discover_tests(LivecutEngineTests DISCOVERY_MODE PRE_TEST)
+    if(HBA_RTSAN)
+        hba_realtime_suite(LivecutEngineTests "[cutter]")
+    endif()
 endif()

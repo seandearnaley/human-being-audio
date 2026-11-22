@@ -1,11 +1,6 @@
 name: Studio website
-on:
-  pull_request:
-    paths: ['web/**', 'studio.json', 'design/studio/**', 'products/*/press/screenshots/**', 'products/livecut-redux/docs/editor.png', '.github/workflows/website.yml']
-  push:
-    branches: [main]
-    paths: ['web/**', 'studio.json', 'design/studio/**', 'products/*/press/screenshots/**', 'products/livecut-redux/docs/editor.png', '.github/workflows/website.yml']
-  merge_group:
+on: workflow_call
+
 permissions:
   contents: read
 jobs:

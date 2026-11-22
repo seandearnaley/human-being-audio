@@ -43,6 +43,30 @@ Release targets produce a VST3 bundle and standalone application on all three pl
 
 CTest covers both products on each OS. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
 
+## C++ editor and quality checks
+
+Use LLVM 22 for clang-format, clang-tidy and clangd. Ubuntu 26.04 provides
+`clang-format-22 clang-tidy-22 clangd-22 libclang-rt-22-dev`. On macOS use
+`brew install llvm@22` and select the tools in `$(brew --prefix llvm@22)/bin`
+in your editor. Keep using the native compiler from the build table above.
+Enable clangd and format on save in your editor. The repository's LLVM configuration
+sets the same formatting and diagnostic rules for every product.
+
+- **Editor** — configure and build each product you work on with the existing `dev` preset.
+  From the repository root run `python3 factory/quality/native.py editor` to index all configured
+  products, or append the product slugs you want. Repeat after changing CMake sources or flags.
+  The root compilation database includes shared headers' consumers and is local to your machine.
+- **Lint** — inside a configured and built product run `cmake --build --preset lint`. This uses
+  the actual generated headers and compiler options. CI checks modified translation units.
+  A header or build configuration change checks every studio translation unit for its consumers.
+- **Real-time audio** — on Ubuntu run `cmake --preset rtsan && cmake --build --preset rtsan`
+  inside a product. This instruments the engine and exercises its real render paths under LLVM's
+  RealtimeSanitizer. The checks run alongside ordinary PR builds. Signed release presets are independent.
+- **New products** — register the slug in `studio.json` and include `cmake/native-presets.json`
+  from the product presets. Mark the real DSP render entry point `[[clang::nonblocking]]`.
+  In the test CMakeLists, when `HBA_RTSAN` is on, call `hba_realtime_suite(target "Catch2 filter")`
+  with the existing engine test executable and render tests. CI discovers products from the catalogue.
+
 ## Working across the studio
 
 | When you are working on… | Start here | What belongs there |
