@@ -21,22 +21,24 @@ float meterPosition(float db) { return std::clamp((db - kMeterFloorDb) / -kMeter
 
 class OutputPanel final : public Panel {
 public:
-    explicit OutputPanel(Context& context)
-        : Panel(context),
-          input_(add<Row>(context, ParamId::inputGain, colour::text, "Input", true)),
-          output_(add<Row>(context, ParamId::outputGain, colour::text, "Output", true)),
-          limit_(add<Row>(context, ParamId::limit, colour::text, "Limit")),
-          ceiling_(add<Row>(context, ParamId::ceiling, colour::text, "Ceiling")),
-          quality_(add<Row>(context, ParamId::quality, colour::text, "Quality")),
-          imprint_(add<Button>(context, "Imprint WAV", [this] { context_.model.browseImprintAudio(); })),
-          clear_(add<Button>(context, "Clear", [this] { context_.model.clearImprint(); })) {
-        imprint_.setAccent(colour::poles);
-        clear_.setAccent(colour::textDim);
-    }
+  explicit OutputPanel(Context& context)
+      : Panel(context), input_(add<Row>(context, ParamId::inputGain, colour::text, "Input", true)),
+        output_(add<Row>(context, ParamId::outputGain, colour::text, "Output", true)),
+        limit_(add<Row>(context, ParamId::limit, colour::text, "Limit")),
+        ceiling_(add<Row>(context, ParamId::ceiling, colour::text, "Ceiling")),
+        envSens_(add<Row>(context, ParamId::envSens, colour::sub, "Env sens", true)),
+        quality_(add<Row>(context, ParamId::quality, colour::text, "Quality")),
+        imprint_(add<Button>(context, "Imprint WAV", [this] { context_.model.browseImprintAudio(); })),
+        capture_(add<Button>(context, "Capture", [this] { context_.model.captureLiveImprint(0); })),
+        clear_(add<Button>(context, "Clear", [this] { context_.model.clearImprint(); })) {
+      imprint_.setAccent(colour::poles);
+      capture_.setAccent(colour::sub);
+      clear_.setAccent(colour::textDim);
+  }
 
     void tick() override {
         const auto label = context_.model.imprintLabel();
-        const bool active = context_.model.imprint().active;
+        const bool active = context_.model.imprint().hasAny();
         imprint_.setLabel(label);
         imprint_.setAccent(active ? colour::sub : colour::poles);
         clear_.setVisible(active);
@@ -65,14 +67,22 @@ public:
 
         limit_.setBounds(right, firstRow, columnWidth, rowHeight);
         ceiling_.setBounds(right, firstRow + step, columnWidth, rowHeight);
+        envSens_.setBounds(right, firstRow + 2.0f * step, columnWidth, rowHeight);
 
         const float totalW = width() - 2.0f * pad;
-        if (context_.model.imprint().active) {
-            const float clearW = px(56.0f);
-            imprint_.setBounds(pad, buttonY, totalW - clearW - px(6.0f), px(kButtonHeight));
-            clear_.setBounds(pad + totalW - clearW, buttonY, clearW, px(kButtonHeight));
+        const float btnGap = px(5.0f);
+        if (context_.model.imprint().hasAny()) {
+            const float clearW = px(48.0f);
+            const float captureW = px(68.0f);
+            const float imprintW = totalW - captureW - clearW - 2.0f * btnGap;
+            imprint_.setBounds(pad, buttonY, imprintW, px(kButtonHeight));
+            capture_.setBounds(pad + imprintW + btnGap, buttonY, captureW, px(kButtonHeight));
+            clear_.setBounds(pad + imprintW + captureW + 2.0f * btnGap, buttonY, clearW, px(kButtonHeight));
         } else {
-            imprint_.setBounds(pad, buttonY, totalW, px(kButtonHeight));
+            const float captureW = px(92.0f);
+            const float imprintW = totalW - captureW - btnGap;
+            imprint_.setBounds(pad, buttonY, imprintW, px(kButtonHeight));
+            capture_.setBounds(pad + imprintW + btnGap, buttonY, captureW, px(kButtonHeight));
             clear_.setBounds(0, 0, 0, 0);
         }
     }
@@ -130,8 +140,10 @@ private:
     Row& output_;
     Row& limit_;
     Row& ceiling_;
+    Row& envSens_;
     Row& quality_;
     Button& imprint_;
+    Button& capture_;
     Button& clear_;
     bool hadImprint_ = false;
 };

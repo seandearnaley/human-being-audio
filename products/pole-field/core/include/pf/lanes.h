@@ -1,4 +1,4 @@
-// Four tempo-locked movement lanes shared between the engine and the interface.
+// Four tempo-locked movement lanes (plus Envelope Follower shape) shared between the engine and interface.
 #pragma once
 
 #include "pf/curve.h"
@@ -18,6 +18,8 @@ using hba::dsp::lanePhase;
 using hba::dsp::laneStepValue;
 
 inline double laneShape(LaneShape shape, double phase, int lane) noexcept HBA_NONBLOCKING {
+    if (shape == LaneShape::env)
+        return 0.0;
     return hba::dsp::laneWaveform(static_cast<hba::dsp::LaneWaveform>(shape), phase, lane);
 }
 
@@ -39,6 +41,12 @@ inline int laneSource(const Params& params, int lane) noexcept {
     return lane;
 }
 
+inline LaneShape laneEffectiveShape(const Params& params, int lane) noexcept {
+    const int source = laneSource(params, lane);
+    return static_cast<LaneShape>(
+        std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::env)));
+}
+
 inline double laneLengthQuarters(const Params& params, int lane) noexcept {
     const int source = laneSource(params, lane);
     const auto rate = static_cast<std::size_t>(
@@ -49,18 +57,23 @@ inline double laneLengthQuarters(const Params& params, int lane) noexcept {
     return kLaneRateQuarters[rate] / kLaneRatios[ratio];
 }
 
-inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq) noexcept {
+inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq,
+                         double envValue = 0.0) noexcept {
     const int source = laneSource(params, lane);
-    const double phase = lanePhase(ppq, laneLengthQuarters(params, lane), params[laneParam(lane, LaneField::phase)]);
     const auto shape = static_cast<LaneShape>(
-        std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::custom)));
+        std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::env)));
+    if (shape == LaneShape::env)
+        return std::clamp(envValue, 0.0, 1.0);
+    const double phase = lanePhase(ppq, laneLengthQuarters(params, lane), params[laneParam(lane, LaneField::phase)]);
     if (shape == LaneShape::custom) return evaluate(curves[static_cast<std::size_t>(source)], phase);
     return laneShape(shape, phase, source);
 }
 
-inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq) noexcept {
+inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq,
+                       double envValue = 0.0) noexcept {
     if (!params.on(laneParam(lane, LaneField::on))) return 0.0;
-    return laneOutput(params, curves, lane, ppq) * params[laneParam(lane, LaneField::depth)] * params[ParamId::motion];
+    return laneOutput(params, curves, lane, ppq, envValue) * params[laneParam(lane, LaneField::depth)] *
+           params[ParamId::motion];
 }
 
 inline LaneTarget laneTargetOf(const Params& params, int lane) noexcept {
@@ -68,18 +81,19 @@ inline LaneTarget laneTargetOf(const Params& params, int lane) noexcept {
 }
 
 // How far a full-depth lane moves each target in the target's own units.
-inline constexpr std::array<float, kLaneTargetCount> kLaneSpans { {
-    0.5f,    // morphX
-    0.5f,    // morphY
-    0.5f,    // morphZ
-    24.0f,   // freq: ±2 octaves
-    0.5f,    // res
-    1.0f,    // transform
-    0.5f,    // drive
-    0.5f,    // spread
-    0.5f,    // mix
-    180.0f,  // fit: degrees, wraps
-} };
+inline constexpr std::array<float, kLaneTargetCount> kLaneSpans{{
+    0.5f,   // morphX
+    0.5f,   // morphY
+    0.5f,   // morphZ
+    24.0f,  // freq: ±2 octaves
+    0.5f,   // res
+    1.0f,   // transform
+    0.5f,   // drive
+    0.5f,   // spread
+    0.5f,   // mix
+    180.0f, // fit: degrees, wraps
+    0.65f,  // fm: audio-rate FM depth
+}};
 
 inline float laneSum(const Params& params, const std::array<float, kLaneCount>& sends, LaneTarget target) noexcept {
     float sum = 0.0f;

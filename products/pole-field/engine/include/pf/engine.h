@@ -41,18 +41,19 @@ public:
     void setLaneCurves(const LaneCurves& curves) noexcept PF_NONBLOCKING;
     void setImprint(const ImprintData& imprint) noexcept PF_NONBLOCKING;
 
-    // Processes `numSamples` of stereo audio in-place.
-    void process(const Params& params, const Transport& transport, float* left, float* right,
-                 int numSamples) noexcept PF_NONBLOCKING;
+    // Processes `numSamples` of stereo audio in-place, with optional stereo external sidechain.
+    void process(const Params& params, const Transport& transport, float* left, float* right, int numSamples,
+                 const float* scLeft = nullptr, const float* scRight = nullptr) noexcept PF_NONBLOCKING;
 
     int latencySamples() const noexcept PF_NONBLOCKING;
+    int oversamplingFactor() const noexcept PF_NONBLOCKING;
     float gainReductionDb() const noexcept PF_NONBLOCKING;
     double lanePpq() const noexcept PF_NONBLOCKING;
     std::array<float, kLaneCount> lanePhases() const noexcept PF_NONBLOCKING;
     std::array<float, kLaneCount> laneValues() const noexcept PF_NONBLOCKING;
 
     // Effective modulated values at the end of the last processed block, so the
-    // UI draws live moving poles, zeros, and transfer curve during automation/lanes.
+    // UI draws live moving poles, zeros, envelope follower, and transfer curve.
     struct EffectiveState {
         float morphX = 0.36f;
         float morphY = 0.28f;
@@ -62,6 +63,8 @@ public:
         float drive = 0.34f;
         float transform = 0.0f;
         float spread = 0.22f;
+        float fmAmount = 0.0f;
+        float envLevel = 0.0f;
         float midiShiftSt = 0.0f;
         int activeNote = -1;
     };

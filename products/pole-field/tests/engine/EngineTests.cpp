@@ -303,3 +303,337 @@ TEST_CASE("Pitch bend responds quickly even with Pitch track OFF and 300 ms Glid
     }
     CHECK(eng.effectiveState().midiShiftSt > 11.0f);
 }
+
+TEST_CASE("Limit OFF decouples headroom from Ceiling while preserving +12 dBFS safety bound", "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int total = 4096;
+
+    // 1) +4 dBFS dry signal with Limit OFF and Ceiling = -12 dB passes unclipped (> 1.45 linear).
+    {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::limit] = 0.0f;
+        params[pf::ParamId::ceiling] = -12.0f;
+        params[pf::ParamId::mix] = 0.0f;
+
+        std::vector<float> l(total), r(total);
+        for (int i = 0; i < total; ++i) {
+            const float s = static_cast<float>(1.585 * std::sin(kTwoPi * 440.0 * static_cast<double>(i) / fs));
+            l[static_cast<std::size_t>(i)] = s;
+            r[static_cast<std::size_t>(i)] = s;
+        }
+        for (int pos = 0; pos < total; pos += 256)
+            eng.process(params, {172.0, 0.0, false}, l.data() + pos, r.data() + pos, 256);
+
+        float peak = 0.0f;
+        for (int i = total / 2; i < total; ++i)
+            peak = std::max(peak, std::abs(l[static_cast<std::size_t>(i)]));
+        REQUIRE(peak > 1.45f);
+        REQUIRE(peak < 1.70f);
+    }
+
+    // 2) Extreme +24 dB input + +24 dB output with Limit OFF stays safely capped under +12 dBFS (~4.05).
+    {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::limit] = 0.0f;
+        params[pf::ParamId::inputGain] = 24.0f;
+        params[pf::ParamId::outputGain] = 24.0f;
+        params[pf::ParamId::mix] = 0.0f;
+
+        std::vector<float> l(total), r(total);
+        for (int i = 0; i < total; ++i) {
+            const float s = static_cast<float>(std::sin(kTwoPi * 440.0 * static_cast<double>(i) / fs));
+            l[static_cast<std::size_t>(i)] = s;
+            r[static_cast<std::size_t>(i)] = s;
+        }
+        for (int pos = 0; pos < total; pos += 256)
+            eng.process(params, {172.0, 0.0, false}, l.data() + pos, r.data() + pos, 256);
+
+        float peak = 0.0f;
+        for (int i = 0; i < total; ++i) {
+            REQUIRE(std::isfinite(l[static_cast<std::size_t>(i)]));
+            peak = std::max(peak, std::abs(l[static_cast<std::size_t>(i)]));
+        }
+        REQUIRE(peak <= 4.05f);
+    }
+}
+
+TEST_CASE("Fit 355->5 deg wrap and live Cube/Topology/Stages/DrivePos/Routing switches are click-free", "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int block = 256;
+
+    pf::Engine eng;
+    eng.prepare(fs, block, 4);
+
+    auto params = pf::Params::defaults();
+    params[pf::ParamId::motion] = 0.0f;
+    params[pf::ParamId::limit] = 0.0f;
+    params[pf::ParamId::subLock] = 1.0f;
+    params[pf::ParamId::fit] = 355.0f;
+
+    int samplePos = 0;
+    float lastSample = 0.0f;
+    bool hasLast = false;
+    auto runBlock = [&](int blocks) {
+        float maxStep = 0.0f;
+        int maxIdx = -1;
+        float prevAtMax = 0.0f, curAtMax = 0.0f;
+        for (int b = 0; b < blocks; ++b) {
+            std::array<float, block> l{}, r{};
+            for (int i = 0; i < block; ++i) {
+                const double t = static_cast<double>(samplePos++) / fs;
+                const float s =
+                    static_cast<float>(0.35 * std::sin(kTwoPi * 60.0 * t) + 0.25 * std::sin(kTwoPi * 440.0 * t));
+                l[static_cast<std::size_t>(i)] = s;
+                r[static_cast<std::size_t>(i)] = s;
+            }
+            eng.process(params, {172.0, 0.0, false}, l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) {
+                const float cur = l[static_cast<std::size_t>(i)];
+                REQUIRE(std::isfinite(cur));
+                if (hasLast) {
+                    const float step = std::abs(cur - lastSample);
+                    if (step > maxStep) {
+                        maxStep = step;
+                        maxIdx = b * block + i;
+                        prevAtMax = lastSample;
+                        curAtMax = cur;
+                    }
+                }
+                lastSample = cur;
+                hasLast = true;
+            }
+        }
+        return std::tuple{maxStep, maxIdx, prevAtMax, curAtMax};
+    };
+
+    runBlock(6);                     // settle
+    params[pf::ParamId::fit] = 5.0f; // wraps across 360->0 boundary
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("Fit wrap: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.14f);
+    }
+
+    params[pf::ParamId::cube] = 5.0f; // Acid Ladder
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("Cube switch: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.22f);
+    }
+
+    params[pf::ParamId::topology] = 2.0f; // Parallel
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("Topology switch: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.22f);
+    }
+
+    params[pf::ParamId::stages] = 1.0f; // 8P
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("Stages switch: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.22f);
+    }
+
+    params[pf::ParamId::drivePos] = 2.0f; // Post
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("DrivePos switch: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.22f);
+    }
+
+    params[pf::ParamId::stereoMode] = 1.0f; // Mid
+    {
+        const auto [step, idx, p, c] = runBlock(4);
+        INFO("Routing switch: idx=" << idx << " prev=" << p << " cur=" << c);
+        CHECK(step < 0.22f);
+    }
+}
+
+TEST_CASE("Envelope Follower tracks main Input and Sidechain bus independently", "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int block = 256;
+
+    auto params = pf::Params::defaults();
+    params[pf::ParamId::motion] = 1.0f;
+    params[pf::ParamId::morphX] = 0.2f;
+    params[pf::ParamId::envAttack] = 2.0f;
+    params[pf::ParamId::envRelease] = 60.0f;
+    params[pf::ParamId::envSens] = 6.0f;
+    params[pf::ParamId::lane1On] = 1.0f;
+    params[pf::ParamId::lane1Target] = static_cast<float>(pf::LaneTarget::morphX);
+    params[pf::ParamId::lane1Shape] = static_cast<float>(pf::LaneShape::env);
+    params[pf::ParamId::lane1Depth] = 0.8f;
+    params[pf::ParamId::lane2On] = 0.0f;
+
+    // Input mode responds to main signal
+    {
+        pf::Engine eng;
+        eng.prepare(fs, block, 4);
+        params[pf::ParamId::envSource] = static_cast<float>(pf::EnvSource::input);
+        std::array<float, block> l{}, r{};
+        for (int b = 0; b < 12; ++b) {
+            for (int i = 0; i < block; ++i) {
+                const float s =
+                    static_cast<float>(0.6 * std::sin(kTwoPi * 220.0 * static_cast<double>(b * block + i) / fs));
+                l[static_cast<std::size_t>(i)] = s;
+                r[static_cast<std::size_t>(i)] = s;
+            }
+            eng.process(params, {172.0, 0.0, false}, l.data(), r.data(), block);
+        }
+        CHECK(eng.effectiveState().envLevel > 0.55f);
+        CHECK(eng.effectiveState().morphX > 0.40f);
+    }
+
+    // Sidechain mode ignores loud main input when sidechain is silent, then rises when sidechain hits.
+    {
+        pf::Engine eng;
+        eng.prepare(fs, block, 4);
+        params[pf::ParamId::envSource] = static_cast<float>(pf::EnvSource::sidechain);
+        std::array<float, block> l{}, r{}, scSilent{}, scLoud{};
+        for (int b = 0; b < 10; ++b) {
+            for (int i = 0; i < block; ++i) {
+                const float s =
+                    static_cast<float>(0.7 * std::sin(kTwoPi * 220.0 * static_cast<double>(b * block + i) / fs));
+                l[static_cast<std::size_t>(i)] = s;
+                r[static_cast<std::size_t>(i)] = s;
+            }
+            eng.process(params, {172.0, 0.0, false}, l.data(), r.data(), block, scSilent.data(), scSilent.data());
+        }
+        CHECK(eng.effectiveState().envLevel < 0.02f);
+
+        for (int b = 0; b < 12; ++b) {
+            for (int i = 0; i < block; ++i) {
+                const float s =
+                    static_cast<float>(0.7 * std::sin(kTwoPi * 220.0 * static_cast<double>(b * block + i) / fs));
+                l[static_cast<std::size_t>(i)] = s;
+                r[static_cast<std::size_t>(i)] = s;
+                scLoud[static_cast<std::size_t>(i)] = s;
+            }
+            eng.process(params, {172.0, 0.0, false}, l.data(), r.data(), block, scLoud.data(), scLoud.data());
+        }
+        CHECK(eng.effectiveState().envLevel > 0.55f);
+    }
+}
+
+TEST_CASE("Audio-rate Filter FM (Input, Sidechain, Pitch Sine) modulates cutoff stably", "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int total = 4096;
+
+    auto renderFm = [&](float fmAmt, pf::FmSource src) {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::motion] = 0.0f;
+        params[pf::ParamId::fmAmount] = fmAmt;
+        params[pf::ParamId::fmSource] = static_cast<float>(src);
+        params[pf::ParamId::limit] = 0.0f;
+        std::vector<float> l(total), r(total), sc(total);
+        for (int i = 0; i < total; ++i) {
+            const double t = static_cast<double>(i) / fs;
+            l[static_cast<std::size_t>(i)] = static_cast<float>(0.45 * std::sin(kTwoPi * 310.0 * t));
+            r[static_cast<std::size_t>(i)] = l[static_cast<std::size_t>(i)];
+            sc[static_cast<std::size_t>(i)] = static_cast<float>(0.7 * std::sin(kTwoPi * 110.0 * t));
+        }
+        for (int pos = 0; pos < total; pos += 256)
+            eng.process(params, {172.0, 0.0, false}, l.data() + pos, r.data() + pos, 256, sc.data() + pos,
+                        sc.data() + pos);
+        return l;
+    };
+
+    const auto base = renderFm(0.0f, pf::FmSource::input);
+    for (auto src : {pf::FmSource::input, pf::FmSource::sidechain, pf::FmSource::pitchSine}) {
+        const auto mod = renderFm(0.75f, src);
+        double diffEnergy = 0.0;
+        for (int i = total / 2; i < total; ++i) {
+            REQUIRE(std::isfinite(mod[static_cast<std::size_t>(i)]));
+            REQUIRE(std::abs(mod[static_cast<std::size_t>(i)]) < 3.5f);
+            const double d = static_cast<double>(mod[static_cast<std::size_t>(i)] - base[static_cast<std::size_t>(i)]);
+            diffEnergy += d * d;
+        }
+        CHECK(diffEnergy > 0.5);
+    }
+}
+
+TEST_CASE("Mid and Side stereo routing cleanly isolate their respective components", "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int total = 4096;
+
+    // Pure Side input (L = +s, R = -s) into Mid routing: Side passes uncolored, Mid stays ~0.
+    {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::stereoMode] = static_cast<float>(pf::StereoMode::mid);
+        params[pf::ParamId::subLock] = 0.0f;
+        params[pf::ParamId::drive] = 0.8f;
+        params[pf::ParamId::limit] = 0.0f;
+        params[pf::ParamId::motion] = 0.0f;
+
+        std::vector<float> l(total), r(total);
+        for (int i = 0; i < total; ++i) {
+            const float s = static_cast<float>(0.4 * std::sin(kTwoPi * 520.0 * static_cast<double>(i) / fs));
+            l[static_cast<std::size_t>(i)] = s;
+            r[static_cast<std::size_t>(i)] = -s;
+        }
+        for (int pos = 0; pos < total; pos += 256)
+            eng.process(params, {172.0, 0.0, false}, l.data() + pos, r.data() + pos, 256);
+
+        double midEnergy = 0.0, sideEnergy = 0.0;
+        for (int i = total / 2; i < total; ++i) {
+            const double m = 0.5 * (l[static_cast<std::size_t>(i)] + r[static_cast<std::size_t>(i)]);
+            const double s = 0.5 * (l[static_cast<std::size_t>(i)] - r[static_cast<std::size_t>(i)]);
+            midEnergy += m * m;
+            sideEnergy += s * s;
+        }
+        CHECK(sideEnergy > 100.0);
+        CHECK(midEnergy < 1e-6);
+    }
+
+    // Pure Mid input (L = +s, R = +s) into Side routing: Mid passes cleanly, Side stays ~0.
+    {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::stereoMode] = static_cast<float>(pf::StereoMode::side);
+        params[pf::ParamId::subLock] = 0.0f;
+        params[pf::ParamId::drive] = 0.8f;
+        params[pf::ParamId::limit] = 0.0f;
+        params[pf::ParamId::motion] = 0.0f;
+
+        std::vector<float> l(total), r(total);
+        for (int i = 0; i < total; ++i) {
+            const float s = static_cast<float>(0.4 * std::sin(kTwoPi * 520.0 * static_cast<double>(i) / fs));
+            l[static_cast<std::size_t>(i)] = s;
+            r[static_cast<std::size_t>(i)] = s;
+        }
+        for (int pos = 0; pos < total; pos += 256)
+            eng.process(params, {172.0, 0.0, false}, l.data() + pos, r.data() + pos, 256);
+
+        double midEnergy = 0.0, sideEnergy = 0.0;
+        for (int i = total / 2; i < total; ++i) {
+            const double m = 0.5 * (l[static_cast<std::size_t>(i)] + r[static_cast<std::size_t>(i)]);
+            const double s = 0.5 * (l[static_cast<std::size_t>(i)] - r[static_cast<std::size_t>(i)]);
+            midEnergy += m * m;
+            sideEnergy += s * s;
+        }
+        CHECK(midEnergy > 100.0);
+        CHECK(sideEnergy < 1e-6);
+    }
+}
+
+TEST_CASE("PDC latency includes oversampling HIIR group delay plus limiter lookahead", "[engine]") {
+    pf::Engine eng2, eng4, eng8;
+    eng2.prepare(48000.0, 256, 2);
+    eng4.prepare(48000.0, 256, 4);
+    eng8.prepare(48000.0, 256, 8);
+    CHECK(eng2.oversamplingFactor() == 2);
+    CHECK(eng4.oversamplingFactor() == 4);
+    CHECK(eng8.oversamplingFactor() == 8);
+    CHECK(eng4.latencySamples() == eng2.latencySamples() + 1);
+    CHECK(eng8.latencySamples() == eng4.latencySamples() + 1);
+}

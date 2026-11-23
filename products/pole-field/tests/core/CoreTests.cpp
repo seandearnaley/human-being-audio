@@ -92,3 +92,97 @@ TEST_CASE("Preset JSON round-trips parameters, custom curves, and imprint", "[co
     REQUIRE(loaded->imprint.active);
     REQUIRE(loaded->imprint.corner.stages[0].poleHz == Catch::Approx(p.imprint.corner.stages[0].poleHz));
 }
+
+TEST_CASE("All 12 cubes x 8 corners x 3 topologies have bounded passband auto-makeup", "[core]") {
+    constexpr double fs = 192000.0; // 4x oversampled 48 kHz
+    for (int c = 0; c < pf::kNumCubes; ++c) {
+        for (int topo = 0; topo < 3; ++topo) {
+            for (float z : {0.0f, 1.0f}) {
+                for (float y : {0.0f, 1.0f}) {
+                    for (float x : {0.0f, 1.0f}) {
+                        const auto lat =
+                            pf::resolveLattice(c, x, y, z, 0.0f, 0.55f, 0.0f, 0.0f, nullptr, pf::kNumStages, topo);
+                        double linPow = 0.0;
+                        float maxDb = -200.0f;
+                        constexpr int kProbes = 25;
+                        for (int i = 0; i < kProbes; ++i) {
+                            const double t = static_cast<double>(i) / static_cast<double>(kProbes - 1);
+                            const double hz = 75.0 * std::pow(12500.0 / 75.0, t);
+                            const float db = pf::evaluateMagnitudeDb(lat, pf::kNumStages, topo, hz, fs);
+                            REQUIRE(std::isfinite(db));
+                            maxDb = std::max(maxDb, db);
+                            const double lin = std::pow(10.0, static_cast<double>(db) / 20.0);
+                            linPow += lin * lin;
+                        }
+                        const double rmsDb = 10.0 * std::log10(std::max(linPow / kProbes, 1e-12));
+                        INFO("cube=" << c << " topo=" << topo << " (" << x << "," << y << "," << z
+                                     << ") rmsDb=" << rmsDb << " maxDb=" << maxDb);
+                        REQUIRE(rmsDb > -10.0);
+                        REQUIRE(rmsDb < 10.0);
+                        REQUIRE(maxDb < 28.0f);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Rebuilt Burg LPC handles DC offset, 192 kHz decimation, and pure sine without duplicate stacking",
+          "[core]") {
+    // 1) Heavy DC offset + 192 kHz sample rate still recovers 1200 Hz and 2800 Hz formants.
+    {
+        constexpr double fs = 192000.0;
+        constexpr int n = 16384;
+        std::vector<float> audio(n, 0.0f);
+        for (int i = 0; i < n; ++i) {
+            const double t = static_cast<double>(i) / fs;
+            audio[static_cast<std::size_t>(i)] =
+                static_cast<float>(4.5 + 0.6 * std::sin(2.0 * 3.141592653589793 * 1200.0 * t) +
+                                   0.45 * std::sin(2.0 * 3.141592653589793 * 2800.0 * t));
+        }
+        const auto corner = pf::imprintFromAudio(audio, fs);
+        bool found1200 = false, found2800 = false;
+        for (const auto& st : corner.stages) {
+            REQUIRE(std::isfinite(st.poleHz));
+            if (std::abs(st.poleHz - 1200.0f) < 120.0f)
+                found1200 = true;
+            if (std::abs(st.poleHz - 2800.0f) < 220.0f)
+                found2800 = true;
+        }
+        REQUIRE(found1200);
+        REQUIRE(found2800);
+    }
+
+    // 2) Pure single sine produces 7 distinct sorted stages (no duplicate-pole stacking).
+    {
+        constexpr double fs = 48000.0;
+        constexpr int n = 4096;
+        std::vector<float> sine(n, 0.0f);
+        for (int i = 0; i < n; ++i)
+            sine[static_cast<std::size_t>(i)] =
+                static_cast<float>(0.8 * std::sin(2.0 * 3.141592653589793 * 640.0 * static_cast<double>(i) / fs));
+        const auto corner = pf::imprintFromAudio(sine, fs);
+        for (std::size_t i = 1; i < pf::kNumStages; ++i) {
+            REQUIRE(corner.stages[i].poleHz > corner.stages[i - 1].poleHz * 1.05f);
+        }
+    }
+}
+
+TEST_CASE("Multi-corner 4-slot Imprint JSON round-trips cleanly", "[core]") {
+    pf::Preset p;
+    p.name = "MultiSlot";
+    p.category = "Talk";
+    p.imprint.setSlot(0, pf::cubeAt(1).corners[0]);
+    p.imprint.setSlot(2, pf::cubeAt(3).corners[1]);
+
+    const auto text = pf::serialisePreset(p);
+    std::string err;
+    const auto loaded = pf::parsePreset(text, &err);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->imprint.slotEnabled(0));
+    REQUIRE_FALSE(loaded->imprint.slotEnabled(1));
+    REQUIRE(loaded->imprint.slotEnabled(2));
+    REQUIRE_FALSE(loaded->imprint.slotEnabled(3));
+    REQUIRE(loaded->imprint.active);
+    REQUIRE(loaded->imprint.slotCorner(2).stages[0].poleHz == Catch::Approx(pf::cubeAt(3).corners[1].stages[0].poleHz));
+}

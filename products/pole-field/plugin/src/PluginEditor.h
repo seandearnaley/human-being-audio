@@ -8,8 +8,8 @@
 
 namespace pf {
 
-class PluginEditor final : public juce::AudioProcessorEditor {
-public:
+class PluginEditor final : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget {
+  public:
     explicit PluginEditor(PluginProcessor& processor);
     ~PluginEditor() override;
 
@@ -18,7 +18,10 @@ public:
     void showAbout();
     void parentHierarchyChanged() override;
 
-private:
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
+
+  private:
     void attachWhenOnScreen();
     void detachView();
 
@@ -34,5 +37,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)
 };
-
 }

@@ -11,24 +11,38 @@ constexpr float kMeterFallDbPerSecond = 30.0f;
 constexpr float kSpectrumFallDbPerSecond = 40.0f;
 
 float toDb(float linear) { return linear > 1.0e-5f ? 20.0f * std::log10(linear) : kFloorDb; }
-}
+} // namespace
 
 Analysis::Analysis() {
     for (auto& channel : queued_) channel.assign(kQueueSize, 0.0f);
     for (auto& channel : history_) channel.assign(kHistorySize, 0.0f);
-    fftBuffer_.assign(static_cast<std::size_t>(kFftSize) * 2, 0.0f);
+    fftBufferL_.assign(static_cast<std::size_t>(kFftSize) * 2, 0.0f);
+    fftBufferR_.assign(static_cast<std::size_t>(kFftSize) * 2, 0.0f);
     spectrum_.fill(kFloorDb);
+    envHistory_.fill(0.0f);
 }
 
-void Analysis::push(const float* leftIn, const float* rightIn, int numSamples) noexcept {
-    const std::array<const float*, numChannels> sources { leftIn, rightIn };
+void Analysis::push(const float* leftOut, const float* rightOut, int numSamples) noexcept {
+    push(nullptr, leftOut, rightOut, numSamples);
+}
+
+void Analysis::push(const float* preInMono, const float* leftOut, const float* rightOut, int numSamples) noexcept {
+    const std::array<const float*, numChannels> sources{leftOut, rightOut, preInMono};
     const auto scope = queue_.write(std::min(numSamples, queue_.getFreeSpace()));
     for (int channel = 0; channel < numChannels; ++channel) {
         auto* destination = queued_[static_cast<std::size_t>(channel)].data();
         const float* source = sources[static_cast<std::size_t>(channel)];
         if (source == nullptr) {
-            std::fill_n(destination + scope.startIndex1, scope.blockSize1, 0.0f);
-            std::fill_n(destination + scope.startIndex2, scope.blockSize2, 0.0f);
+            if (channel == preIn && leftOut != nullptr && rightOut != nullptr) {
+                for (int i = 0; i < scope.blockSize1; ++i)
+                    destination[scope.startIndex1 + i] = 0.5f * (leftOut[i] + rightOut[i]);
+                for (int i = 0; i < scope.blockSize2; ++i)
+                    destination[scope.startIndex2 + i] =
+                        0.5f * (leftOut[scope.blockSize1 + i] + rightOut[scope.blockSize1 + i]);
+            } else {
+                std::fill_n(destination + scope.startIndex1, scope.blockSize1, 0.0f);
+                std::fill_n(destination + scope.startIndex2, scope.blockSize2, 0.0f);
+            }
         } else {
             std::copy_n(source, scope.blockSize1, destination + scope.startIndex1);
             std::copy_n(source + scope.blockSize1, scope.blockSize2, destination + scope.startIndex2);
@@ -39,6 +53,7 @@ void Analysis::push(const float* leftIn, const float* rightIn, int numSamples) n
 void Analysis::setStatus(const Status& status) noexcept {
     gainReductionDb_.store(status.gainReductionDb, std::memory_order_relaxed);
     ppq_.store(status.ppq, std::memory_order_relaxed);
+    osFactor_.store(status.osFactor, std::memory_order_relaxed);
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanePhase_[i].store(status.lanePhase[i], std::memory_order_relaxed);
         laneValue_[i].store(status.laneValue[i], std::memory_order_relaxed);
@@ -51,6 +66,8 @@ void Analysis::setStatus(const Status& status) noexcept {
     effDrive_.store(status.effective.drive, std::memory_order_relaxed);
     effTransform_.store(status.effective.transform, std::memory_order_relaxed);
     effSpread_.store(status.effective.spread, std::memory_order_relaxed);
+    effFmAmount_.store(status.effective.fmAmount, std::memory_order_relaxed);
+    envLevel_.store(status.effective.envLevel, std::memory_order_relaxed);
     midiShiftSt_.store(status.effective.midiShiftSt, std::memory_order_relaxed);
     activeNote_.store(status.effective.activeNote, std::memory_order_relaxed);
 }
@@ -61,7 +78,8 @@ void Analysis::drainQueue(float& peakLeft, float& peakRight) {
         for (int i = 0; i < count; ++i) {
             const auto from = static_cast<std::size_t>(start + i);
             const auto to = static_cast<std::size_t>(historyWrite_);
-            for (std::size_t channel = 0; channel < numChannels; ++channel) history_[channel][to] = queued_[channel][from];
+            for (std::size_t channel = 0; channel < numChannels; ++channel)
+                history_[channel][to] = queued_[channel][from];
             peakLeft = std::max(peakLeft, std::abs(history_[left][to]));
             peakRight = std::max(peakRight, std::abs(history_[right][to]));
             historyWrite_ = (historyWrite_ + 1) & (kHistorySize - 1);
@@ -74,6 +92,15 @@ void Analysis::drainQueue(float& peakLeft, float& peakRight) {
 float Analysis::history(Channel channel, int samplesAgo) const {
     const int index = (historyWrite_ - 1 - samplesAgo) & (kHistorySize - 1);
     return history_[static_cast<std::size_t>(channel)][static_cast<std::size_t>(index)];
+}
+
+void Analysis::snapshotInput(std::vector<float>& destination, double& outSampleRate) {
+    float dummyL = 0.0f, dummyR = 0.0f;
+    drainQueue(dummyL, dummyR);
+    outSampleRate = sampleRate_.load(std::memory_order_relaxed);
+    destination.resize(static_cast<std::size_t>(kHistorySize));
+    for (int i = 0; i < kHistorySize; ++i)
+        destination[static_cast<std::size_t>(i)] = history(preIn, kHistorySize - 1 - i);
 }
 
 void Analysis::updateStereo(ui::Visuals& visuals) const {
@@ -97,19 +124,30 @@ void Analysis::updateStereo(ui::Visuals& visuals) const {
 }
 
 void Analysis::updateSpectrum(ui::Visuals& visuals, double sampleRate, float seconds) {
+    // Stereo RMS power spectrum: avoids Mid-sum cancellation under wide Spread or Side routing.
     for (int i = 0; i < kFftSize; ++i) {
         const int ago = kFftSize - 1 - i;
-        fftBuffer_[static_cast<std::size_t>(i)] = 0.5f * (history(left, ago) + history(right, ago));
+        fftBufferL_[static_cast<std::size_t>(i)] = history(left, ago);
+        fftBufferR_[static_cast<std::size_t>(i)] = history(right, ago);
     }
-    std::fill(fftBuffer_.begin() + kFftSize, fftBuffer_.end(), 0.0f);
-    window_.multiplyWithWindowingTable(fftBuffer_.data(), static_cast<size_t>(kFftSize));
-    fft_.performFrequencyOnlyForwardTransform(fftBuffer_.data());
+    std::fill(fftBufferL_.begin() + kFftSize, fftBufferL_.end(), 0.0f);
+    std::fill(fftBufferR_.begin() + kFftSize, fftBufferR_.end(), 0.0f);
+    window_.multiplyWithWindowingTable(fftBufferL_.data(), static_cast<size_t>(kFftSize));
+    window_.multiplyWithWindowingTable(fftBufferR_.data(), static_cast<size_t>(kFftSize));
+    fft_.performFrequencyOnlyForwardTransform(fftBufferL_.data());
+    fft_.performFrequencyOnlyForwardTransform(fftBufferR_.data());
 
     constexpr float scale = 4.0f / kFftSize;
     const double safeSr = sampleRate > 1000.0 ? sampleRate : 48000.0;
     const double binHz = safeSr / kFftSize;
     const int lastBin = kFftSize / 2 - 1;
     const float fall = kSpectrumFallDbPerSecond * seconds;
+
+    const auto binMag = [&](int bin) -> float {
+        const float l = fftBufferL_[static_cast<std::size_t>(bin)];
+        const float r = fftBufferR_[static_cast<std::size_t>(bin)];
+        return std::sqrt(0.5f * (l * l + r * r));
+    };
 
     for (int band = 0; band < ui::Visuals::kSpectrumBands; ++band) {
         const auto edge = [&](int index) {
@@ -122,12 +160,12 @@ void Analysis::updateSpectrum(ui::Visuals& visuals, double sampleRate, float sec
             const double centre = 0.5 * (low + high);
             const int bin = std::clamp(static_cast<int>(centre), 0, lastBin - 1);
             const auto fraction = static_cast<float>(std::clamp(centre - bin, 0.0, 1.0));
-            magnitude = fftBuffer_[static_cast<std::size_t>(bin)] * (1.0f - fraction)
-                      + fftBuffer_[static_cast<std::size_t>(bin + 1)] * fraction;
+            magnitude = binMag(bin) * (1.0f - fraction) + binMag(bin + 1) * fraction;
         } else {
             const int first = std::clamp(static_cast<int>(low), 0, lastBin);
             const int last = std::clamp(static_cast<int>(high), first, lastBin);
-            for (int bin = first; bin <= last; ++bin) magnitude = std::max(magnitude, fftBuffer_[static_cast<std::size_t>(bin)]);
+            for (int bin = first; bin <= last; ++bin)
+                magnitude = std::max(magnitude, binMag(bin));
         }
         const auto index = static_cast<std::size_t>(band);
         spectrum_[index] = std::max(toDb(magnitude * scale), spectrum_[index] - fall);
@@ -149,6 +187,7 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.peakDbLeft = peakLeftDb_;
     visuals.peakDbRight = peakRightDb_;
     visuals.sampleRate = sampleRate;
+    visuals.osFactor = osFactor_.load(std::memory_order_relaxed);
 
     visuals.gainReductionDb = gainReductionDb_.load(std::memory_order_relaxed);
     visuals.ppq = ppq_.load(std::memory_order_relaxed);
@@ -165,8 +204,15 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.effDrive = effDrive_.load(std::memory_order_relaxed);
     visuals.effTransform = effTransform_.load(std::memory_order_relaxed);
     visuals.effSpread = effSpread_.load(std::memory_order_relaxed);
+    visuals.effFmAmount = effFmAmount_.load(std::memory_order_relaxed);
+    visuals.envLevel = envLevel_.load(std::memory_order_relaxed);
     visuals.midiShiftSt = midiShiftSt_.load(std::memory_order_relaxed);
     visuals.activeNote = activeNote_.load(std::memory_order_relaxed);
+
+    // Shift scrolling envelope history left by one frame.
+    std::rotate(envHistory_.begin(), envHistory_.begin() + 1, envHistory_.end());
+    envHistory_.back() = visuals.envLevel;
+    visuals.envHistory = envHistory_;
 }
 
 }

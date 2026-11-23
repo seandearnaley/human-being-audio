@@ -38,7 +38,8 @@ void Presets::scan() {
     }
 
     const auto rank = [](const std::string& category) {
-        static const std::array<std::string_view, 5> order { "Neuro", "Talk", "Phase", "Metal", "Breaks" };
+        static const std::array<std::string_view, 7> order{"Neuro",    "Talk",     "Phase", "Metal",
+                                                           "Env & FM", "Acoustic", "Breaks"};
         return std::find(order.begin(), order.end(), category) - order.begin();
     };
     std::stable_sort(presets_.begin(), presets_.end(), [&](const Preset& a, const Preset& b) {
@@ -81,7 +82,7 @@ void Presets::load(int index) {
             parameter->setValueNotifyingHost(parameter->convertTo0to1(preset.params.values[i]));
     }
     curves_.setAll(preset.curves);
-    if (preset.imprint.active)
+    if (preset.imprint.hasAny())
         imprint_.set(preset.imprint, preset.name);
     else
         imprint_.clear();

@@ -97,4 +97,38 @@ void PluginEditor::attachWhenOnScreen() {
 #endif
 }
 
+bool PluginEditor::isInterestedInFileDrag(const juce::StringArray& files) {
+    for (const auto& path : files) {
+        const auto ext = juce::File(path).getFileExtension().toLowerCase();
+        if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac")
+            return true;
+    }
+    return false;
+}
+
+void PluginEditor::filesDropped(const juce::StringArray& files, int x, int y) {
+    const float scale = static_cast<float>(getWidth()) / static_cast<float>(ui::kDefaultWidth);
+    const float padX = 24.0f * scale;
+    const float padY = 100.0f * scale;
+    const float padW = 344.0f * scale;
+    const float padH = 408.0f * scale;
+
+    int slot = 0;
+    const float fx = static_cast<float>(x);
+    const float fy = static_cast<float>(y);
+    if (fx >= padX && fx <= padX + padW && fy >= padY && fy <= padY + padH) {
+        const int col = (fx >= padX + 0.5f * padW) ? 1 : 0;
+        const int row = (fy >= padY + 0.5f * padH) ? 1 : 0;
+        slot = row * 2 + col;
+    }
+
+    for (const auto& path : files) {
+        const juce::File file(path);
+        const auto ext = file.getFileExtension().toLowerCase();
+        if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac") {
+            model_.imprintFileToSlot(file, slot);
+            return;
+        }
+    }
+}
 }

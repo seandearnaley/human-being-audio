@@ -21,36 +21,90 @@ int laneOfCurveKey(const std::string& key) { return hba::core::laneOfCurveKey(ke
 std::optional<Curve> readCurve(const Json& value) { return hba::core::readCurveJson(value); }
 Json writeCurve(const Curve& curve) { return hba::core::writeCurveJson(curve); }
 
-std::optional<ImprintData> readImprint(const Json& value) {
+std::optional<CornerSpec> readCorner(const Json& value) {
     if (!value.is_object()) return std::nullopt;
-    ImprintData out;
-    if (value.contains("active") && value["active"].is_boolean()) out.active = value["active"].get<bool>();
+    CornerSpec out;
     if (value.contains("makeupDb") && value["makeupDb"].is_number())
-        out.corner.makeupDb = std::clamp(value["makeupDb"].get<float>(), -24.0f, 12.0f);
+        out.makeupDb = std::clamp(value["makeupDb"].get<float>(), -24.0f, 12.0f);
     if (!value.contains("stages") || !value["stages"].is_array() || value["stages"].size() != kNumStages)
-        return out.active ? std::nullopt : std::optional<ImprintData>(out);
+        return std::nullopt;
     for (std::size_t i = 0; i < kNumStages; ++i) {
         const auto& s = value["stages"][i];
         if (!s.is_array() || s.size() != 4) return std::nullopt;
-        for (std::size_t k = 0; k < 4; ++k) if (!s[k].is_number()) return std::nullopt;
-        out.corner.stages[i] = {
+        for (std::size_t k = 0; k < 4; ++k)
+            if (!s[k].is_number())
+                return std::nullopt;
+        out.stages[i] = {
             std::clamp(s[0].get<float>(), 30.0f, 18500.0f),
-            std::clamp(s[1].get<float>(), 0.55f, 22.0f),
+            std::clamp(s[1].get<float>(), 0.55f, 45.0f),
             std::clamp(s[2].get<float>(), 30.0f, 19500.0f),
-            std::clamp(s[3].get<float>(), 0.55f, 18.0f),
+            std::clamp(s[3].get<float>(), 0.55f, 24.0f),
         };
     }
     return out;
 }
 
-Json writeImprint(const ImprintData& imprint) {
+Json writeCorner(const CornerSpec& corner) {
     Json obj = Json::object();
-    obj["active"] = imprint.active;
-    obj["makeupDb"] = imprint.corner.makeupDb;
+    obj["makeupDb"] = corner.makeupDb;
     Json stages = Json::array();
-    for (const auto& s : imprint.corner.stages)
+    for (const auto& s : corner.stages)
         stages.push_back(Json::array({ s.poleHz, s.poleQ, s.zeroHz, s.zeroQ }));
     obj["stages"] = std::move(stages);
+    return obj;
+}
+
+std::optional<ImprintData> readImprint(const Json& value) {
+    if (!value.is_object())
+        return std::nullopt;
+    ImprintData out;
+    // Multi-corner v1.0 format: { "slots": [ null | { makeupDb, stages }, ... ] }
+    if (value.contains("slots") && value["slots"].is_array()) {
+        const auto& arr = value["slots"];
+        for (std::size_t i = 0; i < arr.size() && i < static_cast<std::size_t>(kNumImprintSlots); ++i) {
+            if (arr[i].is_null())
+                continue;
+            const auto corner = readCorner(arr[i]);
+            if (!corner)
+                return std::nullopt;
+            out.setSlot(static_cast<int>(i), *corner);
+        }
+        return out;
+    }
+    // Legacy v0.2 single-corner format: { "active": bool, "makeupDb": ..., "stages": [...] }
+    const bool active = value.contains("active") && value["active"].is_boolean() && value["active"].get<bool>();
+    if (!active)
+        return out;
+    const auto corner = readCorner(value);
+    if (!corner)
+        return std::nullopt;
+    out.setSlot(0, *corner);
+    return out;
+}
+
+Json writeImprint(const ImprintData& imprint) {
+    Json obj = Json::object();
+    const bool anyExtra = imprint.slotEnabled(1) || imprint.slotEnabled(2) || imprint.slotEnabled(3);
+    if (!anyExtra) {
+        obj["active"] = imprint.slotEnabled(0);
+        if (imprint.slotEnabled(0)) {
+            const auto& c = imprint.slotCorner(0);
+            obj["makeupDb"] = c.makeupDb;
+            Json stages = Json::array();
+            for (const auto& s : c.stages)
+                stages.push_back(Json::array({s.poleHz, s.poleQ, s.zeroHz, s.zeroQ}));
+            obj["stages"] = std::move(stages);
+        }
+        return obj;
+    }
+    Json slots = Json::array();
+    for (int i = 0; i < kNumImprintSlots; ++i) {
+        if (imprint.slotEnabled(i))
+            slots.push_back(writeCorner(imprint.slotCorner(i)));
+        else
+            slots.push_back(nullptr);
+    }
+    obj["slots"] = std::move(slots);
     return obj;
 }
 
@@ -118,7 +172,8 @@ std::string serialisePreset(const Preset& preset) {
     for (int lane = 0; lane < kLaneCount; ++lane)
         if (preset.params.choice(laneParam(lane, LaneField::shape)) == static_cast<int>(LaneShape::custom))
             root[curveKey(lane)] = writeCurve(preset.curves[static_cast<std::size_t>(lane)]);
-    if (preset.imprint.active) root["imprint"] = writeImprint(preset.imprint);
+    if (preset.imprint.hasAny())
+        root["imprint"] = writeImprint(preset.imprint);
     return root.dump(2) + "\n";
 }
 
