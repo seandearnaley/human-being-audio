@@ -63,6 +63,11 @@ jobs:
       CTEST_PARALLEL_LEVEL: ${{ matrix.product == 'livecut-redux' && '4' || '1' }}
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPRESS: 'true'
+      CCACHE_MAXSIZE: 1G
     defaults:
       run:
         working-directory: products/${{ matrix.product }}
@@ -71,6 +76,19 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-ubuntu-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
+          restore-keys: |
+            cpm-ubuntu-${{ matrix.product }}-
+            cpm-ubuntu-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-ubuntu-${{ matrix.product }}-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu-${{ matrix.product }}-
       - name: Install build dependencies
         working-directory: .
         run: |
@@ -96,6 +114,11 @@ jobs:
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPRESS: 'true'
+      CCACHE_MAXSIZE: 500M
     defaults:
       run:
         working-directory: products/${{ matrix.product }}
@@ -103,6 +126,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-rtsan-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
+          restore-keys: |
+            cpm-rtsan-${{ matrix.product }}-
+            cpm-ubuntu-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-rtsan-${{ matrix.product }}-${{ github.sha }}
+          restore-keys: |
+            ccache-rtsan-${{ matrix.product }}-
       - name: Install LLVM and engine build dependencies
         working-directory: .
         run: |
@@ -126,6 +162,13 @@ jobs:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-windows-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
+          restore-keys: |
+            cpm-windows-${{ matrix.product }}-
+            cpm-windows-
       - shell: pwsh
         env:
           PRODUCT: ${{ matrix.product }}

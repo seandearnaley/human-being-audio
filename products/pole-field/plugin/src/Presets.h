@@ -23,12 +23,11 @@ public:
     void load(int index);
     void step(int delta);
     bool save(const juce::String& name);
+    void setCurrentName(const std::string& name);
 
     static juce::File userDirectory();
 
-private:
-    void setCurrentName(const std::string& name);
-
+  private:
     juce::AudioProcessorValueTreeState& state_;
     CurveStore& curves_;
     ImprintStore& imprint_;

@@ -22,7 +22,7 @@ float PluginModel::get(ParamId id) const {
 
 void PluginModel::begin(ParamId id) {
     if (!applyingSnapshot_ && id != ParamId::quality)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
 }
 
@@ -45,8 +45,8 @@ const ui::Visuals& PluginModel::visuals() { return visuals_; }
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     if (!applyingSnapshot_)
-        history_.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
-                               static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+        processor_.history.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
+                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
     processor_.curves.set(lane, curve);
 }
 
@@ -58,12 +58,12 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
 }
 void PluginModel::loadPreset(int index) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.load(index);
 }
 void PluginModel::stepPreset(int delta) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.step(delta);
 }
 
@@ -112,6 +112,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
     }
     s.curves = processor_.curves.all();
+    s.presetName = processor_.presets.currentName();
     return s;
 }
 
@@ -123,20 +124,22 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
     }
     processor_.curves.setAll(snapshot.curves);
+    if (!snapshot.presetName.empty())
+        processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;
 }
 
 void PluginModel::undo() {
-    if (const auto target = history_.undo(captureSnapshot()))
+    if (const auto target = processor_.history.undo(captureSnapshot()))
         applySnapshot(*target);
 }
 
 void PluginModel::redo() {
-    if (const auto target = history_.redo(captureSnapshot()))
+    if (const auto target = processor_.history.redo(captureSnapshot()))
         applySnapshot(*target);
 }
 
-void PluginModel::toggleAB() { applySnapshot(history_.toggleAB(captureSnapshot())); }
+void PluginModel::toggleAB() { applySnapshot(processor_.history.toggleAB(captureSnapshot())); }
 
-void PluginModel::copyAB() { history_.copyActiveToOther(captureSnapshot()); }
+void PluginModel::copyAB() { processor_.history.copyActiveToOther(captureSnapshot()); }
 }

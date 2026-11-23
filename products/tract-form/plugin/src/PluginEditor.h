@@ -4,6 +4,8 @@
 #include "StudioAbout.h"
 #include "tf/ui/editor.h"
 
+#include <hba/host/visage_surface.h>
+
 namespace tf {
 
 // The native instrument and studio About page occupy the same editor bounds.
@@ -22,13 +24,7 @@ private:
     void detachView();
 
     PluginModel model_;
-#if JUCE_MAC
-    struct MacSurface : juce::NSViewComponent { MacSurface(); } nativeHost_;
-#elif JUCE_LINUX
-    juce::XEmbedComponent nativeHost_ { juce::XEmbedComponentOptions{} };
-#elif JUCE_WINDOWS
-    juce::HWNDComponent nativeHost_;
-#endif
+    hba::host::VisageSurface nativeHost_;
     ui::Editor view_;
     struct AboutPage : hba::StudioAbout {
         AboutPage();

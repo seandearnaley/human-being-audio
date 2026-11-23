@@ -14,7 +14,11 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
     refreshVisuals();
 }
 
-PluginModel::~PluginModel() { *alive_ = false; }
+PluginModel::~PluginModel() {
+    *alive_ = false;
+    if (saveDialog_)
+        saveDialog_->exitModalState(0);
+}
 
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -22,8 +26,8 @@ float PluginModel::get(ParamId id) const {
 }
 
 void PluginModel::begin(ParamId id) {
-    if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+    if (!applyingSnapshot_ && id != ParamId::quality)
+        processor_.history.push(captureSnapshot());
     parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
 }
 
@@ -46,8 +50,8 @@ const ui::Visuals& PluginModel::visuals() { return visuals_; }
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     if (!applyingSnapshot_)
-        history_.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
-                               static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+        processor_.history.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
+                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
     processor_.curves.set(lane, curve);
 }
 
@@ -95,7 +99,7 @@ void PluginModel::browseImprintAudio() {
         data.corner = imprintFromAudio(mono, reader->sampleRate);
 
         if (!applyingSnapshot_)
-            history_.push(captureSnapshot());
+            processor_.history.push(captureSnapshot());
         std::string shortName = file.getFileNameWithoutExtension().toStdString();
         if (shortName.size() > 18)
             shortName = shortName.substr(0, 17) + "\u2026";
@@ -112,7 +116,7 @@ void PluginModel::browseImprintAudio() {
 
 void PluginModel::clearImprint() {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.imprint.clear();
 }
 
@@ -124,12 +128,12 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
 }
 void PluginModel::loadPreset(int index) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.load(index);
 }
 void PluginModel::stepPreset(int delta) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.step(delta);
 }
 
@@ -149,37 +153,46 @@ void PluginModel::savePreset() {
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {
     Snapshot s;
-    for (std::size_t i = 0; i < kParams.size(); ++i)
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        if (static_cast<ParamId>(i) == ParamId::quality)
+            continue;
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
+    }
     s.curves = processor_.curves.all();
     s.imprint = processor_.imprint.get();
     s.imprintLabel = processor_.imprint.label();
+    s.presetName = processor_.presets.currentName();
     return s;
 }
 
 void PluginModel::applySnapshot(const Snapshot& snapshot) {
     applyingSnapshot_ = true;
-    for (std::size_t i = 0; i < kParams.size(); ++i)
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        if (static_cast<ParamId>(i) == ParamId::quality)
+            continue;
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
+    }
     processor_.curves.setAll(snapshot.curves);
     if (snapshot.imprint.active)
         processor_.imprint.set(snapshot.imprint, snapshot.imprintLabel);
     else
         processor_.imprint.clear();
+    if (!snapshot.presetName.empty())
+        processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;
 }
 
 void PluginModel::undo() {
-    if (const auto target = history_.undo(captureSnapshot()))
+    if (const auto target = processor_.history.undo(captureSnapshot()))
         applySnapshot(*target);
 }
 
 void PluginModel::redo() {
-    if (const auto target = history_.redo(captureSnapshot()))
+    if (const auto target = processor_.history.redo(captureSnapshot()))
         applySnapshot(*target);
 }
 
-void PluginModel::toggleAB() { applySnapshot(history_.toggleAB(captureSnapshot())); }
+void PluginModel::toggleAB() { applySnapshot(processor_.history.toggleAB(captureSnapshot())); }
 
-void PluginModel::copyAB() { history_.copyActiveToOther(captureSnapshot()); }
+void PluginModel::copyAB() { processor_.history.copyActiveToOther(captureSnapshot()); }
 }

@@ -1,5 +1,6 @@
 build-essential
 ca-certificates
+ccache
 clang-22
 cmake
 fonts-dejavu-core

@@ -5,4 +5,5 @@ target_compile_features(tf_analysis PUBLIC cxx_std_20)
 target_link_libraries(tf_analysis PRIVATE tf_warnings)
 
 add_executable(tf-render tf_render.cpp)
+hba_build_for_host_only(tf-render)
 target_link_libraries(tf-render PRIVATE tf_engine tf_core tf_analysis tf_warnings)

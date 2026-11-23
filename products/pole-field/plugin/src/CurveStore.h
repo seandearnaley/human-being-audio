@@ -2,9 +2,8 @@
 
 #include "pf/lanes.h"
 
+#include <hba/host/state_mailbox.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-
-#include <atomic>
 
 namespace pf {
 
@@ -17,15 +16,13 @@ public:
     void set(int lane, const Curve& curve);
     void setAll(const LaneCurves& curves);
     void reloadFromState();
-    bool pull(LaneCurves& destination) noexcept;
+    bool pull(LaneCurves& destination) noexcept { return mailbox_.pull(destination); }
 
-private:
-  void writeToState(int lane, const Curve& curve);
+  private:
+    void writeToState(int lane, const Curve& curve);
 
-  juce::AudioProcessorValueTreeState& state_;
-  mutable juce::SpinLock lock_;
-  LaneCurves curves_ = defaultLaneCurves();
-  std::atomic<bool> changed_{true};
+    juce::AudioProcessorValueTreeState& state_;
+    hba::host::StateMailbox<LaneCurves> mailbox_{defaultLaneCurves()};
 };
 
 }

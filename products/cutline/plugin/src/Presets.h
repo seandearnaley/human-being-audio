@@ -23,11 +23,11 @@ class Presets {
     void load(int index);
     void step(int delta);
     bool save(const juce::String& name);
+    void setCurrentName(const std::string& name);
 
   private:
     static juce::File userDirectory();
     void scan();
-    void setCurrentName(const std::string& name);
 
     juce::AudioProcessorValueTreeState& state_;
     CurveStore& curves_;

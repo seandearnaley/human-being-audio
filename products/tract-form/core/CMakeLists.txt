@@ -9,4 +9,4 @@ add_library(tf_core STATIC
     src/preset.cpp)
 target_include_directories(tf_core PUBLIC include)
 target_compile_features(tf_core PUBLIC cxx_std_20)
-target_link_libraries(tf_core PUBLIC hba_dsp PRIVATE nlohmann_json::nlohmann_json tf_warnings)
+target_link_libraries(tf_core PUBLIC hba_dsp hba_core PRIVATE tf_warnings)

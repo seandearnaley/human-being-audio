@@ -72,8 +72,9 @@ TEMPLATE_TEST_CASE("ADAA2 shapers satisfy exact antiderivative identities", "[ds
         CHECK(std::abs(S::eval(u)) <= 1.2);
     }
 
-    // Unity or near-unity small-signal linear region around 0.
+    // Exact unity small-signal slope around 0 across all 5 studio shapers.
     CHECK(S::eval(0.0) == 0.0);
+    CHECK_THAT((S::eval(1e-6) - S::eval(-1e-6)) / 2e-6, Catch::Matchers::WithinAbs(1.0, 1e-5));
 
     // Central finite-difference check of F1' == f and F2' == F1 away from C^0 corners.
     const double h = 1e-6;

@@ -16,6 +16,7 @@ public:
 
     const std::vector<Preset>& all() const { return presets_; }
     std::string currentName() const;
+    void setCurrentName(const std::string& name);
 
     void load(int index);
     void step(int delta);
@@ -27,7 +28,6 @@ public:
 private:
     void scan();
     int currentIndex() const;
-    void setCurrentName(const std::string& name);
 
     juce::AudioProcessorValueTreeState& state_;
     CurveStore& curves_;

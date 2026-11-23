@@ -79,6 +79,7 @@ struct Engine::Impl {
         for (auto& os : wetOs) os.prepare(osFactor);
         for (auto& os : dryOs) os.prepare(osFactor);
         subOs.prepare(osFactor);
+        subFit.prepare(sampleRate);
         for (auto& lat : lattice) lat.prepare(osRate);
         limiter.prepare(sampleRate);
         reset();

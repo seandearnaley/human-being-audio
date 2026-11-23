@@ -23,8 +23,9 @@ juce_add_plugin(PoleField
 file(GLOB PF_PRESET_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/presets/*.json")
 juce_add_binary_data(PoleFieldPresets HEADER_NAME PoleFieldPresetsData.h NAMESPACE PoleFieldPresetsData SOURCES ${PF_PRESET_FILES})
 
-add_library(PoleFieldCode INTERFACE)
-target_sources(PoleFieldCode INTERFACE
+# Compile plugin sources once into PoleField (JUCE's SharedCode static archive)
+# so tests link directly instead of recompiling plugin & JUCE.
+target_sources(PoleField PRIVATE
     src/Analysis.cpp
     src/Analysis.h
     src/CurveStore.cpp
@@ -41,30 +42,29 @@ target_sources(PoleFieldCode INTERFACE
     src/PluginProcessor.h
     src/Presets.cpp
     src/Presets.h)
-if(APPLE)
-    target_sources(PoleFieldCode INTERFACE src/MacSurface.mm)
-endif()
-target_include_directories(PoleFieldCode INTERFACE src)
-target_link_libraries(PoleFieldCode INTERFACE
-    hba_studio_ui
-    pf_core
-    pf_engine
-    pf_ui
-    pf_ui_brand
-    PoleFieldPresets
-    juce::juce_audio_formats
-    juce::juce_audio_utils
-    juce::juce_dsp)
+target_include_directories(PoleField PUBLIC src)
+target_include_directories(PoleField SYSTEM INTERFACE "${JUCE_SOURCE_DIR}/modules")
 
 target_compile_definitions(PoleField PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_MODAL_LOOPS_PERMITTED=$<BOOL:${PF_BUILD_TESTS}>)
 
 target_link_libraries(PoleField
     PRIVATE
-        PoleFieldCode
+        hba_plugin_host
         pf_warnings
+        PoleFieldPresets
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_dsp
     PUBLIC
+        hba_studio_ui
+        hba_plugin_host_headers
+        pf_core
+        pf_engine
+        pf_ui
+        pf_ui_brand
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)
