@@ -170,4 +170,11 @@ TEST_CASE(
     CHECK_FALSE(model.isSlotB());
     CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.20f).margin(1e-3f));
     CHECK(model.laneCurve(0) == cl::curves::rampUp());
+
+    // Processor owns history so Undo/Redo and A/B survive closing and reopening the editor.
+    {
+        cl::PluginModel reopened(proc);
+        CHECK_FALSE(reopened.isSlotB());
+        CHECK(reopened.canUndo());
+    }
 }

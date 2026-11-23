@@ -22,8 +22,9 @@ juce_add_plugin(Cutline
 file(GLOB CL_PRESET_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/presets/*.json")
 juce_add_binary_data(CutlinePresets HEADER_NAME CutlinePresetsData.h NAMESPACE CutlinePresetsData SOURCES ${CL_PRESET_FILES})
 
-add_library(CutlineCode INTERFACE)
-target_sources(CutlineCode INTERFACE
+# Compile plugin sources once into Cutline (JUCE's SharedCode static archive)
+# so tests link directly instead of recompiling plugin & JUCE.
+target_sources(Cutline PRIVATE
     src/CurveStore.cpp
     src/CurveStore.h
     src/MidiExporter.cpp
@@ -41,28 +42,27 @@ target_sources(CutlineCode INTERFACE
     src/Presets.cpp
     src/Presets.h
     src/Telemetry.h)
-if(APPLE)
-    target_sources(CutlineCode INTERFACE src/MacSurface.mm)
-endif()
-target_include_directories(CutlineCode INTERFACE src)
-target_link_libraries(CutlineCode INTERFACE
-    hba_studio_ui
-    cl_core
-    cl_engine
-    cl_ui
-    cl_ui_brand
-    CutlinePresets
-    juce::juce_audio_utils)
+target_include_directories(Cutline PUBLIC src)
+target_include_directories(Cutline SYSTEM INTERFACE "${JUCE_SOURCE_DIR}/modules")
 
 target_compile_definitions(Cutline PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_MODAL_LOOPS_PERMITTED=$<BOOL:${CL_BUILD_TESTS}>)
 
 target_link_libraries(Cutline
     PRIVATE
-        CutlineCode
+        hba_plugin_host
         cl_warnings
+        CutlinePresets
+        juce::juce_audio_utils
     PUBLIC
+        hba_studio_ui
+        hba_plugin_host_headers
+        cl_core
+        cl_engine
+        cl_ui
+        cl_ui_brand
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)

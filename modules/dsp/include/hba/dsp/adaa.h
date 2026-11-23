@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <concepts>
+#include <cstdint>
 
 namespace hba::dsp {
 
@@ -230,15 +231,12 @@ struct Buchla259Shaper {
     }
 };
 
-// Sinusoidal wavefolder: f(u) = sin((pi/2) u).
+// Sinusoidal wavefolder: f(u) = sin(u) (exact unity small-signal slope at 0,
+// matching Tanh, HardClip, TriangleFold, and Buchla259).
 struct SineFoldShaper {
-    static constexpr double kHalfPi = 0.5 * detail::kPi;
-    static constexpr double kInvHalfPi = 1.0 / kHalfPi;
-    static constexpr double kInvHalfPi2 = kInvHalfPi * kInvHalfPi;
-
-    static double eval(double u) noexcept HBA_DSP_NONBLOCKING { return std::sin(kHalfPi * u); }
-    static double ad1(double u) noexcept HBA_DSP_NONBLOCKING { return -kInvHalfPi * std::cos(kHalfPi * u); }
-    static double ad2(double u) noexcept HBA_DSP_NONBLOCKING { return -kInvHalfPi2 * std::sin(kHalfPi * u); }
+    static double eval(double u) noexcept HBA_DSP_NONBLOCKING { return std::sin(u); }
+    static double ad1(double u) noexcept HBA_DSP_NONBLOCKING { return -std::cos(u); }
+    static double ad2(double u) noexcept HBA_DSP_NONBLOCKING { return -std::sin(u); }
 };
 
 // -----------------------------------------------------------------------------
@@ -330,6 +328,176 @@ private:
     double x2_ = 0.0;
     double f2_1_ = 0.0;
     double d1_1_ = 0.0;
+};
+
+// -----------------------------------------------------------------------------
+// Studio 5-model ADAA2 switcher with click-free crossfade, exact 1-sample dry
+// alignment, automatic A->B->A re-priming, and centroid DC-offset cancellation.
+// -----------------------------------------------------------------------------
+enum class ShaperModel : std::uint8_t { fold = 0, sine = 1, tube = 2, buchla = 3, clip = 4 };
+
+inline double evalShaper(ShaperModel model, double u) noexcept HBA_DSP_NONBLOCKING {
+    switch (model) {
+    case ShaperModel::fold:
+        return TriangleFoldShaper::eval(u);
+    case ShaperModel::sine:
+        return SineFoldShaper::eval(u);
+    case ShaperModel::tube:
+        return TanhShaper::eval(u);
+    case ShaperModel::buchla:
+        return Buchla259Shaper::eval(u);
+    case ShaperModel::clip:
+        return HardClipShaper::eval(u);
+    }
+    return u;
+}
+
+inline double ad1Shaper(ShaperModel model, double u) noexcept HBA_DSP_NONBLOCKING {
+    switch (model) {
+    case ShaperModel::fold:
+        return TriangleFoldShaper::ad1(u);
+    case ShaperModel::sine:
+        return SineFoldShaper::ad1(u);
+    case ShaperModel::tube:
+        return TanhShaper::ad1(u);
+    case ShaperModel::buchla:
+        return Buchla259Shaper::ad1(u);
+    case ShaperModel::clip:
+        return HardClipShaper::ad1(u);
+    }
+    return 0.5 * u * u;
+}
+
+class MultiShaperAdaa2 {
+  public:
+    void reset() noexcept HBA_DSP_NONBLOCKING {
+        fold_.reset();
+        sine_.reset();
+        tube_.reset();
+        buchla_.reset();
+        clip_.reset();
+        x1_ = 0.0;
+        u1_ = 0.0;
+        u2_ = 0.0;
+        offset1_ = 0.0;
+        offset2_ = 0.0;
+        activeTo_ = ShaperModel::fold;
+        activeFrom_ = ShaperModel::fold;
+        primed_ = false;
+    }
+
+    // Advances the 1-sample dry alignment register while bypassing shaping.
+    double bypass(double x) noexcept HBA_DSP_NONBLOCKING {
+        const double dry = x1_;
+        x1_ = x;
+        u2_ = u1_;
+        u1_ = x;
+        offset2_ = 0.0;
+        offset1_ = 0.0;
+        primed_ = false;
+        return dry;
+    }
+
+    // Processes `u = gain * x + offset` with crossfade `mix` (0 = `from`, 1 = `to`),
+    // returning both the centroid-bias-cancelled shaped output and exact 1-sample dry.
+    double process(double x, double gain, double offset, ShaperModel from, ShaperModel to, double mix,
+                   double& outDry) noexcept HBA_DSP_NONBLOCKING {
+        const double dry = x1_;
+        x1_ = x;
+        outDry = dry;
+        const double u = gain * x + offset;
+
+        if (!primed_) {
+            activeTo_ = to;
+            activeFrom_ = from;
+            u1_ = gain * dry + offset;
+            u2_ = u1_;
+            offset1_ = offset;
+            offset2_ = offset;
+            primeModel(to, u1_, u2_);
+            if (mix < 1.0 && from != to)
+                primeModel(from, u1_, u2_);
+            primed_ = true;
+        } else {
+            if (to != activeTo_) {
+                if (to != activeFrom_)
+                    primeModel(to, u1_, u2_);
+                activeTo_ = to;
+            }
+            if (mix < 1.0 && from != activeFrom_) {
+                if (from != activeTo_)
+                    primeModel(from, u1_, u2_);
+                activeFrom_ = from;
+            }
+        }
+
+        const double offsetCentroid = (offset + offset1_ + offset2_) * (1.0 / 3.0);
+        double wet = tickModel(to, u) - evalShaper(to, offsetCentroid);
+        if (mix < 1.0 && from != to) {
+            const double wetFrom = tickModel(from, u) - evalShaper(from, offsetCentroid);
+            wet = mix * wet + (1.0 - mix) * wetFrom;
+        } else {
+            activeFrom_ = activeTo_;
+        }
+
+        u2_ = u1_;
+        u1_ = u;
+        offset2_ = offset1_;
+        offset1_ = offset;
+        return wet;
+    }
+
+  private:
+    void primeModel(ShaperModel model, double u1, double u2) noexcept HBA_DSP_NONBLOCKING {
+        switch (model) {
+        case ShaperModel::fold:
+            fold_.prime(u1, u2);
+            return;
+        case ShaperModel::sine:
+            sine_.prime(u1, u2);
+            return;
+        case ShaperModel::tube:
+            tube_.prime(u1, u2);
+            return;
+        case ShaperModel::buchla:
+            buchla_.prime(u1, u2);
+            return;
+        case ShaperModel::clip:
+            clip_.prime(u1, u2);
+            return;
+        }
+    }
+
+    double tickModel(ShaperModel model, double u) noexcept HBA_DSP_NONBLOCKING {
+        switch (model) {
+        case ShaperModel::fold:
+            return fold_.process(u);
+        case ShaperModel::sine:
+            return sine_.process(u);
+        case ShaperModel::tube:
+            return tube_.process(u);
+        case ShaperModel::buchla:
+            return buchla_.process(u);
+        case ShaperModel::clip:
+            return clip_.process(u);
+        }
+        return u;
+    }
+
+    Adaa2<TriangleFoldShaper> fold_{};
+    Adaa2<SineFoldShaper> sine_{};
+    Adaa2<TanhShaper> tube_{};
+    Adaa2<Buchla259Shaper> buchla_{};
+    Adaa2<HardClipShaper> clip_{};
+
+    double x1_ = 0.0;
+    double u1_ = 0.0;
+    double u2_ = 0.0;
+    double offset1_ = 0.0;
+    double offset2_ = 0.0;
+    ShaperModel activeTo_ = ShaperModel::fold;
+    ShaperModel activeFrom_ = ShaperModel::fold;
+    bool primed_ = false;
 };
 
 #undef HBA_DSP_NONBLOCKING

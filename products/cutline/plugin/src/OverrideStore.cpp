@@ -12,10 +12,7 @@ const juce::Identifier kOverridesProp{"phraseOverrides"};
 
 OverrideStore::OverrideStore(juce::AudioProcessorValueTreeState& state) : state_(state) {}
 
-PhraseOverrides OverrideStore::get() const {
-    const juce::SpinLock::ScopedLockType scoped(lock_);
-    return overrides_;
-}
+PhraseOverrides OverrideStore::get() const { return mailbox_.get(); }
 
 void OverrideStore::writeToState(const PhraseOverrides& overrides) {
     if (overrides.hasAny())
@@ -25,12 +22,8 @@ void OverrideStore::writeToState(const PhraseOverrides& overrides) {
 }
 
 void OverrideStore::set(const PhraseOverrides& overrides) {
-    {
-        const juce::SpinLock::ScopedLockType scoped(lock_);
-        overrides_ = overrides;
-    }
+    mailbox_.set(overrides);
     writeToState(overrides);
-    changed_.store(true, std::memory_order_release);
 }
 
 void OverrideStore::clear() { set(PhraseOverrides{}); }
@@ -42,22 +35,7 @@ void OverrideStore::reloadFromState() {
         if (const auto parsed = parseOverrides(text.toStdString()))
             loaded = *parsed;
     }
-    {
-        const juce::SpinLock::ScopedLockType scoped(lock_);
-        overrides_ = loaded;
-    }
-    changed_.store(true, std::memory_order_release);
-}
-
-bool OverrideStore::pull(PhraseOverrides& destination) noexcept {
-    if (!changed_.load(std::memory_order_acquire))
-        return false;
-    const juce::SpinLock::ScopedTryLockType scoped(lock_);
-    if (!scoped.isLocked())
-        return false;
-    destination = overrides_;
-    changed_.store(false, std::memory_order_release);
-    return true;
+    mailbox_.set(loaded);
 }
 
 } // namespace cl

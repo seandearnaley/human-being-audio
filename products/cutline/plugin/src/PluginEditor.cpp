@@ -2,14 +2,6 @@
 #include "PluginEditor.h"
 #include <embedded/cl_brand.h>
 
-#if JUCE_WINDOWS
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <system_error>
-#include <windows.h>
-#endif
-
 namespace cl {
 
 PluginEditor::PluginEditor(PluginProcessor& processor)
@@ -100,20 +92,7 @@ void PluginEditor::attachWhenOnScreen() {
     }
     if (about_.isVisible())
         return;
-#if JUCE_MAC
-    auto* nativeView = nativeHost_.getView();
-#elif JUCE_LINUX
-    auto* nativeView = reinterpret_cast<void*>(nativeHost_.getHostWindowID());
-#elif JUCE_WINDOWS
-    if (nativeHost_.getHWND() == nullptr) {
-        auto window = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 0, 0,
-                                      static_cast<HWND>(peer->getNativeHandle()), nullptr, nullptr, nullptr);
-        if (window == nullptr)
-            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Create editor window");
-        nativeHost_.setHWND(window);
-    }
-    auto* nativeView = nativeHost_.getHWND();
-#endif
+    auto* nativeView = nativeHost_.nativeHandle(peer);
     if (nativeView == attachedTo_)
         return;
 

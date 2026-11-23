@@ -12,13 +12,10 @@ const juce::Identifier kImprintLabelProp { "imprintName" };
 
 ImprintStore::ImprintStore(juce::AudioProcessorValueTreeState& state) : state_(state) {}
 
-ImprintData ImprintStore::get() const {
-    const juce::SpinLock::ScopedLockType scoped(lock_);
-    return imprint_;
-}
+ImprintData ImprintStore::get() const { return mailbox_.get(); }
 
 std::string ImprintStore::label() const {
-    const juce::SpinLock::ScopedLockType scoped(lock_);
+    const juce::SpinLock::ScopedLockType scoped(labelLock_);
     return label_;
 }
 
@@ -30,18 +27,15 @@ void ImprintStore::writeToState(const ImprintData& imprint, const std::string& l
 void ImprintStore::set(const ImprintData& imprint, std::string sourceName) {
     std::string finalLabel =
         imprint.active ? (sourceName.empty() ? "Imprinted" : std::move(sourceName)) : "Imprint WAV";
+    mailbox_.set(imprint);
     {
-        const juce::SpinLock::ScopedLockType scoped(lock_);
-        imprint_ = imprint;
+        const juce::SpinLock::ScopedLockType scoped(labelLock_);
         label_ = finalLabel;
     }
     writeToState(imprint, finalLabel);
-    changed_.store(true, std::memory_order_release);
 }
 
-void ImprintStore::clear() {
-    set({}, "Imprint WAV");
-}
+void ImprintStore::clear() { set({}, "Imprint WAV"); }
 
 void ImprintStore::reloadFromState() {
     ImprintData loaded {};
@@ -56,21 +50,11 @@ void ImprintStore::reloadFromState() {
             }
         }
     }
+    mailbox_.set(loaded);
     {
-        const juce::SpinLock::ScopedLockType scoped(lock_);
-        imprint_ = loaded;
+        const juce::SpinLock::ScopedLockType scoped(labelLock_);
         label_ = std::move(loadedLabel);
     }
-    changed_.store(true);
-}
-
-bool ImprintStore::pull(ImprintData& destination) noexcept {
-    if (!changed_.load(std::memory_order_acquire)) return false;
-    const juce::SpinLock::ScopedTryLockType scoped(lock_);
-    if (!scoped.isLocked()) return false;
-    destination = imprint_;
-    changed_.store(false, std::memory_order_release);
-    return true;
 }
 
 }

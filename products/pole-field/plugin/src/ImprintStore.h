@@ -2,9 +2,9 @@
 
 #include "pf/cubes.h"
 
+#include <hba/host/state_mailbox.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include <atomic>
 #include <string>
 
 namespace pf {
@@ -18,16 +18,15 @@ public:
     void set(const ImprintData& imprint, std::string sourceName);
     void clear();
     void reloadFromState();
-    bool pull(ImprintData& destination) noexcept;
+    bool pull(ImprintData& destination) noexcept { return mailbox_.pull(destination); }
 
-private:
-  void writeToState(const ImprintData& imprint, const std::string& label);
+  private:
+    void writeToState(const ImprintData& imprint, const std::string& label);
 
-  juce::AudioProcessorValueTreeState& state_;
-  mutable juce::SpinLock lock_;
-  ImprintData imprint_{};
-  std::string label_{"Imprint WAV"};
-  std::atomic<bool> changed_{true};
+    juce::AudioProcessorValueTreeState& state_;
+    hba::host::StateMailbox<ImprintData> mailbox_{};
+    mutable juce::SpinLock labelLock_;
+    std::string label_{"Imprint WAV"};
 };
 
 }

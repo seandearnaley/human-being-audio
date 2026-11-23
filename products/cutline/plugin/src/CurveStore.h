@@ -3,9 +3,8 @@
 
 #include "cl/lanes.h"
 
+#include <hba/host/state_mailbox.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-
-#include <atomic>
 
 namespace cl {
 
@@ -19,15 +18,13 @@ class CurveStore {
     void setAll(const LaneCurves& curves);
     void reloadFromState();
 
-    bool pull(LaneCurves& destination) noexcept;
+    bool pull(LaneCurves& destination) noexcept { return mailbox_.pull(destination); }
 
   private:
     void writeToState(int lane, const Curve& curve);
 
     juce::AudioProcessorValueTreeState& state_;
-    mutable juce::SpinLock lock_;
-    LaneCurves curves_ = defaultLaneCurves();
-    std::atomic<bool> changed_{true};
+    hba::host::StateMailbox<LaneCurves> mailbox_{defaultLaneCurves()};
 };
 
 } // namespace cl

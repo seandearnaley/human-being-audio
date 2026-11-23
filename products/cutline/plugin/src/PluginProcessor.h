@@ -6,11 +6,14 @@
 #include "OverrideStore.h"
 #include "Parameters.h"
 #include "Presets.h"
+#include "StudioHistory.h"
 #include "Telemetry.h"
 #include "cl/engine.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
+#include <string>
 #include <vector>
 
 namespace cl {
@@ -44,12 +47,24 @@ class PluginProcessor final : public juce::AudioProcessor {
     void getStateInformation(juce::MemoryBlock& destination) override;
     void setStateInformation(const void* data, int size) override;
 
+    struct HistorySnapshot {
+        std::array<float, kParamCount> params{};
+        LaneCurves curves = defaultLaneCurves();
+        PhraseOverrides overrides{};
+        std::string presetName;
+
+        bool operator==(const HistorySnapshot&) const = default;
+    };
+
     juce::AudioProcessorValueTreeState state;
     CurveStore curves;
     OverrideStore overrides;
     Presets presets;
     Telemetry telemetry;
     MidiExporter exporter;
+    hba::studio::History<HistorySnapshot> history;
+    std::vector<int> seedHistory;
+    std::size_t seedCursor = 0;
 
   private:
     Transport readTransport(int numSamples);

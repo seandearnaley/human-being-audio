@@ -22,10 +22,9 @@ juce_add_plugin(TractForm
 file(GLOB TF_PRESET_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/presets/*.json")
 juce_add_binary_data(TractFormPresets SOURCES ${TF_PRESET_FILES})
 
-# The plugin's own sources live in an INTERFACE library so the tests and the
-# snapshot tool compile the same code without a plugin wrapper.
-add_library(TractFormCode INTERFACE)
-target_sources(TractFormCode INTERFACE
+# Compile plugin sources once into TractForm (JUCE's SharedCode static archive)
+# so tests and snapshot tools link directly instead of recompiling plugin & JUCE.
+target_sources(TractForm PRIVATE
     src/Analysis.cpp
     src/Analysis.h
     src/CurveStore.cpp
@@ -42,35 +41,34 @@ target_sources(TractFormCode INTERFACE
     src/Presets.h
     src/Resampler.cpp
     src/Resampler.h)
-if(APPLE)
-    target_sources(TractFormCode INTERFACE src/MacSurface.mm)
-endif()
-target_include_directories(TractFormCode INTERFACE src)
-target_link_libraries(TractFormCode INTERFACE hba_studio_ui
-    tf_analysis
-    tf_core
-    tf_engine
-    tf_ui
-    tf_ui_brand
-    TractFormPresets
-    juce::juce_audio_utils
-    juce::juce_dsp)
+target_include_directories(TractForm PUBLIC src)
+target_include_directories(TractForm SYSTEM INTERFACE "${JUCE_SOURCE_DIR}/modules")
 
 target_compile_definitions(TractForm PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_MODAL_LOOPS_PERMITTED=$<BOOL:${TF_BUILD_TESTS}>)
 
 target_link_libraries(TractForm
     PRIVATE
-        TractFormCode
+        hba_plugin_host
         tf_warnings
+        TractFormPresets
+        juce::juce_audio_utils
+        juce::juce_dsp
     PUBLIC
+        hba_studio_ui
+        hba_plugin_host_headers
+        tf_analysis
+        tf_core
+        tf_engine
+        tf_ui
+        tf_ui_brand
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)
 
 # Headless full-stack snapshot: real processor, real analysis, real interface.
 add_executable(tf-plugin-snapshot tools/snapshot.cpp)
-# The JucePlugin_* definitions only exist on the plugin target, so copy them.
-target_compile_definitions(tf-plugin-snapshot PRIVATE $<TARGET_PROPERTY:TractForm,COMPILE_DEFINITIONS>)
-target_link_libraries(tf-plugin-snapshot PRIVATE TractFormCode tf_warnings)
+hba_build_for_host_only(tf-plugin-snapshot)
+target_link_libraries(tf-plugin-snapshot PRIVATE TractForm tf_warnings)

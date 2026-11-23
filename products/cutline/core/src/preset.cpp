@@ -1,90 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/preset.h"
 
-#include <nlohmann/json.hpp>
+#include <hba/core/preset_json.h>
 
 #include <algorithm>
-#include <array>
 #include <string_view>
 
 namespace cl {
 
 namespace {
-using Json = nlohmann::ordered_json;
+using Json = hba::core::Json;
 
 std::optional<float> readValue(const ParamSpec& spec, const Json& value) {
-    if (value.is_boolean() && spec.kind == ParamKind::toggle)
-        return value.get<bool>() ? 1.0f : 0.0f;
-    if (value.is_string() && spec.kind != ParamKind::continuous) {
-        const auto label = value.get<std::string>();
-        // v0.1.0 compatibility alias: "Live MIDI" -> "Chord Carve".
-        if (spec.key == "inputMode" && label == "Live MIDI")
-            return static_cast<float>(InputMode::chordCarve);
-        const auto found = std::find(spec.choices.begin(), spec.choices.end(), label);
-        if (found == spec.choices.end())
-            return std::nullopt;
-        return static_cast<float>(found - spec.choices.begin());
-    }
-    if (value.is_number())
-        return clampToRange(spec, value.get<float>());
-    return std::nullopt;
+    // v0.1.0 compatibility alias: "Live MIDI" -> "Chord Carve".
+    if (value.is_string() && spec.key == "inputMode" && value.get<std::string>() == "Live MIDI")
+        return static_cast<float>(InputMode::chordCarve);
+    return hba::core::readParamJson(spec, value, clampToRange);
 }
 
-Json writeValue(const ParamSpec& spec, float real) {
-    switch (spec.kind) {
-    case ParamKind::toggle:
-        return real >= 0.5f;
-    case ParamKind::choice:
-        return std::string(spec.choices[static_cast<std::size_t>(clampToRange(spec, real))]);
-    case ParamKind::continuous:
-        break;
-    }
-    return real;
-}
+Json writeValue(const ParamSpec& spec, float real) { return hba::core::writeParamJson(spec, real, clampToRange); }
 
-constexpr std::array<std::string_view, 3> kSegmentNames{"line", "smooth", "hold"};
-
-std::string curveKey(int lane) { return "lane" + std::to_string(lane + 1) + "Curve"; }
-
-int laneOfCurveKey(const std::string& key) {
-    for (int lane = 0; lane < kLaneCount; ++lane) {
-        if (key == curveKey(lane))
-            return lane;
-    }
-    return -1;
-}
-
-std::optional<Curve> readCurve(const Json& value) {
-    if (!value.is_array() || value.empty() || value.size() > static_cast<std::size_t>(kMaxCurvePoints))
-        return std::nullopt;
-    Curve curve;
-    for (const auto& item : value) {
-        if (!item.is_array() || item.size() != 4 || !item[0].is_number() || !item[1].is_number() ||
-            !item[2].is_number() || !item[3].is_string())
-            return std::nullopt;
-        const auto name = item[3].get<std::string>();
-        const auto segment = std::find(kSegmentNames.begin(), kSegmentNames.end(), name);
-        if (segment == kSegmentNames.end())
-            return std::nullopt;
-        CurvePoint point;
-        point.x = item[0].get<float>();
-        point.y = item[1].get<float>();
-        point.tension = std::clamp(item[2].get<float>(), -1.0f, 1.0f);
-        point.segment = static_cast<Segment>(segment - kSegmentNames.begin());
-        addPoint(curve, point);
-    }
-    return curve;
-}
-
-Json writeCurve(const Curve& curve) {
-    Json points = Json::array();
-    for (int i = 0; i < curve.count; ++i) {
-        const auto& point = curve.points[static_cast<std::size_t>(i)];
-        points.push_back(Json::array(
-            {point.x, point.y, point.tension, std::string(kSegmentNames[static_cast<std::size_t>(point.segment)])}));
-    }
-    return points;
-}
+std::string curveKey(int lane) { return hba::core::curveKey(lane); }
+int laneOfCurveKey(const std::string& key) { return hba::core::laneOfCurveKey(key, kLaneCount); }
+std::optional<Curve> readCurve(const Json& value) { return hba::core::readCurveJson(value); }
+Json writeCurve(const Curve& curve) { return hba::core::writeCurveJson(curve); }
 
 std::optional<PhraseOverrides> readOverridesJson(const Json& value) {
     if (!value.is_object())

@@ -2,6 +2,7 @@ add_executable(tf_core_tests
     core/CurveTests.cpp
     core/ParamsTests.cpp
     core/PresetTests.cpp)
+hba_build_for_host_only(tf_core_tests)
 target_link_libraries(tf_core_tests PRIVATE tf_core Catch2::Catch2WithMain tf_warnings)
 catch_discover_tests(tf_core_tests DISCOVERY_MODE PRE_TEST)
 
@@ -9,16 +10,16 @@ add_subdirectory(engine)
 
 if(TF_BUILD_PLUGIN)
     add_executable(tf_plugin_tests plugin/PluginTests.cpp)
+    hba_build_for_host_only(tf_plugin_tests)
     if(APPLE)
         target_sources(tf_plugin_tests PRIVATE plugin/MacAboutTests.mm)
     endif()
-    # The JucePlugin_* definitions only exist on the plugin target, so copy them.
-    target_compile_definitions(tf_plugin_tests PRIVATE $<TARGET_PROPERTY:TractForm,COMPILE_DEFINITIONS> JUCE_MODAL_LOOPS_PERMITTED=1)
-    target_link_libraries(tf_plugin_tests PRIVATE TractFormCode Catch2::Catch2WithMain tf_warnings)
+    target_link_libraries(tf_plugin_tests PRIVATE TractForm Catch2::Catch2WithMain tf_warnings)
     catch_discover_tests(tf_plugin_tests DISCOVERY_MODE PRE_TEST)
 
     # The interface's editing logic, which needs no window. It is internal to tf_ui.
     add_executable(tf_ui_tests ui/CurveEditTests.cpp)
+    hba_build_for_host_only(tf_ui_tests)
     target_include_directories(tf_ui_tests PRIVATE ${PROJECT_SOURCE_DIR}/ui/src)
     target_link_libraries(tf_ui_tests PRIVATE tf_ui Catch2::Catch2WithMain tf_warnings)
     catch_discover_tests(tf_ui_tests DISCOVERY_MODE PRE_TEST)

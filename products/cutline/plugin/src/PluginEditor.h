@@ -5,6 +5,8 @@
 #include "StudioAbout.h"
 #include "cl/ui/editor.h"
 
+#include <hba/host/visage_surface.h>
+
 namespace cl {
 
 class PluginEditor final : public juce::AudioProcessorEditor {
@@ -22,15 +24,7 @@ class PluginEditor final : public juce::AudioProcessorEditor {
     void detachView();
 
     PluginModel model_;
-#if JUCE_MAC
-    struct MacSurface : juce::NSViewComponent {
-        MacSurface();
-    } nativeHost_;
-#elif JUCE_LINUX
-    juce::XEmbedComponent nativeHost_{juce::XEmbedComponentOptions {}};
-#elif JUCE_WINDOWS
-    juce::HWNDComponent nativeHost_;
-#endif
+    hba::host::VisageSurface nativeHost_;
     ui::Editor view_;
     struct AboutPage : hba::StudioAbout {
         AboutPage();

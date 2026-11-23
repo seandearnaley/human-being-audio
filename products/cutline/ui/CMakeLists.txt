@@ -1,6 +1,3 @@
-add_embedded_resources(cl_ui_fonts "cl_fonts.h" "cl::ui::fonts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-Regular.ttf;${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-SemiBold.ttf")
-
 add_embedded_resources(cl_ui_brand "cl_brand.h" "cl::ui::brand"
     "${PROJECT_SOURCE_DIR}/brand/logo/cutline-logotype-on-dark.svg;${PROJECT_SOURCE_DIR}/brand/logo/cutline-mark-on-dark.svg")
 
@@ -24,7 +21,8 @@ add_library(cl_ui STATIC
     src/top_bar.h)
 target_include_directories(cl_ui PUBLIC include)
 target_compile_features(cl_ui PUBLIC cxx_std_20)
-target_link_libraries(cl_ui PUBLIC cl_core cl_engine PRIVATE visage cl_ui_fonts cl_ui_brand cl_warnings)
+target_link_libraries(cl_ui PUBLIC cl_core cl_engine hba_visage_ui PRIVATE visage cl_ui_brand cl_warnings)
 
 add_executable(cl-ui-snapshot tools/snapshot.cpp)
+hba_build_for_host_only(cl-ui-snapshot)
 target_link_libraries(cl-ui-snapshot PRIVATE cl_ui cl_warnings)

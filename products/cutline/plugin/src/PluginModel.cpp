@@ -16,12 +16,18 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
     }
-    seedHistory_.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
-    seedCursor_ = 0;
+    if (processor_.seedHistory.empty()) {
+        processor_.seedHistory.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
+        processor_.seedCursor = 0;
+    }
     refreshVisuals();
 }
 
-PluginModel::~PluginModel() { *alive_ = false; }
+PluginModel::~PluginModel() {
+    *alive_ = false;
+    if (saveDialog_)
+        saveDialog_->exitModalState(0);
+}
 
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -30,7 +36,7 @@ float PluginModel::get(ParamId id) const {
 
 void PluginModel::begin(ParamId id) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
 }
 
@@ -62,33 +68,36 @@ const ui::Visuals& PluginModel::visuals() { return visuals_; }
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     if (!applyingSnapshot_)
-        history_.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
-                               static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+        processor_.history.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
+                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
     processor_.curves.set(lane, curve);
 }
 
 PhraseOverrides PluginModel::overrides() const { return processor_.overrides.get(); }
 void PluginModel::setOverrides(const PhraseOverrides& overrides) {
     if (!applyingSnapshot_)
-        history_.pushCoalesced(captureSnapshot(), 0x2000u, static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+        processor_.history.pushCoalesced(captureSnapshot(), 0x2000u,
+                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
     processor_.overrides.set(overrides);
 }
 void PluginModel::clearOverrides() {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.overrides.clear();
 }
 
 void PluginModel::pushSeedHistory(int seed) {
     const int clamped = std::clamp(seed, 1, 999);
-    if (!seedHistory_.empty() && seedHistory_[seedCursor_] == clamped)
+    auto& seeds = processor_.seedHistory;
+    auto& cursor = processor_.seedCursor;
+    if (!seeds.empty() && seeds[cursor] == clamped)
         return;
-    if (seedCursor_ + 1 < seedHistory_.size())
-        seedHistory_.resize(seedCursor_ + 1);
-    seedHistory_.push_back(clamped);
-    if (seedHistory_.size() > 64)
-        seedHistory_.erase(seedHistory_.begin());
-    seedCursor_ = seedHistory_.size() - 1;
+    if (cursor + 1 < seeds.size())
+        seeds.resize(cursor + 1);
+    seeds.push_back(clamped);
+    if (seeds.size() > 64)
+        seeds.erase(seeds.begin());
+    cursor = seeds.size() - 1;
 }
 
 void PluginModel::rollSeed() {
@@ -107,18 +116,18 @@ void PluginModel::rollSeed() {
 
 bool PluginModel::canStepSeedHistory(int delta) const {
     if (delta < 0)
-        return seedCursor_ > 0;
+        return processor_.seedCursor > 0;
     if (delta > 0)
-        return seedCursor_ + 1 < seedHistory_.size();
+        return processor_.seedCursor + 1 < processor_.seedHistory.size();
     return false;
 }
 
 void PluginModel::stepSeedHistory(int delta) {
     if (!canStepSeedHistory(delta))
         return;
-    seedCursor_ = static_cast<std::size_t>(static_cast<int>(seedCursor_) + (delta < 0 ? -1 : 1));
+    processor_.seedCursor = static_cast<std::size_t>(static_cast<int>(processor_.seedCursor) + (delta < 0 ? -1 : 1));
     begin(ParamId::seed);
-    set(ParamId::seed, static_cast<float>(seedHistory_[seedCursor_]));
+    set(ParamId::seed, static_cast<float>(processor_.seedHistory[processor_.seedCursor]));
     end(ParamId::seed);
 }
 
@@ -155,14 +164,14 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
 
 void PluginModel::loadPreset(int index) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.load(index);
     pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::stepPreset(int delta) {
     if (!applyingSnapshot_)
-        history_.push(captureSnapshot());
+        processor_.history.push(captureSnapshot());
     processor_.presets.step(delta);
     pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
@@ -187,6 +196,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
     s.curves = processor_.curves.all();
     s.overrides = processor_.overrides.get();
+    s.presetName = processor_.presets.currentName();
     return s;
 }
 
@@ -196,21 +206,23 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
     processor_.curves.setAll(snapshot.curves);
     processor_.overrides.set(snapshot.overrides);
+    if (!snapshot.presetName.empty())
+        processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;
 }
 
 void PluginModel::undo() {
-    if (const auto target = history_.undo(captureSnapshot()))
+    if (const auto target = processor_.history.undo(captureSnapshot()))
         applySnapshot(*target);
 }
 
 void PluginModel::redo() {
-    if (const auto target = history_.redo(captureSnapshot()))
+    if (const auto target = processor_.history.redo(captureSnapshot()))
         applySnapshot(*target);
 }
 
-void PluginModel::toggleAB() { applySnapshot(history_.toggleAB(captureSnapshot())); }
+void PluginModel::toggleAB() { applySnapshot(processor_.history.toggleAB(captureSnapshot())); }
 
-void PluginModel::copyAB() { history_.copyActiveToOther(captureSnapshot()); }
+void PluginModel::copyAB() { processor_.history.copyActiveToOther(captureSnapshot()); }
 
 } // namespace cl

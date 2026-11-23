@@ -39,31 +39,23 @@ public:
     void stepPreset(int delta) override;
     void savePreset() override;
 
-    bool canUndo() const override { return history_.canUndo(); }
-    bool canRedo() const override { return history_.canRedo(); }
+    bool canUndo() const override { return processor_.history.canUndo(); }
+    bool canRedo() const override { return processor_.history.canRedo(); }
     void undo() override;
     void redo() override;
-    bool isSlotB() const override { return history_.isSlotB(); }
+    bool isSlotB() const override { return processor_.history.isSlotB(); }
     void toggleAB() override;
     void copyAB() override;
 
   private:
-    struct Snapshot {
-        std::array<float, kParamCount> params{};
-        LaneCurves curves = defaultLaneCurves();
-        ImprintData imprint{};
-        std::string imprintLabel;
-
-        bool operator==(const Snapshot&) const = default;
-    };
+    using Snapshot = PluginProcessor::HistorySnapshot;
 
     Snapshot captureSnapshot() const;
     void applySnapshot(const Snapshot& snapshot);
 
     PluginProcessor& processor_;
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_ {};
-    ui::Visuals visuals_ {};
-    hba::studio::History<Snapshot> history_;
+    ui::Visuals visuals_{};
     bool applyingSnapshot_ = false;
     juce::int64 lastUpdateTicks_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;

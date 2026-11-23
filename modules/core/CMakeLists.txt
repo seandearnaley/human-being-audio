@@ -1,0 +1,5 @@
+if(NOT TARGET hba_core)
+    add_library(hba_core INTERFACE)
+    target_include_directories(hba_core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(hba_core INTERFACE hba_dsp nlohmann_json::nlohmann_json)
+endif()

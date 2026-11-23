@@ -3,9 +3,8 @@
 
 #include "cl/overrides.h"
 
+#include <hba/host/state_mailbox.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-
-#include <atomic>
 
 namespace cl {
 
@@ -18,15 +17,13 @@ class OverrideStore {
     void clear();
     void reloadFromState();
 
-    bool pull(PhraseOverrides& destination) noexcept;
+    bool pull(PhraseOverrides& destination) noexcept { return mailbox_.pull(destination); }
 
   private:
     void writeToState(const PhraseOverrides& overrides);
 
     juce::AudioProcessorValueTreeState& state_;
-    mutable juce::SpinLock lock_;
-    PhraseOverrides overrides_{};
-    std::atomic<bool> changed_{true};
+    hba::host::StateMailbox<PhraseOverrides> mailbox_{};
 };
 
 } // namespace cl

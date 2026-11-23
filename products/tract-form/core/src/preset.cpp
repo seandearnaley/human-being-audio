@@ -1,81 +1,18 @@
 #include "tf/preset.h"
 
-#include <nlohmann/json.hpp>
+#include <hba/core/preset_json.h>
 
-#include <algorithm>
-#include <array>
-#include <string_view>
+#include <utility>
 
 namespace tf {
 
 namespace {
-using Json = nlohmann::ordered_json;
-
-std::optional<float> readValue(const ParamSpec& spec, const Json& value) {
-    if (value.is_boolean() && spec.kind == ParamKind::toggle) return value.get<bool>() ? 1.0f : 0.0f;
-    if (value.is_string() && spec.kind != ParamKind::continuous) {
-        const auto label = value.get<std::string>();
-        const auto found = std::find(spec.choices.begin(), spec.choices.end(), label);
-        if (found == spec.choices.end()) return std::nullopt;
-        return static_cast<float>(found - spec.choices.begin());
-    }
-    if (value.is_number()) return clampToRange(spec, value.get<float>());
-    return std::nullopt;
-}
-
-Json writeValue(const ParamSpec& spec, float real) {
-    switch (spec.kind) {
-        case ParamKind::toggle: return real >= 0.5f;
-        case ParamKind::choice: return std::string(spec.choices[static_cast<std::size_t>(clampToRange(spec, real))]);
-        case ParamKind::continuous: break;
-    }
-    return real;
-}
-
-constexpr std::array<std::string_view, 3> kSegmentNames { "line", "smooth", "hold" };
-
-std::string curveKey(int lane) { return "lane" + std::to_string(lane + 1) + "Curve"; }
-
-int laneOfCurveKey(const std::string& key) {
-    for (int lane = 0; lane < kLaneCount; ++lane)
-        if (key == curveKey(lane)) return lane;
-    return -1;
-}
-
-std::optional<Curve> readCurve(const Json& value) {
-    if (!value.is_array() || value.empty() || value.size() > static_cast<std::size_t>(kMaxCurvePoints)) return std::nullopt;
-    Curve curve;
-    for (const auto& item : value) {
-        if (!item.is_array() || item.size() != 4 || !item[0].is_number() || !item[1].is_number() || !item[2].is_number()
-            || !item[3].is_string())
-            return std::nullopt;
-        const auto name = item[3].get<std::string>();
-        const auto segment = std::find(kSegmentNames.begin(), kSegmentNames.end(), name);
-        if (segment == kSegmentNames.end()) return std::nullopt;
-        CurvePoint point;
-        point.x = item[0].get<float>();
-        point.y = item[1].get<float>();
-        point.tension = std::clamp(item[2].get<float>(), -1.0f, 1.0f);
-        point.segment = static_cast<Segment>(segment - kSegmentNames.begin());
-        addPoint(curve, point);
-    }
-    return curve;
-}
-
-Json writeCurve(const Curve& curve) {
-    Json points = Json::array();
-    for (int i = 0; i < curve.count; ++i) {
-        const auto& point = curve.points[static_cast<std::size_t>(i)];
-        points.push_back(Json::array({ point.x, point.y, point.tension,
-                                       std::string(kSegmentNames[static_cast<std::size_t>(point.segment)]) }));
-    }
-    return points;
-}
+using hba::core::Json;
 
 void fail(std::string* error, std::string message) {
     if (error != nullptr) *error = std::move(message);
 }
-}
+} // namespace
 
 std::optional<Preset> parsePreset(std::string_view json, std::string* error) {
     const Json root = Json::parse(json, nullptr, false);
@@ -94,8 +31,8 @@ std::optional<Preset> parsePreset(std::string_view json, std::string* error) {
             (key == "name" ? preset.name : preset.category) = value.get<std::string>();
             continue;
         }
-        if (const int lane = laneOfCurveKey(key); lane >= 0) {
-            const auto curve = readCurve(value);
+        if (const int lane = hba::core::laneOfCurveKey(key, kLaneCount); lane >= 0) {
+            const auto curve = hba::core::readCurveJson(value);
             if (!curve) {
                 fail(error, "bad value for \"" + key + "\"");
                 return std::nullopt;
@@ -108,7 +45,7 @@ std::optional<Preset> parsePreset(std::string_view json, std::string* error) {
             fail(error, "unknown parameter \"" + key + "\"");
             return std::nullopt;
         }
-        const auto real = readValue(spec(*id), value);
+        const auto real = hba::core::readParamJson(spec(*id), value, clampToRange);
         if (!real) {
             fail(error, "bad value for \"" + key + "\"");
             return std::nullopt;
@@ -123,19 +60,16 @@ std::string serialisePreset(const Preset& preset) {
     root["name"] = preset.name;
     root["category"] = preset.category;
     for (std::size_t i = 0; i < kParams.size(); ++i)
-        root[std::string(kParams[i].key)] = writeValue(kParams[i], preset.params.values[i]);
+        root[std::string(kParams[i].key)] =
+            hba::core::writeParamJson(kParams[i], preset.params.values[i], clampToRange);
     // A curve is only part of the sound while its lane plays it.
     for (int lane = 0; lane < kLaneCount; ++lane)
         if (preset.params.choice(laneParam(lane, LaneField::shape)) == static_cast<int>(LaneShape::custom))
-            root[curveKey(lane)] = writeCurve(preset.curves[static_cast<std::size_t>(lane)]);
+            root[hba::core::curveKey(lane)] = hba::core::writeCurveJson(preset.curves[static_cast<std::size_t>(lane)]);
     return root.dump(2) + "\n";
 }
 
-std::optional<Curve> parseCurve(std::string_view json) {
-    const Json value = Json::parse(json, nullptr, false);
-    return value.is_discarded() ? std::nullopt : readCurve(value);
-}
+std::optional<Curve> parseCurve(std::string_view json) { return hba::core::parseCurveJson(json); }
 
-std::string serialiseCurve(const Curve& curve) { return writeCurve(curve).dump(); }
-
+std::string serialiseCurve(const Curve& curve) { return hba::core::serialiseCurveJson(curve); }
 }

@@ -156,6 +156,13 @@ TEST_CASE("PoleField PluginModel supports Undo/Redo and A/B compare across param
     CHECK(model.isSlotB());
     CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(0.88f).margin(1e-3f));
     CHECK(model.imprint().active);
+
+    // Processor owns history so Undo/Redo and A/B survive closing and reopening the editor.
+    {
+        pf::PluginModel reopened(proc);
+        CHECK(reopened.isSlotB());
+        CHECK(reopened.canUndo());
+    }
 }
 
 TEST_CASE("PoleField preset load clears stale imprint and oversized mono blocks render cleanly", "[plugin]") {

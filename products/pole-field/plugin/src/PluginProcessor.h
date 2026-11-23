@@ -5,10 +5,14 @@
 #include "ImprintStore.h"
 #include "Parameters.h"
 #include "Presets.h"
+#include "StudioHistory.h"
 #include "pf/engine.h"
 
+#include <hba/host/midi_expression.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
+#include <string>
 #include <vector>
 
 namespace pf {
@@ -44,13 +48,24 @@ public:
 
     Params currentParams() const noexcept { return values_.snapshot(); }
 
+    struct HistorySnapshot {
+        std::array<float, kParamCount> params{};
+        LaneCurves curves = defaultLaneCurves();
+        ImprintData imprint{};
+        std::string imprintLabel;
+        std::string presetName;
+
+        bool operator==(const HistorySnapshot&) const = default;
+    };
+
     juce::AudioProcessorValueTreeState state;
     CurveStore curves;
     ImprintStore imprint;
     Presets presets;
     Analysis analysis;
+    hba::studio::History<HistorySnapshot> history;
 
-private:
+  private:
     void parameterChanged(const juce::String& id, float value) override;
     void handleAsyncUpdate() override;
     void prepareEngine();
@@ -59,8 +74,7 @@ private:
 
     ParameterValues values_;
     Engine engine_;
-    juce::MidiRPNDetector rpnDetector_;
-    float pitchBendRangeSt_ = 2.0f;
+    hba::host::MidiExpressionParser midiParser_{2.0f};
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
     std::vector<float> monoScratchR_;

@@ -9,7 +9,6 @@
 
 #include <array>
 #include <memory>
-#include <vector>
 
 namespace cl {
 
@@ -46,24 +45,18 @@ class PluginModel final : public ui::Model {
     void stepPreset(int delta) override;
     void savePreset() override;
 
-    bool canUndo() const override { return history_.canUndo(); }
-    bool canRedo() const override { return history_.canRedo(); }
+    bool canUndo() const override { return processor_.history.canUndo(); }
+    bool canRedo() const override { return processor_.history.canRedo(); }
     void undo() override;
     void redo() override;
-    bool isSlotB() const override { return history_.isSlotB(); }
+    bool isSlotB() const override { return processor_.history.isSlotB(); }
     void toggleAB() override;
     void copyAB() override;
 
     void setDragSource(juce::Component* source) { dragSource_ = source; }
 
   private:
-    struct Snapshot {
-        std::array<float, kParamCount> params{};
-        LaneCurves curves = defaultLaneCurves();
-        PhraseOverrides overrides{};
-
-        bool operator==(const Snapshot&) const = default;
-    };
+    using Snapshot = PluginProcessor::HistorySnapshot;
 
     Snapshot captureSnapshot() const;
     void applySnapshot(const Snapshot& snapshot);
@@ -72,10 +65,7 @@ class PluginModel final : public ui::Model {
     PluginProcessor& processor_;
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
-    hba::studio::History<Snapshot> history_;
     bool applyingSnapshot_ = false;
-    std::vector<int> seedHistory_;
-    std::size_t seedCursor_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     juce::Component* dragSource_ = nullptr;

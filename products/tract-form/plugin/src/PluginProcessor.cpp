@@ -43,7 +43,7 @@ void PluginProcessor::prepareEngine() {
     const auto quality = static_cast<std::size_t>(
         std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
-    engine_.setPitchBendRange(pitchBendRangeSt_);
+    engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -81,54 +81,35 @@ Transport PluginProcessor::readTransport() const {
 }
 
 void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
-    if (message.isNoteOn()) {
-        engine_.noteOn(message.getNoteNumber());
-        lastNote_.store(message.getNoteNumber(), std::memory_order_relaxed);
-    } else if (message.isNoteOff()) {
-        engine_.noteOff(message.getNoteNumber());
-    } else if (message.isPitchWheel()) {
-        const int raw = message.getPitchWheelValue() - 8192;
-        const float norm = raw >= 0 ? static_cast<float>(raw) / 8191.0f : static_cast<float>(raw) / 8192.0f;
-        engine_.pitchBend(pitchBendRangeSt_ * norm);
-    } else if (message.isController()) {
-        const int ch = message.getChannel();
-        const int cc = message.getControllerNumber();
-        const int val = message.getControllerValue();
-        if (ch >= 1 && ch <= 16) {
-            if (const auto rpn = rpnDetector_.tryParse(ch, cc, val)) {
-                if (!rpn->isNRPN && rpn->parameterNumber == 0) {
-                    const float semitones = rpn->is14BitValue ? static_cast<float>(rpn->value >> 7) +
-                                                                    static_cast<float>(rpn->value & 0x7f) / 100.0f
-                                                              : static_cast<float>(rpn->value);
-                    pitchBendRangeSt_ = std::clamp(semitones, 1.0f, 48.0f);
-                    engine_.setPitchBendRange(pitchBendRangeSt_);
-                }
-            }
+    struct Sink {
+        Engine& engine;
+        std::atomic<int>& lastNote;
+        void onNoteOn(int note, float) noexcept {
+            engine.noteOn(note);
+            lastNote.store(note, std::memory_order_relaxed);
         }
-        if (cc == 1) {
-            engine_.setModWheel(static_cast<float>(val) / 127.0f);
-        } else if (cc == 64) {
-            engine_.sustain(val >= 64);
-        } else if (cc == 74) {
-            engine_.setTimbre(val == 64 ? 0.5f : static_cast<float>(val) / 127.0f);
-        } else if (cc == 121) {
-            engine_.sustain(false);
-            engine_.setModWheel(0.0f);
-            engine_.setTimbre(0.5f);
-            engine_.setAftertouch(0.0f);
-            engine_.pitchBend(0.0f);
-        } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
-            engine_.allNotesOff();
+        void onNoteOff(int note) noexcept { engine.noteOff(note); }
+        void onPitchBend(float semitones) noexcept { engine.pitchBend(semitones); }
+        void onPitchBendRange(float semitones) noexcept { engine.setPitchBendRange(semitones); }
+        void onModWheel(float norm01) noexcept { engine.setModWheel(norm01); }
+        void onSustain(bool down) noexcept { engine.sustain(down); }
+        void onTimbre(float norm01) noexcept { engine.setTimbre(norm01); }
+        void onChannelPressure(float norm01) noexcept { engine.setAftertouch(norm01); }
+        void onPolyAftertouch(int note, float norm01) noexcept {
+            const int active = engine.activeNote();
+            if (active < 0 || note == active)
+                engine.setAftertouch(norm01);
         }
-    } else if (message.isChannelPressure()) {
-        engine_.setAftertouch(static_cast<float>(message.getChannelPressureValue()) / 127.0f);
-    } else if (message.isAftertouch()) {
-        const int active = engine_.activeNote();
-        if (active < 0 || message.getNoteNumber() == active)
-            engine_.setAftertouch(static_cast<float>(message.getAfterTouchValue()) / 127.0f);
-    } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
-        engine_.allNotesOff();
-    }
+        void onResetControllers() noexcept {
+            engine.sustain(false);
+            engine.setModWheel(0.0f);
+            engine.setTimbre(0.5f);
+            engine.setAftertouch(0.0f);
+            engine.pitchBend(0.0f);
+        }
+        void onAllNotesOff() noexcept { engine.allNotesOff(); }
+    };
+    midiParser_.process(message, Sink{engine_, lastNote_});
 }
 
 void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {

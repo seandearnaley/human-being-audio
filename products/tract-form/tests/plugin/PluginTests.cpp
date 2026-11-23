@@ -382,6 +382,18 @@ TEST_CASE("PluginModel supports Undo/Redo and A/B compare across params and curv
     model.toggleAB();
     CHECK(model.isSlotB());
     CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+
+    // Processor owns history so Undo/Redo and A/B survive closing and reopening the editor.
+    {
+        PluginModel reopened(host.processor);
+        CHECK(reopened.isSlotB());
+        CHECK(reopened.canUndo());
+        reopened.begin(ParamId::coupling);
+        reopened.set(ParamId::coupling, 0.33f);
+        reopened.end(ParamId::coupling);
+        reopened.undo();
+        CHECK(reopened.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+    }
 }
 
 TEST_CASE("PluginProcessor chunks oversized host blocks cleanly and filters Poly AT to active note") {
