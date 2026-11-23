@@ -5,6 +5,7 @@
 
 #include "pf/nonblocking.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>

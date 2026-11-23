@@ -3,6 +3,8 @@
 #include "Parameters.h"
 #include "pf/preset.h"
 
+#include <algorithm>
+
 namespace pf {
 
 namespace {

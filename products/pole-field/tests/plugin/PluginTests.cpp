@@ -4,7 +4,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 TEST_CASE("PoleField processor processes audio, loads all factory presets, and round-trips state", "[plugin]") {
     juce::ScopedJuceInitialiser_GUI juceInit;

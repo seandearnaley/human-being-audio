@@ -2,6 +2,8 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace pf {
