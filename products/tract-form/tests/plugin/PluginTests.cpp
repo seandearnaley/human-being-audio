@@ -231,9 +231,53 @@ TEST_CASE("Apple libmalloc counts no audio callback allocations for note and Sys
         CHECK(allocations.get() == 1);
     }
     CHECK(allocationsFor(juce::MidiMessage::noteOn(1, 29, 1.0f)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::controllerEvent(1, 1, 96)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::controllerEvent(1, 74, 110)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::channelPressureChange(1, 88)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::controllerEvent(1, 101, 0)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::controllerEvent(1, 100, 0)) == 0);
+    CHECK(allocationsFor(juce::MidiMessage::controllerEvent(1, 6, 12)) == 0);
     CHECK(allocationsFor(sysex) == 0);
 }
 #endif
+
+TEST_CASE("PluginProcessor applies RPN 00 00 pitch bend range and MIDI expression controllers") {
+    Host host;
+    const auto renderBlock = [&](juce::MidiBuffer& midi) {
+        host.buffer.clear();
+        host.processor.processBlock(host.buffer, midi);
+    };
+
+    // Configure RPN 00 00 = 12 semitones, play A2 (45), bend full up (+12 st -> A3 = 220 Hz).
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 101, 0), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 100, 0), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 6, 12), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 1, 100), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 74, 120), 0);
+    midi.addEvent(juce::MidiMessage::channelPressureChange(1, 96), 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 45, 1.0f), 0);
+    midi.addEvent(juce::MidiMessage::pitchWheel(1, 16383), 0);
+    renderBlock(midi);
+
+    juce::MidiBuffer empty;
+    for (int i = 0; i < 40; ++i)
+        renderBlock(empty);
+
+    tf::ui::Visuals visuals;
+    host.processor.analysis.update(visuals, 0.016f);
+    CHECK(12.0 * std::log2(static_cast<double>(visuals.hz) / 110.0) == Catch::Approx(12.0).margin(0.15));
+
+    // CC121 Reset All Controllers returns pitch bend to 0 st (A2 = 110 Hz).
+    juce::MidiBuffer resetMidi;
+    resetMidi.addEvent(juce::MidiMessage::controllerEvent(1, 121, 0), 0);
+    renderBlock(resetMidi);
+    for (int i = 0; i < 40; ++i)
+        renderBlock(empty);
+
+    host.processor.analysis.update(visuals, 0.016f);
+    CHECK(12.0 * std::log2(static_cast<double>(visuals.hz) / 110.0) == Catch::Approx(0.0).margin(0.15));
+}
 
 TEST_CASE("Quality set from another thread takes effect on the message thread") {
     const auto setQualityElsewhere = [](PluginProcessor& processor, float normalised) {

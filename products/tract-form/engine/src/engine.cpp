@@ -119,10 +119,41 @@ double lr4LowpassMagnitude(double hz, double cutoff, double sampleRate) noexcept
 }
 // Smoothed raw parameters.
 enum Sm : std::size_t {
-    coupling, beat, aDetune, bDetune, aRatio, bRatio, aPhase, bPhase, aPm, bPm, fbAmount, width_, tract_, drive_, asym_,
-    warp_, midGainDb, sideGainDb, xoverLog, subSplitLog, subLevel_, growlLevel_, squash_, ceilingDb, limitOn, bend,
-    reachLog, weight_, fitCycles,  // fitCycles is unwrapped: it moves the short way round
-    sculptLog, spreadLog, sculptRes_,
+    coupling,
+    beat,
+    aDetune,
+    bDetune,
+    aRatio,
+    bRatio,
+    aPhase,
+    bPhase,
+    aPm,
+    bPm,
+    fbAmount,
+    width_,
+    tract_,
+    drive_,
+    asym_,
+    warp_,
+    midGainDb,
+    sideGainDb,
+    xoverLog,
+    subSplitLog,
+    subLevel_,
+    growlLevel_,
+    squash_,
+    ceilingDb,
+    limitOn,
+    bend,
+    reachLog,
+    weight_,
+    fitCycles, // fitCycles is unwrapped: it moves the short way round
+    sculptLog,
+    spreadLog,
+    sculptRes_,
+    modWheel_,
+    timbreOffset_,
+    aftertouch_,
     smCount
 };
 
@@ -197,6 +228,10 @@ struct Engine::Impl {
     DelayLine<double> gateDelay;
     int pendingNote = -1;
     double bendTarget = 0.0;
+    double bendRange = kBendRange;
+    double modWheelTarget = 0.0;
+    double timbreOffsetTarget = 0.0;
+    double aftertouchTarget = 0.0;
     double glideMs = spec(ParamId::glide).def;
     bool phaseResetOn = true;
     bool beatLockOn = false;
@@ -359,6 +394,11 @@ struct Engine::Impl {
         for (auto& s : formantSmooth) s.reset();
         cycleSmooth.reset();
         for (auto& g : sculptGainSmooth) g.reset();
+        bendTarget = 0.0;
+        bendRange = kBendRange;
+        modWheelTarget = 0.0;
+        timbreOffsetTarget = 0.0;
+        aftertouchTarget = 0.0;
         snapNext = true;
         countdown = 0;
         idle = true;
@@ -557,6 +597,9 @@ struct Engine::Impl {
         step(spreadLog,
              std::log(std::clamp(p[ParamId::sculptSpread], spec(ParamId::sculptSpread).min, spec(ParamId::sculptSpread).max)));
         step(sculptRes_, p[ParamId::sculptRes]);
+        step(modWheel_, modWheelTarget);
+        step(timbreOffset_, timbreOffsetTarget);
+        step(aftertouch_, aftertouchTarget);
         // Fit is a phase: smooth towards the nearest copy of the target, so
         // 350 -> 10 degrees moves 20 degrees, not 340.
         {
@@ -582,7 +625,8 @@ struct Engine::Impl {
         // never sweeps the long way round.
         t[offA] = sm(aPhase) / 360.0 + movedCycles(LaneTarget::phase);
         t[offB] = sm(bPhase) / 360.0 - movedCycles(LaneTarget::phase);
-        const double couplingMod = moved(LaneTarget::coupling, sm(coupling), 0.0, 1.0);
+        const double couplingMod =
+            std::clamp(moved(LaneTarget::coupling, sm(coupling), 0.0, 1.0) + 0.35 * sm(aftertouch_), 0.0, 1.0);
         t[pmA] = feel::pmIndex(static_cast<float>(sm(aPm)), static_cast<float>(couplingMod));
         t[pmB] = feel::pmIndex(static_cast<float>(sm(bPm)), static_cast<float>(couplingMod));
         t[fbGain] = feel::feedbackRadians(static_cast<float>(sm(fbAmount)));
@@ -597,7 +641,8 @@ struct Engine::Impl {
         t[fbDelay] = std::clamp(cycles / std::max(incM, 1e-9), 2.0, 0.5 * feedback.maxDelay());
         t[width] = moved(LaneTarget::width, sm(width_), 0.0, 1.0);
         t[tractAmt] = std::clamp(sm(tract_), 0.0, 1.0);
-        const double driveMod = moved(LaneTarget::drive, sm(drive_), 0.0, 1.0);
+        const double driveMod =
+            std::clamp(moved(LaneTarget::drive, sm(drive_), 0.0, 1.0) + 0.35 * sm(modWheel_), 0.0, 1.0);
         t[driveGain] = feel::driveGain(static_cast<float>(driveMod));
         t[asymOffset] = 0.5 * sm(asym_);
         t[warpAmt] = std::clamp(sm(warp_), 0.0, 1.0);
@@ -643,9 +688,13 @@ struct Engine::Impl {
         {
             const int count = std::clamp(p.choice(ParamId::sculptCount), 0, kSculptMaxBands - 1) + 1;
             const double gainDb = feel::sculptGainDb(std::clamp(p[ParamId::sculptDepth], -1.0f, 1.0f));
-            const double k = 1.0 / feel::sculptQ(static_cast<float>(std::clamp(sm(sculptRes_), 0.0, 1.0)));
-            const double first = moved(LaneTarget::sculpt, std::exp(sm(sculptLog)), spec(ParamId::sculpt).min,
-                                       spec(ParamId::sculpt).max);
+            const double sculptResEff = std::clamp(sm(sculptRes_) + 0.30 * sm(aftertouch_), 0.0, 1.0);
+            const double k = 1.0 / feel::sculptQ(static_cast<float>(sculptResEff));
+            double first = moved(LaneTarget::sculpt, std::exp(sm(sculptLog)), spec(ParamId::sculpt).min,
+                                 spec(ParamId::sculpt).max);
+            if (sm(aftertouch_) > 0.0)
+                first = std::clamp(first * std::exp2(sm(aftertouch_)), static_cast<double>(spec(ParamId::sculpt).min),
+                                   static_cast<double>(spec(ParamId::sculpt).max));
             const double spread = std::exp(sm(spreadLog));
             double harmonic = first;
             for (int i = 0; i < kSculptMaxBands; ++i, harmonic *= spread) {
@@ -665,7 +714,8 @@ struct Engine::Impl {
         }
 
         // Tract.
-        const double morphMod = moved(LaneTarget::morph, static_cast<double>(p[ParamId::morph]), 0.0, 1.0);
+        const double morphMod = std::clamp(
+            moved(LaneTarget::morph, static_cast<double>(p[ParamId::morph]), 0.0, 1.0) + sm(timbreOffset_), 0.0, 1.0);
         const auto vowels = mixVowels(p.choice(ParamId::vowelA), p.choice(ParamId::vowelB), morphMod, vowelComp);
         FormantTargets f;
         for (std::size_t i = 0; i < kFormantCount; ++i) {
@@ -1013,7 +1063,20 @@ void Engine::allNotesOff() noexcept TF_NONBLOCKING { impl_->allNotesOff(); }
 void Engine::setLaneCurves(const LaneCurves& curves) noexcept TF_NONBLOCKING { impl_->laneCurves = curves; }
 
 void Engine::pitchBend(float semitones) noexcept TF_NONBLOCKING {
-    impl_->bendTarget = std::clamp(static_cast<double>(semitones), -kBendRange, kBendRange);
+    impl_->bendTarget = std::clamp(static_cast<double>(semitones), -impl_->bendRange, impl_->bendRange);
+}
+void Engine::setPitchBendRange(float semitones) noexcept TF_NONBLOCKING {
+    impl_->bendRange = std::clamp(static_cast<double>(semitones), 1.0, 48.0);
+    impl_->bendTarget = std::clamp(impl_->bendTarget, -impl_->bendRange, impl_->bendRange);
+}
+void Engine::setModWheel(float norm01) noexcept TF_NONBLOCKING {
+    impl_->modWheelTarget = std::clamp(static_cast<double>(norm01), 0.0, 1.0);
+}
+void Engine::setTimbre(float norm01) noexcept TF_NONBLOCKING {
+    impl_->timbreOffsetTarget = std::clamp(static_cast<double>(norm01), 0.0, 1.0) - 0.5;
+}
+void Engine::setAftertouch(float norm01) noexcept TF_NONBLOCKING {
+    impl_->aftertouchTarget = std::clamp(static_cast<double>(norm01), 0.0, 1.0);
 }
 
 void Engine::process(const Params& params, const Transport& transport, float* left, float* right, int numSamples,

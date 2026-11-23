@@ -2,6 +2,7 @@
 
 #include "PluginEditor.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace tf {
@@ -40,6 +41,7 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 void PluginProcessor::prepareEngine() {
     const auto quality = static_cast<std::size_t>(values_.snapshot().choice(ParamId::quality));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
+    engine_.setPitchBendRange(pitchBendRangeSt_);
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -83,7 +85,38 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     } else if (message.isNoteOff()) {
         engine_.noteOff(message.getNoteNumber());
     } else if (message.isPitchWheel()) {
-        engine_.pitchBend(2.0f * static_cast<float>(message.getPitchWheelValue() - 8192) / 8192.0f);
+        engine_.pitchBend(pitchBendRangeSt_ * static_cast<float>(message.getPitchWheelValue() - 8192) / 8192.0f);
+    } else if (message.isController()) {
+        const int ch = message.getChannel();
+        const int cc = message.getControllerNumber();
+        const int val = message.getControllerValue();
+        if (ch >= 1 && ch <= 16) {
+            if (const auto rpn = rpnDetector_.tryParse(ch, cc, val)) {
+                if (!rpn->isNRPN && rpn->parameterNumber == 0) {
+                    const float semitones = rpn->is14BitValue ? static_cast<float>(rpn->value >> 7) +
+                                                                    static_cast<float>(rpn->value & 0x7f) / 100.0f
+                                                              : static_cast<float>(rpn->value);
+                    pitchBendRangeSt_ = std::clamp(semitones, 1.0f, 48.0f);
+                    engine_.setPitchBendRange(pitchBendRangeSt_);
+                }
+            }
+        }
+        if (cc == 1) {
+            engine_.setModWheel(static_cast<float>(val) / 127.0f);
+        } else if (cc == 74) {
+            engine_.setTimbre(val == 64 ? 0.5f : static_cast<float>(val) / 127.0f);
+        } else if (cc == 121) {
+            engine_.setModWheel(0.0f);
+            engine_.setTimbre(0.5f);
+            engine_.setAftertouch(0.0f);
+            engine_.pitchBend(0.0f);
+        } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
+            engine_.allNotesOff();
+        }
+    } else if (message.isChannelPressure()) {
+        engine_.setAftertouch(static_cast<float>(message.getChannelPressureValue()) / 127.0f);
+    } else if (message.isAftertouch()) {
+        engine_.setAftertouch(static_cast<float>(message.getAfterTouchValue()) / 127.0f);
     } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
         engine_.allNotesOff();
     }

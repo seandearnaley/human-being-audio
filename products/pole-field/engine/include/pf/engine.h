@@ -29,10 +29,13 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int oversamplingFactor = 4);
     void reset() noexcept PF_NONBLOCKING;
 
-    // Real-time safe MIDI pitch tracking hooks (last-note priority, F1 = 0 st).
+    // Real-time safe MIDI pitch tracking & expression hooks (last-note priority, F1 = 0 st).
     void noteOn(int midiNote) noexcept PF_NONBLOCKING;
     void noteOff(int midiNote) noexcept PF_NONBLOCKING;
     void pitchBend(float semitones) noexcept PF_NONBLOCKING;
+    void setModWheel(float norm01) noexcept PF_NONBLOCKING;
+    void setTimbre(float norm01) noexcept PF_NONBLOCKING;
+    void setAftertouch(float norm01) noexcept PF_NONBLOCKING;
     void allNotesOff() noexcept PF_NONBLOCKING;
 
     void setLaneCurves(const LaneCurves& curves) noexcept PF_NONBLOCKING;
