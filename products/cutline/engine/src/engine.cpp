@@ -675,11 +675,11 @@ struct Engine::Impl {
                     audition.setBendSemitones(ev.channel(), (static_cast<double>(v14 - 8192) / 8191.0) * pbRangeSt);
                 } else if (status == 0xB0u && ev.size == 3) {
                     if (ev.data[1] == 74)
-                        audition.setBrightness(static_cast<double>(ev.data[2]) / 127.0);
+                        audition.setBrightness(ev.channel(), static_cast<double>(ev.data[2]) / 127.0);
                     else if (ev.data[1] == 1)
                         audition.setDrive(static_cast<double>(ev.data[2]) / 127.0);
                 } else if (status == 0xD0u && ev.size >= 2) {
-                    audition.setPressure(static_cast<double>(ev.data[1]) / 127.0);
+                    audition.setPressure(ev.channel(), static_cast<double>(ev.data[1]) / 127.0);
                 }
             }
             audition.renderSample(gainDb, enabled, tone, left[i], right[i]);

@@ -4,6 +4,8 @@
 #include <hba/core/preset_json.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace cl {
@@ -46,6 +48,19 @@ std::optional<PhraseOverrides> readOverridesJson(const Json& value) {
                 out.spans[i].lockedSeed = static_cast<std::uint16_t>(std::clamp(item["seed"].get<int>(), 0, 999));
             if (item.contains("role") && item["role"].is_number_integer())
                 out.spans[i].roleOverride = static_cast<std::int8_t>(std::clamp(item["role"].get<int>(), -1, 5));
+            if (item.contains("oct") && item["oct"].is_number_integer())
+                out.spans[i].octaveShift = static_cast<std::int8_t>(std::clamp(item["oct"].get<int>(), -2, 2));
+            if (item.contains("invert") && item["invert"].is_boolean())
+                out.spans[i].invert = item["invert"].get<bool>();
+            if (item.contains("time") && item["time"].is_number_integer())
+                out.spans[i].timeScale = static_cast<std::int8_t>(std::clamp(item["time"].get<int>(), -1, 1));
+        }
+    }
+    if (value.contains("chords") && value["chords"].is_array()) {
+        const auto& arr = value["chords"];
+        for (std::size_t i = 0; i < arr.size() && i < static_cast<std::size_t>(PhraseOverrides::kMaxChordBars); ++i) {
+            if (arr[i].is_number_integer())
+                out.barChordOffsets[i] = static_cast<std::int8_t>(std::clamp(arr[i].get<int>(), -7, 7));
         }
     }
     if (value.contains("notes") && value["notes"].is_array()) {
@@ -53,14 +68,31 @@ std::optional<PhraseOverrides> readOverridesJson(const Json& value) {
         for (const auto& item : value["notes"]) {
             if (dst >= PhraseOverrides::kMaxNoteOverrides || !item.is_object())
                 break;
-            if (!item.contains("slot") || !item["slot"].is_number_integer())
-                continue;
             NoteOverride n{};
-            n.slotIndex = static_cast<std::int16_t>(std::clamp(item["slot"].get<int>(), 0, 255));
+            if (item.contains("span") && item["span"].is_number_integer() && item.contains("tick") &&
+                item["tick"].is_number_integer()) {
+                n.key.spanIdx = static_cast<std::int8_t>(std::clamp(item["span"].get<int>(), 0, 31));
+                n.key.stepTick = static_cast<std::int16_t>(std::clamp(item["tick"].get<int>(), 0, 4096));
+                if (item.contains("voice") && item["voice"].is_number_integer())
+                    n.key.voiceIdx = static_cast<std::int8_t>(std::clamp(item["voice"].get<int>(), 0, 15));
+            } else if (item.contains("slot") && item["slot"].is_number_integer()) {
+                n.slotIndex = static_cast<std::int16_t>(std::clamp(item["slot"].get<int>(), 0, 511));
+            } else {
+                continue;
+            }
             if (item.contains("pitch") && item["pitch"].is_number_integer())
                 n.pitchDelta = static_cast<std::int8_t>(std::clamp(item["pitch"].get<int>(), -24, 24));
             if (item.contains("vel") && item["vel"].is_number_integer())
                 n.velocityDelta = static_cast<std::int8_t>(std::clamp(item["vel"].get<int>(), -64, 64));
+            if (item.contains("len") && item["len"].is_number_integer())
+                n.lengthSixteenths = static_cast<std::int8_t>(std::clamp(item["len"].get<int>(), -16, 32));
+            if (item.contains("nudge") && item["nudge"].is_number_integer())
+                n.microNudgeTicks = static_cast<std::int8_t>(std::clamp(item["nudge"].get<int>(), -24, 24));
+            if (item.contains("ratchet") && item["ratchet"].is_number_integer()) {
+                const int rc = item["ratchet"].get<int>();
+                if (rc == 2 || rc == 3 || rc == 4 || rc == 6)
+                    n.ratchetCount = static_cast<std::uint8_t>(rc);
+            }
             if (item.contains("muted") && item["muted"].is_boolean())
                 n.muted = item["muted"].get<bool>();
             if (item.contains("flipBend") && item["flipBend"].is_boolean())
@@ -91,20 +123,45 @@ Json writeOverridesJson(const PhraseOverrides& overrides) {
             }
             if (s.roleOverride >= 0)
                 so["role"] = s.roleOverride;
+            if (s.octaveShift != 0)
+                so["oct"] = s.octaveShift;
+            if (s.invert)
+                so["invert"] = true;
+            if (s.timeScale != 0)
+                so["time"] = s.timeScale;
             spans.push_back(std::move(so));
         }
         obj["spans"] = std::move(spans);
+    }
+    if (overrides.hasChordProgression()) {
+        Json chords = Json::array();
+        for (std::int8_t c : overrides.barChordOffsets)
+            chords.push_back(static_cast<int>(c));
+        obj["chords"] = std::move(chords);
     }
     Json notes = Json::array();
     for (const auto& n : overrides.notes) {
         if (!n.active())
             continue;
         Json no = Json::object();
-        no["slot"] = n.slotIndex;
+        if (n.key.valid()) {
+            no["span"] = n.key.spanIdx;
+            no["tick"] = n.key.stepTick;
+            if (n.key.voiceIdx != 0)
+                no["voice"] = n.key.voiceIdx;
+        } else {
+            no["slot"] = n.slotIndex;
+        }
         if (n.pitchDelta != 0)
             no["pitch"] = n.pitchDelta;
         if (n.velocityDelta != 0)
             no["vel"] = n.velocityDelta;
+        if (n.lengthSixteenths != 0)
+            no["len"] = n.lengthSixteenths;
+        if (n.microNudgeTicks != 0)
+            no["nudge"] = n.microNudgeTicks;
+        if (n.ratchetCount != 0)
+            no["ratchet"] = static_cast<int>(n.ratchetCount);
         if (n.muted)
             no["muted"] = true;
         if (n.flipBend)

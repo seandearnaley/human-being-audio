@@ -20,21 +20,23 @@ struct RoleSpan {
 };
 
 struct CompiledNote {
-    double startBeats = 0.0;    // Quantized grid position in [0, phraseBeats)
-    double warpedBeats = 0.0;   // After gravitational microtiming warp
-    double durationBeats = 0.5; // Clamped cleanly inside phrase
-    std::int16_t slotIndex = -1; // Deterministic pre-override slot index for non-destructive edits
+    double startBeats = 0.0;     // Quantized grid position in [0, phraseBeats)
+    double warpedBeats = 0.0;    // After gravitational microtiming warp + per-note nudge
+    double durationBeats = 0.5;  // Clamped cleanly inside phrase
+    NoteKey key{};               // Stable musical coordinate (spanIdx, stepTick, voiceIdx)
+    std::int16_t slotIndex = -1; // Deterministic index for legacy fallback
     std::int8_t noteNumber = 41;
     std::int8_t drumRow = 0; // 0..5 in Drum Kit mode
     std::uint8_t velocity = 100;
     float bendSemitones = 0.0f; // Per-note pitch dive / scoop / slide target
     Role role = Role::statement;
-    std::uint8_t channel = 1; // 1 in Mono/Drum; 2..15 in MPE Lower Zone
+    std::uint8_t channel = 1;      // 1 in Mono/Drum; 2..15 in MPE Lower Zone
+    std::uint8_t ratchetCount = 0; // 0 = normal, 2/3/4/6 = user per-step ratchet
     bool isRatchet = false;
     bool muted = false;
 };
 
-inline constexpr int kMaxPhraseNotes = 256;
+inline constexpr int kMaxPhraseNotes = 512;
 inline constexpr int kMaxRoleSpans = 32;
 inline constexpr int kMaxHeldInputNotes = 16;
 

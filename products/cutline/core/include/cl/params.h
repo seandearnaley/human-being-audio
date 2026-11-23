@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Single source of truth for Cutline's parameter contract (58 total params,
+// Single source of truth for Cutline's parameter contract (59 total params,
 // 8 performance macros first for Ableton Live / controller bank 1).
 #pragma once
 
@@ -77,6 +77,7 @@ enum class ParamId : std::uint8_t {
     lane4Target,
     lane4Follow,
     lane4Ratio,
+    drumStyle,
     count
 };
 
@@ -110,6 +111,7 @@ enum class InputMode : std::uint8_t { seed = 0, transpose = 1, chordCarve = 2 };
 enum class PhraseMode : std::uint8_t { loop = 0, evolve = 1 };
 enum class Contour : std::uint8_t { autoShape = 0, pedal = 1, arch = 2, rise = 3, fall = 4, acid = 5 };
 enum class AuditionTone : std::uint8_t { reese = 0, sub = 1, pluck = 2, kit = 3 };
+enum class DrumStyle : std::uint8_t { autoStyle = 0, amen = 1, think = 2, neuro = 3, halftime = 4, drill = 5 };
 enum class Attractor : std::uint8_t { downbeat = 0, backbeat = 1, offbeat16 = 2, triplet = 3 };
 enum class Scale : std::uint8_t { phrygian = 0, minor = 1, phrygianDom = 2, dorian = 3, pentMinor = 4, chromatic = 5 };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
@@ -138,6 +140,7 @@ inline constexpr std::array<std::string_view, 3> inputMode{"Seed", "Transpose", 
 inline constexpr std::array<std::string_view, 2> phraseMode{"Loop", "Evolve"};
 inline constexpr std::array<std::string_view, 6> contour{"Auto", "Pedal", "Arch", "Rise", "Fall", "Acid"};
 inline constexpr std::array<std::string_view, 4> auditionTone{"Reese", "Sub", "Pluck", "Kit"};
+inline constexpr std::array<std::string_view, 6> drumStyle{"Auto", "Amen", "Think", "Neuro", "Halftime", "Drill"};
 inline constexpr std::array<std::string_view, 3> phraseBars{"2 bars", "4 bars", "8 bars"};
 inline constexpr std::array<std::string_view, 4> attractor{"Downbeat", "Backbeat", "Offbeat 16", "Triplet"};
 inline constexpr std::array<std::string_view, 12> rootNote{"C",  "C#", "D",  "D#", "E",  "F",
@@ -236,6 +239,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     CL_LANE(2, true, LaneTarget::cc74Slide, 2, 0.0f, 0.76f),
     CL_LANE(3, true, LaneTarget::cc1Mod, 3, 90.0f, 0.58f),
     CL_LANE(4, true, LaneTarget::pressure, 1, 45.0f, 0.64f),
+    detail::choice("drumStyle", "Kit style", choices::drumStyle, 0, false),
 }};
 
 #undef CL_LANE

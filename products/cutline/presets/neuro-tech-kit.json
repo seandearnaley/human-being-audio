@@ -1,0 +1,29 @@
+{
+    "name": "Neuro Tech Kit",
+    "category": "Breaks",
+    "outputMode": "Drum Kit",
+    "drumStyle": "Neuro",
+    "grammar": "Neuro",
+    "gravity": 0.28,
+    "ratchet": 0.62,
+    "glide": 0.0,
+    "density": 0.78,
+    "mutate": 0.56,
+    "motion": 0.48,
+    "velArc": 0.80,
+    "seed": 808,
+    "attractor": "Offbeat 16",
+    "auditionTone": "Kit",
+    "overrides": {
+        "spans": [
+            {
+                "locked": true,
+                "seed": 808
+            },
+            {},
+            {
+                "time": 1
+            }
+        ]
+    }
+}

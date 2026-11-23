@@ -27,14 +27,14 @@ class FixedPlayHead final : public juce::AudioPlayHead {
 
 } // namespace
 
-TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio on uneven blocks, and recalls state",
+TEST_CASE("Cutline processor loads all 32 presets, generates MIDI + finite audio on uneven blocks, and recalls state",
           "[plugin]") {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     cl::PluginProcessor proc;
     proc.prepareToPlay(48000.0, 257);
 
-    REQUIRE(proc.presets.all().size() >= 24);
+    REQUIRE(proc.presets.all().size() >= 32);
 
     FixedPlayHead playHead;
     proc.setPlayHead(&playHead);
@@ -79,15 +79,25 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     }
     midFile.deleteFile();
 
-    // Round-trip state including custom curve and phrase overrides
+    // Round-trip state including custom curve, 1.0 phrase overrides, and drumStyle
     proc.curves.set(0, cl::curves::rampDown());
     cl::PhraseOverrides ov;
     ov.spans[0].locked = true;
     ov.spans[0].lockedSeed = 407;
+    ov.spans[1].octaveShift = 1;
+    ov.spans[1].invert = true;
+    ov.barChordOffsets = {0, 0, -2, -1, 0, 0, 0, 0};
     ov.fillStartFrac = 0.72f;
+    if (auto* n = ov.findOrCreateNote(cl::NoteKey{0, 0, 0})) {
+        n->ratchetCount = 3;
+        n->lengthSixteenths = 2;
+        n->microNudgeTicks = -6;
+    }
     proc.overrides.set(ov);
     if (auto* param = proc.state.getParameter("gravity"))
         param->setValueNotifyingHost(0.75f);
+    if (auto* param = proc.state.getParameter("drumStyle"))
+        param->setValueNotifyingHost(0.4f);
 
     juce::MemoryBlock stateBlob;
     proc.getStateInformation(stateBlob);
@@ -99,6 +109,7 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     REQUIRE(restored.curves.get(0) == cl::curves::rampDown());
     REQUIRE(restored.overrides.get() == ov);
     REQUIRE(restored.state.getParameter("gravity")->getValue() == Catch::Approx(0.75f).margin(1e-4f));
+    REQUIRE(restored.state.getParameter("drumStyle")->getValue() == Catch::Approx(0.4f).margin(1e-4f));
 }
 
 TEST_CASE(

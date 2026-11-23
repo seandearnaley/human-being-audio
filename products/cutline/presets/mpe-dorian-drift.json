@@ -1,0 +1,48 @@
+{
+    "name": "MPE Dorian Drift",
+    "category": "MPE",
+    "outputMode": "MPE Zone",
+    "phraseMode": "Evolve",
+    "grammar": "Liquid",
+    "gravity": 0.22,
+    "ratchet": 0.28,
+    "glide": 0.78,
+    "density": 0.68,
+    "mutate": 0.44,
+    "motion": 0.88,
+    "velArc": 0.64,
+    "seed": 444,
+    "attractor": "Backbeat",
+    "rootNote": "A",
+    "octave": "3",
+    "scale": "Dorian",
+    "contour": "Arch",
+    "bendRange": "±48 st",
+    "legato": 0.86,
+    "auditionTone": "Pluck",
+    "lane1Depth": 0.42,
+    "lane2Rate": "4 bars",
+    "lane2Depth": 0.90,
+    "lane3Rate": "2 bars",
+    "lane3Depth": 0.74,
+    "lane4Rate": "4 bars",
+    "lane4Depth": 0.68,
+    "overrides": {
+        "chords": [
+            0,
+            3,
+            -1,
+            4,
+            0,
+            0,
+            0,
+            0
+        ],
+        "spans": [
+            {
+                "locked": true,
+                "seed": 444
+            }
+        ]
+    }
+}

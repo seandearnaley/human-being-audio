@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <initializer_list>
 
 namespace cl {
 
@@ -311,6 +313,7 @@ std::uint32_t phraseSignature(const Params& params, std::int64_t phraseIndex, co
     mix(q(params[ParamId::legato]));
     mix(static_cast<std::uint32_t>(phraseMode));
     mix(static_cast<std::uint32_t>(params.choice(ParamId::contour)));
+    mix(static_cast<std::uint32_t>(params.choice(ParamId::drumStyle)));
 
     const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
     if (inputMode != InputMode::seed) {
@@ -323,16 +326,25 @@ std::uint32_t phraseSignature(const Params& params, std::int64_t phraseIndex, co
     if (overrides.hasAny()) {
         mix(q(overrides.fillStartFrac));
         mix(q(overrides.turnStartFrac));
+        for (std::int8_t c : overrides.barChordOffsets)
+            mix(static_cast<std::uint32_t>(static_cast<int>(c) + 16));
         for (const auto& s : overrides.spans) {
             mix((s.locked ? 1U : 0U) | (static_cast<std::uint32_t>(s.lockedSeed) << 4U) |
-                (static_cast<std::uint32_t>(s.roleOverride + 2) << 16U));
+                (static_cast<std::uint32_t>(s.roleOverride + 2) << 16U) |
+                (static_cast<std::uint32_t>(s.octaveShift + 4) << 20U) | (s.invert ? (1U << 24U) : 0U) |
+                (static_cast<std::uint32_t>(s.timeScale + 2) << 25U));
         }
         for (const auto& n : overrides.notes) {
             if (!n.active())
                 continue;
-            mix(static_cast<std::uint32_t>(n.slotIndex) | (static_cast<std::uint32_t>(n.pitchDelta + 32) << 9U) |
-                (static_cast<std::uint32_t>(n.velocityDelta + 64) << 16U) | (n.muted ? (1U << 24U) : 0U) |
-                (n.flipBend ? (1U << 25U) : 0U));
+            mix(static_cast<std::uint32_t>(n.key.spanIdx + 2) | (static_cast<std::uint32_t>(n.key.stepTick + 2) << 6U) |
+                (static_cast<std::uint32_t>(n.key.voiceIdx + 2) << 19U) |
+                (static_cast<std::uint32_t>(n.slotIndex + 2) << 24U));
+            mix(static_cast<std::uint32_t>(n.pitchDelta + 32) |
+                (static_cast<std::uint32_t>(n.velocityDelta + 64) << 7U) |
+                (static_cast<std::uint32_t>(n.lengthSixteenths + 32) << 15U) |
+                (static_cast<std::uint32_t>(n.microNudgeTicks + 32) << 22U));
+            mix(static_cast<std::uint32_t>(n.ratchetCount) | (n.muted ? 0x10U : 0U) | (n.flipBend ? 0x20U : 0U));
         }
     }
     return h;
@@ -476,6 +488,65 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
         return static_cast<std::uint8_t>(std::clamp(static_cast<int>(std::lround(baseVel * arc)), 24, 127));
     };
 
+    const auto barChordOf = [&](double beat) noexcept CL_NONBLOCKING -> int {
+        const int bar = std::clamp(static_cast<int>(std::floor(beat / 4.0)), 0, PhraseOverrides::kMaxChordBars - 1);
+        return static_cast<int>(overrides.barChordOffsets[static_cast<std::size_t>(bar)]);
+    };
+
+    const auto makeKey = [](int spanIdx, double startBeat, int voiceIdx) noexcept CL_NONBLOCKING -> NoteKey {
+        return {static_cast<std::int8_t>(std::clamp(spanIdx, 0, 31)),
+                static_cast<std::int16_t>(std::clamp<long long>(std::llround(startBeat * 24.0), 0LL, 4095LL)),
+                static_cast<std::int8_t>(std::clamp(voiceIdx, 0, 15))};
+    };
+
+    // Resolve breakbeat kit style (Auto maps directly from active Grammar).
+    const auto reqDrumStyle = static_cast<DrumStyle>(std::clamp(params.choice(ParamId::drumStyle), 0, 5));
+    const DrumStyle effDrumStyle = [&]() noexcept CL_NONBLOCKING {
+        if (reqDrumStyle != DrumStyle::autoStyle)
+            return reqDrumStyle;
+        switch (grammar) {
+        case Grammar::bbcut11:
+            return DrumStyle::amen;
+        case Grammar::liquid:
+            return DrumStyle::think;
+        case Grammar::neuro:
+            return DrumStyle::neuro;
+        case Grammar::halftime:
+            return DrumStyle::halftime;
+        case Grammar::warpcut:
+            return DrumStyle::drill;
+        }
+        return DrumStyle::neuro;
+    }();
+
+    // 16-step polyphonic breakbeat pattern bitmasks: [style 0..4][row 0..5] (bit 0 = step 0 .. bit 15 = step 15).
+    // Rows: 0=Kick, 1=Snare, 2=Ghost, 3=ClosedHat, 4=OpenHat, 5=RatchetPerc.
+    constexpr auto maskOf = [](std::initializer_list<int> steps) constexpr -> std::uint16_t {
+        std::uint16_t m = 0;
+        for (int st : steps)
+            m = static_cast<std::uint16_t>(m | (1U << static_cast<unsigned>(st)));
+        return m;
+    };
+    const std::array<std::array<std::uint16_t, 6>, 5> kDrumPatterns{{
+        // 0: Amen (iconic 1, 1.5, 3.5, 3.75 kick; 2 & 4 snare; 2.75/3.25/4.75 ghosts; 8th ride + open-hat lift)
+        {maskOf({0, 2, 10, 11}), maskOf({4, 12}), maskOf({7, 9, 15}), maskOf({0, 2, 4, 6, 8, 10, 12}), maskOf({14}),
+         maskOf({})},
+        // 1: Think (rolling soulful kick + 16th shaker/hat drive + open-hat accents on 7 & 15)
+        {maskOf({0, 10}), maskOf({4, 12}), maskOf({7, 9, 15}), maskOf({0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14}),
+         maskOf({7, 15}), maskOf({})},
+        // 2: Neuro (hard 2-step kick, razor snare, tight ghost chatter, driving 8th/16th hats)
+        {maskOf({0, 10}), maskOf({4, 12}), maskOf({7, 9, 14}), maskOf({0, 2, 3, 4, 6, 8, 10, 11, 12, 14}), maskOf({6}),
+         maskOf({})},
+        // 3: Halftime (colossal beat-3 snare, heavy 1 & 3.75 kick, spacious syncopated hats)
+        {maskOf({0, 11}), maskOf({8}), maskOf({5, 14, 15}), maskOf({0, 2, 3, 4, 6, 8, 10, 12, 13}), maskOf({14}),
+         maskOf({})},
+        // 4: Drill (chopped IDM / drill-n-bass polyrhythmic kick/snare + frantic perc/hat grid)
+        {maskOf({0, 3, 7, 10, 14}), maskOf({4, 11, 13}), maskOf({1, 5, 6, 9, 15}),
+         maskOf({0, 1, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15}), maskOf({2, 12}), maskOf({6, 14})},
+    }};
+    const int drumStyleIdx = std::clamp(static_cast<int>(effDrumStyle) - 1, 0, 4);
+    const auto& drumKitMask = kDrumPatterns[static_cast<std::size_t>(drumStyleIdx)];
+
     // 2. Compile notes across each structural role span.
     for (int s = 0; s < out.spanCount; ++s) {
         const RoleSpan& span = out.spans[static_cast<std::size_t>(s)];
@@ -486,12 +557,18 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
         // Locked spans use their captured seed and stay frozen across phrase evolutions.
         int spanSeed = seed;
         bool spanLocked = false;
+        int spanOctShift = 0;
+        bool spanInvert = false;
+        int spanTimeScale = 0;
         if (s < PhraseOverrides::kMaxSpanOverrides) {
             const auto& sov = overrides.spans[static_cast<std::size_t>(s)];
             if (sov.locked && sov.lockedSeed >= 1 && sov.lockedSeed <= 999) {
                 spanSeed = static_cast<int>(sov.lockedSeed);
                 spanLocked = true;
             }
+            spanOctShift = std::clamp(static_cast<int>(sov.octaveShift), -2, 2);
+            spanInvert = sov.invert;
+            spanTimeScale = std::clamp(static_cast<int>(sov.timeScale), -1, 1);
         }
 
         RhythmCell motif{};
@@ -509,53 +586,110 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
                                       (static_cast<std::uint32_t>(s + 7) * 374761393U)));
 
         if (mode == OutputMode::drum) {
-            const double step = span.role == Role::ratchet ? (ratchetAmt > 0.65f ? 0.1875 : 0.25) : 0.5;
+            // True polyphonic 16th-grid Breakbeat Drum Compiler (simultaneous Kick/Snare/Ghost/Hats/Perc).
+            const double baseStep = (spanTimeScale < 0) ? 0.5 : (spanTimeScale > 0 ? 0.125 : 0.25);
+            const double step = span.role == Role::ratchet ? (ratchetAmt > 0.65f ? 0.125 : 0.1875) : baseStep;
+
+            const auto emitDrum = [&](double b, int row, int baseVel, double prog,
+                                      bool ratchetFlag) noexcept CL_NONBLOCKING {
+                const double warped = warpBeat(b, gravity, attractor);
+                const double maxDur = std::max(0.04, totalBeats - warped - 0.02);
+                CompiledNote note;
+                note.startBeats = b;
+                note.warpedBeats = warped;
+                note.durationBeats = std::min(step * (row == 4 ? 1.4 : 0.78), maxDur);
+                note.key = makeKey(s, b, row);
+                note.noteNumber = kDrumNotes[static_cast<std::size_t>(row)];
+                note.drumRow = static_cast<std::int8_t>(row);
+                note.velocity = shapeVel(baseVel, prog);
+                note.bendSemitones = 0.0f;
+                note.role = span.role;
+                note.channel = 1;
+                note.isRatchet = ratchetFlag;
+                pushNote(out, note);
+            };
+
             for (double b = span.startBeats; b < span.endBeats - 1.0e-5; b += step) {
                 const double barBeat = b - std::floor(b / 4.0) * 4.0;
+                const int step16 = static_cast<int>(std::llround(barBeat * 4.0)) & 15;
+                const std::uint16_t bit = static_cast<std::uint16_t>(1U << static_cast<unsigned>(step16));
                 const double prog = (b - span.startBeats) / spanLen;
-                int row = -1;
-                int baseVel = 92;
 
                 if (span.role == Role::ratchet) {
-                    row = spanRng.uniform() < 0.62 ? 5 : 2;
-                    baseVel = 58 + static_cast<int>(64.0 * prog);
-                } else if (span.role == Role::turnaround) {
-                    row = prog < 0.55 ? 1 : 0;
-                    baseVel = 118;
-                } else if (std::abs(barBeat - 0.0) < 0.01 ||
-                           (grammar != Grammar::halftime && std::abs(barBeat - 2.5) < 0.01)) {
-                    row = 0; // Kick
-                    baseVel = 120;
-                } else if (std::abs(barBeat - 1.0) < 0.01 || std::abs(barBeat - 3.0) < 0.01) {
-                    row = (grammar == Grammar::halftime && std::abs(barBeat - 1.0) < 0.01) ? 3 : 1;
-                    baseVel = row == 1 ? 114 : 84;
-                } else {
-                    const double prob = static_cast<double>(densityAmt) * (span.role == Role::mutation ? 0.92 : 0.70);
-                    if (spanRng.uniform() < prob) {
-                        const double pick = evolveActive && evoRng.uniform() < static_cast<double>(mutateAmt) * 0.4
-                                                ? evoRng.uniform()
-                                                : spanRng.uniform();
-                        row = pick < 0.44 ? 2 : (pick < 0.84 ? 3 : 4);
-                        baseVel = row == 2 ? spanRng.integer(46, 74) : spanRng.integer(68, 98);
-                    }
+                    const int row = spanRng.uniform() < 0.56 ? 5 : (spanRng.uniform() < 0.65 ? 2 : 1);
+                    const int vel = 54 + static_cast<int>(68.0 * prog);
+                    emitDrum(b, row, vel, prog, true);
+                    if ((step16 % 4) == 0 && densityAmt > 0.45f)
+                        emitDrum(b, 3, 76, prog, false);
+                    continue;
                 }
 
-                if (row >= 0) {
-                    const double warped = warpBeat(b, gravity, attractor);
-                    const double maxDur = std::max(0.05, totalBeats - warped - 0.02);
-                    CompiledNote note;
-                    note.startBeats = b;
-                    note.warpedBeats = warped;
-                    note.durationBeats = std::min(step * 0.72, maxDur);
-                    note.noteNumber = kDrumNotes[static_cast<std::size_t>(row)];
-                    note.drumRow = static_cast<std::int8_t>(row);
-                    note.velocity = shapeVel(baseVel, prog);
-                    note.bendSemitones = 0.0f;
-                    note.role = span.role;
-                    note.channel = 1;
-                    note.isRatchet = (span.role == Role::ratchet || row == 2);
-                    pushNote(out, note);
+                if (span.role == Role::turnaround) {
+                    // Punchy snare-flam + kick pickup turnaround with crash/open hat on final hit.
+                    if (prog < 0.40) {
+                        emitDrum(b, 1, 116, prog, false);
+                        if (densityAmt > 0.35f)
+                            emitDrum(b, 4, 96, prog, false);
+                    } else if (prog < 0.75) {
+                        if (spanRng.uniform() < 0.45 + 0.50 * static_cast<double>(densityAmt))
+                            emitDrum(b, 5, 88 + static_cast<int>(26.0 * prog), prog, true);
+                    } else {
+                        emitDrum(b, 0, 122, prog, false);
+                        emitDrum(b, 1, 118, prog, false);
+                    }
+                    continue;
                 }
+
+                // Core polyphonic layers: Kick (0), Snare (1), Ghost (2), Closed Hat (3), Open Hat (4), Perc (5)
+                bool kickHit = (drumKitMask[0] & bit) != 0U;
+                bool snareHit = (drumKitMask[1] & bit) != 0U;
+                bool ghostHit = (drumKitMask[2] & bit) != 0U;
+                bool chHit = (drumKitMask[3] & bit) != 0U;
+                bool ohHit = (drumKitMask[4] & bit) != 0U;
+                bool percHit = (drumKitMask[5] & bit) != 0U;
+
+                // Role-aware musical variation (Answer adds pickup kick, Mutation shifts snare/adds fills)
+                if (span.role == Role::answer && step16 == 6 && effDrumStyle == DrumStyle::halftime)
+                    kickHit = true;
+                if (span.role == Role::mutation) {
+                    if (step16 == 15 && mutateAmt > 0.35f && spanRng.uniform() < static_cast<double>(mutateAmt))
+                        kickHit = true;
+                    if (effDrumStyle == DrumStyle::amen && step16 == 14 && mutateAmt > 0.4f)
+                        snareHit = true;
+                    if (!percHit && (step16 == 5 || step16 == 13) &&
+                        spanRng.uniform() < static_cast<double>(mutateAmt) * 0.45)
+                        percHit = true;
+                }
+                if (evolveActive && evoRng.uniform() < static_cast<double>(mutateAmt) * 0.25) {
+                    if (!ghostHit && (step16 % 2 == 1))
+                        ghostHit = true;
+                }
+
+                // Thin hats/ghosts smoothly with Density while keeping core Kick/Snare anchor solid
+                const double dens = static_cast<double>(densityAmt);
+                if (ghostHit && dens < 0.85 && spanRng.uniform() > (0.15 + 0.95 * dens))
+                    ghostHit = false;
+                if (chHit && (step16 % 2 == 1) && spanRng.uniform() > (0.10 + 0.90 * dens))
+                    chHit = false;
+                if (chHit && (step16 % 2 == 0) && dens < 0.28 && spanRng.uniform() > dens * 3.0)
+                    chHit = false;
+                if (ohHit && dens < 0.22)
+                    ohHit = false;
+                if (ohHit)
+                    chHit = false; // Open hat replaces closed hat on the same step
+
+                if (kickHit)
+                    emitDrum(b, 0, step16 == 0 ? 124 : 114, prog, false);
+                if (snareHit)
+                    emitDrum(b, 1, 118, prog, false);
+                if (ghostHit)
+                    emitDrum(b, 2, spanRng.integer(48, 74), prog, true);
+                if (chHit)
+                    emitDrum(b, 3, (step16 % 2 == 0) ? spanRng.integer(84, 102) : spanRng.integer(58, 78), prog, false);
+                if (ohHit)
+                    emitDrum(b, 4, spanRng.integer(88, 108), prog, false);
+                if (percHit)
+                    emitDrum(b, 5, spanRng.integer(76, 104), prog, true);
             }
             continue;
         }
@@ -568,6 +702,7 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
             constexpr std::array<double, 4> kEvenSteps{0.25, 0.25, 0.25, 0.25};
             const bool useBouncing = (grammar == Grammar::warpcut || grammar == Grammar::bbcut11);
             const bool useDecel = useBouncing && ((spanSeed & 1) == 1) && ratchetAmt > 0.5f;
+            const double timeMul = (spanTimeScale < 0) ? 2.0 : (spanTimeScale > 0 ? 0.5 : 1.0);
 
             double cursor = span.startBeats;
             int idx = 0;
@@ -579,18 +714,25 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
                 } else if (ratchetAmt > 0.72f) {
                     rawStep = 0.1875;
                 }
-                const double step = std::min(rawStep, span.endBeats - cursor);
+                const double step = std::min(std::max(0.08, rawStep * timeMul), span.endBeats - cursor);
                 const double warped = warpBeat(cursor, gravity, attractor);
                 const double prog = (cursor - span.startBeats) / spanLen;
                 const int degBump =
                     evolveActive && evoRng.uniform() < static_cast<double>(mutateAmt) * 0.45 ? evoRng.integer(1, 3) : 0;
-                const int pitch = resolvePitch(idx + 1 + degBump, params, held, (idx % 3) == 2 && mutateAmt > 0.35f);
+                int rawDeg = idx + 1 + degBump;
+                if (spanInvert)
+                    rawDeg = -rawDeg;
+                rawDeg += barChordOf(cursor);
+                const int pitch = std::clamp(resolvePitch(rawDeg, params, held, (idx % 3) == 2 && mutateAmt > 0.35f) +
+                                                 spanOctShift * 12,
+                                             12, 120);
                 const double maxDur = std::max(0.04, totalBeats - warped - 0.02);
 
                 CompiledNote note;
                 note.startBeats = cursor;
                 note.warpedBeats = warped;
                 note.durationBeats = std::min(step * 0.80, maxDur);
+                note.key = makeKey(s, cursor, 0);
                 note.noteNumber = static_cast<std::int8_t>(pitch);
                 note.velocity = shapeVel(68 + static_cast<int>(54.0 * prog), prog);
                 note.bendSemitones = ((idx % 2 == 0) ? 2.0f : -2.5f) * glideAmt;
@@ -604,13 +746,18 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
         } else if (span.role == Role::turnaround) {
             const double warped = warpBeat(span.startBeats, gravity, attractor);
             const double maxDur = std::max(0.12, totalBeats - warped - 0.04);
-            const int turnDeg = evolveActive && evoRng.uniform() < static_cast<double>(mutateAmt) * 0.5 ? 4 : 5;
-            const int leadPitch = resolvePitch(turnDeg, params, held, mutateAmt > 0.5f);
+            int turnDeg = evolveActive && evoRng.uniform() < static_cast<double>(mutateAmt) * 0.5 ? 4 : 5;
+            if (spanInvert)
+                turnDeg = -turnDeg;
+            turnDeg += barChordOf(span.startBeats);
+            const int leadPitch =
+                std::clamp(resolvePitch(turnDeg, params, held, mutateAmt > 0.5f) + spanOctShift * 12, 12, 120);
 
             CompiledNote dive;
             dive.startBeats = span.startBeats;
             dive.warpedBeats = warped;
             dive.durationBeats = std::min(spanLen * 0.90, maxDur);
+            dive.key = makeKey(s, span.startBeats, 0);
             dive.noteNumber = static_cast<std::int8_t>(leadPitch);
             dive.velocity = 122;
             dive.bendSemitones = -12.0f * glideAmt; // Signature neuro pitch-dive turnaround
@@ -620,19 +767,22 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
 
             if (mode == OutputMode::mpe) {
                 CompiledNote upper = dive;
-                upper.noteNumber = static_cast<std::int8_t>(
-                    resolveHarmonyPitch(turnDeg, 4, params, held, mutateAmt > 0.5f)); // Diatonic 5th
+                upper.key = makeKey(s, span.startBeats, 1);
+                upper.noteNumber = static_cast<std::int8_t>(std::clamp(
+                    resolveHarmonyPitch(turnDeg, 4, params, held, mutateAmt > 0.5f) + spanOctShift * 12, 12, 120));
                 upper.velocity = 94;
                 upper.bendSemitones = 5.0f * glideAmt;
                 upper.channel = allocChannel();
                 pushNote(out, upper);
             }
         } else {
-            const int localBars = std::max(1, static_cast<int>(std::ceil(spanLen / 4.0)));
-            for (int lb = 0; lb < localBars; ++lb) {
-                const double barBase = span.startBeats + static_cast<double>(lb * 4);
+            const double timeMul = (spanTimeScale < 0) ? 2.0 : (spanTimeScale > 0 ? 0.5 : 1.0);
+            const double cellPeriod = 4.0 * timeMul;
+            const int localCycles = std::max(1, static_cast<int>(std::ceil(spanLen / cellPeriod)));
+            for (int lb = 0; lb < localCycles; ++lb) {
+                const double barBase = span.startBeats + static_cast<double>(lb) * cellPeriod;
                 for (int i = 0; i < motif.count; ++i) {
-                    const double beat = barBase + motif.offsets[static_cast<std::size_t>(i)];
+                    const double beat = barBase + motif.offsets[static_cast<std::size_t>(i)] * timeMul;
                     if (beat >= span.endBeats - 0.05)
                         continue;
 
@@ -642,8 +792,9 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
 
                     const double nextBeat =
                         (i + 1 < motif.count)
-                            ? std::min(span.endBeats, barBase + motif.offsets[static_cast<std::size_t>(i + 1)])
-                            : std::min(span.endBeats, barBase + 4.0);
+                            ? std::min(span.endBeats,
+                                       barBase + motif.offsets[static_cast<std::size_t>(i + 1)] * timeMul)
+                            : std::min(span.endBeats, barBase + cellPeriod);
 
                     int degree = motifDegrees[static_cast<std::size_t>(i)];
                     bool lift = false;
@@ -660,10 +811,13 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
                         if (i == motif.count - 1 && evoRng.uniform() < 0.4)
                             lift = !lift;
                     }
+                    if (spanInvert)
+                        degree = -degree;
+                    degree += barChordOf(beat);
 
-                    const int pitch = resolvePitch(degree, params, held, lift);
+                    const int pitch = std::clamp(resolvePitch(degree, params, held, lift) + spanOctShift * 12, 12, 120);
                     const double warped = warpBeat(beat, gravity, attractor);
-                    const double gap = std::max(0.20, nextBeat - beat);
+                    const double gap = std::max(0.12, nextBeat - beat);
                     const bool doLegato = (grammar == Grammar::liquid) || (activeContour == Contour::acid && i > 0) ||
                                           (i > 0 && legatoAmt > 0.45f && (i % 2 == 1));
                     const double gateMul = doLegato ? (0.96 + 0.14 * static_cast<double>(legatoAmt)) : 0.80;
@@ -675,6 +829,7 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
                     note.startBeats = beat;
                     note.warpedBeats = warped;
                     note.durationBeats = std::min(gap * gateMul, maxDur);
+                    note.key = makeKey(s, beat, 0);
                     note.noteNumber = static_cast<std::int8_t>(pitch);
                     note.velocity = shapeVel(i == 0 ? 118 : (isAcidAccent ? 114 : spanRng.integer(76, 108)), prog);
                     note.bendSemitones = 0.0f; // Filled by target-pitch glide pass below
@@ -683,11 +838,13 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
                     pushNote(out, note);
 
                     if (mode == OutputMode::mpe && (i == 0 || i == 2)) {
-                        // Scale-diatonic 5th (degree + 4) on beat 1, diatonic 3rd (degree + 2) or 7th (+6) on stab.
+                        // Scale-diatonic 5th (degree + 4) on beat 1, diatonic 3rd (degree + 2) on stab.
                         const int harmInterval = (i == 0) ? 4 : 2;
                         CompiledNote harm = note;
-                        harm.noteNumber =
-                            static_cast<std::int8_t>(resolveHarmonyPitch(degree, harmInterval, params, held, lift));
+                        harm.key = makeKey(s, beat, 1);
+                        harm.noteNumber = static_cast<std::int8_t>(std::clamp(
+                            resolveHarmonyPitch(degree, harmInterval, params, held, lift) + spanOctShift * 12, 12,
+                            120));
                         harm.velocity = static_cast<std::uint8_t>(std::max(40, static_cast<int>(note.velocity) - 20));
                         harm.channel = allocChannel();
                         pushNote(out, harm);
@@ -698,15 +855,18 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
     }
 
     // 3. Sort strictly by warped onset (allocation-free insertion sort).
-    for (int i = 1; i < out.noteCount; ++i) {
-        const CompiledNote key = out.notes[static_cast<std::size_t>(i)];
-        int j = i - 1;
-        while (j >= 0 && out.notes[static_cast<std::size_t>(j)].warpedBeats > key.warpedBeats) {
-            out.notes[static_cast<std::size_t>(j + 1)] = out.notes[static_cast<std::size_t>(j)];
-            --j;
+    const auto sortNotes = [&]() noexcept CL_NONBLOCKING {
+        for (int i = 1; i < out.noteCount; ++i) {
+            const CompiledNote key = out.notes[static_cast<std::size_t>(i)];
+            int j = i - 1;
+            while (j >= 0 && out.notes[static_cast<std::size_t>(j)].warpedBeats > key.warpedBeats) {
+                out.notes[static_cast<std::size_t>(j + 1)] = out.notes[static_cast<std::size_t>(j)];
+                --j;
+            }
+            out.notes[static_cast<std::size_t>(j + 1)] = key;
         }
-        out.notes[static_cast<std::size_t>(j + 1)] = key;
-    }
+    };
+    sortNotes();
 
     // 4. Target-pitch glide pass: compute true pitch-bend glides into the next note's exact interval.
     if (mode != OutputMode::drum && glideAmt > 0.05f) {
@@ -714,7 +874,6 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
             auto& n = out.notes[static_cast<std::size_t>(i)];
             if (n.role == Role::turnaround || n.role == Role::ratchet)
                 continue;
-            // Find the next note strictly later in time.
             const CompiledNote* next = nullptr;
             for (int k = i + 1; k < out.noteCount; ++k) {
                 const auto& cand = out.notes[static_cast<std::size_t>(k)];
@@ -736,23 +895,68 @@ void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNot
         }
     }
 
-    // 5. Assign deterministic slot indices and apply non-destructive per-note overrides.
-    for (int i = 0; i < out.noteCount; ++i) {
+    // 5. Assign deterministic slot indices and apply musical-coordinate per-note overrides
+    //    (pitch, velocity, length, micro-nudge, mute, bend flip, and per-step ratchet bursts).
+    const int baseNoteCount = out.noteCount;
+    bool needsResort = false;
+    for (int i = 0; i < baseNoteCount; ++i) {
         auto& n = out.notes[static_cast<std::size_t>(i)];
         n.slotIndex = static_cast<std::int16_t>(i);
-        if (const NoteOverride* ov = overrides.findNote(i)) {
+        if (const NoteOverride* ov = overrides.findNoteFor(n.key, i)) {
             if (mode != OutputMode::drum && ov->pitchDelta != 0)
                 n.noteNumber =
                     static_cast<std::int8_t>(std::clamp(static_cast<int>(n.noteNumber) + ov->pitchDelta, 12, 120));
             if (ov->velocityDelta != 0)
                 n.velocity =
                     static_cast<std::uint8_t>(std::clamp(static_cast<int>(n.velocity) + ov->velocityDelta, 1, 127));
+            if (ov->microNudgeTicks != 0) {
+                n.warpedBeats =
+                    std::clamp(n.warpedBeats + static_cast<double>(ov->microNudgeTicks) / 96.0, 0.0, totalBeats - 0.04);
+                needsResort = true;
+            }
+            if (ov->lengthSixteenths != 0) {
+                const double maxDur = std::max(0.05, totalBeats - n.warpedBeats - 0.02);
+                n.durationBeats =
+                    std::clamp(n.durationBeats + static_cast<double>(ov->lengthSixteenths) * 0.25, 0.05, maxDur);
+            }
             if (ov->flipBend)
                 n.bendSemitones =
                     std::abs(n.bendSemitones) > 0.25f ? -n.bendSemitones : -12.0f * std::max(0.5f, glideAmt);
             n.muted = ov->muted;
+            if (!n.muted &&
+                (ov->ratchetCount == 2 || ov->ratchetCount == 3 || ov->ratchetCount == 4 || ov->ratchetCount == 6)) {
+                const int rc = static_cast<int>(ov->ratchetCount);
+                const double totalDur = std::max(0.12, n.durationBeats);
+                const double subStep = totalDur / static_cast<double>(rc);
+                const CompiledNote parent = n;
+                n.durationBeats = std::max(0.03, subStep * 0.80);
+                n.ratchetCount = ov->ratchetCount;
+                n.isRatchet = true;
+                n.velocity = static_cast<std::uint8_t>(std::clamp(static_cast<int>(parent.velocity) - 18, 24, 127));
+                for (int r = 1; r < rc; ++r) {
+                    const double rStart = parent.warpedBeats + static_cast<double>(r) * subStep;
+                    if (rStart >= totalBeats - 0.03)
+                        break;
+                    CompiledNote sub = parent;
+                    sub.startBeats = parent.startBeats + static_cast<double>(r) * subStep;
+                    sub.warpedBeats = rStart;
+                    sub.durationBeats = std::min(std::max(0.03, subStep * 0.80), totalBeats - rStart - 0.01);
+                    sub.key = {}; // Sub-hits inherit edits from their parent note
+                    sub.slotIndex = -1;
+                    const double ramp = static_cast<double>(r) / static_cast<double>(rc - 1);
+                    sub.velocity = static_cast<std::uint8_t>(
+                        std::clamp(static_cast<int>(parent.velocity) - 18 + static_cast<int>(24.0 * ramp), 24, 127));
+                    sub.channel = allocChannel();
+                    sub.ratchetCount = 0;
+                    sub.isRatchet = true;
+                    pushNote(out, sub);
+                }
+                needsResort = true;
+            }
         }
     }
+    if (needsResort)
+        sortNotes();
 }
 
 } // namespace cl

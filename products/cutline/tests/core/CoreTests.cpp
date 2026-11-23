@@ -6,6 +6,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <string>
+
 using Catch::Approx;
 
 TEST_CASE("Cutline parameter table has unique keys and round-trips normalised values", "[core]") {
@@ -73,4 +76,40 @@ TEST_CASE("Cutline presets preserve Live MIDI alias and round-trip PhraseOverrid
     const auto parsed = cl::parseOverrides(json);
     REQUIRE(parsed.has_value());
     CHECK(*parsed == ov);
+}
+
+TEST_CASE("Cutline 1.0 PhraseOverrides round-trip NoteKey, transforms, chords, and drumStyle", "[core]") {
+    cl::Preset p;
+    p.name = "Phase5 Roundtrip";
+    p.category = "Breaks";
+    p.params[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::drum);
+    p.params[cl::ParamId::drumStyle] = static_cast<float>(cl::DrumStyle::think);
+
+    p.overrides.barChordOffsets = {0, -2, -1, 3, 0, 0, 0, 0};
+    p.overrides.spans[0].locked = true;
+    p.overrides.spans[0].lockedSeed = 777;
+    p.overrides.spans[1].octaveShift = 1;
+    p.overrides.spans[1].invert = true;
+    p.overrides.spans[2].timeScale = -1;
+
+    const cl::NoteKey key{0, 24, 1};
+    auto* n = p.overrides.findOrCreateNote(key);
+    REQUIRE(n != nullptr);
+    n->pitchDelta = -5;
+    n->velocityDelta = 24;
+    n->lengthSixteenths = 4;
+    n->microNudgeTicks = -12;
+    n->ratchetCount = 3;
+    n->flipBend = true;
+
+    REQUIRE(p.overrides.hasChordProgression());
+    REQUIRE(p.overrides.findNoteFor(key, 99) != nullptr);
+    CHECK(p.overrides.findNoteFor(key, 99)->ratchetCount == 3);
+
+    const std::string json = cl::serialisePreset(p);
+    std::string err;
+    const auto parsed = cl::parsePreset(json, &err);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->params.choice(cl::ParamId::drumStyle) == static_cast<int>(cl::DrumStyle::think));
+    CHECK(parsed->overrides == p.overrides);
 }
