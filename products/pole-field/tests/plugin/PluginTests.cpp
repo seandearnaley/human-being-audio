@@ -4,7 +4,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 TEST_CASE("PoleField processor processes audio, loads all factory presets, and round-trips state", "[plugin]") {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -192,4 +195,113 @@ TEST_CASE("PoleField preset load clears stale imprint and oversized mono blocks 
         peak = std::max(peak, std::abs(mono.getSample(0, i)));
     }
     CHECK(peak > 0.05f);
+}
+
+TEST_CASE("PoleField ships 42 loudness-calibrated factory presets across all 7 categories", "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    pf::PluginProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+
+    const auto& all = proc.presets.all();
+    REQUIRE(all.size() >= 42);
+
+    std::vector<std::string> categories;
+    for (const auto& p : all)
+        if (std::find(categories.begin(), categories.end(), p.category) == categories.end())
+            categories.push_back(p.category);
+    REQUIRE(categories.size() == 7);
+
+    // Rich harmonic neuro bass + mid-air benchmark signal (0.5 s)
+    constexpr int total = 24000;
+    std::vector<float> srcL(total), srcR(total);
+    for (int i = 0; i < total; ++i) {
+        const double t = static_cast<double>(i) / 48000.0;
+        double sum = 0.0;
+        for (int h = 1; h <= 24; ++h)
+            sum += (0.28 / static_cast<double>(h)) * std::sin(2.0 * 3.141592653589793 * 55.0 * h * t);
+        srcL[static_cast<std::size_t>(i)] = static_cast<float>(sum);
+        srcR[static_cast<std::size_t>(i)] =
+            static_cast<float>(sum * 0.96 + 0.04 * std::sin(2.0 * 3.141592653589793 * 443.0 * t));
+    }
+
+    double minRmsDb = 100.0;
+    double maxRmsDb = -100.0;
+    for (std::size_t idx = 0; idx < all.size(); ++idx) {
+        proc.prepareToPlay(48000.0, 256);
+        proc.presets.load(static_cast<int>(idx));
+
+        juce::AudioBuffer<float> block(2, 256);
+        juce::MidiBuffer midi;
+        double energy = 0.0;
+        int counted = 0;
+        for (int pos = 0; pos + 256 <= total; pos += 256) {
+            for (int i = 0; i < 256; ++i) {
+                block.setSample(0, i, srcL[static_cast<std::size_t>(pos + i)]);
+                block.setSample(1, i, srcR[static_cast<std::size_t>(pos + i)]);
+            }
+            proc.processBlock(block, midi);
+            for (int i = 0; i < 256; ++i) {
+                const float l = block.getSample(0, i);
+                const float r = block.getSample(1, i);
+                REQUIRE(std::isfinite(l));
+                REQUIRE(std::isfinite(r));
+                if (pos >= total / 3) {
+                    energy += 0.5 * (static_cast<double>(l) * l + static_cast<double>(r) * r);
+                    ++counted;
+                }
+            }
+        }
+        const double rmsDb = 10.0 * std::log10(std::max(energy / std::max(1, counted), 1e-12));
+        INFO("Preset [" << idx << "] " << all[idx].name << " (" << all[idx].category << ") rmsDb=" << rmsDb);
+        minRmsDb = std::min(minRmsDb, rmsDb);
+        maxRmsDb = std::max(maxRmsDb, rmsDb);
+        CHECK(rmsDb > -22.0);
+        CHECK(rmsDb < -5.0);
+    }
+    INFO("Factory preset RMS spread: min=" << minRmsDb << " dB, max=" << maxRmsDb
+                                           << " dB, span=" << (maxRmsDb - minRmsDb));
+    CHECK((maxRmsDb - minRmsDb) < 7.0);
+}
+
+TEST_CASE("PoleField supports sidechain bus layout and 1-click Live Capture multi-corner imprint", "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    pf::PluginProcessor proc;
+    // Check stereo main + stereo sidechain bus layout support
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add(juce::AudioChannelSet::stereo());
+    layout.inputBuses.add(juce::AudioChannelSet::stereo());
+    layout.outputBuses.add(juce::AudioChannelSet::stereo());
+    REQUIRE(proc.isBusesLayoutSupported(layout));
+    REQUIRE(proc.setBusesLayout(layout));
+
+    proc.prepareToPlay(48000.0, 256);
+
+    // Feed 8 blocks of rich audio so preIn ring buffer fills
+    juce::AudioBuffer<float> buf(4, 256);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < 8; ++b) {
+        for (int i = 0; i < 256; ++i) {
+            const double t = static_cast<double>(b * 256 + i) / 48000.0;
+            const float s = static_cast<float>(0.5 * std::sin(2.0 * 3.141592653589793 * 900.0 * t) +
+                                               0.35 * std::sin(2.0 * 3.141592653589793 * 2200.0 * t));
+            buf.setSample(0, i, s);
+            buf.setSample(1, i, s);
+            buf.setSample(2, i, s);
+            buf.setSample(3, i, s);
+        }
+        proc.processBlock(buf, midi);
+    }
+
+    pf::PluginModel model(proc);
+    model.refreshVisuals();
+    model.captureLiveImprint(1); // Capture into Corner B
+    REQUIRE(model.imprint().slotEnabled(1));
+    REQUIRE(model.imprintSlotLabel(1) == "Live B");
+    REQUIRE(static_cast<int>(model.get(pf::ParamId::cube) + 0.5f) == pf::kNumCubes - 1);
+
+    // Undo restores previous clean state
+    model.undo();
+    CHECK_FALSE(model.imprint().slotEnabled(1));
 }

@@ -13,12 +13,10 @@ const juce::String kQualityId { "quality" };
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      state(*this, nullptr, "PoleField", makeParameterLayout()),
-      curves(state),
-      imprint(state),
-      presets(state, curves, imprint),
-      values_(state) {
+                         .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                         .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
+      state(*this, nullptr, "PoleField", makeParameterLayout()), curves(state), imprint(state),
+      presets(state, curves, imprint), values_(state) {
     state.addParameterListener(kQualityId, this);
 }
 
@@ -30,7 +28,9 @@ PluginProcessor::~PluginProcessor() {
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
+    const auto scratchSize = static_cast<std::size_t>(std::max(4096, blockSize_));
+    monoScratchR_.assign(scratchSize, 0.0f);
+    preInMono_.assign(scratchSize, 0.0f);
     analysis.setSampleRate(sampleRate_);
     prepareEngine();
 }
@@ -59,7 +59,14 @@ bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
     const auto& in = layouts.getMainInputChannelSet();
     const auto& out = layouts.getMainOutputChannelSet();
     if (in != out) return false;
-    return in == juce::AudioChannelSet::stereo() || in == juce::AudioChannelSet::mono();
+    if (in != juce::AudioChannelSet::stereo() && in != juce::AudioChannelSet::mono())
+        return false;
+    if (layouts.inputBuses.size() > 1) {
+        const auto& sc = layouts.getChannelSet(true, 1);
+        if (!sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    return true;
 }
 
 Transport PluginProcessor::readTransport() const {
@@ -101,34 +108,53 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
-    const int numChannels = buffer.getNumChannels();
-    if (numSamples <= 0 || numChannels < 1) return;
+    const int totalChannels = buffer.getNumChannels();
+    if (numSamples <= 0 || totalChannels < 1)
+        return;
 
-    const bool isMono = numChannels == 1;
+    const int bus0Count = std::max(1, getChannelCountOfBus(true, 0));
+    const int mainCh = std::min(totalChannels, bus0Count);
+    const bool isMono = mainCh == 1;
+
+    const bool scEnabled = getBusCount(true) > 1 && getBus(true, 1)->isEnabled();
+    const int scCount = scEnabled ? getChannelCountOfBus(true, 1) : 0;
+    const int scIdx0 = scCount > 0 ? getChannelIndexInProcessBlockBuffer(true, 1, 0) : -1;
+    const int scIdx1 = scCount > 1 ? getChannelIndexInProcessBlockBuffer(true, 1, 1) : scIdx0;
+    const bool hasSidechain = scIdx0 >= 0 && scIdx0 < totalChannels && scIdx1 >= 0 && scIdx1 < totalChannels;
+
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
     if (imprint.pull(audioImprint_)) engine_.setImprint(audioImprint_);
 
     const Transport blockStart = readTransport();
     const double quartersPerSample = blockStart.bpm / 60.0 / sampleRate_;
+    const int maxChunk = std::max(1, static_cast<int>(std::min(monoScratchR_.size(), preInMono_.size())));
 
     const auto render = [&](int from, int to) {
-        if (to <= from) return;
-        const int maxChunk = isMono ? static_cast<int>(monoScratchR_.size()) : (to - from);
+        if (to <= from)
+            return;
         int pos = from;
         while (pos < to) {
             const int chunk = std::min(maxChunk, to - pos);
             float* left = buffer.getWritePointer(0) + pos;
             float* right = isMono ? monoScratchR_.data() : (buffer.getWritePointer(1) + pos);
-            if (isMono)
+            if (isMono) {
                 std::copy_n(left, chunk, right);
+                std::copy_n(left, chunk, preInMono_.data());
+            } else {
+                for (int i = 0; i < chunk; ++i)
+                    preInMono_[static_cast<std::size_t>(i)] = 0.5f * (left[i] + right[i]);
+            }
+            const float* scL = hasSidechain ? (buffer.getReadPointer(scIdx0) + pos) : nullptr;
+            const float* scR = hasSidechain ? (buffer.getReadPointer(scIdx1) + pos) : nullptr;
             Transport transport = blockStart;
             transport.ppq += quartersPerSample * pos;
-            engine_.process(params, transport, left, right, chunk);
+            engine_.process(params, transport, left, right, chunk, scL, scR);
             if (isMono) {
                 for (int i = 0; i < chunk; ++i)
                     left[i] = 0.5f * (left[i] + right[i]);
             }
+            analysis.push(preInMono_.data(), left, isMono ? left : right, chunk);
             pos += chunk;
         }
     };
@@ -144,16 +170,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     render(cursor, numSamples);
     midi.clear();
 
-    if (isMono) {
-        const float* left = buffer.getReadPointer(0);
-        analysis.push(left, left, numSamples);
-    } else {
-        analysis.push(buffer.getReadPointer(0), buffer.getReadPointer(1), numSamples);
-    }
-
     Analysis::Status status;
     status.gainReductionDb = engine_.gainReductionDb();
     status.ppq = engine_.lanePpq();
+    status.osFactor = engine_.oversamplingFactor();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();
     status.effective = engine_.effectiveState();

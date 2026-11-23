@@ -17,6 +17,14 @@ FakeModel::FakeModel() {
     visuals_.effRes = params_[ParamId::res];
     visuals_.effTransform = params_[ParamId::transform];
     visuals_.effSpread = params_[ParamId::spread];
+    visuals_.effFmAmount = params_[ParamId::fmAmount];
+    visuals_.envLevel = 0.56f;
+    visuals_.osFactor = 4;
+
+    for (std::size_t i = 0; i < Visuals::kEnvHistoryPoints; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(Visuals::kEnvHistoryPoints - 1);
+        visuals_.envHistory[i] = std::clamp(0.28f + 0.52f * std::pow(std::abs(std::sin(t * 7.5f)), 1.6f), 0.0f, 1.0f);
+    }
 
     for (std::size_t i = 0; i < Visuals::kSpectrumBands; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(Visuals::kSpectrumBands - 1);

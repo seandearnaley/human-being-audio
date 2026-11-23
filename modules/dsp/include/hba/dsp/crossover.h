@@ -104,6 +104,12 @@ public:
   }
 
     double process(double x, double degrees) noexcept HBA_NONBLOCKING {
+        const double rad = degrees * (kPi / 180.0);
+        return processCosSin(x, std::cos(rad), std::sin(rad));
+    }
+
+    // Rotates by pre-smoothed (cosAngle, sinAngle) without trig calls or 360->0 wrap clicks.
+    double processCosSin(double x, double cosAngle, double sinAngle) noexcept HBA_NONBLOCKING {
         double iOut = x;
         double qOut = x;
         for (std::size_t k = 0; k < kSections; ++k) {
@@ -115,8 +121,7 @@ public:
             sQ_[k] = qOut - cQ_[k] * yq;
             qOut = yq;
         }
-        const double rad = degrees * (kPi / 180.0);
-        return std::cos(rad) * iOut + std::sin(rad) * qOut;
+        return cosAngle * iOut + sinAngle * qOut;
     }
 
     // Runs the zero-degree reference branch (I) with identical base phase delay.

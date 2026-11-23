@@ -49,11 +49,12 @@ float snap(float v) { return std::round(v); }
 ParamId field(int lane, LaneField f) { return laneParam(lane, f); }
 
 LaneShape shapeOf(const Params& params, int lane) {
-    return static_cast<LaneShape>(std::clamp(params.choice(field(lane, LaneField::shape)), 0,
-                                             static_cast<int>(LaneShape::custom)));
+    return static_cast<LaneShape>(
+        std::clamp(params.choice(field(lane, LaneField::shape)), 0, static_cast<int>(LaneShape::env)));
 }
 
 bool following(const Params& params, int lane) { return laneSource(params, lane) != lane; }
+bool isEnvLane(const Params& params, int lane) { return laneEffectiveShape(params, lane) == LaneShape::env; }
 
 Curve cycleCurve(const Model& model, const Params& params, int lane) {
     const int source = laneSource(params, lane);
@@ -120,7 +121,10 @@ private:
 
 class CurveEditor final : public visage::Frame {
 public:
-    explicit CurveEditor(Context& context) : context_(context) {}
+  explicit CurveEditor(Context& context) : context_(context), envSrc_(context, ParamId::envSource, colour::sub) {
+      addChild(&envSrc_);
+      envSrc_.setVisible(false);
+  }
 
     std::function<void()> onEdit;
 
@@ -129,8 +133,19 @@ public:
         lane_ = lane;
         hover_ = -1;
         gesture_ = {};
+        syncVisibility();
         redraw();
     }
+
+    void syncVisibility() {
+        const Params params = paramsOf(context_.model);
+        const bool envMode = isEnvLane(params, lane_);
+        envSrc_.setVisible(envMode);
+        if (envMode)
+            layoutEnvControls();
+    }
+
+    void resized() override { layoutEnvControls(); }
 
     void draw(visage::Canvas& canvas) override {
         drawPanel(canvas, context_, 0.0f, 0.0f, width(), height(), colour::raised, metric::radiusSmall);
@@ -139,6 +154,17 @@ public:
         drawGrid(canvas, plot);
 
         const bool on = params.on(field(lane_, LaneField::on));
+        if (isEnvLane(params, lane_)) {
+            const Visuals& vis = context_.model.visuals();
+            const unsigned hue = on ? colour::sub : colour::textFaint;
+            drawCurve(canvas, context_, vis.envHistory, plot.x, plot.y, plot.width, plot.height, hue, 0.0f, 1.0f,
+                      on ? 0.18f : 0.0f, 0.0f);
+            drawLabel(canvas, context_, "Envelope Follower", plot.x + context_.px(2.0f), context_.px(4.0f),
+                      context_.px(140.0f), context_.px(16.0f), on ? colour::sub : colour::textFaint,
+                      visage::Font::kLeft, type::small);
+            return;
+        }
+
         const bool editable = !following(params, lane_);
         const Curve curve = editable && gesture_.active() ? working_ : cycleCurve(context_.model, params, lane_);
         const unsigned hue = on ? colour::motion : colour::textFaint;
@@ -207,7 +233,16 @@ private:
         return { x, y, width() - 2.0f * x, height() - 2.0f * y };
     }
     static edit::Pos at(const visage::MouseEvent& e) { return { e.position.x, e.position.y }; }
-    bool editable() const { return !following(paramsOf(context_.model), lane_); }
+    bool editable() const {
+        const Params params = paramsOf(context_.model);
+        return !following(params, lane_) && !isEnvLane(params, lane_);
+    }
+    void layoutEnvControls() {
+        const float w = context_.px(72.0f);
+        const float h = context_.px(18.0f);
+        const float inset = context_.px(4.0f);
+        envSrc_.setBounds(snap(width() - inset - w), snap(inset), snap(w), snap(h));
+    }
     Curve editableCurve() const { return cycleCurve(context_.model, paramsOf(context_.model), lane_); }
     int pick(const visage::MouseEvent& e) const {
         if (!editable()) return -1;
@@ -263,6 +298,7 @@ private:
     }
 
     Context& context_;
+    Chip envSrc_;
     int lane_ = 0;
     int hover_ = -1;
     edit::Gesture gesture_;
@@ -281,6 +317,8 @@ public:
             c.rate = &add<Chip>(context, field(lane, LaneField::rate), colour::textDim);
             c.ratio = &add<Chip>(context, field(lane, LaneField::ratio), colour::textDim);
             c.phase = &add<Chip>(context, field(lane, LaneField::phase), colour::textDim);
+            c.envAtk = &add<Chip>(context, ParamId::envAttack, colour::sub);
+            c.envRel = &add<Chip>(context, ParamId::envRelease, colour::sub);
             c.shape = &add<Chip>(context, field(lane, LaneField::shape), colour::textDim);
             c.depth = &add<Chip>(context, field(lane, LaneField::depth), colour::textDim);
         }
@@ -298,7 +336,12 @@ public:
             shown_ = state;
             updateControls();
         }
-        if (changed || context_.model.visuals().ppq != drawnPpq_) {
+        const Visuals& vis = context_.model.visuals();
+        const bool envChanged =
+            std::abs(vis.envLevel - drawnEnv_) > 1.0e-3f || std::abs(vis.envHistory.back() - drawnEnvTail_) > 1.0e-3f;
+        if (changed || vis.ppq != drawnPpq_ || envChanged) {
+            drawnEnv_ = vis.envLevel;
+            drawnEnvTail_ = vis.envHistory.back();
             redraw();
             editor_->redraw();
         }
@@ -306,7 +349,10 @@ public:
 
     void draw(visage::Canvas& canvas) override {
         drawChrome(canvas);
-        drawnPpq_ = context_.model.visuals().ppq;
+        const Visuals& vis = context_.model.visuals();
+        drawnPpq_ = vis.ppq;
+        drawnEnv_ = vis.envLevel;
+        drawnEnvTail_ = vis.envHistory.back();
 
         const Params params = paramsOf(context_.model);
         const LaneCurves curves = curvesOf(context_.model);
@@ -332,13 +378,36 @@ public:
 
             const bool on = params.on(field(lane, LaneField::on));
             const float scale = params[field(lane, LaneField::depth)] * motion;
+            const bool envMode = isEnvLane(params, lane);
+            const float inset = px(metric::stroke) * 0.5f;
+
+            if (envMode) {
+                const unsigned base = on ? colour::sub : colour::textFaint;
+                const unsigned hue = following(params, lane) ? colour::withAlpha(base, kFollowerAlpha) : base;
+                std::array<float, Visuals::kEnvHistoryPoints> scaledEnv{};
+                for (std::size_t i = 0; i < scaledEnv.size(); ++i)
+                    scaledEnv[i] = std::clamp(vis.envHistory[i] * scale, -1.0f, 1.0f);
+                drawCurve(canvas, context_, scaledEnv, left, top + inset, plotWidth, height - 2.0f * inset, hue, -1.0f,
+                          1.0f, on ? 0.16f : 0.0f);
+                if (on) {
+                    const float val = std::clamp(vis.envLevel * scale, -1.0f, 1.0f);
+                    const float y = top + inset + (height - 2.0f * inset) * (1.0f - (val + 1.0f) * 0.5f);
+                    const float dotX = left + plotWidth;
+                    const float ring = px(kDot) + 2.0f * px(metric::stroke);
+                    canvas.setColor(lane == hovered_ && lane != selected_ ? colour::raised : colour::panel);
+                    canvas.circle(dotX - ring * 0.5f, y - ring * 0.5f, ring);
+                    canvas.setColor(hue);
+                    canvas.circle(dotX - px(kDot) * 0.5f, y - px(kDot) * 0.5f, px(kDot));
+                }
+                continue;
+            }
+
             for (std::size_t i = 0; i < values_.size(); ++i) {
                 const double t = std::min(static_cast<double>(i) / static_cast<double>(values_.size() - 1), kAlmostOne);
                 values_[i] = static_cast<float>(laneOutput(params, curves, lane, windowStart + t * kWindowQuarters)) * scale;
             }
             const unsigned base = on ? colour::motion : colour::textFaint;
             const unsigned hue = following(params, lane) ? colour::withAlpha(base, kFollowerAlpha) : base;
-            const float inset = px(metric::stroke) * 0.5f;
             drawCurve(canvas, context_, values_, left, top + inset, plotWidth, height - 2.0f * inset, hue, -1.0f, 1.0f,
                       on ? kFillAlpha : 0.0f);
 
@@ -378,6 +447,8 @@ private:
         Chip* rate = nullptr;
         Chip* ratio = nullptr;
         Chip* phase = nullptr;
+        Chip* envAtk = nullptr;
+        Chip* envRel = nullptr;
         Chip* shape = nullptr;
         Chip* depth = nullptr;
     };
@@ -436,6 +507,8 @@ private:
             place(*controls.rate, c.rate, px(kRateWidth), chip);
             place(*controls.ratio, c.rate, px(kRateWidth), chip);
             place(*controls.phase, c.phase, px(kPhaseWidth), chip);
+            place(*controls.envAtk, c.rate, px(kRateWidth), chip);
+            place(*controls.envRel, c.phase, px(kPhaseWidth), chip);
             place(*controls.shape, c.shape, px(kShapeWidth), chip);
             place(*controls.depth, c.depth, px(kDepthWidth), chip);
         }
@@ -449,17 +522,25 @@ private:
         for (int lane = 0; lane < kLaneCount; ++lane) {
             auto& controls = lanes_[static_cast<std::size_t>(lane)];
             const bool follows = following(params, lane);
-            controls.rate->setVisible(!follows);
-            controls.ratio->setVisible(follows);
+            const bool envMode = isEnvLane(params, lane);
+            controls.rate->setVisible(!follows && !envMode);
+            controls.ratio->setVisible(follows && !envMode);
+            controls.phase->setVisible(!envMode);
+            controls.envAtk->setVisible(envMode && !follows);
+            controls.envRel->setVisible(envMode && !follows);
             controls.shape->setVisible(!follows);
 
             const bool on = params.on(field(lane, LaneField::on));
             const unsigned dim = on ? colour::textDim : colour::textFaint;
-            controls.target->setAccent(on ? colour::motion : colour::textFaint);
+            controls.target->setAccent(on ? (envMode ? colour::sub : colour::motion) : colour::textFaint);
             controls.follow->setAccent(dim);
+            controls.envAtk->setAccent(on ? colour::sub : colour::textFaint);
+            controls.envRel->setAccent(on ? colour::sub : colour::textFaint);
             for (Chip* chip : { controls.rate, controls.ratio, controls.phase, controls.shape, controls.depth })
                 chip->setAccent(dim);
         }
+        if (editor_ != nullptr)
+            editor_->syncVisibility();
     }
 
     int stripAt(const visage::MouseEvent& e) const {
@@ -497,6 +578,8 @@ private:
     int selected_ = 0;
     int hovered_ = -1;
     double drawnPpq_ = -1.0;
+    float drawnEnv_ = -1.0f;
+    float drawnEnvTail_ = -1.0f;
     State shown_ {};
 };
 }

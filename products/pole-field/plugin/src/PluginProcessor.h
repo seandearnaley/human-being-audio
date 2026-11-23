@@ -52,7 +52,7 @@ public:
         std::array<float, kParamCount> params{};
         LaneCurves curves = defaultLaneCurves();
         ImprintData imprint{};
-        std::string imprintLabel;
+        std::array<std::string, kNumImprintSlots> imprintLabels{};
         std::string presetName;
 
         bool operator==(const HistorySnapshot&) const = default;
@@ -78,6 +78,7 @@ public:
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
     std::vector<float> monoScratchR_;
+    std::vector<float> preInMono_;
     LaneCurves audioCurves_ = defaultLaneCurves();
     ImprintData audioImprint_ {};
 

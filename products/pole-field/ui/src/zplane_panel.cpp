@@ -61,29 +61,37 @@ public:
         canvas.setColor(colour::withAlpha(colour::text, 0.06f));
         canvas.ring(cx - 0.5f * rad, cy - 0.5f * rad, rad, line);
 
-        // Corner labels for the selected cube
+        // Corner labels for the selected cube (front Z=0 vs back Z=1 face; cyan custom labels on Imprint Cube)
+        const Visuals& vis = context_.model.visuals();
         const int cubeIdx = static_cast<int>(context_.model.get(ParamId::cube) + 0.5f);
         const auto& cube = cubeAt(cubeIdx);
+        const ImprintData imp = context_.model.imprint();
+        const bool backFace = vis.effMorphZ >= 0.5f;
+        const int faceBase = backFace ? 4 : 0;
         const float lw = width() * 0.48f;
         const float lh = context_.px(16.0f);
         const float inset = context_.px(8.0f);
-        drawLabel(canvas, context_, std::string(cube.cornerNames[0]), inset, inset, lw, lh, colour::textFaint,
-                  visage::Font::kLeft, type::small);
-        drawLabel(canvas, context_, std::string(cube.cornerNames[1]), width() - inset - lw, inset, lw, lh, colour::textFaint,
-                  visage::Font::kRight, type::small);
-        drawLabel(canvas, context_, std::string(cube.cornerNames[2]), inset, height() - inset - lh, lw, lh, colour::textFaint,
-                  visage::Font::kLeft, type::small);
-        drawLabel(canvas, context_, std::string(cube.cornerNames[3]), width() - inset - lw, height() - inset - lh, lw, lh,
-                  colour::textFaint, visage::Font::kRight, type::small);
+
+        const auto drawCorner = [&](int q, float x, float y, visage::Font::Justification just) {
+            const bool customSlot = (cubeIdx == kNumCubes - 1) && !backFace && imp.slotEnabled(q);
+            const std::string label = customSlot
+                                          ? context_.model.imprintSlotLabel(q)
+                                          : std::string(cube.cornerNames[static_cast<std::size_t>(faceBase + q)]);
+            drawLabel(canvas, context_, label, x, y, lw, lh, customSlot ? colour::sub : colour::textFaint, just,
+                      type::small);
+        };
+        drawCorner(0, inset, inset, visage::Font::kLeft);
+        drawCorner(1, width() - inset - lw, inset, visage::Font::kRight);
+        drawCorner(2, inset, height() - inset - lh, visage::Font::kLeft);
+        drawCorner(3, width() - inset - lw, height() - inset - lh, visage::Font::kRight);
 
         // Compute live conjugate poles and zeros from effective modulated state
-        const Visuals& vis = context_.model.visuals();
         const int stages = kStageCounts[static_cast<std::size_t>(
             std::clamp(static_cast<int>(context_.model.get(ParamId::stages) + 0.5f), 0, 3))];
-        const ImprintData imp = context_.model.imprint();
-        const ResolvedLattice lat = resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ,
-                                                   vis.effFreq + vis.midiShiftSt, vis.effRes, vis.effTransform,
-                                                   0.0f, &imp);
+        const int topology = std::clamp(static_cast<int>(context_.model.get(ParamId::topology) + 0.5f), 0, 2);
+        const ResolvedLattice lat =
+            resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ, vis.effFreq + vis.midiShiftSt,
+                           vis.effRes, vis.effTransform, 0.0f, &imp, stages, topology);
 
         const float crossHalf = context_.px(4.2f);
         const float zeroDiam = context_.px(7.0f);
@@ -138,6 +146,32 @@ public:
     }
 
     void mouseDown(const visage::MouseEvent& e) override {
+        if (e.shouldTriggerPopup()) {
+            const int col = e.position.x >= width() * 0.5f ? 1 : 0;
+            const int row = e.position.y >= height() * 0.5f ? 1 : 0;
+            const int slot = row * 2 + col;
+            static constexpr std::array<const char*, 4> kSlotLetter{"A", "B", "C", "D"};
+            const std::string letter = kSlotLetter[static_cast<std::size_t>(slot)];
+            const ImprintData imp = context_.model.imprint();
+
+            visage::PopupMenu menu;
+            menu.addOption(1, "Imprint WAV \u2192 Corner " + letter);
+            menu.addOption(2, "Capture Live \u2192 Corner " + letter);
+            menu.addOption(3, "Clear Corner " + letter).enable(imp.slotEnabled(slot));
+            menu.addOption(4, "Clear All Imprints").enable(imp.hasAny());
+            menu.onSelection() = [this, slot](int opt) {
+                if (opt == 1)
+                    context_.model.browseImprintAudioSlot(slot);
+                else if (opt == 2)
+                    context_.model.captureLiveImprint(slot);
+                else if (opt == 3)
+                    context_.model.clearImprintSlot(slot);
+                else if (opt == 4)
+                    context_.model.clearImprint();
+            };
+            menu.show(this);
+            return;
+        }
         if (e.repeatClickCount() >= 2) {
             context_.model.begin(ParamId::morphX);
             context_.model.begin(ParamId::morphY);
@@ -224,6 +258,8 @@ public:
     }
 
     void mouseDown(const visage::MouseEvent& e) override {
+        if (e.shouldTriggerPopup())
+            return;
         if (e.repeatClickCount() >= 2) {
             context_.model.begin(ParamId::morphZ);
             context_.model.set(ParamId::morphZ, spec(ParamId::morphZ).def);
@@ -259,19 +295,208 @@ private:
     bool dragging_ = false;
 };
 
+// Interactive transfer-response + FFT plot with direct-manipulation drag for Sub Split, Freq, and Resonance.
+class ResponsePlot final : public visage::Frame {
+  public:
+    explicit ResponsePlot(Context& context) : context_(context) {}
+
+    void draw(visage::Canvas& canvas) override {
+        const Visuals& vis = context_.model.visuals();
+        const float w = width();
+        const float h = height();
+        const float line = std::max(1.0f, std::round(context_.px(metric::hairline)));
+
+        drawPanel(canvas, context_, 0.0f, 0.0f, w, h, colour::raised, metric::radiusSmall);
+
+        // Sub Lock cyan shaded region + draggable crossover divider
+        const bool subOn = context_.model.get(ParamId::subLock) >= 0.5f;
+        const float subHz = context_.model.get(ParamId::subSplit);
+        const float subX = std::round(w * hzToX(subHz));
+        if (subOn) {
+            canvas.setColor(colour::withAlpha(colour::sub, 0.11f));
+            canvas.rectangle(line, line, std::max(0.0f, subX - line), h - 2.0f * line);
+            const bool hot = hoverSub_ || dragMode_ == DragMode::subSplit;
+            canvas.setColor(colour::withAlpha(colour::sub, hot ? 0.95f : 0.65f));
+            const float splitW = hot ? std::max(line, context_.px(2.0f)) : line;
+            canvas.rectangle(subX - 0.5f * (splitW - line), line, splitW, h - 2.0f * line);
+        }
+
+        // Frequency grid lines + 0 dB reference
+        constexpr std::array<float, 5> kGridHz{60.0f, 200.0f, 1000.0f, 4000.0f, 12000.0f};
+        for (float hz : kGridHz) {
+            const float gx = std::round(w * hzToX(hz));
+            canvas.setColor(colour::track);
+            canvas.rectangle(gx, line, line, h - 2.0f * line);
+        }
+        const float zeroDbY = std::round(h * (1.0f - (0.0f - kRespMinDb) / (kRespMaxDb - kRespMinDb)));
+        canvas.setColor(colour::withAlpha(colour::text, 0.14f));
+        canvas.rectangle(line, zeroDbY, w - 2.0f * line, line);
+
+        // Live stereo-averaged output FFT spectrum behind transfer curve
+        drawCurve(canvas, context_, vis.spectrumDb, line, line, w - 2.0f * line, h - 2.0f * line,
+                  colour::withAlpha(colour::text, 0.24f), kSpecFloorDb, 0.0f, 0.10f, kSpecFloorDb, 1.0f);
+
+        // Exact analytical 14-pole transfer function evaluated at the oversampled DSP rate
+        const int cubeIdx = static_cast<int>(context_.model.get(ParamId::cube) + 0.5f);
+        const int stages = kStageCounts[static_cast<std::size_t>(
+            std::clamp(static_cast<int>(context_.model.get(ParamId::stages) + 0.5f), 0, 3))];
+        const int topology = std::clamp(static_cast<int>(context_.model.get(ParamId::topology) + 0.5f), 0, 2);
+        const ImprintData imp = context_.model.imprint();
+        const float totalFreq = vis.effFreq + vis.midiShiftSt;
+        const float stereoSt = vis.effSpread * 5.0f;
+        const double evalSr = vis.sampleRate * static_cast<double>(std::max(1, vis.osFactor));
+
+        const ResolvedLattice latL = resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ, totalFreq,
+                                                    vis.effRes, vis.effTransform, -stereoSt, &imp, stages, topology);
+        const ResolvedLattice latR = resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ, totalFreq,
+                                                    vis.effRes, vis.effTransform, +stereoSt, &imp, stages, topology);
+
+        std::array<float, kResponseBins> curveL{};
+        std::array<float, kResponseBins> curveR{};
+        for (int i = 0; i < kResponseBins; ++i) {
+            const double frac = static_cast<double>(i) / static_cast<double>(kResponseBins - 1);
+            const double hz = static_cast<double>(kMinHz) * std::pow(static_cast<double>(kMaxHz / kMinHz), frac);
+            float dbL = evaluateMagnitudeDb(latL, stages, topology, hz, evalSr);
+            float dbR = evaluateMagnitudeDb(latR, stages, topology, hz, evalSr);
+            if (subOn && hz < static_cast<double>(subHz)) {
+                const float blend =
+                    static_cast<float>(std::pow(std::clamp((hz - 0.5 * subHz) / (0.5 * subHz), 0.0, 1.0), 2.0));
+                dbL *= blend;
+                dbR *= blend;
+            }
+            curveL[static_cast<std::size_t>(i)] = dbL;
+            curveR[static_cast<std::size_t>(i)] = dbR;
+        }
+
+        if (stereoSt > 0.05f) {
+            drawCurve(canvas, context_, curveR, line, line, w - 2.0f * line, h - 2.0f * line,
+                      colour::withAlpha(colour::drive, 0.55f), kRespMinDb, kRespMaxDb, 0.0f, 0.0f, 1.2f);
+        }
+        drawCurve(canvas, context_, curveL, line, line, w - 2.0f * line, h - 2.0f * line, colour::poles, kRespMinDb,
+                  kRespMaxDb, 0.14f, kRespMinDb, 2.0f);
+    }
+
+    void mouseMove(const visage::MouseEvent& e) override {
+        const bool near = isNearSubSplit(e.position.x);
+        if (near != hoverSub_) {
+            hoverSub_ = near;
+            redraw();
+        }
+    }
+
+    void mouseExit(const visage::MouseEvent&) override {
+        if (hoverSub_) {
+            hoverSub_ = false;
+            redraw();
+        }
+    }
+
+    void mouseDown(const visage::MouseEvent& e) override {
+        if (e.shouldTriggerPopup())
+            return;
+        const bool nearSub = isNearSubSplit(e.position.x);
+        if (e.repeatClickCount() >= 2) {
+            if (nearSub) {
+                context_.model.begin(ParamId::subSplit);
+                context_.model.set(ParamId::subSplit, spec(ParamId::subSplit).def);
+                context_.model.end(ParamId::subSplit);
+            } else {
+                context_.model.begin(ParamId::freq);
+                context_.model.begin(ParamId::res);
+                context_.model.set(ParamId::freq, spec(ParamId::freq).def);
+                context_.model.set(ParamId::res, spec(ParamId::res).def);
+                context_.model.end(ParamId::freq);
+                context_.model.end(ParamId::res);
+            }
+            redraw();
+            return;
+        }
+
+        lastPos_ = e.position;
+        if (nearSub) {
+            dragMode_ = DragMode::subSplit;
+            context_.model.begin(ParamId::subSplit);
+            applySubX(e.position.x);
+        } else {
+            dragMode_ = DragMode::freqRes;
+            freqAccum_ = context_.model.get(ParamId::freq);
+            resAccum_ = context_.model.get(ParamId::res);
+            context_.model.begin(ParamId::freq);
+            context_.model.begin(ParamId::res);
+        }
+        redraw();
+    }
+
+    void mouseDrag(const visage::MouseEvent& e) override {
+        if (dragMode_ == DragMode::subSplit) {
+            applySubX(e.position.x);
+            redraw();
+            return;
+        }
+        if (dragMode_ == DragMode::freqRes) {
+            const float fine = e.isShiftDown() ? 0.1f : 1.0f;
+            const float dx = e.position.x - lastPos_.x;
+            const float dy = lastPos_.y - e.position.y;
+            lastPos_ = e.position;
+            const float w = std::max(1.0f, width());
+            const float h = std::max(1.0f, height());
+            freqAccum_ = clampToRange(spec(ParamId::freq), freqAccum_ + (dx / w) * 48.0f * fine);
+            resAccum_ = clampToRange(spec(ParamId::res), resAccum_ + (dy / h) * 1.1f * fine);
+            context_.model.set(ParamId::freq, freqAccum_);
+            context_.model.set(ParamId::res, resAccum_);
+            redraw();
+        }
+    }
+
+    void mouseUp(const visage::MouseEvent&) override {
+        if (dragMode_ == DragMode::subSplit) {
+            context_.model.end(ParamId::subSplit);
+        } else if (dragMode_ == DragMode::freqRes) {
+            context_.model.end(ParamId::freq);
+            context_.model.end(ParamId::res);
+        }
+        dragMode_ = DragMode::none;
+        redraw();
+    }
+
+  private:
+    enum class DragMode { none, subSplit, freqRes };
+
+    bool isNearSubSplit(float x) const {
+        if (context_.model.get(ParamId::subLock) < 0.5f)
+            return false;
+        const float subX = width() * hzToX(context_.model.get(ParamId::subSplit));
+        return std::abs(x - subX) <= context_.px(8.0f);
+    }
+
+    void applySubX(float x) {
+        const float nx = std::clamp(x / std::max(1.0f, width()), 0.0f, 1.0f);
+        const float hz = kMinHz * std::pow(kMaxHz / kMinHz, nx);
+        context_.model.set(ParamId::subSplit, clampToRange(spec(ParamId::subSplit), hz));
+    }
+
+    Context& context_;
+    DragMode dragMode_ = DragMode::none;
+    bool hoverSub_ = false;
+    visage::Point lastPos_{};
+    float freqAccum_ = 0.0f;
+    float resAccum_ = 0.0f;
+};
+
 class ZPlanePanel final : public Panel {
-public:
+  public:
     explicit ZPlanePanel(Context& context)
-        : Panel(context),
-          pad_(add<ZPlanePad>(context)),
-          zRail_(add<ZDepthRail>(context)),
-          cube_(add<Row>(context, ParamId::cube, colour::poles, "Cube")),
+        : Panel(context), pad_(add<ZPlanePad>(context)), zRail_(add<ZDepthRail>(context)),
+          response_(add<ResponsePlot>(context)), cube_(add<Row>(context, ParamId::cube, colour::poles, "Cube")),
           topology_(add<Row>(context, ParamId::topology, colour::poles, "Topology")),
           stages_(add<Row>(context, ParamId::stages, colour::poles, "Poles")),
           transform_(add<Row>(context, ParamId::transform, colour::poles, "Transform", true)),
           spread_(add<Row>(context, ParamId::spread, colour::poles, "Spread", true)),
+          stereoMode_(add<Row>(context, ParamId::stereoMode, colour::poles, "Routing")),
           pitchTrack_(add<Row>(context, ParamId::pitchTrack, colour::sub, "Pitch track")),
           glide_(add<Row>(context, ParamId::glide, colour::sub, "Glide", true)),
+          fmAmount_(add<Row>(context, ParamId::fmAmount, colour::drive, "FM", true)),
+          fmSource_(add<Row>(context, ParamId::fmSource, colour::drive, "FM src")),
           drivePos_(add<Row>(context, ParamId::drivePos, colour::drive, "Drive pos")),
           foldType_(add<Row>(context, ParamId::foldType, colour::drive, "Shaper")),
           asym_(add<Row>(context, ParamId::asym, colour::drive, "Asym", true)),
@@ -282,12 +507,14 @@ public:
     void tick() override {
         pad_.redraw();
         zRail_.redraw();
+        response_.redraw();
         redraw();
     }
 
     void resized() override {
         const float pad = px(metric::pad);
         const float gap = px(metric::gap);
+        const float panelGap = px(metric::margin);
 
         // Left: Z-plane pad + Z rail
         const float leftW = px(kLeftWidth) - 2.0f * pad;
@@ -297,23 +524,41 @@ public:
         pad_.setBounds(pad, pad, padW, padH);
         zRail_.setBounds(pad + padW + gap, pad, railW, padH);
 
-        // Right: Parameter control column
+        // Center: Interactive transfer response plot above axis + telemetry footer
+        const float midX = px(kLeftWidth) + panelGap;
+        const float midW = width() - px(kLeftWidth) - px(kRightWidth) - 2.0f * panelGap;
+        const float footH = px(82.0f);
+        const float footGap = px(10.0f);
+        const float axisH = px(16.0f);
+        const float plotH = (height() - 2.0f * pad) - footH - footGap - axisH;
+        response_.setBounds(midX + pad, pad, midW - 2.0f * pad, plotH);
+
+        // Right: Parameter control column (16 compact rows across 4 logical sections)
         const float rightLeft = width() - px(kRightWidth) + pad;
         const float colW = px(kRightWidth) - 2.0f * pad;
-        const float rowH = px(metric::row);
-        const float step = rowH + px(6.0f);
+        const float rowH = px(20.5f);
+        const float rowGap = px(3.0f);
+        const float step = rowH + rowGap;
         const float sectionGap = px(12.0f);
 
         float y = pad;
-        for (Row* r : { &cube_, &topology_, &stages_, &transform_, &spread_, &pitchTrack_, &glide_ }) {
+        for (Row* r : {&cube_, &topology_, &stages_, &transform_, &spread_, &stereoMode_}) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
+        div1Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
+        y += sectionGap;
+        for (Row* r : {&pitchTrack_, &glide_, &fmAmount_, &fmSource_}) {
+            r->setBounds(rightLeft, y, colW, rowH);
+            y += step;
+        }
+        div2Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
         y += sectionGap;
         for (Row* r : { &drivePos_, &foldType_, &asym_ }) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
+        div3Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
         y += sectionGap;
         for (Row* r : { &subLock_, &subSplit_, &fit_ }) {
             r->setBounds(rightLeft, y, colW, rowH);
@@ -336,172 +581,151 @@ public:
         // Right panel section dividers
         const float pad = px(metric::pad);
         const float line = std::max(1.0f, std::round(px(metric::hairline)));
-        const float rowStep = px(metric::row + 6.0f);
-        const float div1 = std::round(pad + 7.0f * rowStep + px(3.0f));
-        const float div2 = std::round(div1 + px(9.0f) + 3.0f * rowStep + px(3.0f));
         canvas.setColor(colour::edge);
-        canvas.rectangle(rightX + pad, div1, rightW - 2.0f * pad, line);
-        canvas.rectangle(rightX + pad, div2, rightW - 2.0f * pad, line);
+        canvas.rectangle(rightX + pad, div1Y_, rightW - 2.0f * pad, line);
+        canvas.rectangle(rightX + pad, div2Y_, rightW - 2.0f * pad, line);
+        canvas.rectangle(rightX + pad, div3Y_, rightW - 2.0f * pad, line);
 
-        drawCenterDisplay(canvas, midX + pad, pad, midW - 2.0f * pad, height() - 2.0f * pad);
+        drawCenterChrome(canvas, midX + pad, pad, midW - 2.0f * pad, height() - 2.0f * pad);
     }
 
 private:
-    void drawCenterDisplay(visage::Canvas& canvas, float x, float y, float w, float h) {
-        const Visuals& vis = context_.model.visuals();
-        const float footH = px(82.0f);
-        const float footGap = px(10.0f);
-        const float respH = h - footH - footGap;
-        const float axisH = px(16.0f);
-        const float plotH = respH - axisH;
-        const float line = std::max(1.0f, std::round(px(metric::hairline)));
+  void drawCenterChrome(visage::Canvas& canvas, float x, float y, float w, float h) {
+      const Visuals& vis = context_.model.visuals();
+      const float footH = px(82.0f);
+      const float footGap = px(10.0f);
+      const float respH = h - footH - footGap;
+      const float axisH = px(16.0f);
+      const float plotH = respH - axisH;
+      const float line = std::max(1.0f, std::round(px(metric::hairline)));
 
-        // Plot backdrop
-        drawPanel(canvas, context_, x, y, w, plotH, colour::raised, metric::radiusSmall);
+      // Frequency axis labels under ResponsePlot
+      struct GridMark {
+          float hz;
+          const char* label;
+      };
+      constexpr std::array<GridMark, 5> kMarks{
+          {{60.0f, "60"}, {200.0f, "200"}, {1000.0f, "1k"}, {4000.0f, "4k"}, {12000.0f, "12k"}}};
+      for (const auto& m : kMarks) {
+          const float gx = std::round(x + w * hzToX(m.hz));
+          drawLabel(canvas, context_, m.label, gx - px(20.0f), y + plotH + px(2.0f), px(40.0f), axisH,
+                    colour::textFaint, visage::Font::kCenter, type::small);
+      }
 
-        // Sub Lock cyan shaded region
-        const bool subOn = context_.model.get(ParamId::subLock) >= 0.5f;
-        const float subHz = context_.model.get(ParamId::subSplit);
-        const float subX = std::round(x + w * hzToX(subHz));
-        if (subOn) {
-            canvas.setColor(colour::withAlpha(colour::sub, 0.11f));
-            canvas.rectangle(x + line, y + line, std::max(0.0f, subX - x - line), plotH - 2.0f * line);
-            canvas.setColor(colour::withAlpha(colour::sub, 0.65f));
-            canvas.rectangle(subX, y + line, line, plotH - 2.0f * line);
-        }
+      const int cubeIdx = static_cast<int>(context_.model.get(ParamId::cube) + 0.5f);
+      const int stages = kStageCounts[static_cast<std::size_t>(
+          std::clamp(static_cast<int>(context_.model.get(ParamId::stages) + 0.5f), 0, 3))];
+      const int topology = std::clamp(static_cast<int>(context_.model.get(ParamId::topology) + 0.5f), 0, 2);
+      const bool subOn = context_.model.get(ParamId::subLock) >= 0.5f;
+      const float subHz = context_.model.get(ParamId::subSplit);
 
-        // Frequency grid lines + 0 dB axis
-        struct GridMark { float hz; const char* label; };
-        constexpr std::array<GridMark, 5> kMarks { {
-            { 60.0f, "60" }, { 200.0f, "200" }, { 1000.0f, "1k" }, { 4000.0f, "4k" }, { 12000.0f, "12k" }
-        } };
-        for (const auto& m : kMarks) {
-            const float gx = std::round(x + w * hzToX(m.hz));
-            canvas.setColor(colour::track);
-            canvas.rectangle(gx, y + line, line, plotH - 2.0f * line);
-            drawLabel(canvas, context_, m.label, gx - px(20.0f), y + plotH + px(2.0f), px(40.0f), axisH,
-                      colour::textFaint, visage::Font::kCenter, type::small);
-        }
-        const float zeroDbY = std::round(y + plotH * (1.0f - (0.0f - kRespMinDb) / (kRespMaxDb - kRespMinDb)));
-        canvas.setColor(colour::withAlpha(colour::text, 0.14f));
-        canvas.rectangle(x + line, zeroDbY, w - 2.0f * line, line);
+      // Lower telemetry strip: Stereo Goniometer + Correlation + Lattice/FM/Env Readout
+      const float footY = y + respH + footGap;
+      drawPanel(canvas, context_, x, footY, w, footH, colour::raised, metric::radiusSmall);
 
-        // Live output FFT spectrum behind transfer curve
-        drawCurve(canvas, context_, vis.spectrumDb, x + line, y + line, w - 2.0f * line, plotH - 2.0f * line,
-                  colour::withAlpha(colour::text, 0.24f), kSpecFloorDb, 0.0f, 0.10f, kSpecFloorDb, 1.0f);
+      const float gSide = footH - px(14.0f);
+      const float gX = x + px(12.0f);
+      const float gY = footY + px(7.0f);
+      const float gCx = gX + gSide * 0.5f;
 
-        // Exact analytical 14-pole transfer function (L + stereo-diverged R ghost)
-        const int cubeIdx = static_cast<int>(context_.model.get(ParamId::cube) + 0.5f);
-        const int stages = kStageCounts[static_cast<std::size_t>(
-            std::clamp(static_cast<int>(context_.model.get(ParamId::stages) + 0.5f), 0, 3))];
-        const int topology = std::clamp(static_cast<int>(context_.model.get(ParamId::topology) + 0.5f), 0, 2);
-        const ImprintData imp = context_.model.imprint();
-        const float totalFreq = vis.effFreq + vis.midiShiftSt;
-        const float stereoSt = vis.effSpread * 5.0f;
+      canvas.setColor(colour::track);
+      canvas.rectangle(std::round(gCx), gY, line, gSide);
+      canvas.segment(gX, gY, gX + gSide, gY + gSide, line, false);
+      canvas.segment(gX, gY + gSide, gX + gSide, gY, line, false);
 
-        const ResolvedLattice latL = resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ,
-                                                    totalFreq, vis.effRes, vis.effTransform, -stereoSt, &imp);
-        const ResolvedLattice latR = resolveLattice(cubeIdx, vis.effMorphX, vis.effMorphY, vis.effMorphZ,
-                                                    totalFreq, vis.effRes, vis.effTransform, +stereoSt, &imp);
+      const float scale = 0.5f * gSide * kSqrtHalf;
+      const float half = 0.5f * gSide;
+      visage::Path trace;
+      for (std::size_t i = 0; i < vis.gonioLeft.size(); ++i) {
+          const float l = vis.gonioLeft[i];
+          const float r = vis.gonioRight[i];
+          const float across = std::clamp((r - l) * kSqrtHalf * scale, -half, half);
+          const float up = std::clamp((l + r) * kSqrtHalf * scale, -half, half);
+          const float tx = half + across;
+          const float ty = half - up;
+          if (i == 0)
+              trace.moveTo(tx, ty);
+          else
+              trace.lineTo(tx, ty);
+      }
+      canvas.setColor(colour::withAlpha(colour::text, 0.72f));
+      canvas.stroke(trace, gX, gY, gSide, gSide, px(1.0f));
 
-        std::array<float, kResponseBins> curveL {};
-        std::array<float, kResponseBins> curveR {};
-        for (int i = 0; i < kResponseBins; ++i) {
-            const double frac = static_cast<double>(i) / static_cast<double>(kResponseBins - 1);
-            const double hz = static_cast<double>(kMinHz) * std::pow(static_cast<double>(kMaxHz / kMinHz), frac);
-            float dbL = evaluateMagnitudeDb(latL, stages, topology, hz, vis.sampleRate);
-            float dbR = evaluateMagnitudeDb(latR, stages, topology, hz, vis.sampleRate);
-            if (subOn && hz < static_cast<double>(subHz)) {
-                const float blend = static_cast<float>(std::pow(std::clamp((hz - 0.5 * subHz) / (0.5 * subHz), 0.0, 1.0), 2.0));
-                dbL *= blend;
-                dbR *= blend;
-            }
-            curveL[static_cast<std::size_t>(i)] = dbL;
-            curveR[static_cast<std::size_t>(i)] = dbR;
-        }
+      // Correlation & Live Pitch/Lattice/FM/Env Status
+      const float infoX = gX + gSide + px(16.0f);
+      const float infoW = x + w - infoX - px(12.0f);
+      const float corr = std::round(std::clamp(vis.correlation, -1.0f, 1.0f) * 100.0f) / 100.0f;
+      char buf[64];
+      std::snprintf(buf, sizeof buf, "Phase  %+.2f", static_cast<double>(corr == 0.0f ? 0.0f : corr));
+      drawLabel(canvas, context_, buf, infoX, footY + px(11.0f), infoW * 0.52f, px(18.0f),
+                corr < 0.0f ? colour::alert : colour::text, visage::Font::kLeft, type::label);
 
-        if (stereoSt > 0.05f) {
-            drawCurve(canvas, context_, curveR, x + line, y + line, w - 2.0f * line, plotH - 2.0f * line,
-                      colour::withAlpha(colour::drive, 0.55f), kRespMinDb, kRespMaxDb, 0.0f, 0.0f, 1.2f);
-        }
-        drawCurve(canvas, context_, curveL, x + line, y + line, w - 2.0f * line, plotH - 2.0f * line,
-                  colour::poles, kRespMinDb, kRespMaxDb, 0.14f, kRespMinDb, 2.0f);
+      const std::string topoName(choices::topology[static_cast<std::size_t>(topology)]);
+      std::snprintf(buf, sizeof buf, "%dP  %s", stages * 2, topoName.c_str());
+      drawLabel(canvas, context_, buf, infoX + infoW * 0.52f, footY + px(11.0f), infoW * 0.48f, px(18.0f),
+                colour::poles, visage::Font::kRight, type::label);
 
-        // Lower telemetry strip: Stereo Goniometer + Correlation + Lattice Readout
-        const float footY = y + respH + footGap;
-        drawPanel(canvas, context_, x, footY, w, footH, colour::raised, metric::radiusSmall);
+      const bool fmActive = vis.effFmAmount > 0.01f;
+      if (vis.activeNote >= 0)
+          std::snprintf(buf, sizeof buf, "MIDI  %s (%+.1f st)", noteName(vis.activeNote).c_str(),
+                        static_cast<double>(vis.midiShiftSt));
+      else
+          std::snprintf(buf, sizeof buf, "Cube  %s", std::string(cubeAt(cubeIdx).name).c_str());
+      drawLabel(canvas, context_, buf, infoX, footY + px(33.0f), fmActive ? infoW * 0.66f : infoW, px(18.0f),
+                vis.activeNote >= 0 ? colour::sub : colour::textDim, visage::Font::kLeft, type::label);
 
-        const float gSide = footH - px(14.0f);
-        const float gX = x + px(12.0f);
-        const float gY = footY + px(7.0f);
-        const float gCx = gX + gSide * 0.5f;
+      if (fmActive) {
+          std::snprintf(buf, sizeof buf, "FM  %.0f%%", static_cast<double>(vis.effFmAmount * 100.0f));
+          drawLabel(canvas, context_, buf, infoX + infoW * 0.66f, footY + px(33.0f), infoW * 0.34f, px(18.0f),
+                    colour::drive, visage::Font::kRight, type::small);
+      }
 
-        canvas.setColor(colour::track);
-        canvas.rectangle(std::round(gCx), gY, line, gSide);
-        canvas.segment(gX, gY, gX + gSide, gY + gSide, line, false);
-        canvas.segment(gX, gY + gSide, gX + gSide, gY, line, false);
+      std::snprintf(buf, sizeof buf, "Sub  %s",
+                    subOn ? formatValue(spec(ParamId::subSplit), subHz).c_str() : "Full band");
+      drawLabel(canvas, context_, buf, infoX, footY + px(55.0f), infoW * 0.52f, px(16.0f),
+                subOn ? colour::sub : colour::textFaint, visage::Font::kLeft, type::small);
 
-        const float scale = 0.5f * gSide * kSqrtHalf;
-        const float half = 0.5f * gSide;
-        visage::Path trace;
-        for (std::size_t i = 0; i < vis.gonioLeft.size(); ++i) {
-            const float l = vis.gonioLeft[i];
-            const float r = vis.gonioRight[i];
-            const float across = std::clamp((r - l) * kSqrtHalf * scale, -half, half);
-            const float up = std::clamp((l + r) * kSqrtHalf * scale, -half, half);
-            const float tx = half + across;
-            const float ty = half - up;
-            if (i == 0) trace.moveTo(tx, ty);
-            else trace.lineTo(tx, ty);
-        }
-        canvas.setColor(colour::withAlpha(colour::text, 0.72f));
-        canvas.stroke(trace, gX, gY, gSide, gSide, px(1.0f));
-
-        // Correlation & Live Pitch/Lattice Status
-        const float infoX = gX + gSide + px(16.0f);
-        const float infoW = x + w - infoX - px(12.0f);
-        const float corr = std::round(std::clamp(vis.correlation, -1.0f, 1.0f) * 100.0f) / 100.0f;
-        char buf[64];
-        std::snprintf(buf, sizeof buf, "Phase  %+.2f", static_cast<double>(corr == 0.0f ? 0.0f : corr));
-        drawLabel(canvas, context_, buf, infoX, footY + px(12.0f), infoW * 0.5f, px(18.0f),
-                  corr < 0.0f ? colour::alert : colour::text, visage::Font::kLeft, type::label);
-
-        const std::string topoName(choices::topology[static_cast<std::size_t>(topology)]);
-        std::snprintf(buf, sizeof buf, "%dP  %s", stages * 2, topoName.c_str());
-        drawLabel(canvas, context_, buf, infoX + infoW * 0.5f, footY + px(12.0f), infoW * 0.5f, px(18.0f),
-                  colour::poles, visage::Font::kRight, type::label);
-
-        if (vis.activeNote >= 0)
-            std::snprintf(buf, sizeof buf, "MIDI  %s (%+.1f st)", noteName(vis.activeNote).c_str(),
-                          static_cast<double>(vis.midiShiftSt));
-        else
-            std::snprintf(buf, sizeof buf, "Cube  %s", std::string(cubeAt(cubeIdx).name).c_str());
-        drawLabel(canvas, context_, buf, infoX, footY + px(34.0f), infoW, px(18.0f),
-                  vis.activeNote >= 0 ? colour::sub : colour::textDim, visage::Font::kLeft, type::label);
-
-        std::snprintf(buf, sizeof buf, "Sub  %s",
-                      subOn ? formatValue(spec(ParamId::subSplit), subHz).c_str() : "Full band");
-        drawLabel(canvas, context_, buf, infoX, footY + px(54.0f), infoW, px(18.0f),
-                  subOn ? colour::sub : colour::textFaint, visage::Font::kLeft, type::small);
-    }
+      // Slim live envelope meter bar on right half of line 3
+      const float envLabelW = px(28.0f);
+      const float envStartX = infoX + infoW * 0.54f;
+      drawLabel(canvas, context_, "Env", envStartX, footY + px(55.0f), envLabelW, px(16.0f), colour::textFaint,
+                visage::Font::kLeft, type::small);
+      const float barX = envStartX + envLabelW + px(4.0f);
+      const float barW = std::max(px(16.0f), infoX + infoW - barX);
+      const float barH = px(4.0f);
+      const float barY = footY + px(55.0f) + (px(16.0f) - barH) * 0.5f;
+      canvas.setColor(colour::track);
+      canvas.roundedRectangle(barX, barY, barW, barH, barH * 0.5f);
+      const float envFill = barW * std::clamp(vis.envLevel, 0.0f, 1.0f);
+      if (envFill > 0.5f) {
+          canvas.setColor(colour::sub);
+          canvas.roundedRectangle(barX, barY, envFill, barH, barH * 0.5f);
+      }
+  }
 
     ZPlanePad& pad_;
     ZDepthRail& zRail_;
+    ResponsePlot& response_;
     Row& cube_;
     Row& topology_;
     Row& stages_;
     Row& transform_;
     Row& spread_;
+    Row& stereoMode_;
     Row& pitchTrack_;
     Row& glide_;
+    Row& fmAmount_;
+    Row& fmSource_;
     Row& drivePos_;
     Row& foldType_;
     Row& asym_;
     Row& subLock_;
     Row& subSplit_;
     Row& fit_;
+    float div1Y_ = 0.0f;
+    float div2Y_ = 0.0f;
+    float div3Y_ = 0.0f;
 };
-
 }
 
 std::unique_ptr<Panel> makeZPlanePanel(Context& context) { return std::make_unique<ZPlanePanel>(context); }

@@ -136,6 +136,22 @@ public:
     }
     int factor() const noexcept HBA_NONBLOCKING { return factor_; }
 
+    // Passband round-trip (up + down) group delay in base-rate samples for HIIR k2/k4/k8.
+    double latencyExact() const noexcept HBA_NONBLOCKING {
+        if (factor_ <= 2)
+            return 4.5483;
+        if (factor_ == 4)
+            return 6.2007;
+        return 6.7549;
+    }
+    int latencySamples() const noexcept HBA_NONBLOCKING {
+        if (factor_ <= 2)
+            return 5;
+        if (factor_ == 4)
+            return 6;
+        return 7;
+    }
+
     void up(float x, float* out) noexcept HBA_NONBLOCKING {
         std::array<float, 8> tmp {};
         halfBandUp(u2_, x, out);

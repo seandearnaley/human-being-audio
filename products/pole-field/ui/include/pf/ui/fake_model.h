@@ -19,9 +19,13 @@ public:
     void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
 
     ImprintData imprint() const override { return imprint_; }
-    std::string imprintLabel() const override { return imprint_.active ? "Imprinted" : "Imprint WAV"; }
+    std::string imprintLabel() const override { return imprint_.hasAny() ? "Imprinted" : "Imprint WAV"; }
+    std::string imprintSlotLabel(int slot) const override {
+        return imprint_.slotEnabled(slot) ? "Imprinted" : std::string();
+    }
     void browseImprintAudio() override {}
-    void clearImprint() override { imprint_.active = false; }
+    void clearImprint() override { imprint_ = {}; }
+    void clearImprintSlot(int slot) override { imprint_.clearSlot(slot); }
 
     std::string presetName() const override { return "Neuro Chew"; }
     std::vector<PresetInfo> presets() const override { return { { "Neuro Chew", "Neuro" } }; }

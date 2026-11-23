@@ -31,8 +31,10 @@ Curve startingCurve(LaneShape shape, int lane) {
                                   static_cast<float>(laneStepValue(lane, step)), 0.0f, Segment::hold });
             return curve;
         }
-        case LaneShape::custom: break;
-    }
+        case LaneShape::custom:
+        case LaneShape::env:
+            break;
+        }
     return curves::sine();
 }
 }

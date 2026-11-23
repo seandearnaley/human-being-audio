@@ -13,12 +13,14 @@ namespace pf::ui {
 struct Visuals {
     static constexpr int kGonioPoints = 256;
     static constexpr int kSpectrumBands = 160;
+    static constexpr int kEnvHistoryPoints = 64;
 
     std::array<float, kGonioPoints> gonioLeft {};
     std::array<float, kGonioPoints> gonioRight {};
     float correlation = 0.0f;
 
     std::array<float, kSpectrumBands> spectrumDb {};
+    std::array<float, kEnvHistoryPoints> envHistory{};
 
     float peakDbLeft = -100.0f;
     float peakDbRight = -100.0f;
@@ -28,6 +30,7 @@ struct Visuals {
     std::array<float, kLaneCount> laneValue {};
     double ppq = 0.0;
     double sampleRate = 48000.0;
+    int osFactor = 4;
 
     // Effective modulated Z-plane values from the audio engine.
     float effMorphX = 0.36f;
@@ -38,6 +41,8 @@ struct Visuals {
     float effDrive = 0.34f;
     float effTransform = 0.0f;
     float effSpread = 0.22f;
+    float effFmAmount = 0.0f;
+    float envLevel = 0.0f;
     float midiShiftSt = 0.0f;
     int activeNote = -1;
 };
@@ -64,8 +69,18 @@ public:
 
     virtual ImprintData imprint() const = 0;
     virtual std::string imprintLabel() const = 0;
+    virtual std::string imprintSlotLabel(int slot) const { return slot == 0 ? imprintLabel() : std::string(); }
     virtual void browseImprintAudio() = 0;
+    virtual void browseImprintAudioSlot(int slot) {
+        (void)slot;
+        browseImprintAudio();
+    }
+    virtual void captureLiveImprint(int slot = 0) { (void)slot; }
     virtual void clearImprint() = 0;
+    virtual void clearImprintSlot(int slot) {
+        (void)slot;
+        clearImprint();
+    }
 
     virtual std::string presetName() const = 0;
     virtual std::vector<PresetInfo> presets() const = 0;

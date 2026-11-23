@@ -30,8 +30,13 @@ public:
 
     ImprintData imprint() const override;
     std::string imprintLabel() const override;
+    std::string imprintSlotLabel(int slot) const override;
     void browseImprintAudio() override;
+    void browseImprintAudioSlot(int slot) override;
+    void captureLiveImprint(int slot = 0) override;
     void clearImprint() override;
+    void clearImprintSlot(int slot) override;
+    bool imprintFileToSlot(const juce::File& file, int slot);
 
     std::string presetName() const override;
     std::vector<ui::PresetInfo> presets() const override;

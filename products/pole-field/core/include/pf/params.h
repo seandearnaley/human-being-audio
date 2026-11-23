@@ -15,14 +15,71 @@ namespace pf {
 enum class ParamId : std::uint8_t {
     // The eight performance macros come first so hosts and controllers map them
     // directly to bank 1.
-    morphX, morphY, morphZ, freq, res, drive, motion, mix,
-    cube, transform, topology, stages, spread, pitchTrack, glide,
-    foldType, asym, drivePos,
-    subLock, subSplit, fit, inputGain, outputGain, limit, ceiling, quality,
-    lane1On, lane1Rate, lane1Phase, lane1Depth, lane1Shape, lane1Target, lane1Follow, lane1Ratio,
-    lane2On, lane2Rate, lane2Phase, lane2Depth, lane2Shape, lane2Target, lane2Follow, lane2Ratio,
-    lane3On, lane3Rate, lane3Phase, lane3Depth, lane3Shape, lane3Target, lane3Follow, lane3Ratio,
-    lane4On, lane4Rate, lane4Phase, lane4Depth, lane4Shape, lane4Target, lane4Follow, lane4Ratio,
+    morphX,
+    morphY,
+    morphZ,
+    freq,
+    res,
+    drive,
+    motion,
+    mix,
+    cube,
+    transform,
+    topology,
+    stages,
+    spread,
+    stereoMode,
+    pitchTrack,
+    glide,
+    fmAmount,
+    fmSource,
+    foldType,
+    asym,
+    drivePos,
+    subLock,
+    subSplit,
+    fit,
+    inputGain,
+    outputGain,
+    limit,
+    ceiling,
+    quality,
+    envSource,
+    envAttack,
+    envRelease,
+    envSens,
+    lane1On,
+    lane1Rate,
+    lane1Phase,
+    lane1Depth,
+    lane1Shape,
+    lane1Target,
+    lane1Follow,
+    lane1Ratio,
+    lane2On,
+    lane2Rate,
+    lane2Phase,
+    lane2Depth,
+    lane2Shape,
+    lane2Target,
+    lane2Follow,
+    lane2Ratio,
+    lane3On,
+    lane3Rate,
+    lane3Phase,
+    lane3Depth,
+    lane3Shape,
+    lane3Target,
+    lane3Follow,
+    lane3Ratio,
+    lane4On,
+    lane4Rate,
+    lane4Phase,
+    lane4Depth,
+    lane4Shape,
+    lane4Target,
+    lane4Follow,
+    lane4Ratio,
     count
 };
 
@@ -33,10 +90,8 @@ enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, fol
 inline constexpr int kLaneFieldCount = 8;
 
 // What a lane modulates. Order matches choices::laneTarget.
-enum class LaneTarget : std::uint8_t {
-    morphX, morphY, morphZ, freq, res, transform, drive, spread, mix, fit
-};
-inline constexpr int kLaneTargetCount = 10;
+enum class LaneTarget : std::uint8_t { morphX, morphY, morphZ, freq, res, transform, drive, spread, mix, fit, fm };
+inline constexpr int kLaneTargetCount = 11;
 
 constexpr ParamId laneParam(int lane, LaneField field) {
     return static_cast<ParamId>(static_cast<int>(ParamId::lane1On) + lane * kLaneFieldCount + static_cast<int>(field));
@@ -62,24 +117,24 @@ struct ParamSpec {
 
 namespace choices {
 inline constexpr std::array<std::string_view, 2> offOn { "Off", "On" };
-inline constexpr std::array<std::string_view, 8> cube {
-    "Neuro Chew", "Vocal Matrix", "Phase Razor", "Metal Reactor",
-    "Break Sculpt", "Acid Ladder", "Subterranean", "Imprint Cube"
-};
+inline constexpr std::array<std::string_view, 12> cube{"Neuro Chew",   "Vocal Matrix",  "Phase Razor",  "Metal Reactor",
+                                                       "Break Sculpt", "Acid Ladder",   "Subterranean", "Flange Jaw",
+                                                       "Brass & Reed", "Acoustic Body", "Liquid Choir", "Imprint Cube"};
 inline constexpr std::array<std::string_view, 3> topology { "Serial", "Hybrid", "Parallel" };
 inline constexpr std::array<std::string_view, 4> stages { "4P", "8P", "12P", "14P" };
+inline constexpr std::array<std::string_view, 3> stereoMode{"Stereo", "Mid", "Side"};
+inline constexpr std::array<std::string_view, 3> fmSource{"Input", "Sidechain", "Pitch Sine"};
+inline constexpr std::array<std::string_view, 2> envSource{"Input", "Sidechain"};
 inline constexpr std::array<std::string_view, 5> foldType { "Tube", "Clip", "Fold", "Buchla", "Sine" };
 inline constexpr std::array<std::string_view, 3> drivePos { "Pre", "Inter", "Post" };
 inline constexpr std::array<std::string_view, 3> quality { "2\u00d7", "4\u00d7", "8\u00d7" };
 inline constexpr std::array<std::string_view, 12> laneRate {
     "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
 };
-inline constexpr std::array<std::string_view, 7> laneShape {
-    "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps", "Custom"
-};
-inline constexpr std::array<std::string_view, 10> laneTarget {
-    "Morph X", "Morph Y", "Morph Z", "Freq", "Res", "Transform", "Drive", "Spread", "Mix", "Fit"
-};
+inline constexpr std::array<std::string_view, 8> laneShape{"Sine",   "Triangle", "Ramp up", "Ramp down",
+                                                           "Square", "Steps",    "Custom",  "Env"};
+inline constexpr std::array<std::string_view, 11> laneTarget{
+    "Morph X", "Morph Y", "Morph Z", "Freq", "Res", "Transform", "Drive", "Spread", "Mix", "Fit", "FM"};
 inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
 inline constexpr std::array<std::string_view, 7> laneRatio {
     "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74"
@@ -94,9 +149,12 @@ inline constexpr std::array<double, 12> kLaneRateQuarters {
 inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
 
 enum class Topology : std::uint8_t { serial, hybrid, parallel };
+enum class StereoMode : std::uint8_t { stereo, mid, side };
+enum class FmSource : std::uint8_t { input, sidechain, pitchSine };
+enum class EnvSource : std::uint8_t { input, sidechain };
 enum class FoldType : std::uint8_t { tube, clip, fold, buchla, sine };
 enum class DrivePos : std::uint8_t { pre, inter, post };
-enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
+enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom, env };
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def) {
@@ -130,7 +188,7 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
     detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false)
 
 // Order must match ParamId.
-inline constexpr std::array<ParamSpec, kParamCount> kParams { {
+inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::amount("morphX", "Morph X", 0.36f),
     detail::amount("morphY", "Morph Y", 0.28f),
     detail::amount("morphZ", "Morph Z", 0.18f),
@@ -145,8 +203,12 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::choice("topology", "Topology", choices::topology, 0),
     detail::choice("stages", "Stages", choices::stages, 3),
     detail::amount("spread", "Spread", 0.22f),
+    detail::choice("stereoMode", "Routing", choices::stereoMode, 0),
     detail::toggle("pitchTrack", "Pitch track", false),
     detail::ranged("glide", "Glide", 0.0f, 300.0f, 18.0f, Unit::ms, 3.0f),
+
+    detail::amount("fmAmount", "FM", 0.0f),
+    detail::choice("fmSource", "FM src", choices::fmSource, 0, false),
 
     detail::choice("foldType", "Shaper", choices::foldType, 0),
     detail::amount("asym", "Asym", 0.14f),
@@ -161,11 +223,16 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams { {
     detail::ranged("ceiling", "Ceiling", -12.0f, 0.0f, -0.3f, Unit::dB),
     detail::choice("quality", "Quality", choices::quality, 1, false),
 
+    detail::choice("envSource", "Env src", choices::envSource, 0, false),
+    detail::ranged("envAttack", "Env atk", 1.0f, 100.0f, 8.0f, Unit::ms, 2.0f),
+    detail::ranged("envRelease", "Env rel", 10.0f, 800.0f, 140.0f, Unit::ms, 2.5f),
+    detail::ranged("envSens", "Env sens", -12.0f, 24.0f, 6.0f, Unit::dB),
+
     PF_LANE(1, true, LaneTarget::morphX, 4, 0.0f, 0.42f),
     PF_LANE(2, true, LaneTarget::morphY, 3, 90.0f, 0.34f),
     PF_LANE(3, false, LaneTarget::freq, 5, 180.0f, 0.22f),
     PF_LANE(4, false, LaneTarget::transform, 7, 270.0f, 0.30f),
-} };
+}};
 
 #undef PF_LANE
 
@@ -192,6 +259,7 @@ constexpr bool tableIsValid() {
 static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(static_cast<int>(ParamId::mix) == 7, "the eight macros are the first eight parameters");
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
+static_assert(spec(ParamId::envSens).key == "envSens", "env params precede lanes");
 static_assert(spec(ParamId::lane4Ratio).key == "lane4Ratio", "lane layout");
 static_assert(choices::laneTarget.size() == kLaneTargetCount);
 static_assert(kLaneRateQuarters.size() == choices::laneRate.size());

@@ -16,11 +16,13 @@ class Analysis {
 public:
     Analysis();
 
-    void push(const float* left, const float* right, int numSamples) noexcept;
+    void push(const float* leftOut, const float* rightOut, int numSamples) noexcept;
+    void push(const float* preInMono, const float* leftOut, const float* rightOut, int numSamples) noexcept;
 
     struct Status {
         float gainReductionDb = 0.0f;
         double ppq = 0.0;
+        int osFactor = 4;
         std::array<float, kLaneCount> lanePhase {};
         std::array<float, kLaneCount> laneValue {};
         Engine::EffectiveState effective {};
@@ -30,10 +32,13 @@ public:
 
     void update(ui::Visuals& visuals, float secondsSinceLastUpdate);
 
-private:
-    enum Channel { left, right, numChannels };
+    // Copies the most recent ~0.68 s of pre-filter mono input audio for 1-click Live Capture Imprint.
+    void snapshotInput(std::vector<float>& destination, double& outSampleRate);
+
+  private:
+    enum Channel { left, right, preIn, numChannels };
     static constexpr int kQueueSize = 1 << 15;
-    static constexpr int kHistorySize = 1 << 14;
+    static constexpr int kHistorySize = 1 << 15;
     static constexpr int kFftOrder = 12;
     static constexpr int kFftSize = 1 << kFftOrder;
 
@@ -50,12 +55,15 @@ private:
     juce::dsp::FFT fft_ { kFftOrder };
     juce::dsp::WindowingFunction<float> window_ { static_cast<size_t>(kFftSize),
                                                   juce::dsp::WindowingFunction<float>::hann };
-    std::vector<float> fftBuffer_;
+    std::vector<float> fftBufferL_;
+    std::vector<float> fftBufferR_;
     std::array<float, ui::Visuals::kSpectrumBands> spectrum_;
+    std::array<float, ui::Visuals::kEnvHistoryPoints> envHistory_{};
     float peakLeftDb_ = -100.0f;
     float peakRightDb_ = -100.0f;
 
     std::atomic<double> sampleRate_ { 48000.0 };
+    std::atomic<int> osFactor_{4};
     std::atomic<float> gainReductionDb_ { 0.0f };
     std::atomic<double> ppq_ { 0.0 };
     std::array<std::atomic<float>, kLaneCount> lanePhase_ {};
@@ -69,6 +77,8 @@ private:
     std::atomic<float> effDrive_{0.34f};
     std::atomic<float> effTransform_ { 0.0f };
     std::atomic<float> effSpread_ { 0.22f };
+    std::atomic<float> effFmAmount_{0.0f};
+    std::atomic<float> envLevel_{0.0f};
     std::atomic<float> midiShiftSt_ { 0.0f };
     std::atomic<int> activeNote_ { -1 };
 };
