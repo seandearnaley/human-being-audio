@@ -876,3 +876,57 @@ TEST_CASE("lane phases and values are reported", "[engine][lanes]") {
     const double expected = std::fmod(4800.0 / 48000.0 * 174.0 / 60.0 / 0.5, 1.0);
     CHECK(ph[0] == Catch::Approx(expected).margin(2e-3));
 }
+
+TEST_CASE("MIDI expression (CC1, CC74, aftertouch, RPN bend range) modulates cleanly and is bit-identical when idle",
+          "[engine]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::drive] = 0.35f;
+    s.params[ParamId::morph] = 0.5f;
+    s.params[ParamId::coupling] = 0.35f;
+    s.params[ParamId::sculptDepth] = 0.6f;
+
+    const auto idleOut = render(s, held(33), 9600);
+
+    // Neutral expression values must match idle bit-for-bit.
+    Engine neutral;
+    neutral.prepare(s.sampleRate, s.block, s.oversampling);
+    neutral.setModWheel(0.0f);
+    neutral.setTimbre(0.5f);
+    neutral.setAftertouch(0.0f);
+    const auto neutralOut = render(neutral, s, held(33), 9600);
+    CHECK(maxAbsDiff(idleOut.left, neutralOut.left) == 0.0);
+    CHECK(maxAbsDiff(idleOut.right, neutralOut.right) == 0.0);
+
+    // Active CC1, CC74, and Aftertouch each measurably move the growl and stay finite & bounded.
+    for (int mode = 0; mode < 3; ++mode) {
+        CAPTURE(mode);
+        Engine e;
+        e.prepare(s.sampleRate, s.block, s.oversampling);
+        if (mode == 0)
+            e.setModWheel(1.0f);
+        else if (mode == 1)
+            e.setTimbre(1.0f);
+        else
+            e.setAftertouch(1.0f);
+        const auto modOut = render(e, s, held(33), 9600);
+        REQUIRE(allFinite(modOut.left));
+        REQUIRE(allFinite(modOut.right));
+        CHECK(maxAbs(modOut.left) <= 1.0);
+        CHECK(maxAbsDiff(idleOut.left, modOut.left) > 1e-2);
+    }
+
+    // RPN pitch bend range extends beyond +-2 st and resets back to +-2 st on reset().
+    Engine e;
+    e.prepare(s.sampleRate, s.block, s.oversampling);
+    e.setPitchBendRange(12.0f);
+    render(e, s, held(45), 4800);
+    s.bend = 12.0f;
+    render(e, s, {}, 4800);
+    CHECK(semitones(e.currentHz(), noteHz(45)) == Catch::Approx(12.0).margin(1e-2));
+    e.reset();
+    render(e, s, held(45), 4800);
+    s.bend = 12.0f;
+    render(e, s, {}, 4800);
+    CHECK(semitones(e.currentHz(), noteHz(45)) == Catch::Approx(2.0).margin(1e-2));
+}

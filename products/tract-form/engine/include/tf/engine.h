@@ -55,6 +55,10 @@ public:
     void noteOff(int midiNote) noexcept TF_NONBLOCKING;
     void allNotesOff() noexcept TF_NONBLOCKING;
     void pitchBend(float semitones) noexcept TF_NONBLOCKING;
+    void setPitchBendRange(float semitones) noexcept TF_NONBLOCKING;
+    void setModWheel(float norm01) noexcept TF_NONBLOCKING;
+    void setTimbre(float norm01) noexcept TF_NONBLOCKING;
+    void setAftertouch(float norm01) noexcept TF_NONBLOCKING;
 
     // The lanes' drawn curves, played by any lane whose shape is Custom. A plain
     // copy: safe to call from the audio thread between blocks.

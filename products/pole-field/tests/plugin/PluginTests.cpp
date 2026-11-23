@@ -48,3 +48,55 @@ TEST_CASE("PoleField processor processes audio, loads all factory presets, and r
     REQUIRE(restored.imprint.label() == "TestSample");
     REQUIRE(restored.curves.get(0) == pf::curves::rampUp());
 }
+
+TEST_CASE("PoleField processor responds to MIDI CC1, CC74, Channel Pressure, CC121, and RPN 00 00", "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    pf::PluginProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+
+    if (auto* motion = proc.state.getParameter("motion"))
+        motion->setValueNotifyingHost(0.0f);
+    if (auto* pt = proc.state.getParameter("pitchTrack"))
+        pt->setValueNotifyingHost(1.0f);
+    if (auto* glide = proc.state.getParameter("glide"))
+        glide->setValueNotifyingHost(0.0f);
+
+    juce::AudioBuffer<float> audio(2, 256);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 101, 0), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 100, 0), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 6, 12), 0); // RPN 00 00 = 12 st
+    midi.addEvent(juce::MidiMessage::noteOn(1, 29, 1.0f), 0);       // F1 = 0 st
+    midi.addEvent(juce::MidiMessage::pitchWheel(1, 16383), 0);      // +12 st
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 74, 127), 0);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 1, 127), 0);
+    midi.addEvent(juce::MidiMessage::channelPressureChange(1, 127), 0);
+
+    audio.clear();
+    proc.processBlock(audio, midi);
+    juce::MidiBuffer empty;
+    for (int i = 0; i < 16; ++i) {
+        audio.clear();
+        proc.processBlock(audio, empty);
+    }
+
+    pf::ui::Visuals visuals;
+    proc.analysis.update(visuals, 0.016f);
+    CHECK(visuals.midiShiftSt == Catch::Approx(12.0f).margin(0.2f));
+    CHECK(visuals.effMorphX > 0.70f);
+    CHECK(visuals.effMorphY > 0.65f);
+    CHECK(visuals.effMorphZ > 0.50f);
+
+    // CC121 resets expression and pitch bend cleanly.
+    juce::MidiBuffer resetMidi;
+    resetMidi.addEvent(juce::MidiMessage::controllerEvent(1, 121, 0), 0);
+    audio.clear();
+    proc.processBlock(audio, resetMidi);
+    for (int i = 0; i < 16; ++i) {
+        audio.clear();
+        proc.processBlock(audio, empty);
+    }
+    proc.analysis.update(visuals, 0.016f);
+    CHECK(visuals.midiShiftSt == Catch::Approx(0.0f).margin(0.2f));
+}

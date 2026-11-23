@@ -65,6 +65,8 @@ private:
 
     ParameterValues values_;
     Engine engine_;
+    juce::MidiRPNDetector rpnDetector_;
+    float pitchBendRangeSt_ = 2.0f;
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
     std::vector<float> masterTap_, growlTap_;

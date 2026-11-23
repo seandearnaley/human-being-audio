@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -216,4 +217,67 @@ TEST_CASE("Live Shaper switching across all 5 ADAA2 models is click-free", "[eng
         }
     }
     REQUIRE(maxBoundaryJump < 0.12f);
+}
+
+TEST_CASE("MIDI expression (CC1, CC74, aftertouch) modulates X/Y/Z and Drive smoothly and is bit-identical when idle",
+          "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int total = 4096;
+
+    auto params = pf::Params::defaults();
+    params[pf::ParamId::motion] = 0.0f;
+    params[pf::ParamId::morphX] = 0.45f;
+    params[pf::ParamId::morphY] = 0.30f;
+    params[pf::ParamId::morphZ] = 0.25f;
+    params[pf::ParamId::drive] = 0.30f;
+
+    std::vector<float> srcL(total), srcR(total);
+    for (int i = 0; i < total; ++i) {
+        const double t = static_cast<double>(i) / fs;
+        const float s = static_cast<float>(0.35 * std::sin(kTwoPi * 110.0 * t) + 0.25 * std::sin(kTwoPi * 520.0 * t));
+        srcL[static_cast<std::size_t>(i)] = s;
+        srcR[static_cast<std::size_t>(i)] = s;
+    }
+
+    auto renderWith = [&](auto configure) {
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        configure(eng);
+        std::vector<float> outL = srcL, outR = srcR;
+        for (int pos = 0; pos < total; pos += 256) {
+            pf::Transport tr{172.0, 0.0, false};
+            eng.process(params, tr, outL.data() + pos, outR.data() + pos, 256);
+        }
+        return std::tuple{outL, outR, eng.effectiveState()};
+    };
+
+    const auto [idleL, idleR, idleState] = renderWith([](pf::Engine&) {});
+    const auto [neutL, neutR, neutState] = renderWith([](pf::Engine& e) {
+        e.setModWheel(0.0f);
+        e.setTimbre(0.5f);
+        e.setAftertouch(0.0f);
+    });
+    for (int i = 0; i < total; ++i) {
+        REQUIRE(idleL[static_cast<std::size_t>(i)] == neutL[static_cast<std::size_t>(i)]);
+        REQUIRE(idleR[static_cast<std::size_t>(i)] == neutR[static_cast<std::size_t>(i)]);
+    }
+    CHECK(neutState.morphX == Catch::Approx(idleState.morphX));
+
+    const auto [modL, modR, modState] = renderWith([](pf::Engine& e) {
+        e.setTimbre(1.0f);     // +0.45 on Morph X
+        e.setModWheel(1.0f);   // +0.45 on Morph Y
+        e.setAftertouch(1.0f); // +0.40 on Morph Z + +0.25 Drive
+    });
+    CHECK(modState.morphX == Catch::Approx(0.90f).margin(0.02f));
+    CHECK(modState.morphY == Catch::Approx(0.75f).margin(0.02f));
+    CHECK(modState.morphZ == Catch::Approx(0.65f).margin(0.02f));
+
+    double maxDiff = 0.0;
+    for (int i = 0; i < total; ++i) {
+        REQUIRE(std::isfinite(modL[static_cast<std::size_t>(i)]));
+        REQUIRE(std::isfinite(modR[static_cast<std::size_t>(i)]));
+        maxDiff = std::max(maxDiff, static_cast<double>(std::abs(modL[static_cast<std::size_t>(i)] -
+                                                                 idleL[static_cast<std::size_t>(i)])));
+    }
+    CHECK(maxDiff > 1e-2);
 }

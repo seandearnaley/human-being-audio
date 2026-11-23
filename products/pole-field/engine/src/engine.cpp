@@ -45,11 +45,14 @@ struct Engine::Impl {
     LaneCurves laneCurves = defaultLaneCurves();
     ImprintData imprint {};
 
-    // Monophonic MIDI note stack for harmonic pitch tracking
+    // Monophonic MIDI note stack for harmonic pitch tracking & expression
     std::array<int, kMaxHeldNotes> noteStack {};
     int noteCount = 0;
     int activeNote = -1;
     float pitchBendSt = 0.0f;
+    double modWheelTarget = 0.0;
+    double timbreOffsetTarget = 0.0;
+    double aftertouchTarget = 0.0;
     double freePpq = 0.0;
 
     // Published telemetry for UI
@@ -110,6 +113,9 @@ struct Engine::Impl {
         noteCount = 0;
         activeNote = -1;
         pitchBendSt = 0.0f;
+        modWheelTarget = 0.0;
+        timbreOffsetTarget = 0.0;
+        aftertouchTarget = 0.0;
         freePpq = 0.0;
         lastGrDb = 0.0f;
         sampleIndex = 0;
@@ -181,13 +187,25 @@ struct Engine::Impl {
             for (int l = 0; l < kLaneCount; ++l)
                 sends[static_cast<std::size_t>(l)] = static_cast<float>(laneSend(params, laneCurves, l, ppq));
 
-            const double tX = std::clamp(static_cast<double>(laneApply(LaneTarget::morphX, params[ParamId::morphX], laneSum(params, sends, LaneTarget::morphX))), 0.0, 1.0);
-            const double tY = std::clamp(static_cast<double>(laneApply(LaneTarget::morphY, params[ParamId::morphY], laneSum(params, sends, LaneTarget::morphY))), 0.0, 1.0);
-            const double tZ = std::clamp(static_cast<double>(laneApply(LaneTarget::morphZ, params[ParamId::morphZ], laneSum(params, sends, LaneTarget::morphZ))), 0.0, 1.0);
+            const double tX = std::clamp(static_cast<double>(laneApply(LaneTarget::morphX, params[ParamId::morphX],
+                                                                       laneSum(params, sends, LaneTarget::morphX))) +
+                                             timbreOffsetTarget,
+                                         0.0, 1.0);
+            const double tY = std::clamp(static_cast<double>(laneApply(LaneTarget::morphY, params[ParamId::morphY],
+                                                                       laneSum(params, sends, LaneTarget::morphY))) +
+                                             0.45 * modWheelTarget,
+                                         0.0, 1.0);
+            const double tZ = std::clamp(static_cast<double>(laneApply(LaneTarget::morphZ, params[ParamId::morphZ],
+                                                                       laneSum(params, sends, LaneTarget::morphZ))) +
+                                             0.40 * aftertouchTarget,
+                                         0.0, 1.0);
             const double tFreq = std::clamp(static_cast<double>(laneApply(LaneTarget::freq, params[ParamId::freq], laneSum(params, sends, LaneTarget::freq))), -48.0, 48.0);
             const double tRes = std::clamp(static_cast<double>(laneApply(LaneTarget::res, params[ParamId::res], laneSum(params, sends, LaneTarget::res))), 0.0, 1.0);
             const double tXform = std::clamp(static_cast<double>(laneApply(LaneTarget::transform, params[ParamId::transform], laneSum(params, sends, LaneTarget::transform))), -1.0, 1.0);
-            const double tDrive = std::clamp(static_cast<double>(laneApply(LaneTarget::drive, params[ParamId::drive], laneSum(params, sends, LaneTarget::drive))), 0.0, 1.0);
+            const double tDrive = std::clamp(static_cast<double>(laneApply(LaneTarget::drive, params[ParamId::drive],
+                                                                           laneSum(params, sends, LaneTarget::drive))) +
+                                                 0.25 * aftertouchTarget,
+                                             0.0, 1.0);
             const double tSpread = std::clamp(static_cast<double>(laneApply(LaneTarget::spread, params[ParamId::spread], laneSum(params, sends, LaneTarget::spread))), 0.0, 1.0);
             const double tMix = std::clamp(static_cast<double>(laneApply(LaneTarget::mix, params[ParamId::mix], laneSum(params, sends, LaneTarget::mix))), 0.0, 1.0);
             const double rawFit = static_cast<double>(laneApply(LaneTarget::fit, params[ParamId::fit], laneSum(params, sends, LaneTarget::fit)));
@@ -321,6 +339,15 @@ void Engine::reset() noexcept PF_NONBLOCKING { impl_->reset(); }
 void Engine::noteOn(int midiNote) noexcept PF_NONBLOCKING { impl_->noteOn(midiNote); }
 void Engine::noteOff(int midiNote) noexcept PF_NONBLOCKING { impl_->noteOff(midiNote); }
 void Engine::pitchBend(float semitones) noexcept PF_NONBLOCKING { impl_->pitchBendSt = semitones; }
+void Engine::setModWheel(float norm01) noexcept PF_NONBLOCKING {
+    impl_->modWheelTarget = std::clamp(static_cast<double>(norm01), 0.0, 1.0);
+}
+void Engine::setTimbre(float norm01) noexcept PF_NONBLOCKING {
+    impl_->timbreOffsetTarget = 0.9 * (std::clamp(static_cast<double>(norm01), 0.0, 1.0) - 0.5);
+}
+void Engine::setAftertouch(float norm01) noexcept PF_NONBLOCKING {
+    impl_->aftertouchTarget = std::clamp(static_cast<double>(norm01), 0.0, 1.0);
+}
 void Engine::allNotesOff() noexcept PF_NONBLOCKING { impl_->noteCount = 0; impl_->activeNote = -1; }
 void Engine::setLaneCurves(const LaneCurves& curves) noexcept PF_NONBLOCKING { impl_->laneCurves = curves; }
 void Engine::setImprint(const ImprintData& imprint) noexcept PF_NONBLOCKING { impl_->imprint = imprint; }
