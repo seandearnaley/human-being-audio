@@ -35,7 +35,7 @@ void Presets::scan() {
     }
     // Grouped by category in a deliberate order, then by name.
     const auto rank = [](const std::string& category) {
-        static const std::array<std::string_view, 5> order { "Reese", "Neuro", "Talk", "Sub", "Motion" };
+        static const std::array<std::string_view, 6> order{"Reese", "Neuro", "Talk", "Sub", "Motion", "Pluck & Stab"};
         return std::find(order.begin(), order.end(), category) - order.begin();
     };
     std::stable_sort(presets_.begin(), presets_.end(), [&](const Preset& a, const Preset& b) {

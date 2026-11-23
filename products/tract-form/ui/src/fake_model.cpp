@@ -56,16 +56,26 @@ const Visuals& FakeModel::visuals() {
     visuals_.gainReductionDb = 1.4f;
 
     visuals_.ppq = time_ * 174.0 / 60.0;
+    visuals_.notePpq = visuals_.ppq;
     for (int lane = 0; lane < kLaneCount; ++lane) {
         const auto index = static_cast<std::size_t>(lane);
-        const double length = laneLengthQuarters(params_, lane);
-        visuals_.lanePhase[index] = static_cast<float>(lanePhase(visuals_.ppq, length, params_[laneParam(lane, LaneField::phase)]));
-        visuals_.laneValue[index] = static_cast<float>(laneSend(params_, curves_, lane, visuals_.ppq));
+        visuals_.lanePhase[index] = static_cast<float>(lanePhaseFor(params_, lane, visuals_.ppq, visuals_.notePpq));
+        visuals_.laneValue[index] =
+            static_cast<float>(laneSend(params_, curves_, lane, visuals_.ppq, visuals_.notePpq));
     }
 
     visuals_.hz = 43.65f;
     visuals_.note = 29;
     visuals_.gate = true;
+    visuals_.effMorph = params_[ParamId::morph];
+    visuals_.effShift = params_[ParamId::tractShift];
+    visuals_.effDrive = params_[ParamId::drive];
+    visuals_.effSculpt = params_[ParamId::sculpt];
+    visuals_.effWidth = params_[ParamId::width];
+    visuals_.effCoupling = params_[ParamId::coupling];
+    visuals_.effBeat = params_[ParamId::beat];
+    visuals_.effReach = params_[ParamId::reach];
+    visuals_.effActive = true;
     return visuals_;
 }
 

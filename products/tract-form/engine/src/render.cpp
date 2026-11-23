@@ -63,11 +63,14 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
     }
 
     if (tail == 0 && total > 0) {
+        // Raised-cosine 2 ms boundary ramp guarantees click-free 4-bar DAW loops.
         const long long fadeFrames =
-            std::min(total, std::max(1LL, static_cast<long long>(std::llround(0.0015 * sampleRate))));
+            std::min(total, std::max(1LL, static_cast<long long>(std::llround(0.002 * sampleRate))));
         const long long fadeStart = total - fadeFrames;
+        constexpr double kPi = 3.14159265358979323846;
         for (long long i = 0; i < fadeFrames; ++i) {
-            const float gain = static_cast<float>(fadeFrames - 1 - i) / static_cast<float>(fadeFrames);
+            const double t = static_cast<double>(i + 1) / static_cast<double>(fadeFrames);
+            const auto gain = static_cast<float>(0.5 * (1.0 + std::cos(kPi * t)));
             const auto frame = static_cast<std::size_t>(fadeStart + i) * 2;
             out[frame] *= gain;
             out[frame + 1] *= gain;

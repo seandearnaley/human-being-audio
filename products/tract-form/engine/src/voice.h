@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 
 namespace tf::dsp {
@@ -70,43 +71,76 @@ private:
     double position_ = 0.0, length_ = 0.0;
 };
 
-// Linear amp gate: 2 ms attack, 30 ms release, and a 1 ms fade used before a
+// Shaped exponential ADSR amp envelope with a 1 ms linear fade used before a
 // phase reset while the gate is still open.
 class Gate {
 public:
-    enum class Stage : std::uint8_t { closed, attack, open, release, fade };
+  enum class Stage : std::uint8_t { closed, attack, decay, sustain, release, fade };
 
-    static constexpr double kAttackSeconds = 0.002;
-    static constexpr double kReleaseSeconds = 0.030;
-    static constexpr double kFadeSeconds = 0.001;
+  static constexpr double kAttackSeconds = 0.002;
+  static constexpr double kReleaseSeconds = 0.030;
+  static constexpr double kFadeSeconds = 0.001;
 
-    void prepare(double sampleRate) noexcept TF_NONBLOCKING {
-        attackStep_ = 1.0 / (kAttackSeconds * sampleRate);
-        releaseStep_ = 1.0 / (kReleaseSeconds * sampleRate);
-        fadeStep_ = 1.0 / (kFadeSeconds * sampleRate);
-    }
+  void prepare(double sampleRate) noexcept TF_NONBLOCKING {
+      sr_ = std::max(sampleRate, 1000.0);
+      fadeStep_ = 1.0 / (kFadeSeconds * sr_);
+      setEnvelope(2.0, 180.0, 1.0, 30.0);
+  }
+
+  void setEnvelope(double attackMs, double decayMs, double sustain, double releaseMs) noexcept TF_NONBLOCKING {
+      const double atkSec = std::clamp(attackMs, 0.5, 5000.0) * 1.0e-3;
+      const double decSec = std::clamp(decayMs, 5.0, 10000.0) * 1.0e-3;
+      const double relSec = std::clamp(releaseMs, 2.0, 10000.0) * 1.0e-3;
+      // RC charge targeting 1.6 reaches 1.0 in ~atkSec with natural convex curve.
+      attackCoef_ = 1.0 - std::exp(-0.980829253 / (atkSec * sr_));
+      decayCoef_ = 1.0 - std::exp(-4.605170186 / (decSec * sr_));
+      // Virtual asymptote at -0.005: smooth analog exponential decay reaching exact
+      // 0.0 in relSec (ln(1.005 / 0.005) = 5.3033049) with a silent termination slope.
+      releaseCoef_ = 1.0 - std::exp(-5.303304908 / (relSec * sr_));
+      sustain_ = std::clamp(sustain, 0.0, 1.0);
+  }
+
     void reset() noexcept TF_NONBLOCKING {
         stage_ = Stage::closed;
         value_ = 0.0;
     }
-    void open() noexcept TF_NONBLOCKING { stage_ = value_ >= 1.0 ? Stage::open : Stage::attack; }
+
+    void open() noexcept TF_NONBLOCKING { stage_ = Stage::attack; }
+
     void close() noexcept TF_NONBLOCKING {
         if (stage_ != Stage::closed) stage_ = Stage::release;
     }
+
     void fade() noexcept TF_NONBLOCKING { stage_ = Stage::fade; }
 
     // Advances one sample. Returns true when a fade has just reached zero.
     bool step() noexcept TF_NONBLOCKING {
         switch (stage_) {
             case Stage::closed:
-            case Stage::open: return false;
+                return false;
             case Stage::attack:
-                value_ = std::min(1.0, value_ + attackStep_);
-                if (value_ >= 1.0) stage_ = Stage::open;
+                value_ += attackCoef_ * (1.6 - value_);
+                if (value_ >= 1.0) {
+                    value_ = 1.0;
+                    stage_ = sustain_ >= 0.9999 ? Stage::sustain : Stage::decay;
+                }
+                return false;
+            case Stage::decay:
+                value_ += decayCoef_ * (sustain_ - value_);
+                if (std::abs(value_ - sustain_) <= 1.0e-4) {
+                    value_ = sustain_;
+                    stage_ = Stage::sustain;
+                }
+                return false;
+            case Stage::sustain:
+                value_ += decayCoef_ * (sustain_ - value_);
                 return false;
             case Stage::release:
-                value_ = std::max(0.0, value_ - releaseStep_);
-                if (value_ <= 0.0) stage_ = Stage::closed;
+                value_ += releaseCoef_ * (-0.005 - value_);
+                if (value_ <= 0.0) {
+                    value_ = 0.0;
+                    stage_ = Stage::closed;
+                }
                 return false;
             case Stage::fade:
                 value_ = std::max(0.0, value_ - fadeStep_);
@@ -122,9 +156,45 @@ public:
     bool silent() const noexcept TF_NONBLOCKING { return stage_ == Stage::closed && value_ <= 0.0; }
 
 private:
-    Stage stage_ = Stage::closed;
-    double value_ = 0.0;
-    double attackStep_ = 0.01, releaseStep_ = 0.001, fadeStep_ = 0.02;
+  double sr_ = 48000.0;
+  Stage stage_ = Stage::closed;
+  double value_ = 0.0;
+  double sustain_ = 1.0;
+  double attackCoef_ = 0.02;
+  double decayCoef_ = 0.001;
+  double releaseCoef_ = 0.003;
+  double fadeStep_ = 0.02;
 };
 
+// Phase-locked exponential pitch transient envelope (0..1 -> +0..24 st).
+class PitchPunch {
+  public:
+    void prepare(double sampleRate) noexcept TF_NONBLOCKING {
+        sr_ = std::max(sampleRate, 1000.0);
+        reset();
+    }
+
+    void reset() noexcept TF_NONBLOCKING { value_ = 0.0; }
+
+    void trigger(double strength = 1.0) noexcept TF_NONBLOCKING { value_ = std::clamp(strength, 0.0, 1.0); }
+
+    double advance(double samples, double decayMs) noexcept TF_NONBLOCKING {
+        if (value_ <= 1.0e-5) {
+            value_ = 0.0;
+            return 0.0;
+        }
+        const double tau = std::max(0.002, decayMs * 1.0e-3) * sr_;
+        // Reaches ~1% of peak in decayMs (exp(-4.6) ~= 0.01).
+        value_ *= std::exp(-4.605170186 * samples / tau);
+        if (value_ <= 1.0e-5)
+            value_ = 0.0;
+        return value_;
+    }
+
+    double value() const noexcept TF_NONBLOCKING { return value_; }
+
+  private:
+    double sr_ = 48000.0;
+    double value_ = 0.0;
+};
 }

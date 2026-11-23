@@ -13,6 +13,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <complex>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -39,6 +40,10 @@ constexpr float kTitleHeight = 16.0f;   // title band, from the top inset
 constexpr float kVisualTop = 36.0f;     // from the node top
 constexpr float kVisualHeight = 62.0f;
 constexpr float kRowsTop = 110.0f;      // four rows end on the bottom inset
+constexpr float kCompactVisualTop = 30.0f;
+constexpr float kCompactVisualHeight = 56.0f;
+constexpr float kCompactRowsTop = 96.0f;
+constexpr float kCompactRowHeight = 20.0f;
 constexpr float kReeseRowsTop = 30.0f;  // the Reese cards' 2x2 grid
 constexpr float kColumnGap = 20.0f;     // between the two columns of that grid
 constexpr float kSparkWidth = 90.0f;
@@ -47,7 +52,7 @@ constexpr float kPanelWidth = 1256.0f;  // the editor gives the graph its full c
 constexpr float kNodeTop = metric::pad;
 constexpr float kNodeHeight = 208.0f;
 constexpr float kGap = 22.0f;           // between columns
-constexpr float kReeseWidth = 240.0f;
+constexpr float kReeseWidth = 234.0f;
 
 constexpr Box nextColumn(const Box& left, float width) { return { left.right() + kGap, kNodeTop, width, kNodeHeight }; }
 
@@ -59,25 +64,29 @@ constexpr Box kTract = nextColumn(kReeseA, 160.0f);
 constexpr Box kFold = nextColumn(kTract, 146.0f);
 constexpr Box kSculpt = nextColumn(kFold, 150.0f);
 constexpr Box kMidSide = nextColumn(kSculpt, 136.0f);
-constexpr Box kOut = nextColumn(kMidSide, 128.0f);
+constexpr Box kOut = nextColumn(kMidSide, 134.0f);
 static_assert(kOut.right() == kPanelWidth - metric::pad, "the columns fill the panel");
 
 constexpr float kSubY = 256.0f;
 constexpr float kCorner = 10.0f;
-// One line: title, Low-pass, Fit. Each row is as wide as its longest label and
-// value ("200 Hz", "360°") plus the same 16 px the title leaves before Low-pass.
+// One line: title, Split, Fit, Warmth.
 constexpr float kSubLockRowX = 76.0f;  // from the card's left edge
-constexpr float kLowPassWidth = 108.0f;
+constexpr float kLowPassWidth = 76.0f;
 constexpr float kFitWidth = 60.0f;
-constexpr float kSubLockGap = 24.0f;   // between the two rows
-constexpr float kSubLockWidth = kSubLockRowX + kLowPassWidth + kSubLockGap + kFitWidth + kInset;
+constexpr float kWarmthWidth = 96.0f;
+constexpr float kSubLockGap = 20.0f; // between rows
+constexpr float kSubLockWidth =
+    kSubLockRowX + kLowPassWidth + kSubLockGap + kFitWidth + kSubLockGap + kWarmthWidth + kInset;
 constexpr Box kSubLock { (kMaster.midX() + kOut.midX() - kSubLockWidth) * 0.5f, kSubY - 18.0f, kSubLockWidth, 36.0f };
 
 constexpr float kChipWidth = 52.0f;
 constexpr float kTimeChipWidth = 64.0f;  // "1/4 cyc"
 constexpr float kChipHeight = 20.0f;
 constexpr float kChipGap = 6.0f;
-constexpr float kCountChipWidth = 28.0f;   // Sculpt's band count, in its title band
+constexpr float kCountChipWidth = 24.0f; // Sculpt's band count, in its title band
+constexpr float kModeChipWidth = 48.0f;  // Sculpt's mode (Bell/Phaser/Comb), in its title band
+constexpr float kPosChipWidth = 42.0f;   // Tract Pre/Post chip
+constexpr float kAuditionWidth = 34.0f;  // Master F1 audition pill
 constexpr float kCountChipHeight = 18.0f;
 constexpr float kFeedbackLabelWidth = 58.0f;  // "Feedback" at label size
 constexpr float kLoopOut = 10.0f;             // the feedback loop's distance from the column
@@ -96,9 +105,18 @@ Box nodeVisual(const Box& node, float width) {
     return { node.midX() - width * 0.5f, node.y + kVisualTop, width, kVisualHeight };
 }
 
+Box compactVisual(const Box& node, float width) {
+    return {node.midX() - width * 0.5f, node.y + kCompactVisualTop, width, kCompactVisualHeight};
+}
+
 Box nodeRow(const Box& node, int index) {
     return { node.x + kInset, node.y + kRowsTop + metric::row * static_cast<float>(index), node.w - 2.0f * kInset,
              metric::row };
+}
+
+Box compactRow(const Box& node, int index) {
+    return {node.x + kInset, node.y + kCompactRowsTop + kCompactRowHeight * static_cast<float>(index),
+            node.w - 2.0f * kInset, kCompactRowHeight};
 }
 
 Box reeseCell(const Box& card, int column, int row) {
@@ -147,35 +165,55 @@ using Curve = std::array<float, N>;
 constexpr std::size_t kSparkPoints = 96;
 constexpr std::size_t kShapePoints = 160;
 
-Curve<kShapePoints> sinePeriod() {
+Curve<kShapePoints> subPeriod(float subWarmth) {
     Curve<kShapePoints> values {};
-    for (std::size_t i = 0; i < values.size(); ++i)
-        values[i] = std::sin(kTwoPi * static_cast<float>(i) / static_cast<float>(values.size() - 1));
-    return values;
-}
-
-// One period of the master: sin(2π·x·ratio + phase + I·sin(2π·x)).
-Curve<kSparkPoints> voicePeriod(float ratio, float phaseDegrees, float pmIndex) {
-    Curve<kSparkPoints> values {};
-    const float phase = phaseDegrees * kPi / 180.0f;
+    const float sw = std::clamp(subWarmth, 0.0f, 1.0f);
     for (std::size_t i = 0; i < values.size(); ++i) {
-        const float x = static_cast<float>(i) / static_cast<float>(values.size() - 1);
-        values[i] = std::sin(kTwoPi * x * ratio + phase + pmIndex * std::sin(kTwoPi * x));
+        const float p = kTwoPi * static_cast<float>(i) / static_cast<float>(values.size() - 1);
+        const float fund = std::sin(p);
+        values[i] = sw <= 1.0e-4f
+                        ? fund
+                        : (fund + sw * (0.24f * std::sin(2.0f * p) + 0.14f * std::sin(3.0f * p))) / (1.0f + 0.24f * sw);
     }
     return values;
 }
 
-// Formant magnitude response, 150 Hz to 5 kHz on a log axis, in 0..1 over a
-// 36 dB range below the highest peak.
-Curve<kShapePoints> formantResponse(int vowelA, int vowelB, float morph) {
+// One period of the voice with carrier harmonic Shape morph.
+Curve<kSparkPoints> voicePeriod(float ratio, float phaseDegrees, float pmIndex, float oscShape) {
+    Curve<kSparkPoints> values {};
+    const float phase = phaseDegrees * kPi / 180.0f;
+    const float shp = std::clamp(oscShape, 0.0f, 1.0f);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const float x = static_cast<float>(i) / static_cast<float>(values.size() - 1);
+        const float rad = kTwoPi * x * ratio + phase + pmIndex * std::sin(kTwoPi * x);
+        const float s1 = std::sin(rad);
+        if (shp <= 1.0e-4f) {
+            values[i] = s1;
+        } else {
+            const float s2 = std::sin(2.0f * rad);
+            const float rich = std::sin(rad + 0.85f * shp * s1 + 0.35f * shp * s2);
+            values[i] = (1.0f - shp) * s1 + shp * rich;
+        }
+    }
+    return values;
+}
+
+// Complex alternating-sign formant magnitude response matching tract.h (+1, -1, +1, -1, +1),
+// 150 Hz to 5 kHz on a log axis, in 0..1 over a 36 dB range below the highest peak.
+Curve<kShapePoints> formantResponse(int vowelA, int vowelB, float morph, float shiftSt, float qAmt) {
     constexpr float kLow = 150.0f, kHigh = 5000.0f, kRangeDb = 36.0f;
     const Vowel& a = kVowels[static_cast<std::size_t>(std::clamp(vowelA, 0, 5))];
     const Vowel& b = kVowels[static_cast<std::size_t>(std::clamp(vowelB, 0, 5))];
 
+    const float shiftRatio = std::exp2(std::clamp(shiftSt, -24.0f, 24.0f) / 12.0f);
+    const float qNorm = std::clamp(qAmt, 0.0f, 1.0f);
+    const float bwScale = qNorm <= 0.5f ? lerp(2.38f, 1.0f, qNorm * 2.0f) : lerp(1.0f, 0.42f, (qNorm - 0.5f) * 2.0f);
+
     std::array<float, kFormantCount> hz {}, bandwidth {}, gain {};
     for (std::size_t k = 0; k < kFormantCount; ++k) {
-        hz[k] = std::exp(lerp(std::log(a.hz[k]), std::log(b.hz[k]), morph));
-        bandwidth[k] = std::exp(lerp(std::log(a.bandwidthHz[k]), std::log(b.bandwidthHz[k]), morph));
+        hz[k] = std::clamp(std::exp(lerp(std::log(a.hz[k]), std::log(b.hz[k]), morph)) * shiftRatio, 90.0f, 12000.0f);
+        bandwidth[k] =
+            std::max(20.0f, std::exp(lerp(std::log(a.bandwidthHz[k]), std::log(b.bandwidthHz[k]), morph)) * bwScale);
         gain[k] = std::pow(10.0f, lerp(a.gainDb[k], b.gainDb[k], morph) / 20.0f);
     }
 
@@ -184,13 +222,15 @@ Curve<kShapePoints> formantResponse(int vowelA, int vowelB, float morph) {
     for (std::size_t i = 0; i < values.size(); ++i) {
         const float position = static_cast<float>(i) / static_cast<float>(values.size() - 1);
         const float f = kLow * std::pow(kHigh / kLow, position);
-        float sum = 0.0f;
+        std::complex<float> sum(0.0f, 0.0f);
         for (std::size_t k = 0; k < kFormantCount; ++k) {
             const float q = hz[k] / bandwidth[k];
             const float detune = f / hz[k] - hz[k] / f;
-            sum += gain[k] / std::sqrt(1.0f + q * q * detune * detune);
+            const std::complex<float> bp = std::complex<float>(1.0f, 0.0f) / std::complex<float>(1.0f, q * detune);
+            const float sign = (k & 1u) == 0u ? 1.0f : -1.0f;
+            sum += (sign * gain[k]) * bp;
         }
-        values[i] = 20.0f * std::log10(std::max(sum, 1.0e-6f));
+        values[i] = 20.0f * std::log10(std::max(std::abs(sum), 1.0e-6f));
         peak = std::max(peak, values[i]);
     }
     for (float& v : values) v = std::max(0.0f, 1.0f - (peak - v) / kRangeDb);
@@ -226,12 +266,11 @@ constexpr std::size_t kSculptPoints = 768;  // dense enough to catch the narrowe
 
 float harmonicPosition(float harmonic) { return std::log(harmonic) / std::log(kSculptTop); }
 
-Curve<kSculptPoints> sculptResponse(float sculpt, int count, float spread, float depth, float resonance) {
+Curve<kSculptPoints> sculptResponse(float sculpt, int count, float spread, float depth, float resonance,
+                                    SculptMode mode) {
     Curve<kSculptPoints> values {};
-    const float gainDb = feel::sculptGainDb(depth);
-    if (gainDb == 0.0f) return values;
-    // The analogue prototype of a peaking EQ: |H(jw)|² at w = f / f0.
-    const float a = std::pow(10.0f, gainDb / 40.0f);
+    if (std::abs(depth) < 1.0e-4f)
+        return values;
     const float q = feel::sculptQ(resonance);
     std::vector<float> centres;
     for (int i = 0; i < count; ++i) {
@@ -239,17 +278,56 @@ Curve<kSculptPoints> sculptResponse(float sculpt, int count, float spread, float
         if (centre > kSculptTop) break;
         centres.push_back(centre);
     }
+
+    if (mode == SculptMode::bell) {
+        const float gainDb = feel::sculptGainDb(depth);
+        const float gLin = std::pow(10.0f, gainDb / 20.0f);
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            const float harmonic = std::pow(kSculptTop, static_cast<float>(i) / static_cast<float>(values.size() - 1));
+            float db = 0.0f;
+            for (const float centre : centres) {
+                const float detune = harmonic / centre - centre / harmonic;
+                const std::complex<float> bp = std::complex<float>(1.0f, 0.0f) / std::complex<float>(1.0f, q * detune);
+                const std::complex<float> h = std::complex<float>(1.0f, 0.0f) + (gLin - 1.0f) * bp;
+                db += 20.0f * std::log10(std::max(std::abs(h), 1.0e-4f));
+            }
+            values[i] = std::clamp(db, -kSculptRangeDb, kSculptRangeDb);
+        }
+        return values;
+    }
+
+    if (mode == SculptMode::phaser) {
+        const float fb = std::clamp(0.75f * resonance, 0.0f, 0.78f);
+        const float wet = std::clamp(std::abs(depth), 0.0f, 1.0f);
+        const float polarity = depth < 0.0f ? -1.0f : 1.0f;
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            const float harmonic = std::pow(kSculptTop, static_cast<float>(i) / static_cast<float>(values.size() - 1));
+            std::complex<float> ap(1.0f, 0.0f);
+            for (const float centre : centres) {
+                const float w = harmonic / centre;
+                const float r = 1.0f - w * w;
+                const float im = w / std::max(0.7f, 0.45f * q);
+                ap *= std::complex<float>(r, -im) / std::complex<float>(r, im);
+            }
+            const std::complex<float> loop = ap / (std::complex<float>(1.0f, 0.0f) - fb * ap);
+            const std::complex<float> h = (1.0f - 0.5f * wet) + (0.5f * wet * polarity) * loop;
+            values[i] = std::clamp(20.0f * std::log10(std::max(std::abs(h), 1.0e-3f)), -kSculptRangeDb, kSculptRangeDb);
+        }
+        return values;
+    }
+
+    // Comb mode: pitch-tracked damped feedback comb at harmonic `sculpt`.
+    const float fbMag = std::clamp((0.35f + 0.56f * resonance) * std::abs(depth), 0.0f, 0.91f);
+    const float fb = depth < 0.0f ? -fbMag : fbMag;
+    const float wet = std::clamp(std::abs(depth), 0.0f, 1.0f);
     for (std::size_t i = 0; i < values.size(); ++i) {
         const float harmonic = std::pow(kSculptTop, static_cast<float>(i) / static_cast<float>(values.size() - 1));
-        float db = 0.0f;
-        for (const float centre : centres) {
-            const float w = harmonic / centre;
-            const float flat = (1.0f - w * w) * (1.0f - w * w);
-            const float num = flat + (w * a / q) * (w * a / q);
-            const float den = flat + (w / (a * q)) * (w / (a * q));
-            db += 10.0f * std::log10(num / den);
-        }
-        values[i] = db;
+        const float phase = kTwoPi * harmonic / std::max(sculpt, 0.5f);
+        const float damp = 1.0f / (1.0f + 0.015f * harmonic);
+        const std::complex<float> z = std::polar(fb * damp, -phase);
+        const std::complex<float> comb = std::complex<float>(1.0f, 0.0f) / (std::complex<float>(1.0f, 0.0f) - z);
+        const std::complex<float> h = (1.0f - wet) + wet * (0.45f * comb);
+        values[i] = std::clamp(20.0f * std::log10(std::max(std::abs(h), 1.0e-3f)), -kSculptRangeDb, kSculptRangeDb);
     }
     return values;
 }
@@ -412,13 +490,156 @@ private:
     LaneTarget target_;
 };
 
+// Press-and-hold F1 audition pill in the Master title band.
+class AuditionPill final : public visage::Frame {
+  public:
+    explicit AuditionPill(Context& context) : context_(context) {}
+    ~AuditionPill() override {
+        if (pressed_)
+            context_.model.setAudition(false);
+    }
+
+    void draw(visage::Canvas& canvas) override {
+        const float r = context_.px(metric::radiusSmall);
+        const unsigned bg = pressed_   ? colour::master
+                            : hovered_ ? colour::withAlpha(colour::master, 0.22f)
+                                       : colour::withAlpha(colour::master, 0.12f);
+        canvas.setColor(bg);
+        canvas.roundedRectangle(0.0f, 0.0f, width(), height(), r);
+        const unsigned fg = pressed_ ? colour::window : colour::master;
+        drawLabel(canvas, context_, "F1", 0.0f, 0.0f, width(), height(), fg, visage::Font::kCenter, type::small,
+                  Weight::semibold);
+    }
+
+    void mouseEnter(const visage::MouseEvent&) override {
+        hovered_ = true;
+        redraw();
+    }
+    void mouseExit(const visage::MouseEvent&) override {
+        hovered_ = false;
+        redraw();
+    }
+    void mouseDown(const visage::MouseEvent&) override {
+        pressed_ = true;
+        context_.model.setAudition(true);
+        redraw();
+    }
+    void mouseUp(const visage::MouseEvent&) override {
+        if (!pressed_)
+            return;
+        pressed_ = false;
+        context_.model.setAudition(false);
+        redraw();
+    }
+
+  private:
+    Context& context_;
+    bool hovered_ = false;
+    bool pressed_ = false;
+};
+
+// Transparent 2D direct-manipulation overlay placed over a node's visual box.
+// Horizontal drag moves `paramX`, vertical drag moves `paramY`, Shift = fine,
+// double-click resets both to their defaults.
+class DragPad final : public visage::Frame {
+  public:
+    DragPad(Context& context, ParamId paramX, ParamId paramY, unsigned accent)
+        : context_(context), paramX_(paramX), paramY_(paramY), accent_(accent) {}
+
+    void draw(visage::Canvas& canvas) override {
+        if (!hovered_ && !dragging_)
+            return;
+        const float stroke = std::max(1.0f, context_.px(1.0f));
+        const float r = context_.px(metric::radiusSmall);
+        canvas.setColor(colour::withAlpha(accent_, dragging_ ? 0.45f : 0.22f));
+        canvas.roundedRectangleBorder(0.5f * stroke, 0.5f * stroke, width() - stroke, height() - stroke, r, stroke);
+
+        const float nx = toNormalised(spec(paramX_), context_.model.get(paramX_));
+        const float ny = toNormalised(spec(paramY_), context_.model.get(paramY_));
+        const float dot = context_.px(dragging_ ? 6.0f : 5.0f);
+        const float cx = std::clamp(nx * width(), dot, std::max(dot, width() - dot));
+        const float cy = std::clamp((1.0f - ny) * height(), dot, std::max(dot, height() - dot));
+        canvas.setColor(colour::withAlpha(accent_, 0.25f));
+        canvas.circle(cx - dot, cy - dot, 2.0f * dot);
+        canvas.setColor(accent_);
+        canvas.circle(cx - 0.5f * dot, cy - 0.5f * dot, dot);
+    }
+
+    void mouseEnter(const visage::MouseEvent&) override {
+        hovered_ = true;
+        redraw();
+    }
+    void mouseExit(const visage::MouseEvent&) override {
+        hovered_ = false;
+        redraw();
+    }
+    void mouseDown(const visage::MouseEvent& e) override {
+        if (e.repeatClickCount() >= 2) {
+            context_.model.begin(paramX_);
+            context_.model.set(paramX_, spec(paramX_).def);
+            context_.model.end(paramX_);
+            context_.model.begin(paramY_);
+            context_.model.set(paramY_, spec(paramY_).def);
+            context_.model.end(paramY_);
+            redraw();
+            return;
+        }
+        dragging_ = true;
+        startX_ = e.position.x;
+        startY_ = e.position.y;
+        normX_ = toNormalised(spec(paramX_), context_.model.get(paramX_));
+        normY_ = toNormalised(spec(paramY_), context_.model.get(paramY_));
+        context_.model.begin(paramX_);
+        context_.model.begin(paramY_);
+        redraw();
+    }
+    void mouseDrag(const visage::MouseEvent& e) override {
+        if (!dragging_)
+            return;
+        const float fine = e.isShiftDown() ? 0.25f : 1.0f;
+        const float dx = (e.position.x - startX_) / std::max(width(), 1.0f) * fine;
+        const float dy = -(e.position.y - startY_) / std::max(height(), 1.0f) * fine;
+        startX_ = e.position.x;
+        startY_ = e.position.y;
+        normX_ = std::clamp(normX_ + dx, 0.0f, 1.0f);
+        normY_ = std::clamp(normY_ + dy, 0.0f, 1.0f);
+        context_.model.set(paramX_, fromNormalised(spec(paramX_), normX_));
+        context_.model.set(paramY_, fromNormalised(spec(paramY_), normY_));
+        redraw();
+    }
+    void mouseUp(const visage::MouseEvent&) override {
+        if (!dragging_)
+            return;
+        dragging_ = false;
+        context_.model.end(paramX_);
+        context_.model.end(paramY_);
+        redraw();
+    }
+
+  private:
+    Context& context_;
+    ParamId paramX_;
+    ParamId paramY_;
+    unsigned accent_;
+    bool hovered_ = false;
+    bool dragging_ = false;
+    float startX_ = 0.0f;
+    float startY_ = 0.0f;
+    float normX_ = 0.0f;
+    float normY_ = 0.0f;
+};
+
 class GraphPanel final : public Panel {
 public:
     explicit GraphPanel(Context& context) : Panel(context) {
-        // Master
-        place<Row>(nodeRow(kMaster, 1), ParamId::glide, colour::master, "Glide", true);
-        place<Row>(nodeRow(kMaster, 2), ParamId::phaseReset, colour::master, "Phase reset");
-        place<Row>(nodeRow(kMaster, 3), ParamId::beatLock, colour::master, "Beat lock");
+        // Master: F1 audition pill + 5 compact rows
+        const Box masterTitle = nodeTitle(kMaster);
+        place<AuditionPill>({masterTitle.right() - kAuditionWidth, masterTitle.midY() - 8.0f, kAuditionWidth, 16.0f});
+        place<Row>(compactRow(kMaster, 0), ParamId::oscShape, colour::master, "Shape", true);
+        place<Row>(compactRow(kMaster, 1), ParamId::punchAmt, colour::master, "Punch", true);
+        place<Row>(compactRow(kMaster, 2), ParamId::glide, colour::master, "Glide", true);
+        place<Row>(compactRow(kMaster, 3), ParamId::phaseReset, colour::master, "Phase reset");
+        place<Row>(compactRow(kMaster, 4), ParamId::beatLock, colour::master, "Beat lock");
 
         // Reese A and B
         addVoice(kReeseA, ParamId::aDetune, ParamId::aRatio, ParamId::aPhase, ParamId::aPm);
@@ -429,18 +650,33 @@ public:
                     colour::growl);
         place<Chip>({ amountX, chipY, kChipWidth, kChipHeight }, ParamId::fbAmount, colour::growl);
 
-        // Tract
-        place<Row>(nodeRow(kTract, 0), ParamId::vowelA, colour::growl, "From");
-        place<Row>(nodeRow(kTract, 1), ParamId::vowelB, colour::growl, "To");
-        auto& morphRow = place<Row>(nodeRow(kTract, 2), ParamId::morph, colour::growl, "Morph", true);
+        // Tract: Pre/Post chip + 2D DragPad + 5 compact rows
+        const Box tractTitle = nodeTitle(kTract);
+        place<Chip>({tractTitle.right() - kPosChipWidth, tractTitle.midY() - kCountChipHeight * 0.5f, kPosChipWidth,
+                     kCountChipHeight},
+                    ParamId::tractPos, colour::growl);
+        place<DragPad>(compactVisual(kTract, kTract.w - 2.0f * kInset), ParamId::morph, ParamId::tractShift,
+                       colour::growl);
+        place<Row>(compactRow(kTract, 0), ParamId::vowelA, colour::growl, "From");
+        place<Row>(compactRow(kTract, 1), ParamId::vowelB, colour::growl, "To");
+        auto& morphRow = place<Row>(compactRow(kTract, 2), ParamId::morph, colour::growl, "Morph", true);
         morphRow.setModProvider([&model = context_.model]() {
             const auto& v = model.visuals();
             return v.effActive ? toNormalised(spec(ParamId::morph), v.effMorph)
                                : toNormalised(spec(ParamId::morph), model.get(ParamId::morph));
         });
-        markers_[0] = &place<LaneMarker>(markerBox(nodeRow(kTract, 2)), ParamId::morph, LaneTarget::morph);
+        auto& shiftRow = place<Row>(compactRow(kTract, 3), ParamId::tractShift, colour::growl, "Shift", true);
+        shiftRow.setModProvider([&model = context_.model]() {
+            const auto& v = model.visuals();
+            return v.effActive ? toNormalised(spec(ParamId::tractShift), v.effShift)
+                               : toNormalised(spec(ParamId::tractShift), model.get(ParamId::tractShift));
+        });
+        place<Row>(compactRow(kTract, 4), ParamId::tractQ, colour::growl, "Q", true);
+        markers_[0] = &place<LaneMarker>(markerBox(compactRow(kTract, 2)), ParamId::morph, LaneTarget::morph);
+        markers_[1] = &place<LaneMarker>(markerBox(compactRow(kTract, 3)), ParamId::tractShift, LaneTarget::shift);
 
-        // Fold
+        // Fold: 2D DragPad + 4 rows
+        place<DragPad>(nodeVisual(kFold, kVisualHeight), ParamId::drive, ParamId::asym, colour::growl);
         place<Row>(nodeRow(kFold, 0), ParamId::foldType, colour::growl, "Type");
         auto& driveRow = place<Row>(nodeRow(kFold, 1), ParamId::drive, colour::growl, "Drive", true);
         driveRow.setModProvider([&model = context_.model]() {
@@ -450,34 +686,44 @@ public:
         });
         place<Row>(nodeRow(kFold, 2), ParamId::asym, colour::growl, "Asym");
         place<Row>(nodeRow(kFold, 3), ParamId::weight, colour::growl, "Weight", true);
-        markers_[1] = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, LaneTarget::drive);
-        markers_[2] = &place<LaneMarker>(markerBox(nodeRow(kFold, 3)), ParamId::weight, LaneTarget::weight);
+        markers_[2] = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, LaneTarget::drive);
+        markers_[3] = &place<LaneMarker>(markerBox(nodeRow(kFold, 3)), ParamId::weight, LaneTarget::weight);
 
-        // Sculpt. Its position is the macro in the top bar. Depth is bipolar and a
-        // row's bar fills from the left, so it has none.
+        // Sculpt: Mode + Count chips in title band + 2D DragPad + 3 rows
         const Box sculptTitle = nodeTitle(kSculpt);
-        place<Chip>({ sculptTitle.right() - kCountChipWidth, sculptTitle.midY() - kCountChipHeight * 0.5f,
-                      kCountChipWidth, kCountChipHeight },
+        const float countX = sculptTitle.right() - kCountChipWidth;
+        const float modeX = countX - 4.0f - kModeChipWidth;
+        place<Chip>({modeX, sculptTitle.midY() - kCountChipHeight * 0.5f, kModeChipWidth, kCountChipHeight},
+                    ParamId::sculptMode, colour::growl);
+        place<Chip>({countX, sculptTitle.midY() - kCountChipHeight * 0.5f, kCountChipWidth, kCountChipHeight},
                     ParamId::sculptCount, colour::growl);
+        place<DragPad>(nodeVisual(kSculpt, kSculpt.w - 2.0f * kInset), ParamId::sculpt, ParamId::sculptDepth,
+                       colour::growl);
         place<Row>(nodeRow(kSculpt, 0), ParamId::sculptDepth, colour::growl, "Depth", true);
         place<Row>(nodeRow(kSculpt, 1), ParamId::sculptSpread, colour::growl, "Spread");
         place<Row>(nodeRow(kSculpt, 2), ParamId::sculptRes, colour::growl, "Resonance");
 
-        // Mid/side
+        // Mid/side: 2D DragPad + 3 rows
+        place<DragPad>(nodeVisual(kMidSide, kMidSide.w - 2.0f * kInset), ParamId::xover, ParamId::sideGain,
+                       colour::text);
         place<Row>(nodeRow(kMidSide, 0), ParamId::midGain, colour::text, "Mid");
         place<Row>(nodeRow(kMidSide, 1), ParamId::sideGain, colour::text, "Side");
         place<Row>(nodeRow(kMidSide, 2), ParamId::xover, colour::text, "Crossover");
 
-        // Out
+        // Out: 4 rows
         place<Row>(nodeRow(kOut, 0), ParamId::growlLevel, colour::growl, "Growl", true);
         place<Row>(nodeRow(kOut, 1), ParamId::subLevel, colour::master, "Sub", true);
+        place<Row>(nodeRow(kOut, 2), ParamId::punchMs, colour::master, "Punch ms");
+        place<Row>(nodeRow(kOut, 3), ParamId::velSens, colour::text, "Velocity", true);
 
-        // Sub lock
+        // Sub lock: Split, Fit, Warmth
         const float subRowY = kSubLock.midY() - metric::row * 0.5f;
         const float subRowX = kSubLock.x + kSubLockRowX;
+        const float fitX = subRowX + kLowPassWidth + kSubLockGap;
+        const float warmthX = fitX + kFitWidth + kSubLockGap;
         place<Row>({ subRowX, subRowY, kLowPassWidth, metric::row }, ParamId::subSplit, colour::master, "Split");
-        place<Row>({ subRowX + kLowPassWidth + kSubLockGap, subRowY, kFitWidth, metric::row }, ParamId::fit,
-                   colour::master, "Fit");
+        place<Row>({fitX, subRowY, kFitWidth, metric::row}, ParamId::fit, colour::master, "Fit");
+        place<Row>({warmthX, subRowY, kWarmthWidth, metric::row}, ParamId::subWarmth, colour::master, "Warmth", true);
 
         lastTick_ = Clock::now();
     }
@@ -535,7 +781,7 @@ private:
 
     // Everything the panel's own drawing depends on.
     struct Watched {
-        std::array<float, 31> params {};
+        std::array<float, 37> params{};
         std::array<float, kLaneCount> lanes {};
         float hz = 0.0f;
         int note = -1;
@@ -544,14 +790,15 @@ private:
     };
 
     // The lanes' on and target decide which values they move.
-    static constexpr std::array<ParamId, 31> kWatchedParams {
-        ParamId::coupling,    ParamId::width,       ParamId::aRatio,       ParamId::aPhase,    ParamId::aPm,
-        ParamId::bRatio,      ParamId::bPhase,      ParamId::bPm,          ParamId::vowelA,    ParamId::vowelB,
-        ParamId::morph,       ParamId::foldType,    ParamId::drive,        ParamId::asym,      ParamId::reach,
-        ParamId::sculpt,      ParamId::sculptDepth, ParamId::sculptCount,  ParamId::sculptSpread, ParamId::sculptRes,
-        ParamId::sideGain,    ParamId::xover,       ParamId::weight,
-        ParamId::lane1On,     ParamId::lane1Target, ParamId::lane2On,      ParamId::lane2Target,
-        ParamId::lane3On,     ParamId::lane3Target, ParamId::lane4On,      ParamId::lane4Target,
+    static constexpr std::array<ParamId, 37> kWatchedParams{
+        ParamId::coupling,    ParamId::width,       ParamId::aRatio,      ParamId::aPhase,       ParamId::aPm,
+        ParamId::bRatio,      ParamId::bPhase,      ParamId::bPm,         ParamId::vowelA,       ParamId::vowelB,
+        ParamId::morph,       ParamId::foldType,    ParamId::drive,       ParamId::asym,         ParamId::reach,
+        ParamId::sculpt,      ParamId::sculptDepth, ParamId::sculptCount, ParamId::sculptSpread, ParamId::sculptRes,
+        ParamId::sideGain,    ParamId::xover,       ParamId::weight,      ParamId::oscShape,     ParamId::subWarmth,
+        ParamId::tractShift,  ParamId::tractQ,      ParamId::tractPos,    ParamId::sculptMode,   ParamId::lane1On,
+        ParamId::lane1Target, ParamId::lane2On,     ParamId::lane2Target, ParamId::lane3On,      ParamId::lane3Target,
+        ParamId::lane4On,     ParamId::lane4Target,
     };
 
     Watched watch() {
@@ -651,24 +898,25 @@ private:
 
     void drawMaster(visage::Canvas& canvas, const Visuals& visuals) {
         title(canvas, nodeTitle(kMaster), "Master", colour::master);
-        static const auto sine = sinePeriod();
-        curve(canvas, sine, nodeVisual(kMaster, kMaster.w - 2.0f * kInset), colour::master, -1.2f, 1.2f, 0.12f);
+        const Box vis = compactVisual(kMaster, kMaster.w - 2.0f * kInset);
+        const Box waveBox{vis.x, vis.y, vis.w, vis.h - 14.0f};
+        curve(canvas, subPeriod(get(ParamId::subWarmth)), waveBox, colour::master, -1.2f, 1.2f, 0.12f);
 
-        const Box row = nodeRow(kMaster, 0);
         const bool sounding = visuals.note >= 0;
-        drawLabel(canvas, context_, sounding ? noteName(visuals.note) : "–", px(row.x), px(row.y), px(row.w),
-                  px(row.h), colour::textDim);
+        const float infoY = vis.bottom() - 13.0f;
+        drawLabel(canvas, context_, sounding ? noteName(visuals.note) : "–", px(vis.x), px(infoY), px(vis.w), px(13.0f),
+                  colour::textDim, visage::Font::kLeft, type::small, Weight::medium);
         if (sounding)
-            drawLabel(canvas, context_, hzText(visuals.hz), px(row.x), px(row.y), px(row.w), px(row.h), colour::text,
-                      visage::Font::kRight, type::label, Weight::regular);
+            drawLabel(canvas, context_, hzText(visuals.hz), px(vis.x), px(infoY), px(vis.w), px(13.0f), colour::text,
+                      visage::Font::kRight, type::small, Weight::regular);
     }
 
     void drawVoice(visage::Canvas& canvas, const Box& card, const char* name, ParamId ratio, float phaseDegrees,
                    ParamId pm) {
         const Box band = nodeTitle(card);
         title(canvas, band, name, colour::growl);
-        const auto values = voicePeriod(get(ratio), phaseDegrees,
-                                        feel::pmIndex(get(pm), get(ParamId::coupling)));
+        const auto values = voicePeriod(get(ratio), phaseDegrees, feel::pmIndex(get(pm), get(ParamId::coupling)),
+                                        get(ParamId::oscShape));
         curve(canvas, values, { band.right() - kSparkWidth, band.y, kSparkWidth, band.h }, colour::growl, -1.15f, 1.15f);
     }
 
@@ -689,9 +937,11 @@ private:
     void drawTract(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
         title(canvas, nodeTitle(kTract), "Tract", colour::growl);
         const float morph = moved(params, visuals, ParamId::morph, LaneTarget::morph);
-        const auto values = formantResponse(static_cast<int>(get(ParamId::vowelA) + 0.5f),
-                                            static_cast<int>(get(ParamId::vowelB) + 0.5f), morph);
-        curve(canvas, values, nodeVisual(kTract, kTract.w - 2.0f * kInset), colour::growl, 0.0f, 1.08f, 0.12f);
+        const float shift = moved(params, visuals, ParamId::tractShift, LaneTarget::shift);
+        const auto values =
+            formantResponse(static_cast<int>(get(ParamId::vowelA) + 0.5f),
+                            static_cast<int>(get(ParamId::vowelB) + 0.5f), morph, shift, get(ParamId::tractQ));
+        curve(canvas, values, compactVisual(kTract, kTract.w - 2.0f * kInset), colour::growl, 0.0f, 1.08f, 0.12f);
     }
 
     void drawFold(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
@@ -721,10 +971,11 @@ private:
         hairline(canvas, { box.x, box.midY() }, { box.right(), box.midY() }, colour::track);
         if (aimed(params, LaneTarget::reach))
             reachLine(moved(params, visuals, ParamId::reach, LaneTarget::reach), colour::motion);
-        const auto values = sculptResponse(moved(params, visuals, ParamId::sculpt, LaneTarget::sculpt),
-                                           static_cast<int>(get(ParamId::sculptCount) + 0.5f) + 1,
-                                           get(ParamId::sculptSpread), get(ParamId::sculptDepth),
-                                           get(ParamId::sculptRes));
+        const auto sMode = static_cast<SculptMode>(std::clamp(static_cast<int>(get(ParamId::sculptMode) + 0.5f), 0, 2));
+        const auto values =
+            sculptResponse(moved(params, visuals, ParamId::sculpt, LaneTarget::sculpt),
+                           static_cast<int>(get(ParamId::sculptCount) + 0.5f) + 1, get(ParamId::sculptSpread),
+                           get(ParamId::sculptDepth), get(ParamId::sculptRes), sMode);
         curve(canvas, values, box, colour::growl, -kSculptRangeDb, kSculptRangeDb, 0.12f);
     }
 
@@ -758,7 +1009,7 @@ private:
     }
 
     std::vector<std::pair<visage::Frame*, Box>> placed_;
-    std::array<LaneMarker*, 3> markers_ {};  // morph, drive, weight
+    std::array<LaneMarker*, 4> markers_{}; // morph, shift, drive, weight
     Watched shown_;
     float flow_ = 0.0f;
     Clock::time_point lastTick_;

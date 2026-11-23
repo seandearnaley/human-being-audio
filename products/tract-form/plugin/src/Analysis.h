@@ -29,6 +29,7 @@ public:
         bool gate = false;
         float gainReductionDb = 0.0f;
         double ppq = 0.0;
+        double notePpq = 0.0;
         std::array<float, kLaneCount> lanePhase {};
         std::array<float, kLaneCount> laneValue {};
         Engine::EffectiveState effective{};
@@ -62,6 +63,7 @@ private:
     juce::dsp::WindowingFunction<float> window_ { static_cast<size_t>(kFftSize),
                                                   juce::dsp::WindowingFunction<float>::hann };
     std::vector<float> fftBuffer_;
+    std::vector<float> fftBufferR_;
     std::array<float, ui::Visuals::kSpectrumBands> spectrum_;
     float peakLeftDb_ = -100.0f;
     float peakRightDb_ = -100.0f;
@@ -72,12 +74,14 @@ private:
     std::atomic<bool> gate_ { false };
     std::atomic<float> gainReductionDb_ { 0.0f };
     std::atomic<double> ppq_ { 0.0 };
+    std::atomic<double> notePpq_{0.0};
     std::array<std::atomic<float>, kLaneCount> lanePhase_ {};
     std::array<std::atomic<float>, kLaneCount> laneValue_ {};
     std::atomic<float> effCoupling_{0.72f};
     std::atomic<float> effBeat_{0.38f};
     std::atomic<float> effReach_{96.0f};
     std::atomic<float> effMorph_{0.63f};
+    std::atomic<float> effShift_{0.0f};
     std::atomic<float> effDrive_{0.42f};
     std::atomic<float> effSculpt_{6.0f};
     std::atomic<float> effWidth_{0.64f};

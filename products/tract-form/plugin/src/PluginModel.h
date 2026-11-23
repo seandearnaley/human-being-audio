@@ -46,6 +46,7 @@ public:
     bool isSlotB() const override { return processor_.history.isSlotB(); }
     void toggleAB() override;
     void copyAB() override;
+    void setAudition(bool down) override { processor_.setAudition(down); }
 
     // The component whose window file drags start from: the editor.
     void setDragSource(juce::Component* source) { dragSource_ = source; }

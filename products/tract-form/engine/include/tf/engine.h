@@ -51,7 +51,7 @@ public:
     int latencySamples() const noexcept TF_NONBLOCKING;
     int oversamplingFactor() const noexcept TF_NONBLOCKING;  // the factor in use
 
-    void noteOn(int midiNote) noexcept TF_NONBLOCKING;
+    void noteOn(int midiNote, float velocity = 1.0f) noexcept TF_NONBLOCKING;
     void noteOff(int midiNote) noexcept TF_NONBLOCKING;
     void sustain(bool down) noexcept TF_NONBLOCKING;
     void allNotesOff() noexcept TF_NONBLOCKING;
@@ -81,6 +81,7 @@ public:
     float growlClipDb() const noexcept TF_NONBLOCKING;
     float growlClipMeanDb() const noexcept TF_NONBLOCKING;
     double lanePpq() const noexcept TF_NONBLOCKING;  // the lane clock in quarter notes
+    double notePpq() const noexcept TF_NONBLOCKING;  // note-relative clock for Retrig / One-Shot lanes
     std::array<float, kLaneCount> lanePhases() const noexcept TF_NONBLOCKING;  // 0..1
     std::array<float, kLaneCount> laneValues() const noexcept TF_NONBLOCKING;  // -1..1, after depth and motion
 
@@ -90,6 +91,7 @@ public:
         float beat = 0.38f;
         float reach = 96.0f;
         float morph = 0.63f;
+        float shift = 0.0f;
         float drive = 0.42f;
         float sculpt = 6.0f;
         float width = 0.64f;

@@ -25,11 +25,14 @@ inline double growlClip(double& left, double& right, double ceiling) noexcept TF
     return softClipLinked(left, right, kGrowlClipKnee * ceiling, ceiling);
 }
 
-// The output safety clip: transparent up to the ceiling, then a short shoulder to 0 dBFS.
+// The output safety clip: transparent up to the ceiling when Limit is ON;
+// transparent +6 dBFS knee / +12 dBFS cap when Limit is OFF.
 inline constexpr double kOutputClipMaxKnee = 0.97;
 
-inline void outputClip(double& left, double& right, double ceiling) noexcept TF_NONBLOCKING {
-    softClipLinked(left, right, std::min(ceiling, kOutputClipMaxKnee), 1.0);
+inline void outputClip(double& left, double& right, double ceiling, double limitAmt = 1.0) noexcept TF_NONBLOCKING {
+    const double lim = std::clamp(limitAmt, 0.0, 1.0);
+    const double knee = lim * std::min(ceiling, kOutputClipMaxKnee) + (1.0 - lim) * 2.0;
+    const double ceil = lim * 1.0 + (1.0 - lim) * 4.0;
+    softClipLinked(left, right, knee, ceil);
 }
-
 }

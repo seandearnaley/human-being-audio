@@ -8,7 +8,9 @@
 #include "svf.h"
 #include "tf/vowels.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <complex>
 
 namespace tf::dsp {
@@ -78,22 +80,42 @@ inline std::array<double, kVowelCount> computeVowelCompDb(double sampleRate) {
     return comp;
 }
 
-// Formants between vowel a (morph 0) and vowel b (morph 1), log-domain interpolation.
-inline FormantTargets mixVowels(int a, int b, double morph, const std::array<double, kVowelCount>& compDb) noexcept
-    TF_NONBLOCKING {
+// Formants between vowel a (morph 0) and vowel b (morph 1), log-domain interpolation,
+// with optional formant pitch shift (semitones) and Q focus (0 = broad, 0.5 = natural, 1 = focused).
+inline FormantTargets mixVowels(int a, int b, double morph, double shiftSt, double qAmt,
+                                const std::array<double, kVowelCount>& compDb) noexcept TF_NONBLOCKING {
     const auto& va = kVowels[static_cast<std::size_t>(std::clamp(a, 0, kVowelCount - 1))];
     const auto& vb = kVowels[static_cast<std::size_t>(std::clamp(b, 0, kVowelCount - 1))];
     const double m = std::clamp(morph, 0.0, 1.0);
+    const double logShift = std::clamp(shiftSt, -24.0, 24.0) * (0.6931471805599453 / 12.0);
+    const double qNorm = std::clamp(qAmt, 0.0, 1.0);
+    // qNorm = 0.5 -> 1.0x natural bandwidth; 0.0 -> 2.38x broad; 1.0 -> 0.42x razor-focused.
+    const double logBwScale = std::log(0.42) * (qNorm - 0.5) * 2.0;
+    // Slight level trim as formants sharpen so loudness stays calibrated across Q.
+    const double qCompDb = -3.0 * (qNorm - 0.5);
     FormantTargets t;
     for (std::size_t i = 0; i < kFormantCount; ++i) {
-        t.logHz[i] = (1.0 - m) * std::log(static_cast<double>(va.hz[i])) + m * std::log(static_cast<double>(vb.hz[i]));
-        t.logBandwidth[i] = (1.0 - m) * std::log(static_cast<double>(va.bandwidthHz[i])) +
-                            m * std::log(static_cast<double>(vb.bandwidthHz[i]));
+        const double baseLogHz =
+            (1.0 - m) * std::log(static_cast<double>(va.hz[i])) + m * std::log(static_cast<double>(vb.hz[i]));
+        const double shiftedLogHz = std::clamp(baseLogHz + logShift, std::log(60.0), std::log(18000.0));
+        const double baseLogBw = (1.0 - m) * std::log(static_cast<double>(va.bandwidthHz[i])) +
+                                 m * std::log(static_cast<double>(vb.bandwidthHz[i]));
+        // Bandwidth scales proportionally with formant frequency shift (constant Q under shift)
+        // and then by qAmt focus.
+        const double minLogBw = shiftedLogHz + std::log(0.03);
+        const double maxLogBw = shiftedLogHz + std::log(1.2);
+        t.logHz[i] = shiftedLogHz;
+        t.logBandwidth[i] = std::clamp(baseLogBw + logShift + logBwScale, minLogBw, maxLogBw);
         t.gainDb[i] = (1.0 - m) * va.gainDb[i] + m * vb.gainDb[i];
     }
     t.compDb = (1.0 - m) * compDb[static_cast<std::size_t>(std::clamp(a, 0, kVowelCount - 1))] +
-               m * compDb[static_cast<std::size_t>(std::clamp(b, 0, kVowelCount - 1))];
+               m * compDb[static_cast<std::size_t>(std::clamp(b, 0, kVowelCount - 1))] + qCompDb;
     return t;
+}
+
+inline FormantTargets mixVowels(int a, int b, double morph,
+                                const std::array<double, kVowelCount>& compDb) noexcept TF_NONBLOCKING {
+    return mixVowels(a, b, morph, 0.0, 0.5, compDb);
 }
 
 // Smoothed formant targets become SVF coefficients at control rate; between

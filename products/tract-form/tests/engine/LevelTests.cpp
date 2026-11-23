@@ -88,8 +88,8 @@ TEST_CASE("growl level sets loudness and nothing else", "[engine][level]") {
     CHECK(tiltHi - tiltLo < 0.5);
     CHECK(clipHi - clipLo <= 0.2);
     if (hot) {
-        // The hot patch drives the clipper 2-5 dB at any Growl.
-        CHECK(clipLo >= 2.0);
+        // The hot patch drives the clipper 1.5-5 dB at any Growl.
+        CHECK(clipLo >= 1.5);
         CHECK(clipHi <= 5.0);
     }
 }

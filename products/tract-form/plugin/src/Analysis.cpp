@@ -17,6 +17,7 @@ Analysis::Analysis() {
     for (auto& channel : queued_) channel.assign(kQueueSize, 0.0f);
     for (auto& channel : history_) channel.assign(kHistorySize, 0.0f);
     fftBuffer_.assign(static_cast<std::size_t>(kFftSize) * 2, 0.0f);
+    fftBufferR_.assign(static_cast<std::size_t>(kFftSize) * 2, 0.0f);
     spectrum_.fill(kFloorDb);
 }
 
@@ -43,6 +44,7 @@ void Analysis::setStatus(const Status& status) noexcept {
     gate_.store(status.gate, std::memory_order_relaxed);
     gainReductionDb_.store(status.gainReductionDb, std::memory_order_relaxed);
     ppq_.store(status.ppq, std::memory_order_relaxed);
+    notePpq_.store(status.notePpq, std::memory_order_relaxed);
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanePhase_[i].store(status.lanePhase[i], std::memory_order_relaxed);
         laneValue_[i].store(status.laneValue[i], std::memory_order_relaxed);
@@ -51,6 +53,7 @@ void Analysis::setStatus(const Status& status) noexcept {
     effBeat_.store(status.effective.beat, std::memory_order_relaxed);
     effReach_.store(status.effective.reach, std::memory_order_relaxed);
     effMorph_.store(status.effective.morph, std::memory_order_relaxed);
+    effShift_.store(status.effective.shift, std::memory_order_relaxed);
     effDrive_.store(status.effective.drive, std::memory_order_relaxed);
     effSculpt_.store(status.effective.sculpt, std::memory_order_relaxed);
     effWidth_.store(status.effective.width, std::memory_order_relaxed);
@@ -137,13 +140,25 @@ void Analysis::updateStereo(ui::Visuals& visuals) const {
 }
 
 void Analysis::updateSpectrum(ui::Visuals& visuals, double sampleRate, float seconds) {
+    // Stereo RMS power spectrum sqrt(0.5 * (|L|^2 + |R|^2)) so wide stereo
+    // growls and opposing stereo phasers/combs never cancel in the spectrum.
     for (int i = 0; i < kFftSize; ++i) {
         const int ago = kFftSize - 1 - i;
-        fftBuffer_[static_cast<std::size_t>(i)] = 0.5f * (history(left, ago) + history(right, ago));
+        fftBuffer_[static_cast<std::size_t>(i)] = history(left, ago);
+        fftBufferR_[static_cast<std::size_t>(i)] = history(right, ago);
     }
     std::fill(fftBuffer_.begin() + kFftSize, fftBuffer_.end(), 0.0f);
+    std::fill(fftBufferR_.begin() + kFftSize, fftBufferR_.end(), 0.0f);
     window_.multiplyWithWindowingTable(fftBuffer_.data(), static_cast<size_t>(kFftSize));
+    window_.multiplyWithWindowingTable(fftBufferR_.data(), static_cast<size_t>(kFftSize));
     fft_.performFrequencyOnlyForwardTransform(fftBuffer_.data());
+    fft_.performFrequencyOnlyForwardTransform(fftBufferR_.data());
+    for (int bin = 0; bin <= kFftSize / 2; ++bin) {
+        const auto idx = static_cast<std::size_t>(bin);
+        const float l = fftBuffer_[idx];
+        const float r = fftBufferR_[idx];
+        fftBuffer_[idx] = std::sqrt(0.5f * (l * l + r * r));
+    }
 
     // A full-scale sine reads 0 dB: divide by half the window's coherent gain.
     constexpr float scale = 4.0f / kFftSize;
@@ -197,6 +212,7 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
 
     visuals.gainReductionDb = gainReductionDb_.load(std::memory_order_relaxed);
     visuals.ppq = ppq_.load(std::memory_order_relaxed);
+    visuals.notePpq = notePpq_.load(std::memory_order_relaxed);
     visuals.hz = hz;
     visuals.note = note_.load(std::memory_order_relaxed);
     visuals.gate = gate_.load(std::memory_order_relaxed);
@@ -208,6 +224,7 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.effBeat = effBeat_.load(std::memory_order_relaxed);
     visuals.effReach = effReach_.load(std::memory_order_relaxed);
     visuals.effMorph = effMorph_.load(std::memory_order_relaxed);
+    visuals.effShift = effShift_.load(std::memory_order_relaxed);
     visuals.effDrive = effDrive_.load(std::memory_order_relaxed);
     visuals.effSculpt = effSculpt_.load(std::memory_order_relaxed);
     visuals.effWidth = effWidth_.load(std::memory_order_relaxed);

@@ -28,11 +28,12 @@ static_assert(kSelected + (kLaneCount - 1) * kLine == 176.0f - 2.0f * metric::pa
 // Column widths in design pixels. The curve takes what is left.
 constexpr float kSwitchWidth = 24.0f;
 constexpr float kTargetWidth = 76.0f;
-constexpr float kFollowWidth = 56.0f;
-constexpr float kRateWidth = 60.0f;
-constexpr float kPhaseWidth = 52.0f;
-constexpr float kShapeWidth = 84.0f;
-constexpr float kDepthWidth = 56.0f;
+constexpr float kFollowWidth = 54.0f;
+constexpr float kRateWidth = 56.0f;
+constexpr float kModeWidth = 54.0f;
+constexpr float kPhaseWidth = 50.0f;
+constexpr float kShapeWidth = 80.0f;
+constexpr float kDepthWidth = 54.0f;
 constexpr float kPlotInset = 8.0f;      // curve column edge to the plotted curve, in strips and editor
 constexpr float kEditorInsetY = 7.0f;   // editor edge to its ±1 lines
 
@@ -171,8 +172,8 @@ public:
         if (!editable) return;
 
         if (on) {
-            const auto phase = static_cast<float>(lanePhase(context_.model.visuals().ppq, laneLengthQuarters(params, lane_),
-                                                            params[field(lane_, LaneField::phase)]));
+            const auto& v = context_.model.visuals();
+            const auto phase = static_cast<float>(lanePhaseFor(params, lane_, v.ppq, v.notePpq));
             const float x = snap(edit::toX(plot, phase));
             canvas.setColor(colour::withAlpha(colour::text, 0.25f));
             canvas.fill(x, snap(plot.y), hairline(context_), snap(plot.height));
@@ -309,6 +310,7 @@ public:
             c.follow = &add<FollowChip>(context, lane);
             c.rate = &add<Chip>(context, field(lane, LaneField::rate), colour::textDim);
             c.ratio = &add<Chip>(context, field(lane, LaneField::ratio), colour::textDim);
+            c.mode = &add<Chip>(context, field(lane, LaneField::mode), colour::textDim);
             c.phase = &add<Chip>(context, field(lane, LaneField::phase), colour::textDim);
             c.shape = &add<Chip>(context, field(lane, LaneField::shape), colour::textDim);
             c.depth = &add<Chip>(context, field(lane, LaneField::depth), colour::textDim);
@@ -327,7 +329,8 @@ public:
             shown_ = state;
             updateControls();
         }
-        if (changed || context_.model.visuals().ppq != drawnPpq_) {
+        const auto& v = context_.model.visuals();
+        if (changed || v.ppq != drawnPpq_ || v.notePpq != drawnNotePpq_) {
             redraw();
             editor_->redraw();
         }
@@ -335,7 +338,9 @@ public:
 
     void draw(visage::Canvas& canvas) override {
         drawChrome(canvas);
-        drawnPpq_ = context_.model.visuals().ppq;
+        const auto& v = context_.model.visuals();
+        drawnPpq_ = v.ppq;
+        drawnNotePpq_ = v.notePpq;
 
         const Params params = paramsOf(context_.model);
         const LaneCurves curves = curvesOf(context_.model);
@@ -345,7 +350,7 @@ public:
         if (plotWidth <= 0.0f) return;
 
         const double windowStart = std::floor(drawnPpq_ / kWindowQuarters) * kWindowQuarters;
-        const float playheadX = left + plotWidth * static_cast<float>((drawnPpq_ - windowStart) / kWindowQuarters);
+        const float syncPlayheadX = left + plotWidth * static_cast<float>((drawnPpq_ - windowStart) / kWindowQuarters);
         const float motion = params[ParamId::motion];
 
         // One sample per pixel keeps square and step edges upright.
@@ -362,11 +367,21 @@ public:
 
             const bool on = params.on(field(lane, LaneField::on));
             const float scale = params[field(lane, LaneField::depth)] * motion;
+            const LaneMode mode = laneModeOf(params, lane);
+            const bool noteClock = mode != LaneMode::sync;
+            const double noteWindow =
+                mode == LaneMode::oneShot ? 0.0 : std::floor(drawnNotePpq_ / kWindowQuarters) * kWindowQuarters;
+            const float playheadX =
+                noteClock ? left + plotWidth * static_cast<float>(
+                                                   std::clamp((drawnNotePpq_ - noteWindow) / kWindowQuarters, 0.0, 1.0))
+                          : syncPlayheadX;
             for (std::size_t i = 0; i < values_.size(); ++i) {
                 // The last sample stops just short of the window's end, so a ramp
                 // or step that wraps there does not draw a jump on the edge.
                 const double t = std::min(static_cast<double>(i) / static_cast<double>(values_.size() - 1), kAlmostOne);
-                values_[i] = static_cast<float>(laneOutput(params, curves, lane, windowStart + t * kWindowQuarters)) * scale;
+                const double samplePpq = windowStart + t * kWindowQuarters;
+                const double sampleNotePpq = noteWindow + t * kWindowQuarters;
+                values_[i] = static_cast<float>(laneOutput(params, curves, lane, samplePpq, sampleNotePpq)) * scale;
             }
             const unsigned base = on ? colour::motion : colour::textFaint;
             const unsigned hue = following(params, lane) ? colour::withAlpha(base, kFollowerAlpha) : base;
@@ -379,7 +394,8 @@ public:
             canvas.fill(playheadX - px(kPlayhead) * 0.5f, top, px(kPlayhead), height);
 
             if (on) {
-                const float value = static_cast<float>(laneOutput(params, curves, lane, drawnPpq_)) * scale;
+                const float value =
+                    static_cast<float>(laneOutput(params, curves, lane, drawnPpq_, drawnNotePpq_)) * scale;
                 const float y = top + inset + (height - 2.0f * inset) * (1.0f - (std::clamp(value, -1.0f, 1.0f) + 1.0f) * 0.5f);
                 const float ring = px(kDot) + 2.0f * px(metric::stroke);
                 canvas.setColor(lane == hovered_ && lane != selected_ ? colour::raised : colour::panel);
@@ -410,6 +426,7 @@ private:
         FollowChip* follow = nullptr;
         Chip* rate = nullptr;
         Chip* ratio = nullptr;
+        Chip* mode = nullptr;
         Chip* phase = nullptr;
         Chip* shape = nullptr;
         Chip* depth = nullptr;
@@ -417,7 +434,7 @@ private:
 
     // Left edges in frame pixels, identical for every lane so the columns line up.
     struct Columns {
-        float on, target, follow, rate, phase, curve, curveWidth, shape, depth;
+        float on, target, follow, rate, mode, phase, curve, curveWidth, shape, depth;
     };
 
     // Every lane parameter, Motion, the curves and the selection: what drawing depends on.
@@ -429,8 +446,10 @@ private:
 
     State watch() const {
         State state;
-        for (std::size_t i = 0; i + 1 < state.params.size(); ++i)
-            state.params[i] = context_.model.get(static_cast<ParamId>(static_cast<std::size_t>(ParamId::lane1On) + i));
+        std::size_t idx = 0;
+        for (int lane = 0; lane < kLaneCount; ++lane)
+            for (int f = 0; f < kLaneFieldCount; ++f)
+                state.params[idx++] = context_.model.get(laneParam(lane, static_cast<LaneField>(f)));
         state.params.back() = context_.model.get(ParamId::motion);
         state.curves = curvesOf(context_.model);
         return state;
@@ -443,7 +462,8 @@ private:
         c.target = c.on + px(kSwitchWidth) + gap;
         c.follow = c.target + px(kTargetWidth) + gap;
         c.rate = c.follow + px(kFollowWidth) + gap;
-        c.phase = c.rate + px(kRateWidth) + gap;
+        c.mode = c.rate + px(kRateWidth) + gap;
+        c.phase = c.mode + px(kModeWidth) + gap;
         c.curve = c.phase + px(kPhaseWidth) + gap;
         c.depth = width() - px(metric::pad) - px(kDepthWidth);
         c.shape = c.depth - gap - px(kShapeWidth);
@@ -472,6 +492,7 @@ private:
             place(*controls.follow, c.follow, px(kFollowWidth), chip);
             place(*controls.rate, c.rate, px(kRateWidth), chip);
             place(*controls.ratio, c.rate, px(kRateWidth), chip);
+            place(*controls.mode, c.mode, px(kModeWidth), chip);
             place(*controls.phase, c.phase, px(kPhaseWidth), chip);
             place(*controls.shape, c.shape, px(kShapeWidth), chip);
             place(*controls.depth, c.depth, px(kDepthWidth), chip);
@@ -495,6 +516,8 @@ private:
             const unsigned dim = on ? colour::textDim : colour::textFaint;
             controls.target->setAccent(on ? colour::motion : colour::textFaint);
             controls.follow->setAccent(dim);
+            const bool noteClock = laneModeOf(params, lane) != LaneMode::sync;
+            controls.mode->setAccent(on && noteClock ? colour::master : dim);
             for (Chip* chip : { controls.rate, controls.ratio, controls.phase, controls.shape, controls.depth })
                 chip->setAccent(dim);
         }
@@ -537,6 +560,7 @@ private:
     int selected_ = 0;
     int hovered_ = -1;
     double drawnPpq_ = -1.0;
+    double drawnNotePpq_ = -1.0;
     State shown_ {};
 };
 }

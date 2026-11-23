@@ -53,6 +53,7 @@ public:
     };
     Performance lastPerformance() const noexcept;
     Params currentParams() const noexcept { return values_.snapshot(); }
+    void setAudition(bool down) noexcept { auditionWanted_.store(down, std::memory_order_relaxed); }
 
     struct HistorySnapshot {
         std::array<float, kParamCount> params{};
@@ -86,6 +87,8 @@ public:
 
     std::atomic<int> lastNote_ { 29 };
     std::atomic<double> lastBpm_ { 174.0 };
+    std::atomic<bool> auditionWanted_{false};
+    bool auditionPlaying_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };
