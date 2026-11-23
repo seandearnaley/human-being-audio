@@ -4,6 +4,7 @@
 #pragma once
 
 #include "cl/nonblocking.h"
+#include "cl/overrides.h"
 #include "cl/params.h"
 
 #include <array>
@@ -11,24 +12,18 @@
 
 namespace cl {
 
-enum class Role : std::uint8_t {
-    statement = 0,
-    answer = 1,
-    mutation = 2,
-    ratchet = 3,
-    turnaround = 4,
-};
-
 struct RoleSpan {
     double startBeats = 0.0;
     double endBeats = 4.0;
     Role role = Role::statement;
+    bool locked = false;
 };
 
 struct CompiledNote {
     double startBeats = 0.0;    // Quantized grid position in [0, phraseBeats)
     double warpedBeats = 0.0;   // After gravitational microtiming warp
     double durationBeats = 0.5; // Clamped cleanly inside phrase
+    std::int16_t slotIndex = -1; // Deterministic pre-override slot index for non-destructive edits
     std::int8_t noteNumber = 41;
     std::int8_t drumRow = 0; // 0..5 in Drum Kit mode
     std::uint8_t velocity = 100;
@@ -36,6 +31,7 @@ struct CompiledNote {
     Role role = Role::statement;
     std::uint8_t channel = 1; // 1 in Mono/Drum; 2..15 in MPE Lower Zone
     bool isRatchet = false;
+    bool muted = false;
 };
 
 inline constexpr int kMaxPhraseNotes = 256;
@@ -91,17 +87,21 @@ struct PhrasePlan {
 // Drum Kit GM/Drum-Rack note map: Kick, Snare, Ghost Snare, Closed Hat, Open Hat, Ratchet Perc.
 inline constexpr std::array<std::int8_t, 6> kDrumNotes{36, 38, 39, 42, 46, 43};
 
+// Scale query & snapping helpers (shared by phrase compiler and interactive piano roll).
+bool isNoteInScale(int midiNote, int root, Scale scale) noexcept CL_NONBLOCKING;
+int snapNoteToScale(int midiNote, int root, Scale scale) noexcept CL_NONBLOCKING;
+
 // Smooth, strictly monotonic gravitational microtiming warp over bar phase.
 // Guaranteed: for any beatA < beatB, warpBeat(beatA, ...) < warpBeat(beatB, ...).
 double warpBeat(double beat, double gravityNorm, Attractor attractor) noexcept CL_NONBLOCKING;
 
-// Deterministic signature hash of all phrase-shaping parameters + held notes,
+// Deterministic signature hash of all phrase-shaping parameters, overrides, and held notes,
 // allowing the engine to recompile instantly whenever a relevant control moves.
-std::uint32_t phraseSignature(const Params& params, std::int64_t phraseIndex,
-                              const HeldNotes& held) noexcept CL_NONBLOCKING;
+std::uint32_t phraseSignature(const Params& params, std::int64_t phraseIndex, const HeldNotes& held,
+                              const PhraseOverrides& overrides = {}) noexcept CL_NONBLOCKING;
 
 // Compiles one complete 2/4/8-bar phrase into `out` without heap allocation.
-void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNotes& held,
-                   PhrasePlan& out) noexcept CL_NONBLOCKING;
+void compilePhrase(const Params& params, std::int64_t phraseIndex, const HeldNotes& held, PhrasePlan& out,
+                   const PhraseOverrides& overrides = {}) noexcept CL_NONBLOCKING;
 
 } // namespace cl

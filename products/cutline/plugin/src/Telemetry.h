@@ -26,6 +26,9 @@ class Telemetry {
         if (!scoped.isLocked())
             return;
         snapshot_.plan = engine.currentPlan();
+        snapshot_.heldNotes = engine.activeHeldNotes();
+        snapshot_.phraseIndex = engine.currentPhraseIndex();
+        snapshot_.bpm = bpm;
         snapshot_.playheadBeats = engine.playheadPhraseBeats();
         snapshot_.ppq = engine.lanePpq();
         snapshot_.lanePhase = engine.lanePhases();
@@ -33,11 +36,19 @@ class Telemetry {
         snapshot_.activeNotesLow = engine.activeNotesLowMask();
         snapshot_.activeNotesHigh = engine.activeNotesHighMask();
         snapshot_.lastBlockEvents = engine.lastBlockEventCount();
+        snapshot_.activityMask |= engine.lastActivityMask();
         snapshot_.playing = engine.isPlaying();
     }
 
-    // Message thread: copies latest snapshot for rendering.
+    // Message thread: copies latest snapshot for rendering and resets latched activity bits.
     void read(ui::Visuals& out) const {
+        const juce::SpinLock::ScopedLockType scoped(lock_);
+        out = snapshot_;
+        snapshot_.activityMask = 0;
+    }
+
+    // Message thread peek without clearing activity bits (used by MIDI exporter).
+    void peek(ui::Visuals& out) const {
         const juce::SpinLock::ScopedLockType scoped(lock_);
         out = snapshot_;
     }
@@ -46,7 +57,7 @@ class Telemetry {
 
   private:
     mutable juce::SpinLock lock_;
-    ui::Visuals snapshot_{};
+    mutable ui::Visuals snapshot_{};
     std::atomic<double> lastBpm_{172.0};
 };
 

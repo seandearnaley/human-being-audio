@@ -46,7 +46,10 @@ struct Engine::Impl {
 
     double sampleRate = 48000.0;
     LaneCurves curves = defaultLaneCurves();
+    PhraseOverrides overrides{};
     HeldNotes held{};
+    HeldNotes latched{};
+    HeldNotes lastEffectiveHeld{};
 
     PhrasePlan plan{};
     std::array<ActiveNote, kMaxActiveNotes> active{};
@@ -56,6 +59,7 @@ struct Engine::Impl {
     OutputMode lastOutputMode = OutputMode::mono;
     InputMode lastInputMode = InputMode::seed;
     bool mpeRpnSent = false;
+    int lastMonoBendRangeSent = -1;
 
     // Deduplication state for continuous controllers (7-bit CC / 14-bit PB / 7-bit AT).
     std::array<int, 16> lastCc74{};
@@ -69,9 +73,11 @@ struct Engine::Impl {
     // Telemetry for Visage UI
     double playheadBeats = 0.0;
     double lastLanePpq = 0.0;
+    std::int64_t lastPhraseIndex = 0;
     std::array<float, kLaneCount> phases{};
     std::array<float, kLaneCount> values{};
     int lastEventCount = 0;
+    std::uint8_t activityMask = 0;
     bool playingState = false;
 
     AuditionSynth audition{};
@@ -96,19 +102,28 @@ struct Engine::Impl {
         for (auto& slot : active)
             slot.active = false;
         held.clear();
+        latched.clear();
+        lastEffectiveHeld.clear();
         wasPlaying = false;
         expectedNextPpq = 0.0;
         mpeRpnSent = false;
+        lastMonoBendRangeSent = -1;
         playheadBeats = 0.0;
         lastLanePpq = 0.0;
+        lastPhraseIndex = 0;
         phases.fill(0.0f);
         values.fill(0.0f);
         lastEventCount = 0;
+        activityMask = 0;
         playingState = false;
         clearDedupe();
         audition.reset();
         plan.phraseIndex = -1;
         plan.signature = 0;
+    }
+
+    const HeldNotes& effectiveHeld(const Params& params) const noexcept CL_NONBLOCKING {
+        return (params.on(ParamId::latch) && held.count == 0) ? latched : held;
     }
 
     void flushAllActive(MidiEventBuffer& outMidi, int sampleOffset) noexcept CL_NONBLOCKING {
@@ -120,10 +135,19 @@ struct Engine::Impl {
                 outMidi.pushCritical(MidiEvent::pitchBend(sampleOffset, slot.channel, 8192, 2));
                 lastBend[static_cast<std::size_t>(slot.channel - 1)] = 8192;
             }
-            audition.noteOff(slot.note);
+            audition.noteOff(slot.channel, slot.note);
             slot.active = false;
         }
         audition.allNotesOff();
+    }
+
+    void emitMonoBendRpn(MidiEventBuffer& outMidi, int sampleOffset, int semitones) noexcept CL_NONBLOCKING {
+        outMidi.push(MidiEvent::controlChange(sampleOffset, 1, 101, 0, 0));
+        outMidi.push(MidiEvent::controlChange(sampleOffset, 1, 100, 0, 0));
+        outMidi.push(MidiEvent::controlChange(sampleOffset, 1, 6, std::clamp(semitones, 1, 48), 0));
+        outMidi.push(MidiEvent::controlChange(sampleOffset, 1, 101, 127, 0));
+        outMidi.push(MidiEvent::controlChange(sampleOffset, 1, 100, 127, 0));
+        lastMonoBendRangeSent = semitones;
     }
 
     void emitMpeInit(MidiEventBuffer& outMidi, int sampleOffset) noexcept CL_NONBLOCKING {
@@ -143,9 +167,11 @@ struct Engine::Impl {
     }
 
     void ensurePlan(const Params& params, std::int64_t phraseIndex) noexcept CL_NONBLOCKING {
-        const std::uint32_t sig = phraseSignature(params, phraseIndex, held);
+        const auto& h = effectiveHeld(params);
+        lastEffectiveHeld = h;
+        const std::uint32_t sig = phraseSignature(params, phraseIndex, h, overrides);
         if (plan.phraseIndex != phraseIndex || plan.signature != sig)
-            compilePhrase(params, phraseIndex, held, plan);
+            compilePhrase(params, phraseIndex, h, plan, overrides);
     }
 
     void triggerNote(const CompiledNote& note, double absStartBeat, double absEndBeat, int offset,
@@ -328,7 +354,7 @@ struct Engine::Impl {
         const auto barsIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::phraseBars), 0, 2));
         const double phraseBeats = static_cast<double>(kPhraseBarCounts[barsIdx] * 4);
         const auto mode = static_cast<OutputMode>(std::clamp(params.choice(ParamId::outputMode), 0, 2));
-        const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 1));
+        const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
         const auto pbIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::bendRange), 0, 2));
         const double pbRangeSt = mode == OutputMode::mpe ? 48.0 : static_cast<double>(kBendRangeSemitones[pbIdx]);
 
@@ -336,9 +362,11 @@ struct Engine::Impl {
         const double rawPpq = std::max(0.0, transport.ppq);
         const std::int64_t previewPhrase = static_cast<std::int64_t>(std::floor(rawPpq / phraseBeats));
         ensurePlan(params, previewPhrase);
+        lastPhraseIndex = previewPhrase;
         playheadBeats = rawPpq - static_cast<double>(previewPhrase) * phraseBeats;
         lastLanePpq = rawPpq;
         playingState = transport.playing;
+        activityMask = 0;
 
         for (int lane = 0; lane < kLaneCount; ++lane) {
             const auto idx = static_cast<std::size_t>(lane);
@@ -352,6 +380,7 @@ struct Engine::Impl {
             flushAllActive(outMidi, 0);
             clearDedupe();
             mpeRpnSent = false;
+            lastMonoBendRangeSent = -1;
             lastOutputMode = mode;
             lastInputMode = inputMode;
         }
@@ -380,6 +409,8 @@ struct Engine::Impl {
 
         if (mode == OutputMode::mpe && !mpeRpnSent)
             emitMpeInit(outMidi, 0);
+        else if (mode == OutputMode::mono && lastMonoBendRangeSent != static_cast<int>(pbRangeSt))
+            emitMonoBendRpn(outMidi, 0, static_cast<int>(pbRangeSt));
 
         // Process note-offs, note-ons, and continuous CC/PB ticks in strict chronological
         // beat order so output is bit-identical across every host block size (1..1024).
@@ -415,7 +446,10 @@ struct Engine::Impl {
                     const double subEnd = std::min(windowEnd, pEnd);
                     ensurePlan(params, pIdx);
                     for (int i = 0; i < plan.noteCount; ++i) {
-                        const double absStart = pOrigin + plan.notes[static_cast<std::size_t>(i)].warpedBeats;
+                        const auto& cand = plan.notes[static_cast<std::size_t>(i)];
+                        if (cand.muted)
+                            continue;
+                        const double absStart = pOrigin + cand.warpedBeats;
                         if (absStart >= scan - kEps && absStart < subEnd - kEps) {
                             nextNoteIdx = i;
                             nextNoteBeat = absStart;
@@ -467,6 +501,8 @@ struct Engine::Impl {
                 const double pOrigin = static_cast<double>(pIdx) * phraseBeats;
                 for (int k = nextNoteIdx + 1; k < plan.noteCount; ++k) {
                     const CompiledNote& extra = plan.notes[static_cast<std::size_t>(k)];
+                    if (extra.muted)
+                        continue;
                     const double extraStart = pOrigin + extra.warpedBeats;
                     if (std::abs(extraStart - nextNoteBeat) > kEps)
                         break;
@@ -489,7 +525,24 @@ struct Engine::Impl {
         outMidi.sort();
         lastEventCount = outMidi.count;
 
-        // 4. Optional lightweight built-in audition voice on stereo bus.
+        std::uint8_t act = 0;
+        for (int i = 0; i < outMidi.count; ++i) {
+            const auto& ev = outMidi.events[static_cast<std::size_t>(i)];
+            const std::uint8_t hi = ev.data[0] & 0xF0u;
+            if (ev.isNoteOn())
+                act |= kActNote;
+            else if (hi == 0xE0u)
+                act |= kActBend;
+            else if (hi == 0xB0u && ev.data[1] == 74)
+                act |= kActCc74;
+            else if (hi == 0xB0u && ev.data[1] == 1)
+                act |= kActCc1;
+            else if (hi == 0xD0u)
+                act |= kActPressure;
+        }
+        activityMask = act;
+
+        // 4. Optional lightweight 4-voice stereo audition synth on stereo bus.
         renderAuditionAudio(params, outMidi, left, right, numSamples, mode == OutputMode::drum, pbRangeSt);
     }
 
@@ -500,6 +553,7 @@ struct Engine::Impl {
 
         const bool enabled = params.on(ParamId::audition);
         const float gainDb = params[ParamId::auditionGain];
+        const auto tone = static_cast<AuditionTone>(std::clamp(params.choice(ParamId::auditionTone), 0, 3));
 
         int evIdx = 0;
         for (int i = 0; i < numSamples; ++i) {
@@ -507,20 +561,22 @@ struct Engine::Impl {
                 const MidiEvent& ev = outMidi.events[static_cast<std::size_t>(evIdx++)];
                 const std::uint8_t status = ev.data[0] & 0xF0u;
                 if (ev.isNoteOn()) {
-                    audition.noteOn(ev.noteNumber(), ev.data[2], isDrum);
+                    audition.noteOn(ev.channel(), ev.noteNumber(), ev.data[2], isDrum);
                 } else if (ev.isNoteOff()) {
-                    audition.noteOff(ev.noteNumber());
+                    audition.noteOff(ev.channel(), ev.noteNumber());
                 } else if (status == 0xE0u && ev.size == 3) {
                     const int v14 = static_cast<int>(ev.data[1]) | (static_cast<int>(ev.data[2]) << 7);
-                    audition.setBendSemitones((static_cast<double>(v14 - 8192) / 8191.0) * pbRangeSt);
+                    audition.setBendSemitones(ev.channel(), (static_cast<double>(v14 - 8192) / 8191.0) * pbRangeSt);
                 } else if (status == 0xB0u && ev.size == 3) {
                     if (ev.data[1] == 74)
                         audition.setBrightness(static_cast<double>(ev.data[2]) / 127.0);
                     else if (ev.data[1] == 1)
                         audition.setDrive(static_cast<double>(ev.data[2]) / 127.0);
+                } else if (status == 0xD0u && ev.size >= 2) {
+                    audition.setPressure(static_cast<double>(ev.data[1]) / 127.0);
                 }
             }
-            audition.renderSample(gainDb, enabled, left[i], right[i]);
+            audition.renderSample(gainDb, enabled, tone, left[i], right[i]);
         }
     }
 };
@@ -531,9 +587,18 @@ Engine::~Engine() = default;
 void Engine::prepare(double sampleRate, int /*maxBlockSize*/) { impl_->prepare(sampleRate); }
 void Engine::reset() noexcept CL_NONBLOCKING { impl_->reset(); }
 void Engine::setLaneCurves(const LaneCurves& curves) noexcept CL_NONBLOCKING { impl_->curves = curves; }
-void Engine::inputNoteOn(int midiNote, int /*velocity*/) noexcept CL_NONBLOCKING { impl_->held.push(midiNote); }
+void Engine::setOverrides(const PhraseOverrides& overrides) noexcept CL_NONBLOCKING { impl_->overrides = overrides; }
+void Engine::inputNoteOn(int midiNote, int /*velocity*/) noexcept CL_NONBLOCKING {
+    if (impl_->held.count == 0)
+        impl_->latched.clear();
+    impl_->held.push(midiNote);
+    impl_->latched.push(midiNote);
+}
 void Engine::inputNoteOff(int midiNote) noexcept CL_NONBLOCKING { impl_->held.remove(midiNote); }
-void Engine::inputAllNotesOff() noexcept CL_NONBLOCKING { impl_->held.clear(); }
+void Engine::inputAllNotesOff() noexcept CL_NONBLOCKING {
+    impl_->held.clear();
+    impl_->latched.clear();
+}
 
 void Engine::process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left,
                      float* right, int numSamples) noexcept CL_NONBLOCKING {
@@ -541,11 +606,14 @@ void Engine::process(const Params& params, const Transport& transport, MidiEvent
 }
 
 const PhrasePlan& Engine::currentPlan() const noexcept CL_NONBLOCKING { return impl_->plan; }
+HeldNotes Engine::activeHeldNotes() const noexcept CL_NONBLOCKING { return impl_->lastEffectiveHeld; }
+std::int64_t Engine::currentPhraseIndex() const noexcept CL_NONBLOCKING { return impl_->lastPhraseIndex; }
 double Engine::playheadPhraseBeats() const noexcept CL_NONBLOCKING { return impl_->playheadBeats; }
 double Engine::lanePpq() const noexcept CL_NONBLOCKING { return impl_->lastLanePpq; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept CL_NONBLOCKING { return impl_->phases; }
 std::array<float, kLaneCount> Engine::laneValues() const noexcept CL_NONBLOCKING { return impl_->values; }
 int Engine::lastBlockEventCount() const noexcept CL_NONBLOCKING { return impl_->lastEventCount; }
+std::uint8_t Engine::lastActivityMask() const noexcept CL_NONBLOCKING { return impl_->activityMask; }
 bool Engine::isPlaying() const noexcept CL_NONBLOCKING { return impl_->playingState; }
 
 std::uint64_t Engine::activeNotesLowMask() const noexcept CL_NONBLOCKING {

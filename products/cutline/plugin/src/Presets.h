@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CurveStore.h"
+#include "OverrideStore.h"
 #include "cl/preset.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -13,7 +14,7 @@ namespace cl {
 
 class Presets {
   public:
-    Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves);
+    Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, OverrideStore& overrides);
 
     const std::vector<Preset>& all() const { return presets_; }
     std::string currentName() const;
@@ -30,6 +31,7 @@ class Presets {
 
     juce::AudioProcessorValueTreeState& state_;
     CurveStore& curves_;
+    OverrideStore& overrides_;
     std::vector<Preset> presets_;
 };
 

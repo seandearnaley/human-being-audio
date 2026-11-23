@@ -19,7 +19,20 @@ class FakeModel final : public Model {
     Curve laneCurve(int lane) const override { return curves_[static_cast<std::size_t>(lane)]; }
     void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
 
+    PhraseOverrides overrides() const override { return overrides_; }
+    void setOverrides(const PhraseOverrides& ov) override {
+        overrides_ = ov;
+        recompile();
+    }
+    void clearOverrides() override {
+        overrides_.clear();
+        recompile();
+    }
+
     void rollSeed() override;
+    bool canStepSeedHistory(int delta) const override;
+    void stepSeedHistory(int delta) override;
+
     void dragMidiPhrase() override {}
     std::string exportStatus() const override { return "Drag 4-bar .mid"; }
 
@@ -34,7 +47,10 @@ class FakeModel final : public Model {
 
     Params params_;
     LaneCurves curves_ = defaultLaneCurves();
+    PhraseOverrides overrides_{};
     Visuals visuals_;
+    std::vector<int> seedHistory_{407};
+    std::size_t seedCursor_ = 0;
     std::string presetName_ = "Neuro Whip";
 };
 

@@ -28,6 +28,8 @@ target_sources(CutlineCode INTERFACE
     src/CurveStore.h
     src/MidiExporter.cpp
     src/MidiExporter.h
+    src/OverrideStore.cpp
+    src/OverrideStore.h
     src/Parameters.cpp
     src/Parameters.h
     src/PluginEditor.cpp

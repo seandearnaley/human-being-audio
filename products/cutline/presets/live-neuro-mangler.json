@@ -1,7 +1,8 @@
 {
     "name": "Live Neuro Mangler",
     "category": "Neuro",
-    "inputMode": "Live MIDI",
+    "inputMode": "Transpose",
+    "latch": true,
     "grammar": "Neuro",
     "gravity": 0.36,
     "ratchet": 0.62,

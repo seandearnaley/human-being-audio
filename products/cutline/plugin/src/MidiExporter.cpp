@@ -7,10 +7,10 @@
 
 namespace cl {
 
-juce::File MidiExporter::writeTempFile(const Params& params, const LaneCurves& curves, double bpm,
+juce::File MidiExporter::writeTempFile(const Params& params, const LaneCurves& curves, const PhraseOverrides& overrides,
+                                       const HeldNotes& held, double bpm, std::int64_t phraseIndex,
                                        const juce::String& presetName) {
-    HeldNotes held;
-    const auto bytes = exportPhraseSmf(params, curves, held, bpm, 0);
+    const auto bytes = exportPhraseSmf(params, curves, held, bpm, phraseIndex, overrides);
 
     const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
                          .getChildFile("HumanBeingAudio")

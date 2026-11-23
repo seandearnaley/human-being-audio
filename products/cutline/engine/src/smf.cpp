@@ -40,9 +40,9 @@ int toPb14(double semitones, double rangeSt) {
 } // namespace
 
 std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves& curves, const HeldNotes& held,
-                                          double bpm, std::int64_t phraseIndex) {
+                                          double bpm, std::int64_t phraseIndex, const PhraseOverrides& overrides) {
     PhrasePlan plan;
-    compilePhrase(params, phraseIndex, held, plan);
+    compilePhrase(params, phraseIndex, held, plan, overrides);
 
     const double safeBpm = std::clamp(bpm, 20.0, 400.0);
     const auto usPerQuarter = static_cast<std::uint32_t>(std::llround(60000000.0 / safeBpm));
@@ -78,6 +78,8 @@ std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves
     // Track active end ticks per (ch, note) to prevent overlapping identical Note Ons
     for (int i = 0; i < plan.noteCount; ++i) {
         const CompiledNote& n = plan.notes[static_cast<std::size_t>(i)];
+        if (n.muted)
+            continue;
         const auto ch = static_cast<std::uint8_t>(std::clamp(static_cast<int>(n.channel), 1, 16) - 1);
         const auto startTick = static_cast<std::uint32_t>(std::clamp<long long>(
             std::llround(n.warpedBeats * kSmfPpq), 0LL, static_cast<long long>(phraseEndTick) - 16LL));
