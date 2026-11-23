@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="334" height="334" viewBox="0 0 334 334">
+  <!-- Periodic phrase ring -->
+  <circle cx="167" cy="167" r="120" fill="none" stroke="#e6ebf0" stroke-width="24"/>
+  <!-- Beat grid axes -->
+  <line x1="36" y1="167" x2="298" y2="167" stroke="#566170" stroke-width="12" stroke-linecap="round"/>
+  <!-- Diagonal tape-splice cutline (262° electric iris) -->
+  <line x1="88" y1="266" x2="246" y2="68" stroke="#9b7eff" stroke-width="28" stroke-linecap="round"/>
+  <!-- Ratchet turnaround marker (vermilion) -->
+  <line x1="194" y1="224" x2="254" y2="224" stroke="#ff6e5e" stroke-width="20" stroke-linecap="round"/>
+  <!-- Microtiming gravity attractor nodes (cyan) -->
+  <circle cx="106" cy="116" r="22" fill="#3fd9e8"/>
+  <circle cx="228" cy="167" r="18" fill="#0b0e13" stroke="#3fd9e8" stroke-width="14"/>
+</svg>

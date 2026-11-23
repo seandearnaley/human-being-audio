@@ -1,0 +1,16 @@
+{
+    "name": "Jungle Rush",
+    "category": "Breaks",
+    "outputMode": "Drum Kit",
+    "grammar": "WarpCut",
+    "gravity": -0.28,
+    "ratchet": 0.88,
+    "glide": 0.0,
+    "density": 0.86,
+    "mutate": 0.74,
+    "motion": 0.5,
+    "velArc": 0.84,
+    "phraseBars": "4 bars",
+    "seed": 909,
+    "attractor": "Offbeat 16"
+}

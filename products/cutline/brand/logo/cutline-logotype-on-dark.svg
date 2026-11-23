@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="334" viewBox="0 0 1640 334">
+  <g transform="translate(86, 260)" fill="none" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <!-- c -->
+    <path d="M138,-120 A72,72 0 1 0 138,-24" stroke="#e6ebf0"/>
+    <!-- u -->
+    <path d="M214,-144 V-56 A64,56 0 0 0 342,-56 V-144 M342,-56 V0" stroke="#e6ebf0"/>
+    <!-- t (iris-indigo vertical splice stem) -->
+    <path d="M446,-222 V-48 Q446,0 494,0 H518" stroke="#9b7eff"/>
+    <path d="M398,-144 H514" stroke="#e6ebf0"/>
+    <!-- l (iris-indigo phrase cut bar) -->
+    <path d="M594,-228 V0" stroke="#9b7eff"/>
+    <!-- i (cyan microtiming anchor dot) -->
+    <path d="M684,-136 V0" stroke="#e6ebf0"/>
+    <circle cx="684" cy="-214" r="16" fill="#3fd9e8" stroke="none"/>
+    <!-- n -->
+    <path d="M776,0 V-144 M776,-78 A66,66 0 0 1 908,-78 V0" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M986,-72 H1130 A72,72 0 1 0 1108,-18" stroke="#e6ebf0"/>
+    <!-- precision diagonal splice accent + turnaround dot -->
+    <path d="M1214,-196 L1286,-22" stroke="#ff6e5e" stroke-width="30"/>
+    <circle cx="1340" cy="-24" r="18" fill="#9b7eff" stroke="none"/>
+  </g>
+</svg>
