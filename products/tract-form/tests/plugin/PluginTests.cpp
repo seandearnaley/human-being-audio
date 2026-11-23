@@ -412,3 +412,26 @@ TEST_CASE("PluginProcessor chunks oversized host blocks cleanly and filters Poly
     CHECK(model.visuals().gate);
     CHECK(model.visuals().effCoupling == Approx(host.processor.currentParams()[ParamId::coupling]).margin(0.05f));
 }
+
+TEST_CASE("PluginModel audition pill triggers lock-free F1 note and bank exposes all 42 factory presets") {
+    Host host;
+    PluginModel model(host.processor);
+    CHECK(model.presets().size() >= 42);
+
+    model.setAudition(true);
+    juce::MidiBuffer midi;
+    host.buffer.clear();
+    host.processor.processBlock(host.buffer, midi);
+    CHECK(host.buffer.getMagnitude(0, host.buffer.getNumSamples()) > 0.05f);
+    model.refreshVisuals();
+    CHECK(model.visuals().gate);
+    CHECK(model.visuals().note == 29);
+
+    model.setAudition(false);
+    for (int i = 0; i < 32; ++i) {
+        host.buffer.clear();
+        host.processor.processBlock(host.buffer, midi);
+    }
+    model.refreshVisuals();
+    CHECK_FALSE(model.visuals().gate);
+}

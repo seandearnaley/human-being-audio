@@ -12,10 +12,13 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <random>
+#include <vector>
 
 using namespace tf;
 using namespace tf::test;
@@ -57,7 +60,10 @@ TEST_CASE("sub stability: the low-passed output varies < 0.5 dB with every lane 
     INFO("50 ms sub RMS range " << range << " dB");
     std::printf("[sub stability] %s note %d depth %+.0f: range %.3f dB\n", hot ? "hot" : "default", note,
                 static_cast<double>(depthSign), range);
-    CHECK(range < 0.15);  // measured <= 0.09 (spec: 0.5)
+    // With 1x BW8 post-clip HP restoring +14 dB of lower-growl punch at 3*f0,
+    // the analysis LR4 LP skirt at splitHz sees slightly more 3*f0 movement
+    // on C1 while staying well under the 0.5 dB spec (<= 0.25 dB).
+    CHECK(range < 0.25);
 }
 
 TEST_CASE("growl level never moves the sub: hot patch, growlLevel 0..1", "[engine]") {
@@ -111,13 +117,16 @@ TEST_CASE("the growl leaves the sub band alone: sub band with and without the gr
     for (std::size_t i = 0; i < d.size(); ++i) d[i] = a[from + i] - b[from + i];
     const double db = analysis::rmsDb(d) - analysis::rmsDb(slice(b, from, b.size()));
     std::printf("[sub band] %s note %d: growl's contribution to the sub band %.1f dB re sub\n", hot ? "hot" : "default", note, db);
-    // What remains is linear: growl content around the split through the LR4
-    // crossover overlap (it scales with growlLevel). 0.1 measured -36..-37 dB
-    // on the default patch and -51 dB on the hot one. With Reach and Weight
-    // (0.2) the growl's energy sits lower, nearer the split, and with 0.2's
-    // gain staging (kGrowlGain 2.4, the growl about 9 dB louder into the
-    // output stage) it reads: default -35.4..-36.2, hot -43.7..-44.0 dB.
-    CHECK(db <= (hot ? -43.0 : -33.0));
+    // With the 1.0 clean crossover (1x BW8 post-clip HP replacing 4x cascaded LR4),
+    // the growl restores +14 dB of clean punch at 3*f0 (1.25x splitHz), whose linear
+    // skirt appears through the analysis LR4 LP at ~-26 dB (default) / ~-34 dB (hot),
+    // while true sub-fundamental leakage at f0 stays below -50 dB.
+    CHECK(db <= (hot ? -33.0 : -24.0));
+    const double f0 = noteHz(note);
+    const Signal dSub = analysis::lr4Lowpass(d, 0.65 * splitHz(s.params, note), fs);
+    const Signal bSub = analysis::lr4Lowpass(slice(b, from, b.size()), 0.65 * splitHz(s.params, note), fs);
+    (void)f0;
+    CHECK(analysis::rmsDb(dSub) - analysis::rmsDb(bSub) <= -42.0);
 }
 
 TEST_CASE("a sub that fills the ceiling leaves the growl at the floor, smoothly", "[engine]") {
@@ -299,7 +308,11 @@ TEST_CASE("ceiling with limit off: only the output soft clip bounds the peaks", 
     const double sp = analysis::toDb(std::max(maxAbs(out.left), maxAbs(out.right)));
     const double tp = analysis::toDb(std::max(analysis::truePeak4x(out.left), analysis::truePeak4x(out.right)));
     std::printf("[ceiling, limit off] seed %2d: sample peak %+.2f, true peak %+.2f dB re ceiling\n", seed, sp - c, tp - c);
-    CHECK(sp <= 0.0);
+    // With limit OFF, outputClip provides transparent +6 dBFS knee / +12 dBFS safety cap
+    // rather than silently brickwalling at 0 dBFS.
+    CHECK(allFinite(out.left));
+    CHECK(allFinite(out.right));
+    CHECK(sp <= 12.1);
 }
 
 // ---- Verification: aliasing ---------------------------------------------------
@@ -417,6 +430,8 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     s.oversampling = factor;
     s.params = staticPatch();
     s.params[ParamId::coupling] = 0.0f;
+    s.params[ParamId::oscShape] = 0.0f;
+    s.params[ParamId::subWarmth] = 0.0f;
     s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
     s.params[ParamId::aPhase] = s.params[ParamId::bPhase] = 0.0f;
     s.params[ParamId::fbAmount] = 0.0f;
@@ -440,13 +455,14 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     const auto out = render(s, held(note), frames(0.6, fs));
 
     const auto cSub = dsp::butterworth(splitHz(s.params, note), fs);
+    const auto cSubClip = dsp::Bw4Coefs::make(1.10 * splitHz(s.params, note), fs);
     const auto cX = dsp::butterworth(s.params[ParamId::xover], fs);
     const auto cLo = dsp::butterworth(dsp::kSquashLowHz, fs);
     const auto cHi = dsp::butterworth(dsp::kSquashHighHz, fs);
     dsp::Lr4Highpass hp;
-    std::array<dsp::Lr4Highpass, 4> postClipHp {};  // the high-passes after the clipper passes
+    std::array<dsp::Bw4Highpass, 2> postClipHp{}; // two BW4 HPs (LR8) after the clipper passes
     dsp::ThreeBandSplit split;
-    dsp::Lr4Allpass ap;
+    dsp::Lr4Allpass ap, apPost;
     Signal expected(out.master.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
         double lo, mi, hi;
@@ -454,7 +470,9 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
         double y = ap.process(cX, lo + mi + hi);
         // The engine runs these at the clipper's 2x rate; the same pre-warped
         // filter at the base rate differs by far less than the tolerance.
-        for (auto& f : postClipHp) y = f.process(cSub, y);
+        for (auto& f : postClipHp)
+            y = f.process(cSubClip, y);
+        y = apPost.process(cX, y);
         expected[i] = y;
     }
     // Reach's phase at f0: two TPT sections at fo, each the analogue
@@ -954,4 +972,253 @@ TEST_CASE("Idle modulation state refreshes cleanly and CC64 Sustain holds monoph
     CHECK(e.activeNote() == 33);
     e.sustain(false);
     CHECK_FALSE(e.gateOpen());
+}
+
+TEST_CASE("Phase 4: Sub Warmth adds phase-locked 2nd/3rd harmonics with zero DC", "[engine][phase4]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::growlLevel] = 0.0f;
+    s.params[ParamId::subLevel] = 0.8f;
+    s.params[ParamId::subSplit] = 3.5f; // let 2*f0 and 3*f0 through subLp
+    s.params[ParamId::subWarmth] = 0.0f;
+    const auto pure = render(s, held(29), frames(1.0, s.sampleRate));
+
+    s.params[ParamId::subWarmth] = 1.0f;
+    const auto warm = render(s, held(29), frames(1.0, s.sampleRate));
+
+    REQUIRE(allFinite(warm.left));
+    CHECK(maxAbs(warm.left) <= 1.0);
+
+    // Zero DC offset on steady warmed sub (averaged over exact whole cycles of f0).
+    const double f0 = noteHz(29);
+    const auto from = static_cast<std::size_t>(0.3 * s.sampleRate);
+    const auto wholeCycles = static_cast<std::size_t>(std::llround(25.0 * s.sampleRate / f0));
+    double dc = 0.0;
+    for (std::size_t i = 0; i < wholeCycles; ++i)
+        dc += warm.left[from + i];
+    dc /= static_cast<double>(wholeCycles);
+    CHECK(std::abs(dc) < 5e-4);
+
+    // 2nd harmonic grows substantially while fundamental stays strong.
+    const auto goertzel = [&](const Signal& x, double hz) {
+        const double w = 2.0 * dsp::kPi * hz / s.sampleRate;
+        double re = 0.0, im = 0.0;
+        const std::size_t n = x.size() - from;
+        for (std::size_t i = 0; i < n; ++i) {
+            re += x[from + i] * std::cos(w * static_cast<double>(i));
+            im += x[from + i] * std::sin(w * static_cast<double>(i));
+        }
+        return 2.0 * std::hypot(re, im) / static_cast<double>(n);
+    };
+    const double h2Pure = goertzel(pure.left, 2.0 * f0);
+    const double h2Warm = goertzel(warm.left, 2.0 * f0);
+    CHECK(h2Warm > h2Pure + 0.05);
+    CHECK(goertzel(warm.left, f0) > 0.5);
+}
+
+TEST_CASE("Phase 4: Exponential ADSR, Pitch Punch, and Velocity sensitivity shape plucks cleanly", "[engine][phase4]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::ampAttack] = 2.0f;
+    s.params[ParamId::ampDecay] = 80.0f;
+    s.params[ParamId::ampSustain] = 0.10f;
+    s.params[ParamId::ampRelease] = 30.0f;
+    const auto pluck = render(s, held(29), frames(0.6, s.sampleRate));
+    REQUIRE(allFinite(pluck.left));
+    const auto sz = [](long long n) { return static_cast<std::size_t>(n); };
+    const auto lat = static_cast<std::size_t>(pluck.latency);
+    const double earlyRms = analysis::rmsDb(
+        slice(pluck.left, lat + sz(frames(0.002, s.sampleRate)), lat + sz(frames(0.018, s.sampleRate))));
+    const double tailRms =
+        analysis::rmsDb(slice(pluck.left, sz(frames(0.45, s.sampleRate)), sz(frames(0.55, s.sampleRate))));
+    CHECK(earlyRms - tailRms > 14.0);
+
+    // Pitch Punch raises initial frequency above f0 and settles cleanly back to f0.
+    Engine pe;
+    pe.prepare(s.sampleRate, 64, 2);
+    Params pp = staticPatch();
+    pp[ParamId::punchAmt] = 12.0f;
+    pp[ParamId::punchMs] = 25.0f;
+    std::array<float, 64> l{}, r{};
+    pe.noteOn(29, 1.0f);
+    pe.process(pp, {174.0, 0.0, true}, l.data(), r.data(), 64);
+    const float earlyHz = pe.currentHz();
+    for (int i = 0; i < 200; ++i)
+        pe.process(pp, {174.0, 0.0, true}, l.data(), r.data(), 64);
+    const float settledHz = pe.currentHz();
+    CHECK(earlyHz > noteHz(29) * 1.4);
+    CHECK(settledHz == Catch::Approx(noteHz(29)).margin(0.5));
+
+    // Velocity sensitivity scales softer hits when velSens = 1 and is invariant when velSens = 0.
+    const auto renderVel = [&](float velSens, float vel) {
+        Engine e;
+        e.prepare(48000.0, 128, 2);
+        Params p = staticPatch();
+        p[ParamId::velSens] = velSens;
+        std::vector<double> out;
+        std::array<float, 128> bl{}, br{};
+        e.noteOn(29, vel);
+        for (int b = 0; b < 60; ++b) {
+            e.process(p, {174.0, 0.0, false}, bl.data(), br.data(), 128);
+            for (float v : bl)
+                out.push_back(v);
+        }
+        return out;
+    };
+    const auto loudSens = renderVel(1.0f, 1.0f);
+    const auto softSens = renderVel(1.0f, 0.25f);
+    CHECK(analysis::rmsDb(loudSens) - analysis::rmsDb(softSens) > 3.0);
+
+    const auto loudFlat = renderVel(0.0f, 1.0f);
+    const auto softFlat = renderVel(0.0f, 0.25f);
+    CHECK(maxAbsDiff(loudFlat, softFlat) == 0.0);
+}
+
+TEST_CASE("Phase 4: Retrig and One-Shot lane modes follow note clock cleanly", "[engine][phase4]") {
+    Params p = staticPatch();
+    p[ParamId::motion] = 1.0f;
+    p[ParamId::lane1On] = 1.0f;
+    p[ParamId::lane1Target] = static_cast<float>(LaneTarget::drive);
+    p[ParamId::lane1Shape] = static_cast<float>(LaneShape::rampUp);
+    p[ParamId::lane1Rate] = 5.0f; // 1/4 = 1 quarter note
+    p[ParamId::lane1Depth] = 1.0f;
+    p[ParamId::lane1Mode] = static_cast<float>(LaneMode::oneShot);
+
+    // One-Shot completes in 1 quarter note and holds its end value thereafter.
+    CHECK(lanePhaseFor(p, 0, 10.0, 0.0) == Catch::Approx(0.0).margin(1e-6));
+    CHECK(lanePhaseFor(p, 0, 10.0, 0.5) == Catch::Approx(0.5).margin(1e-6));
+    CHECK(lanePhaseFor(p, 0, 10.0, 2.5) == Catch::Approx(1.0).margin(1e-6));
+
+    // Retrig wraps note-relative clock cleanly regardless of host PPQ.
+    p[ParamId::lane1Mode] = static_cast<float>(LaneMode::retrig);
+    CHECK(lanePhaseFor(p, 0, 13.7, 0.25) == Catch::Approx(0.25).margin(1e-6));
+    CHECK(lanePhaseFor(p, 0, 13.7, 1.25) == Catch::Approx(0.25).margin(1e-6));
+}
+
+TEST_CASE("Phase 4: Pre/Post Tract, Formant Shift, and Tract Q are click-free and expressive", "[engine][phase4]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::tract] = 0.85f;
+    s.params[ParamId::drive] = 0.70f;
+    s.params[ParamId::tractPos] = static_cast<float>(TractPos::pre);
+    const auto preOut = render(s, held(29), frames(0.6, s.sampleRate));
+
+    s.params[ParamId::tractPos] = static_cast<float>(TractPos::post);
+    const auto postOut = render(s, held(29), frames(0.6, s.sampleRate));
+    CHECK(maxAbsDiff(preOut.left, postOut.left) > 0.05);
+
+    s.params[ParamId::tractShift] = 12.0f;
+    s.params[ParamId::tractQ] = 0.90f;
+    const auto shiftedOut = render(s, held(29), frames(0.6, s.sampleRate));
+    REQUIRE(allFinite(shiftedOut.left));
+    CHECK(maxAbsDiff(postOut.left, shiftedOut.left) > 0.05);
+
+    // Live mid-note Pre -> Post toggle crossfades cleanly without clicks.
+    Engine e;
+    e.prepare(48000.0, 128, 2);
+    Params p = s.params;
+    p[ParamId::tractPos] = static_cast<float>(TractPos::pre);
+    std::array<float, 128> l{}, r{};
+    e.noteOn(29, 1.0f);
+    double prev = 0.0, maxJump = 0.0;
+    for (int b = 0; b < 40; ++b) {
+        if (b == 20)
+            p[ParamId::tractPos] = static_cast<float>(TractPos::post);
+        e.process(p, {174.0, 0.0, false}, l.data(), r.data(), 128);
+        for (float v : l) {
+            if (b >= 15)
+                maxJump = std::max(maxJump, std::abs(static_cast<double>(v) - prev));
+            prev = v;
+        }
+    }
+    CHECK(maxJump < 0.35);
+}
+
+TEST_CASE("Phase 4: Stereo Sculpt Bell/Phaser/Comb modes and click-free mode switching", "[engine][phase4]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::sculptDepth] = -0.8f;
+    s.params[ParamId::sculptRes] = 0.65f;
+    s.params[ParamId::width] = 1.0f;
+
+    s.params[ParamId::sculptMode] = static_cast<float>(SculptMode::bell);
+    const auto bell = render(s, held(29), frames(0.5, s.sampleRate));
+    s.params[ParamId::sculptMode] = static_cast<float>(SculptMode::phaser);
+    const auto phaser = render(s, held(29), frames(0.5, s.sampleRate));
+    s.params[ParamId::sculptMode] = static_cast<float>(SculptMode::comb);
+    const auto comb = render(s, held(29), frames(0.5, s.sampleRate));
+
+    for (const auto* out : {&bell, &phaser, &comb}) {
+        REQUIRE(allFinite(out->left));
+        REQUIRE(allFinite(out->right));
+        CHECK(maxAbs(out->left) <= 1.0);
+    }
+    CHECK(maxAbsDiff(bell.left, phaser.left) > 0.02);
+    CHECK(maxAbsDiff(bell.left, comb.left) > 0.02);
+    CHECK(maxAbsDiff(phaser.left, comb.left) > 0.02);
+
+    // Width 0 stays exact mono in Phaser and Comb too.
+    s.params[ParamId::width] = 0.0f;
+    for (auto m : {SculptMode::phaser, SculptMode::comb}) {
+        s.params[ParamId::sculptMode] = static_cast<float>(m);
+        const auto mono = render(s, held(29), frames(0.3, s.sampleRate));
+        CHECK(maxAbsDiff(mono.left, mono.right) == 0.0);
+    }
+
+    // Live mid-note Bell -> Phaser -> Comb -> Bell switching has zero clicks.
+    Engine e;
+    e.prepare(48000.0, 128, 2);
+    Params p = s.params;
+    p[ParamId::width] = 0.8f;
+    std::array<float, 128> l{}, r{};
+    e.noteOn(29, 1.0f);
+    double prev = 0.0, maxJump = 0.0;
+    for (int b = 0; b < 60; ++b) {
+        if (b == 15)
+            p[ParamId::sculptMode] = static_cast<float>(SculptMode::phaser);
+        if (b == 30)
+            p[ParamId::sculptMode] = static_cast<float>(SculptMode::comb);
+        if (b == 45)
+            p[ParamId::sculptMode] = static_cast<float>(SculptMode::bell);
+        e.process(p, {174.0, 0.0, false}, l.data(), r.data(), 128);
+        for (float v : l) {
+            if (b >= 10)
+                maxJump = std::max(maxJump, std::abs(static_cast<double>(v) - prev));
+            prev = v;
+        }
+    }
+    CHECK(maxJump < 0.45);
+}
+
+TEST_CASE("Phase 4: Carrier oscShape enriches harmonics and Width 100% retains stereo Reese beating",
+          "[engine][phase4]") {
+    Setup s;
+    s.params = staticPatch();
+    s.params[ParamId::coupling] = 0.0f;
+    s.params[ParamId::drive] = 0.0f;
+    s.params[ParamId::fbAmount] = 0.0f;
+    s.params[ParamId::subLevel] = 0.0f;
+    s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
+    s.params[ParamId::oscShape] = 0.0f;
+    const auto sineOnly = render(s, held(29), frames(0.5, s.sampleRate));
+    s.params[ParamId::oscShape] = 0.85f;
+    const auto shaped = render(s, held(29), frames(0.5, s.sampleRate));
+    const auto from15 = static_cast<std::size_t>(frames(0.15, s.sampleRate));
+    CHECK(analysis::rmsDb(slice(shaped.growl, from15, shaped.growl.size())) >
+          analysis::rmsDb(slice(sineOnly.growl, from15, sineOnly.growl.size())) + 10.0);
+
+    // At Width 100% with detuned Reese voices, left channel alone retains audible beating (> 1.5 dB modulation).
+    Setup w;
+    w.params = staticPatch();
+    w.params[ParamId::width] = 1.0f;
+    w.params[ParamId::subLevel] = 0.0f;
+    w.params[ParamId::squash] = 0.0f;
+    w.params[ParamId::aDetune] = 24.0f;
+    w.params[ParamId::bDetune] = -24.0f;
+    w.params[ParamId::beat] = 1.0f;
+    const auto wide = render(w, held(36), frames(2.0, w.sampleRate));
+    const Signal env = analysis::windowedRmsDb(wide.left, static_cast<std::size_t>(frames(0.2, w.sampleRate)),
+                                               wide.left.size(), w.sampleRate);
+    const double beatRange = *std::max_element(env.begin(), env.end()) - *std::min_element(env.begin(), env.end());
+    CHECK(beatRange > 1.5);
 }

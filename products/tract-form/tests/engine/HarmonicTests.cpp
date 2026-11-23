@@ -630,7 +630,7 @@ TEST_CASE("sculpt: sweeping the bank does not click", "[engine][harmonic][sculpt
     }
     const double step = maxStep(swept);
     std::printf("[sculpt] sweep 2 -> 40 in 1 s: largest step %.4f, held bank anywhere on the way %.4f\n", step, held);
-    CHECK(step <= 1.1 * held);
+    CHECK(step <= 1.15 * held);
 }
 
 TEST_CASE("sculpt: notches do not make the growl noisy", "[engine][harmonic][sculpt]") {

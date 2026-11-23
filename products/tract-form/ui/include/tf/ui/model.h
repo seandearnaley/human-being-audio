@@ -39,6 +39,8 @@ struct Visuals {
 
     // Host position in quarter notes; runs from note-on while the host is stopped.
     double ppq = 0.0;
+    // Note-relative elapsed quarter notes for Retrig and One-Shot lane modes.
+    double notePpq = 0.0;
 
     float hz = 0.0f;
     int note = -1;  // MIDI note, -1 when silent
@@ -48,6 +50,7 @@ struct Visuals {
     float effBeat = 0.38f;
     float effReach = 96.0f;
     float effMorph = 0.63f;
+    float effShift = 0.0f;
     float effDrive = 0.42f;
     float effSculpt = 6.0f;
     float effWidth = 0.64f;
@@ -98,6 +101,9 @@ public:
     virtual bool isSlotB() const { return false; }
     virtual void toggleAB() {}
     virtual void copyAB() {}
+
+    // Press-and-hold audition note (F1) from the interface.
+    virtual void setAudition(bool down) { (void)down; }
 };
 
 }

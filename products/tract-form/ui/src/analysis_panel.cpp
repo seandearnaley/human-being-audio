@@ -3,6 +3,7 @@
 #include "tf/feel.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 
@@ -159,9 +160,109 @@ private:
         canvas.trimClampBounds(split, 0.0f, width() - split, height());
         curve(canvas, bands, x, y, w, plotHeight, colour::growl, kFloorDb, 0.0f, 0.12f, kFloorDb);
         canvas.restoreState();
+
+        // Direct-manipulation Sub Split handle right on the spectrum boundary.
+        const bool lit = splitHover_ || splitDragging_;
+        const float guideW = lit ? px(2.0f) : hairline();
+        canvas.setColor(colour::withAlpha(colour::master, lit ? 0.92f : 0.42f));
+        canvas.rectangle(std::round(split - 0.5f * guideW), std::round(y), guideW, std::round(plotHeight));
+        if (lit) {
+            char label[24];
+            std::snprintf(label, sizeof label, "%.0f Hz", static_cast<double>(subHz));
+            const float pillW = px(48.0f);
+            const float pillH = px(15.0f);
+            const float pillX = std::clamp(split - 0.5f * pillW, x, x + w - pillW);
+            const float pillY = y + px(2.0f);
+            drawPanel(canvas, context_, pillX, pillY, pillW, pillH, colour::raised, metric::radiusSmall);
+            drawLabel(canvas, context_, label, pillX, pillY, pillW, pillH, colour::master, visage::Font::kCenter,
+                      type::small, Weight::medium);
+        }
+    }
+
+    void spectrumBounds(float& x, float& y, float& w, float& plotH) const {
+        const float pad = px(metric::pad);
+        const float spectrumLeft = width() - px(kSpectrumWidth);
+        x = spectrumLeft + pad;
+        y = pad;
+        w = px(kSpectrumWidth) - 2.0f * pad;
+        plotH = height() - 2.0f * pad - px(kFootHeight + kFootGap);
+    }
+
+    float currentSplitX() const {
+        float x, y, w, plotH;
+        spectrumBounds(x, y, w, plotH);
+        const float subHz = std::clamp(
+            static_cast<float>(subSplitHz(context_.model.get(ParamId::subSplit), splitNoteHz_)), kMinHz, kMaxHz);
+        return x + w * hzToPosition(subHz);
+    }
+
+    bool hitSplit(const visage::MouseEvent& e) const {
+        float x, y, w, plotH;
+        spectrumBounds(x, y, w, plotH);
+        if (e.position.y < y || e.position.y > y + plotH)
+            return false;
+        return std::abs(e.position.x - currentSplitX()) <= px(10.0f);
+    }
+
+    void setSplitFromX(float mouseX) {
+        float x, y, w, plotH;
+        spectrumBounds(x, y, w, plotH);
+        const float pos = std::clamp((mouseX - x) / std::max(w, 1.0f), 0.0f, 1.0f);
+        const float targetHz = kMinHz * std::pow(kMaxHz / kMinHz, pos);
+        const auto& s = spec(ParamId::subSplit);
+        const float ratio = std::clamp(targetHz / std::max(splitNoteHz_, 20.0f), s.min, s.max);
+        context_.model.set(ParamId::subSplit, ratio);
+    }
+
+    void mouseMove(const visage::MouseEvent& e) override {
+        const bool hit = hitSplit(e);
+        if (hit != splitHover_) {
+            splitHover_ = hit;
+            redraw();
+        }
+    }
+
+    void mouseExit(const visage::MouseEvent&) override {
+        if (splitHover_) {
+            splitHover_ = false;
+            redraw();
+        }
+    }
+
+    void mouseDown(const visage::MouseEvent& e) override {
+        if (!hitSplit(e))
+            return;
+        if (e.repeatClickCount() >= 2) {
+            context_.model.begin(ParamId::subSplit);
+            context_.model.set(ParamId::subSplit, spec(ParamId::subSplit).def);
+            context_.model.end(ParamId::subSplit);
+            redraw();
+            return;
+        }
+        splitDragging_ = true;
+        context_.model.begin(ParamId::subSplit);
+        setSplitFromX(e.position.x);
+        redraw();
+    }
+
+    void mouseDrag(const visage::MouseEvent& e) override {
+        if (!splitDragging_)
+            return;
+        setSplitFromX(e.position.x);
+        redraw();
+    }
+
+    void mouseUp(const visage::MouseEvent&) override {
+        if (!splitDragging_)
+            return;
+        context_.model.end(ParamId::subSplit);
+        splitDragging_ = false;
+        redraw();
     }
 
     float splitNoteHz_ = 43.65f;  // the last note played, so the split holds between notes
+    bool splitHover_ = false;
+    bool splitDragging_ = false;
 };
 }
 

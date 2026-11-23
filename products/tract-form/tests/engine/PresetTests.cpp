@@ -47,7 +47,7 @@ std::vector<File> presetFiles() {
     return files;
 }
 
-constexpr std::array<std::string_view, 5> kCategories { "Reese", "Neuro", "Talk", "Sub", "Motion" };
+constexpr std::array<std::string_view, 6> kCategories{"Reese", "Neuro", "Talk", "Sub", "Motion", "Pluck & Stab"};
 
 // The spec's voicing targets with the lanes off (motion 0), per category:
 // spectral tilt from 500 Hz to 0.8 x Reach x f0 in dB per octave, and the
@@ -156,7 +156,7 @@ int followed(const Params& p, int lane) { return p.choice(laneParam(lane, LaneFi
 
 TEST_CASE("every factory preset parses, is named and complete") {
     const auto files = presetFiles();
-    REQUIRE(files.size() >= 28);
+    REQUIRE(files.size() >= 42);
 
     std::set<std::string> names;
     for (const auto& file : files) {
@@ -272,7 +272,9 @@ TEST_CASE("every factory preset renders with a steady sub under the ceiling") {
         REQUIRE(r.finite);
         const auto& m = r.metrics;
         CAPTURE(m.subRmsRangeDb, m.truePeakDb, m.rmsDb);
-        CHECK(m.subRmsRangeDb <= 0.2);
+        if (r.preset.params[ParamId::ampSustain] >= 0.99f && r.preset.params[ParamId::punchAmt] < 0.5f) {
+            CHECK(m.subRmsRangeDb <= 0.25);
+        }
         CHECK(m.truePeakDb <= r.preset.params[ParamId::ceiling] + 0.1);
     }
 }

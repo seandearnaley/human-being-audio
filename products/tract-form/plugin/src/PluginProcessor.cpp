@@ -84,8 +84,8 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     struct Sink {
         Engine& engine;
         std::atomic<int>& lastNote;
-        void onNoteOn(int note, float) noexcept {
-            engine.noteOn(note);
+        void onNoteOn(int note, float velocity) noexcept {
+            engine.noteOn(note, velocity);
             lastNote.store(note, std::memory_order_relaxed);
         }
         void onNoteOff(int note) noexcept { engine.noteOff(note); }
@@ -125,6 +125,16 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
+    const bool wantAudition = auditionWanted_.load(std::memory_order_relaxed);
+    if (wantAudition != auditionPlaying_) {
+        auditionPlaying_ = wantAudition;
+        if (auditionPlaying_) {
+            engine_.noteOn(29, 0.95f); // F1
+            lastNote_.store(29, std::memory_order_relaxed);
+        } else {
+            engine_.noteOff(29);
+        }
+    }
     const Transport blockStart = readTransport();
     lastBpm_.store(blockStart.bpm, std::memory_order_relaxed);
     const double safeSr = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
@@ -169,6 +179,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     status.note = status.gate ? noteForHz(status.hz) : -1;
     status.gainReductionDb = engine_.gainReductionDb();
     status.ppq = engine_.lanePpq();
+    status.notePpq = engine_.notePpq();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();
     status.effective = engine_.effectiveState();

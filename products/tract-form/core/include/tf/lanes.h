@@ -8,6 +8,7 @@
 #include <hba/dsp/lane_math.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -57,11 +58,29 @@ inline double laneLengthQuarters(const Params& params, int lane) noexcept {
     return kLaneRateQuarters[rate] / kLaneRatios[ratio];
 }
 
-// The lane's shape in -1..1 at a host position, before depth and Motion. A
-// following lane plays its leader's shape or curve at its own length and phase.
-inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq) noexcept {
+inline LaneMode laneModeOf(const Params& params, int lane) noexcept {
+    return static_cast<LaneMode>(
+        std::clamp(params.choice(laneParam(lane, LaneField::mode)), 0, static_cast<int>(LaneMode::oneShot)));
+}
+
+inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq) noexcept {
+    const double length = laneLengthQuarters(params, lane);
+    const double phaseDeg = params[laneParam(lane, LaneField::phase)];
+    const LaneMode mode = laneModeOf(params, lane);
+    if (mode == LaneMode::oneShot) {
+        const double offset = std::clamp(phaseDeg / 360.0, 0.0, 0.999999);
+        const double progress = std::max(0.0, notePpq) / std::max(length, 1.0e-6);
+        return std::clamp(offset + progress, 0.0, 1.0 - 1.0e-6);
+    }
+    const double clockPpq = (mode == LaneMode::retrig) ? std::max(0.0, notePpq) : hostPpq;
+    return lanePhase(clockPpq, length, phaseDeg);
+}
+
+// The lane's shape in -1..1 at a host position (and optional note-relative position for Retrig/One-Shot).
+inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq,
+                         double notePpq = 0.0) noexcept {
     const int source = laneSource(params, lane);
-    const double phase = lanePhase(ppq, laneLengthQuarters(params, lane), params[laneParam(lane, LaneField::phase)]);
+    const double phase = lanePhaseFor(params, lane, ppq, notePpq);
     const auto shape = static_cast<LaneShape>(
         std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::custom)));
     if (shape == LaneShape::custom) return evaluate(curves[static_cast<std::size_t>(source)], phase);
@@ -70,9 +89,11 @@ inline double laneOutput(const Params& params, const LaneCurves& curves, int lan
 
 // What the lane sends to its target, in -1..1: shape times depth times Motion,
 // or zero when the lane is off.
-inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq) noexcept {
+inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq,
+                       double notePpq = 0.0) noexcept {
     if (!params.on(laneParam(lane, LaneField::on))) return 0.0;
-    return laneOutput(params, curves, lane, ppq) * params[laneParam(lane, LaneField::depth)] * params[ParamId::motion];
+    return laneOutput(params, curves, lane, ppq, notePpq) * params[laneParam(lane, LaneField::depth)] *
+           params[ParamId::motion];
 }
 
 inline LaneTarget laneTargetOf(const Params& params, int lane) noexcept {
@@ -86,18 +107,19 @@ struct LaneSpan {
     float amount;
     bool octaves;
 };
-inline constexpr std::array<LaneSpan, kLaneTargetCount> kLaneSpans { {
-    { 90.0f, false },   // phase: degrees, opposite ways on the two voices
-    { 0.5f, false },    // morph
-    { 0.5f, false },    // drive
-    { 0.5f, false },    // beat
-    { 0.5f, false },    // coupling
-    { 2.0f, true },     // reach
-    { 0.5f, false },    // weight
-    { 2.0f, true },     // sculpt
-    { 180.0f, false },  // fit: degrees, wraps
-    { 0.5f, false },    // width
-} };
+inline constexpr std::array<LaneSpan, kLaneTargetCount> kLaneSpans{{
+    {90.0f, false},  // phase: degrees, opposite ways on the two voices
+    {0.5f, false},   // morph
+    {0.5f, false},   // drive
+    {0.5f, false},   // beat
+    {0.5f, false},   // coupling
+    {2.0f, true},    // reach
+    {0.5f, false},   // weight
+    {2.0f, true},    // sculpt
+    {180.0f, false}, // fit: degrees, wraps
+    {0.5f, false},   // width
+    {18.0f, false},  // shift: formant shift in semitones
+}};
 
 // The sum of every lane aimed at `target`, in -1..1 per lane (so it can exceed 1
 // when lanes stack). `sends` are the lanes' current sends.
