@@ -1,3 +1,4 @@
+#include "PluginModel.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_approx.hpp>
@@ -87,6 +88,7 @@ TEST_CASE("PoleField processor responds to MIDI CC1, CC74, Channel Pressure, CC1
     CHECK(visuals.effMorphX > 0.70f);
     CHECK(visuals.effMorphY > 0.65f);
     CHECK(visuals.effMorphZ > 0.50f);
+    CHECK(visuals.effDrive > 0.50f);
 
     // CC121 resets expression and pitch bend cleanly.
     juce::MidiBuffer resetMidi;
@@ -99,4 +101,59 @@ TEST_CASE("PoleField processor responds to MIDI CC1, CC74, Channel Pressure, CC1
     }
     proc.analysis.update(visuals, 0.016f);
     CHECK(visuals.midiShiftSt == Catch::Approx(0.0f).margin(0.2f));
+}
+
+TEST_CASE("PoleField PluginModel supports Undo/Redo and A/B compare across params, curves, and imprint", "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    pf::PluginProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    pf::PluginModel model(proc);
+
+    CHECK_FALSE(model.canUndo());
+    CHECK_FALSE(model.isSlotB());
+
+    const float initialX = model.get(pf::ParamId::morphX);
+    model.begin(pf::ParamId::morphX);
+    model.set(pf::ParamId::morphX, 0.88f);
+    model.end(pf::ParamId::morphX);
+    CHECK(model.canUndo());
+
+    model.setLaneCurve(1, pf::curves::rampDown());
+    CHECK(model.laneCurve(1) == pf::curves::rampDown());
+
+    model.undo();
+    CHECK_FALSE(model.laneCurve(1) == pf::curves::rampDown());
+    model.undo();
+    CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(initialX).margin(1e-3f));
+
+    model.redo();
+    CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(0.88f).margin(1e-3f));
+
+    // A/B compare swaps parameter + imprint state cleanly.
+    pf::ImprintData imp;
+    imp.active = true;
+    imp.corner = pf::cubeAt(1).corners[0];
+    proc.imprint.set(imp, "SlotA");
+
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    CHECK(model.imprint().active);
+    model.clearImprint();
+    CHECK_FALSE(model.imprint().active);
+    model.begin(pf::ParamId::morphX);
+    model.set(pf::ParamId::morphX, 0.15f);
+    model.end(pf::ParamId::morphX);
+
+    model.toggleAB();
+    CHECK_FALSE(model.isSlotB());
+    CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(0.88f).margin(1e-3f));
+    CHECK(model.imprint().active);
+    CHECK(model.imprintLabel() == "SlotA");
+
+    model.copyAB();
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(0.88f).margin(1e-3f));
+    CHECK(model.imprint().active);
 }

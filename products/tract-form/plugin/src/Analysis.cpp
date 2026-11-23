@@ -47,6 +47,14 @@ void Analysis::setStatus(const Status& status) noexcept {
         lanePhase_[i].store(status.lanePhase[i], std::memory_order_relaxed);
         laneValue_[i].store(status.laneValue[i], std::memory_order_relaxed);
     }
+    effCoupling_.store(status.effective.coupling, std::memory_order_relaxed);
+    effBeat_.store(status.effective.beat, std::memory_order_relaxed);
+    effReach_.store(status.effective.reach, std::memory_order_relaxed);
+    effMorph_.store(status.effective.morph, std::memory_order_relaxed);
+    effDrive_.store(status.effective.drive, std::memory_order_relaxed);
+    effSculpt_.store(status.effective.sculpt, std::memory_order_relaxed);
+    effWidth_.store(status.effective.width, std::memory_order_relaxed);
+    effActive_.store(status.effective.active, std::memory_order_relaxed);
 }
 
 void Analysis::drainQueue(float& peakLeft, float& peakRight) {
@@ -195,6 +203,14 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
         visuals.lanePhase[i] = lanePhase_[i].load(std::memory_order_relaxed);
         visuals.laneValue[i] = laneValue_[i].load(std::memory_order_relaxed);
     }
+    visuals.effCoupling = effCoupling_.load(std::memory_order_relaxed);
+    visuals.effBeat = effBeat_.load(std::memory_order_relaxed);
+    visuals.effReach = effReach_.load(std::memory_order_relaxed);
+    visuals.effMorph = effMorph_.load(std::memory_order_relaxed);
+    visuals.effDrive = effDrive_.load(std::memory_order_relaxed);
+    visuals.effSculpt = effSculpt_.load(std::memory_order_relaxed);
+    visuals.effWidth = effWidth_.load(std::memory_order_relaxed);
+    visuals.effActive = effActive_.load(std::memory_order_relaxed);
 }
 
 }

@@ -35,6 +35,7 @@ struct Visuals {
     float effMorphZ = 0.18f;
     float effFreq = 0.0f;
     float effRes = 0.62f;
+    float effDrive = 0.34f;
     float effTransform = 0.0f;
     float effSpread = 0.22f;
     float midiShiftSt = 0.0f;
@@ -70,6 +71,14 @@ public:
     virtual void loadPreset(int index) = 0;
     virtual void stepPreset(int delta) = 0;
     virtual void savePreset() = 0;
+
+    virtual bool canUndo() const { return false; }
+    virtual bool canRedo() const { return false; }
+    virtual void undo() {}
+    virtual void redo() {}
+    virtual bool isSlotB() const { return false; }
+    virtual void toggleAB() {}
+    virtual void copyAB() {}
 };
 
 }

@@ -63,6 +63,14 @@ struct Model {
     virtual void loadPreset(int index) = 0;
     virtual void stepPreset(int delta) = 0;
     virtual void savePreset() = 0;
+
+    virtual bool canUndo() const { return false; }
+    virtual bool canRedo() const { return false; }
+    virtual void undo() {}
+    virtual void redo() {}
+    virtual bool isSlotB() const { return false; }
+    virtual void toggleAB() {}
+    virtual void copyAB() {}
 };
 
 } // namespace cl::ui

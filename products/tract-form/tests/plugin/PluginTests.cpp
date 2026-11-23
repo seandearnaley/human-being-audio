@@ -267,6 +267,9 @@ TEST_CASE("PluginProcessor applies RPN 00 00 pitch bend range and MIDI expressio
     tf::ui::Visuals visuals;
     host.processor.analysis.update(visuals, 0.016f);
     CHECK(12.0 * std::log2(static_cast<double>(visuals.hz) / 110.0) == Catch::Approx(12.0).margin(0.15));
+    CHECK(visuals.effActive);
+    CHECK(visuals.effDrive > host.processor.currentParams()[ParamId::drive]);
+    CHECK(visuals.effMorph > host.processor.currentParams()[ParamId::morph]);
 
     // CC121 Reset All Controllers returns pitch bend to 0 st (A2 = 110 Hz).
     juce::MidiBuffer resetMidi;
@@ -336,4 +339,46 @@ TEST_CASE("About identifies the studio, links to this synth and returns to the s
     CHECK_FALSE(sheet->isVisible());
     CHECK(instrument->isVisible());
     CHECK(host.processor.getCurrentProgram() == preset);
+}
+
+TEST_CASE("PluginModel supports Undo/Redo and A/B compare across params and curves") {
+    Host host;
+    PluginModel model(host.processor);
+
+    CHECK_FALSE(model.canUndo());
+    CHECK_FALSE(model.canRedo());
+    CHECK_FALSE(model.isSlotB());
+
+    const float initialCoupling = model.get(ParamId::coupling);
+    model.begin(ParamId::coupling);
+    model.set(ParamId::coupling, 0.90f);
+    model.end(ParamId::coupling);
+    CHECK(model.canUndo());
+    CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+
+    model.setLaneCurve(0, curves::rampUp());
+    CHECK(model.laneCurve(0) == curves::rampUp());
+
+    model.undo();
+    CHECK_FALSE(model.laneCurve(0) == curves::rampUp());
+    model.undo();
+    CHECK(model.get(ParamId::coupling) == Approx(initialCoupling).margin(1e-3f));
+
+    model.redo();
+    CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    model.begin(ParamId::coupling);
+    model.set(ParamId::coupling, 0.12f);
+    model.end(ParamId::coupling);
+
+    model.toggleAB();
+    CHECK_FALSE(model.isSlotB());
+    CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+
+    model.copyAB();
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
 }

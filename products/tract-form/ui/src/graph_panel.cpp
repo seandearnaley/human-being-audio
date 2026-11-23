@@ -432,12 +432,22 @@ public:
         // Tract
         place<Row>(nodeRow(kTract, 0), ParamId::vowelA, colour::growl, "From");
         place<Row>(nodeRow(kTract, 1), ParamId::vowelB, colour::growl, "To");
-        place<Row>(nodeRow(kTract, 2), ParamId::morph, colour::growl, "Morph", true);
+        auto& morphRow = place<Row>(nodeRow(kTract, 2), ParamId::morph, colour::growl, "Morph", true);
+        morphRow.setModProvider([&model = context_.model]() {
+            const auto& v = model.visuals();
+            return v.effActive ? toNormalised(spec(ParamId::morph), v.effMorph)
+                               : toNormalised(spec(ParamId::morph), model.get(ParamId::morph));
+        });
         markers_[0] = &place<LaneMarker>(markerBox(nodeRow(kTract, 2)), ParamId::morph, LaneTarget::morph);
 
         // Fold
         place<Row>(nodeRow(kFold, 0), ParamId::foldType, colour::growl, "Type");
-        place<Row>(nodeRow(kFold, 1), ParamId::drive, colour::growl, "Drive", true);
+        auto& driveRow = place<Row>(nodeRow(kFold, 1), ParamId::drive, colour::growl, "Drive", true);
+        driveRow.setModProvider([&model = context_.model]() {
+            const auto& v = model.visuals();
+            return v.effActive ? toNormalised(spec(ParamId::drive), v.effDrive)
+                               : toNormalised(spec(ParamId::drive), model.get(ParamId::drive));
+        });
         place<Row>(nodeRow(kFold, 2), ParamId::asym, colour::growl, "Asym");
         place<Row>(nodeRow(kFold, 3), ParamId::weight, colour::growl, "Weight", true);
         markers_[1] = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, LaneTarget::drive);

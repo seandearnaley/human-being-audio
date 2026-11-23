@@ -2,6 +2,7 @@
 // queue and never waits; the interface thread pops them and does the maths.
 #pragma once
 
+#include "tf/engine.h"
 #include "tf/ui/model.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -30,6 +31,7 @@ public:
         double ppq = 0.0;
         std::array<float, kLaneCount> lanePhase {};
         std::array<float, kLaneCount> laneValue {};
+        Engine::EffectiveState effective{};
     };
     void setStatus(const Status& status) noexcept;
     void setSampleRate(double sampleRate) noexcept { sampleRate_.store(sampleRate, std::memory_order_relaxed); }
@@ -72,6 +74,14 @@ private:
     std::atomic<double> ppq_ { 0.0 };
     std::array<std::atomic<float>, kLaneCount> lanePhase_ {};
     std::array<std::atomic<float>, kLaneCount> laneValue_ {};
+    std::atomic<float> effCoupling_{0.72f};
+    std::atomic<float> effBeat_{0.38f};
+    std::atomic<float> effReach_{96.0f};
+    std::atomic<float> effMorph_{0.63f};
+    std::atomic<float> effDrive_{0.42f};
+    std::atomic<float> effSculpt_{6.0f};
+    std::atomic<float> effWidth_{0.64f};
+    std::atomic<bool> effActive_{false};
 };
 
 }

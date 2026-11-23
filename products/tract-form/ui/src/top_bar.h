@@ -27,6 +27,9 @@ private:
     Button name_;
     Button next_;
     Button save_;
+    Button undo_;
+    Button redo_;
+    Button ab_;
     visage::Button wordmark_ { "About Tract Form" };
     std::vector<std::unique_ptr<Knob>> macros_;
     std::string shownPreset_;

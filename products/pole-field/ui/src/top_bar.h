@@ -29,6 +29,9 @@ private:
     Button name_;
     Button next_;
     Button save_;
+    Button undo_;
+    Button redo_;
+    Button ab_;
     std::vector<std::unique_ptr<Knob>> macros_;
     std::string shownPreset_;
 };

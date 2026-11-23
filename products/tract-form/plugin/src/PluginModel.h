@@ -3,9 +3,12 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "StudioHistory.h"
 #include "tf/ui/model.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
+
+#include <array>
 
 namespace tf {
 
@@ -34,16 +37,36 @@ public:
     void resample() override;
     void dragResampledFile() override;
 
+    bool canUndo() const override { return history_.canUndo(); }
+    bool canRedo() const override { return history_.canRedo(); }
+    void undo() override;
+    void redo() override;
+    bool isSlotB() const override { return history_.isSlotB(); }
+    void toggleAB() override;
+    void copyAB() override;
+
     // The component whose window file drags start from: the editor.
     void setDragSource(juce::Component* source) { dragSource_ = source; }
 
 private:
-    PluginProcessor& processor_;
-    std::array<juce::RangedAudioParameter*, kParamCount> parameters_ {};
-    ui::Visuals visuals_;
-    juce::int64 lastUpdateTicks_ = 0;
-    std::unique_ptr<juce::AlertWindow> saveDialog_;
-    juce::Component* dragSource_ = nullptr;
+  struct Snapshot {
+      std::array<float, kParamCount> params{};
+      LaneCurves curves = defaultLaneCurves();
+
+      bool operator==(const Snapshot&) const = default;
+  };
+
+  Snapshot captureSnapshot() const;
+  void applySnapshot(const Snapshot& snapshot);
+
+  PluginProcessor& processor_;
+  std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
+  ui::Visuals visuals_;
+  hba::studio::History<Snapshot> history_;
+  bool applyingSnapshot_ = false;
+  juce::int64 lastUpdateTicks_ = 0;
+  std::unique_ptr<juce::AlertWindow> saveDialog_;
+  juce::Component* dragSource_ = nullptr;
 };
 
 }

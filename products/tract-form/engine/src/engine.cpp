@@ -258,6 +258,7 @@ struct Engine::Impl {
     LaneCurves laneCurves = defaultLaneCurves();
     std::array<double, kLaneTargetCount> laneMove {};
     double uiPpq = 0.0;  // the lane clock, host position or free-running
+    EffectiveState effective{};
 
     void prepare(double sampleRate, int oversampling) {
         fs = sampleRate;
@@ -762,6 +763,22 @@ struct Engine::Impl {
             if (snap) base[i].snap(b[i]);
             else base[i].to(b[i], controlBase);
         }
+
+        effective.coupling = static_cast<float>(couplingMod);
+        effective.beat = static_cast<float>(moved(LaneTarget::beat, sm(beat), 0.0, 1.0));
+        effective.reach = static_cast<float>(reachHarmonic);
+        effective.morph = static_cast<float>(morphMod);
+        effective.drive = static_cast<float>(driveMod);
+        {
+            double sc = moved(LaneTarget::sculpt, std::exp(sm(sculptLog)), spec(ParamId::sculpt).min,
+                              spec(ParamId::sculpt).max);
+            if (sm(aftertouch_) > 0.0)
+                sc = std::clamp(sc * std::exp2(sm(aftertouch_)), static_cast<double>(spec(ParamId::sculpt).min),
+                                static_cast<double>(spec(ParamId::sculpt).max));
+            effective.sculpt = static_cast<float>(sc);
+        }
+        effective.width = static_cast<float>(t[width]);
+        effective.active = true;
     }
 
     double anchorBpmOrCurrent() const noexcept TF_NONBLOCKING { return qps * 60.0 * fs; }
@@ -1093,5 +1110,5 @@ float Engine::growlClipDb() const noexcept TF_NONBLOCKING { return impl_->clipDb
 float Engine::growlClipMeanDb() const noexcept TF_NONBLOCKING { return impl_->clipMeanDb; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept TF_NONBLOCKING { return impl_->uiPhase; }
 std::array<float, kLaneCount> Engine::laneValues() const noexcept TF_NONBLOCKING { return impl_->uiValue; }
-
+Engine::EffectiveState Engine::effectiveState() const noexcept TF_NONBLOCKING { return impl_->effective; }
 }

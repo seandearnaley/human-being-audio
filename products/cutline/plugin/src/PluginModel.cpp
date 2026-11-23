@@ -27,7 +27,11 @@ float PluginModel::get(ParamId id) const {
     return parameter->convertFrom0to1(parameter->getValue());
 }
 
-void PluginModel::begin(ParamId id) { parameters_[static_cast<std::size_t>(id)]->beginChangeGesture(); }
+void PluginModel::begin(ParamId id) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
+}
 
 void PluginModel::set(ParamId id, float real) {
     auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -54,11 +58,24 @@ const ui::Visuals& PluginModel::visuals() {
 }
 
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
-void PluginModel::setLaneCurve(int lane, const Curve& curve) { processor_.curves.set(lane, curve); }
+void PluginModel::setLaneCurve(int lane, const Curve& curve) {
+    if (!applyingSnapshot_)
+        history_.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
+                               static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+    processor_.curves.set(lane, curve);
+}
 
 PhraseOverrides PluginModel::overrides() const { return processor_.overrides.get(); }
-void PluginModel::setOverrides(const PhraseOverrides& overrides) { processor_.overrides.set(overrides); }
-void PluginModel::clearOverrides() { processor_.overrides.clear(); }
+void PluginModel::setOverrides(const PhraseOverrides& overrides) {
+    if (!applyingSnapshot_)
+        history_.pushCoalesced(captureSnapshot(), 0x2000u, static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+    processor_.overrides.set(overrides);
+}
+void PluginModel::clearOverrides() {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    processor_.overrides.clear();
+}
 
 void PluginModel::pushSeedHistory(int seed) {
     const int clamped = std::clamp(seed, 1, 999);
@@ -135,11 +152,15 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
 }
 
 void PluginModel::loadPreset(int index) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
     processor_.presets.load(index);
     pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::stepPreset(int delta) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
     processor_.presets.step(delta);
     pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
@@ -154,5 +175,37 @@ void PluginModel::savePreset() {
                                          processor_.presets.save(saveDialog_->getTextEditorContents("name"));
                                  }));
 }
+
+PluginModel::Snapshot PluginModel::captureSnapshot() const {
+    Snapshot s;
+    for (std::size_t i = 0; i < kParams.size(); ++i)
+        s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
+    s.curves = processor_.curves.all();
+    s.overrides = processor_.overrides.get();
+    return s;
+}
+
+void PluginModel::applySnapshot(const Snapshot& snapshot) {
+    applyingSnapshot_ = true;
+    for (std::size_t i = 0; i < kParams.size(); ++i)
+        parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
+    processor_.curves.setAll(snapshot.curves);
+    processor_.overrides.set(snapshot.overrides);
+    applyingSnapshot_ = false;
+}
+
+void PluginModel::undo() {
+    if (const auto target = history_.undo(captureSnapshot()))
+        applySnapshot(*target);
+}
+
+void PluginModel::redo() {
+    if (const auto target = history_.redo(captureSnapshot()))
+        applySnapshot(*target);
+}
+
+void PluginModel::toggleAB() { applySnapshot(history_.toggleAB(captureSnapshot())); }
+
+void PluginModel::copyAB() { history_.copyActiveToOther(captureSnapshot()); }
 
 } // namespace cl

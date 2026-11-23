@@ -20,7 +20,11 @@ float PluginModel::get(ParamId id) const {
     return parameter->convertFrom0to1(parameter->getValue());
 }
 
-void PluginModel::begin(ParamId id) { parameters_[static_cast<std::size_t>(id)]->beginChangeGesture(); }
+void PluginModel::begin(ParamId id) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
+}
 
 void PluginModel::set(ParamId id, float real) {
     auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -38,7 +42,12 @@ const ui::Visuals& PluginModel::visuals() {
 }
 
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
-void PluginModel::setLaneCurve(int lane, const Curve& curve) { processor_.curves.set(lane, curve); }
+void PluginModel::setLaneCurve(int lane, const Curve& curve) {
+    if (!applyingSnapshot_)
+        history_.pushCoalesced(captureSnapshot(), 0x1000u + static_cast<std::uint64_t>(lane),
+                               static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
+    processor_.curves.set(lane, curve);
+}
 
 ImprintData PluginModel::imprint() const { return processor_.imprint.get(); }
 std::string PluginModel::imprintLabel() const { return processor_.imprint.label(); }
@@ -77,18 +86,26 @@ void PluginModel::browseImprintAudio() {
         data.active = true;
         data.corner = imprintFromAudio(mono, reader->sampleRate);
 
+        if (!applyingSnapshot_)
+            history_.push(captureSnapshot());
         std::string shortName = file.getFileNameWithoutExtension().toStdString();
         if (shortName.size() > 18) shortName = shortName.substr(0, 17) + "\u2026";
         processor_.imprint.set(data, std::move(shortName));
 
-        // Switch immediately to Imprint Cube and snap Morph X/Y/Z near Corner 0 so the imprint is heard right away.
+        // Switch immediately to Imprint Cube so the imprint is heard right away, keeping the undo step atomic.
+        applyingSnapshot_ = true;
         begin(ParamId::cube);
         set(ParamId::cube, static_cast<float>(kNumCubes - 1));
         end(ParamId::cube);
+        applyingSnapshot_ = false;
     });
 }
 
-void PluginModel::clearImprint() { processor_.imprint.clear(); }
+void PluginModel::clearImprint() {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    processor_.imprint.clear();
+}
 
 std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
 std::vector<ui::PresetInfo> PluginModel::presets() const {
@@ -96,8 +113,16 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
     for (const auto& preset : processor_.presets.all()) result.push_back({ preset.name, preset.category });
     return result;
 }
-void PluginModel::loadPreset(int index) { processor_.presets.load(index); }
-void PluginModel::stepPreset(int delta) { processor_.presets.step(delta); }
+void PluginModel::loadPreset(int index) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    processor_.presets.load(index);
+}
+void PluginModel::stepPreset(int delta) {
+    if (!applyingSnapshot_)
+        history_.push(captureSnapshot());
+    processor_.presets.step(delta);
+}
 
 void PluginModel::savePreset() {
     saveDialog_ = std::make_unique<juce::AlertWindow>("Save preset", juce::String(), juce::MessageBoxIconType::NoIcon);
@@ -109,4 +134,39 @@ void PluginModel::savePreset() {
     }));
 }
 
+PluginModel::Snapshot PluginModel::captureSnapshot() const {
+    Snapshot s;
+    for (std::size_t i = 0; i < kParams.size(); ++i)
+        s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
+    s.curves = processor_.curves.all();
+    s.imprint = processor_.imprint.get();
+    s.imprintLabel = processor_.imprint.label();
+    return s;
+}
+
+void PluginModel::applySnapshot(const Snapshot& snapshot) {
+    applyingSnapshot_ = true;
+    for (std::size_t i = 0; i < kParams.size(); ++i)
+        parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
+    processor_.curves.setAll(snapshot.curves);
+    if (snapshot.imprint.active)
+        processor_.imprint.set(snapshot.imprint, snapshot.imprintLabel);
+    else
+        processor_.imprint.clear();
+    applyingSnapshot_ = false;
+}
+
+void PluginModel::undo() {
+    if (const auto target = history_.undo(captureSnapshot()))
+        applySnapshot(*target);
+}
+
+void PluginModel::redo() {
+    if (const auto target = history_.redo(captureSnapshot()))
+        applySnapshot(*target);
+}
+
+void PluginModel::toggleAB() { applySnapshot(history_.toggleAB(captureSnapshot())); }
+
+void PluginModel::copyAB() { history_.copyActiveToOther(captureSnapshot()); }
 }

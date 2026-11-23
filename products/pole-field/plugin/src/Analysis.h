@@ -66,6 +66,7 @@ private:
     std::atomic<float> effMorphZ_ { 0.18f };
     std::atomic<float> effFreq_ { 0.0f };
     std::atomic<float> effRes_ { 0.62f };
+    std::atomic<float> effDrive_{0.34f};
     std::atomic<float> effTransform_ { 0.0f };
     std::atomic<float> effSpread_ { 0.22f };
     std::atomic<float> midiShiftSt_ { 0.0f };
