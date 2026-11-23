@@ -1,0 +1,48 @@
+{
+    "name": "Neuro Chord Climb",
+    "category": "Neuro",
+    "grammar": "Neuro",
+    "gravity": 0.36,
+    "ratchet": 0.56,
+    "glide": 0.74,
+    "density": 0.66,
+    "mutate": 0.50,
+    "motion": 0.80,
+    "velArc": 0.72,
+    "seed": 512,
+    "attractor": "Backbeat",
+    "rootNote": "F",
+    "octave": "2",
+    "scale": "Phrygian",
+    "bendRange": "±12 st",
+    "legato": 0.62,
+    "auditionTone": "Reese",
+    "lane1Shape": "Custom",
+    "lane2Shape": "Custom",
+    "lane2Rate": "2 bars",
+    "lane2Depth": 0.84,
+    "lane3Rate": "1 bar",
+    "lane3Depth": 0.64,
+    "overrides": {
+        "chords": [
+            0,
+            -2,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        "spans": [
+            {
+                "locked": true,
+                "seed": 512
+            },
+            {},
+            {
+                "invert": true
+            }
+        ]
+    }
+}

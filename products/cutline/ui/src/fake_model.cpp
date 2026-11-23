@@ -3,15 +3,25 @@
 
 #include <hba/dsp/lane_math.h>
 
+#include <cstdint>
+
 namespace cl::ui {
 
 FakeModel::FakeModel() {
     params_[ParamId::lane1Shape] = static_cast<float>(LaneShape::custom);
     params_[ParamId::lane2Shape] = static_cast<float>(LaneShape::custom);
-    // Lock Span 0 in the showcase snapshot so the visual lock indicator reads clearly.
+    // Lock Span 0 and dial a signature 4-bar chord progression + per-step ratchet
+    // so the 1.0 showcase snapshot surfaces Cutline's full tactile surface cleanly.
     overrides_.spans[0].locked = true;
     overrides_.spans[0].lockedSeed = 407;
+    overrides_.barChordOffsets = {0, 0, -2, -1, 0, 0, 0, 0};
     recompile();
+    if (visuals_.plan.noteCount > 6) {
+        const auto key = visuals_.plan.notes[6].key;
+        if (auto* ov = overrides_.findOrCreateNote(key))
+            ov->ratchetCount = 3;
+        recompile();
+    }
 }
 
 void FakeModel::set(ParamId id, float real) {

@@ -1,0 +1,45 @@
+{
+    "name": "Evolving Dark Reese",
+    "category": "Neuro",
+    "grammar": "Neuro",
+    "phraseMode": "Evolve",
+    "gravity": 0.42,
+    "ratchet": 0.48,
+    "glide": 0.82,
+    "density": 0.60,
+    "mutate": 0.68,
+    "motion": 0.85,
+    "velArc": 0.66,
+    "seed": 619,
+    "attractor": "Backbeat",
+    "rootNote": "F#",
+    "octave": "2",
+    "scale": "Phrygian",
+    "contour": "Pedal",
+    "bendRange": "±12 st",
+    "legato": 0.72,
+    "auditionTone": "Reese",
+    "lane1Depth": 0.38,
+    "lane2Rate": "4 bars",
+    "lane2Depth": 0.88,
+    "lane3Rate": "1 bar",
+    "lane3Depth": 0.70,
+    "overrides": {
+        "chords": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        "spans": [
+            {
+                "locked": true,
+                "seed": 619
+            }
+        ]
+    }
+}

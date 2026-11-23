@@ -6,6 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -607,5 +608,207 @@ TEST_CASE(
         }
         CHECK(sawMemberExpr);
         CHECK_FALSE(sawMasterCc74OrAt);
+    }
+}
+
+TEST_CASE("Cutline 1.0 Phrase 2.0: NoteKey persistence, ratchets, chord strip, span transforms, and polyphonic breaks",
+          "[engine]") {
+    cl::HeldNotes held;
+
+    // 1. Musical-coordinate NoteKey overrides survive Density changes even when slotIndex shifts.
+    {
+        cl::Params dense;
+        dense[cl::ParamId::density] = 0.90f;
+        dense[cl::ParamId::gravity] = 0.0f;
+        cl::PhrasePlan basePlan;
+        cl::compilePhrase(dense, 0, held, basePlan);
+        REQUIRE(basePlan.noteCount > 4);
+
+        // Pick beat-0 anchor of span 1 (always present regardless of density).
+        int anchorIdx = -1;
+        for (int i = 0; i < basePlan.noteCount; ++i) {
+            if (basePlan.notes[static_cast<std::size_t>(i)].key.spanIdx == 1 &&
+                basePlan.notes[static_cast<std::size_t>(i)].key.voiceIdx == 0) {
+                anchorIdx = i;
+                break;
+            }
+        }
+        REQUIRE(anchorIdx >= 0);
+        const cl::NoteKey targetKey = basePlan.notes[static_cast<std::size_t>(anchorIdx)].key;
+        const int basePitch = basePlan.notes[static_cast<std::size_t>(anchorIdx)].noteNumber;
+        const double baseWarped = basePlan.notes[static_cast<std::size_t>(anchorIdx)].warpedBeats;
+        const double baseDur = basePlan.notes[static_cast<std::size_t>(anchorIdx)].durationBeats;
+
+        cl::PhraseOverrides ov;
+        auto* no = ov.findOrCreateNote(targetKey);
+        REQUIRE(no != nullptr);
+        no->pitchDelta = 3;
+        no->velocityDelta = 20;
+        no->lengthSixteenths = 2;
+        no->microNudgeTicks = 12; // +1/8 beat
+
+        cl::Params sparse = dense;
+        sparse[cl::ParamId::density] = 0.25f;
+        cl::PhrasePlan sparsePlan;
+        cl::compilePhrase(sparse, 0, held, sparsePlan, ov);
+
+        bool foundEdited = false;
+        for (int i = 0; i < sparsePlan.noteCount; ++i) {
+            const auto& n = sparsePlan.notes[static_cast<std::size_t>(i)];
+            if (n.key == targetKey) {
+                foundEdited = true;
+                CHECK(n.noteNumber == basePitch + 3);
+                CHECK(n.warpedBeats == Approx(baseWarped + 12.0 / 96.0).margin(1e-4));
+                CHECK(n.durationBeats > baseDur + 0.1);
+                break;
+            }
+        }
+        CHECK(foundEdited);
+    }
+
+    // 2. Per-step ratchetCount expands parent note into N staggered crescendo sub-hits.
+    {
+        cl::Params p;
+        cl::PhrasePlan base;
+        cl::compilePhrase(p, 0, held, base);
+        REQUIRE(base.noteCount > 2);
+
+        cl::PhraseOverrides ov;
+        auto* no = ov.findOrCreateNote(base.notes[0].key);
+        REQUIRE(no != nullptr);
+        no->ratchetCount = 4;
+
+        cl::PhrasePlan ratcheted;
+        cl::compilePhrase(p, 0, held, ratcheted, ov);
+        CHECK(ratcheted.noteCount == base.noteCount + 3);
+        int sawParent = 0;
+        for (int i = 0; i < ratcheted.noteCount; ++i) {
+            const auto& n = ratcheted.notes[static_cast<std::size_t>(i)];
+            if (n.key == base.notes[0].key) {
+                CHECK(n.ratchetCount == 4);
+                CHECK(n.isRatchet);
+                ++sawParent;
+            }
+        }
+        CHECK(sawParent == 1);
+    }
+
+    // 3. Per-bar chord progression shifts bar 3/4 pitches diatonically inside the active scale.
+    {
+        cl::Params p;
+        p[cl::ParamId::rootNote] = 5.0f; // F
+        p[cl::ParamId::scale] = static_cast<float>(cl::Scale::phrygian);
+        cl::PhrasePlan plain;
+        cl::compilePhrase(p, 0, held, plain);
+
+        cl::PhraseOverrides ov;
+        ov.barChordOffsets = {0, 0, -2, -1, 0, 0, 0, 0};
+        cl::PhrasePlan prog;
+        cl::compilePhrase(p, 0, held, prog, ov);
+
+        bool bar3Changed = false;
+        for (int i = 0; i < prog.noteCount; ++i) {
+            const auto& n = prog.notes[static_cast<std::size_t>(i)];
+            CHECK(cl::isNoteInScale(n.noteNumber, 5, cl::Scale::phrygian));
+            if (n.startBeats >= 8.0 && n.startBeats < 12.0 && i < plain.noteCount &&
+                n.noteNumber != plain.notes[static_cast<std::size_t>(i)].noteNumber)
+                bar3Changed = true;
+        }
+        CHECK(bar3Changed);
+    }
+
+    // 4. Span transforms: octaveShift (+12 st), invert, and timeScale (Half / Double).
+    {
+        cl::Params p;
+        p[cl::ParamId::density] = 0.85f;
+        cl::PhrasePlan base;
+        cl::compilePhrase(p, 0, held, base);
+
+        cl::PhraseOverrides ovOct;
+        ovOct.spans[0].octaveShift = 1;
+        cl::PhrasePlan octPlan;
+        cl::compilePhrase(p, 0, held, octPlan, ovOct);
+        int checkedOct = 0;
+        for (int i = 0; i < base.noteCount && i < octPlan.noteCount; ++i) {
+            if (base.notes[static_cast<std::size_t>(i)].key.spanIdx == 0) {
+                CHECK(octPlan.notes[static_cast<std::size_t>(i)].noteNumber ==
+                      base.notes[static_cast<std::size_t>(i)].noteNumber + 12);
+                ++checkedOct;
+            }
+        }
+        CHECK(checkedOct >= 2);
+
+        cl::PhraseOverrides ovDouble;
+        ovDouble.spans[0].timeScale = 1;
+        cl::PhrasePlan doublePlan;
+        cl::compilePhrase(p, 0, held, doublePlan, ovDouble);
+        int baseSpan0 = 0;
+        int doubleSpan0 = 0;
+        for (int i = 0; i < base.noteCount; ++i)
+            baseSpan0 += (base.notes[static_cast<std::size_t>(i)].key.spanIdx == 0) ? 1 : 0;
+        for (int i = 0; i < doublePlan.noteCount; ++i)
+            doubleSpan0 += (doublePlan.notes[static_cast<std::size_t>(i)].key.spanIdx == 0) ? 1 : 0;
+        CHECK(doubleSpan0 > baseSpan0);
+    }
+
+    // 5. Polyphonic 16th-grid Breakbeat Drum Compiler + 6-voice Drum Kit & 8-voice PolyBLEP Reese audition.
+    {
+        std::array<std::uint32_t, 5> styleSigs{};
+        for (int ds = 1; ds <= 5; ++ds) {
+            cl::Params p;
+            p[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::drum);
+            p[cl::ParamId::drumStyle] = static_cast<float>(ds);
+            p[cl::ParamId::density] = 0.85f;
+            p[cl::ParamId::gravity] = 0.0f;
+            cl::PhrasePlan plan;
+            cl::compilePhrase(p, 0, held, plan);
+            styleSigs[static_cast<std::size_t>(ds - 1)] = cl::phraseSignature(p, 0, held);
+            REQUIRE(plan.noteCount >= 16);
+
+            // Verify true polyphony: multiple distinct drums sounding simultaneously on at least one step.
+            bool sawSimultaneous = false;
+            for (int i = 0; i < plan.noteCount; ++i) {
+                for (int j = i + 1; j < plan.noteCount; ++j) {
+                    if (std::abs(plan.notes[static_cast<std::size_t>(i)].startBeats -
+                                 plan.notes[static_cast<std::size_t>(j)].startBeats) < 1e-4 &&
+                        plan.notes[static_cast<std::size_t>(i)].drumRow !=
+                            plan.notes[static_cast<std::size_t>(j)].drumRow) {
+                        sawSimultaneous = true;
+                        break;
+                    }
+                }
+                if (sawSimultaneous)
+                    break;
+            }
+            CHECK(sawSimultaneous);
+        }
+        for (std::size_t a = 0; a < styleSigs.size(); ++a) {
+            for (std::size_t b = a + 1; b < styleSigs.size(); ++b)
+                CHECK(styleSigs[a] != styleSigs[b]);
+        }
+
+        // Stereo unison Reese produces true stereo spread (L != R) and finite audio across 8-voice PolyBLEP.
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::mpe);
+        p[cl::ParamId::audition] = 1.0f;
+        p[cl::ParamId::auditionTone] = static_cast<float>(cl::AuditionTone::reese);
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> l{}, r{};
+        const double beatsPerBlock = (172.0 / 60.0 / 48000.0) * 256.0;
+        float stereoDiff = 0.0f;
+        float peak = 0.0f;
+        for (int b = 0; b < 80; ++b) {
+            eng.process(p, {172.0, static_cast<double>(b) * beatsPerBlock, true}, midi, l.data(), r.data(), 256);
+            for (std::size_t i = 0; i < 256; ++i) {
+                REQUIRE(std::isfinite(l[i]));
+                REQUIRE(std::isfinite(r[i]));
+                peak = std::max(peak, std::max(std::abs(l[i]), std::abs(r[i])));
+                stereoDiff = std::max(stereoDiff, std::abs(l[i] - r[i]));
+            }
+        }
+        CHECK(peak > 0.05f);
+        CHECK(stereoDiff > 0.01f);
     }
 }

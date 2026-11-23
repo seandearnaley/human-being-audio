@@ -1,0 +1,43 @@
+{
+    "name": "Halftime Sub Weights",
+    "category": "Halftime",
+    "grammar": "Halftime",
+    "gravity": 0.52,
+    "ratchet": 0.34,
+    "glide": 0.76,
+    "density": 0.54,
+    "mutate": 0.38,
+    "motion": 0.64,
+    "velArc": 0.70,
+    "seed": 170,
+    "attractor": "Downbeat",
+    "rootNote": "E",
+    "octave": "1",
+    "scale": "Minor",
+    "contour": "Pedal",
+    "bendRange": "±12 st",
+    "legato": 0.80,
+    "auditionTone": "Sub",
+    "lane1Depth": 0.28,
+    "lane2Rate": "2 bars",
+    "lane2Depth": 0.68,
+    "overrides": {
+        "chords": [
+            0,
+            0,
+            -2,
+            -1,
+            0,
+            0,
+            0,
+            0
+        ],
+        "spans": [
+            {},
+            {},
+            {
+                "time": -1
+            }
+        ]
+    }
+}
