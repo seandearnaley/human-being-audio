@@ -2,6 +2,7 @@
 #pragma once
 
 #include "cl/lanes.h"
+#include "cl/overrides.h"
 #include "cl/params.h"
 #include "cl/phrase.h"
 
@@ -19,6 +20,9 @@ struct PresetInfo {
 
 struct Visuals {
     PhrasePlan plan{};
+    HeldNotes heldNotes{};
+    std::int64_t phraseIndex = 0;
+    double bpm = 172.0;
     double playheadBeats = 0.0;
     double ppq = 0.0;
     std::array<float, kLaneCount> lanePhase{};
@@ -26,6 +30,7 @@ struct Visuals {
     std::uint64_t activeNotesLow = 0;
     std::uint64_t activeNotesHigh = 0;
     int lastBlockEvents = 0;
+    std::uint8_t activityMask = 0;
     bool playing = false;
 };
 
@@ -42,7 +47,14 @@ struct Model {
     virtual Curve laneCurve(int lane) const = 0;
     virtual void setLaneCurve(int lane, const Curve& curve) = 0;
 
+    virtual PhraseOverrides overrides() const = 0;
+    virtual void setOverrides(const PhraseOverrides& overrides) = 0;
+    virtual void clearOverrides() = 0;
+
     virtual void rollSeed() = 0;
+    virtual bool canStepSeedHistory(int delta) const = 0;
+    virtual void stepSeedHistory(int delta) = 0;
+
     virtual void dragMidiPhrase() = 0;
     virtual std::string exportStatus() const = 0;
 

@@ -14,8 +14,9 @@ namespace cl {
 inline constexpr int kSmfPpq = 960;
 
 // Renders one complete phrase (notes, microtiming, pitch bends, expression CCs,
-// and MPE MCM RPN when in MPE mode) as a standards-compliant SMF Type-0 binary.
+// overrides, and MPE MCM RPN when in MPE mode) as a standards-compliant SMF Type-0 binary.
 std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves& curves, const HeldNotes& held,
-                                          double bpm, std::int64_t phraseIndex = 0);
+                                          double bpm, std::int64_t phraseIndex = 0,
+                                          const PhraseOverrides& overrides = {});
 
 } // namespace cl

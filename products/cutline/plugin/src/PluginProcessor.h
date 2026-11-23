@@ -3,6 +3,7 @@
 
 #include "CurveStore.h"
 #include "MidiExporter.h"
+#include "OverrideStore.h"
 #include "Parameters.h"
 #include "Presets.h"
 #include "Telemetry.h"
@@ -45,6 +46,7 @@ class PluginProcessor final : public juce::AudioProcessor {
 
     juce::AudioProcessorValueTreeState state;
     CurveStore curves;
+    OverrideStore overrides;
     Presets presets;
     Telemetry telemetry;
     MidiExporter exporter;
@@ -55,6 +57,7 @@ class PluginProcessor final : public juce::AudioProcessor {
     ParameterValues values_;
     Engine engine_;
     LaneCurves audioCurves_ = defaultLaneCurves();
+    PhraseOverrides audioOverrides_{};
     MidiEventBuffer outEvents_{};
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;

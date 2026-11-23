@@ -56,6 +56,30 @@ LaneShape shapeOf(const Params& params, int lane) {
 
 bool following(const Params& params, int lane) { return laneSource(params, lane) != lane; }
 
+unsigned targetAccent(LaneTarget target) {
+    switch (target) {
+    case LaneTarget::pitchBend:
+        return colour::cyan;
+    case LaneTarget::cc74Slide:
+        return colour::iris;
+    case LaneTarget::cc1Mod:
+        return colour::amber;
+    case LaneTarget::pressure:
+        return colour::vermilion;
+    case LaneTarget::cc11Expr:
+        return colour::emerald;
+    case LaneTarget::cc2Breath:
+        return colour::cyan;
+    case LaneTarget::cc71Res:
+        return colour::amber;
+    case LaneTarget::velocity:
+        return colour::emerald;
+    }
+    return colour::iris;
+}
+
+unsigned laneHue(const Params& params, int lane) { return targetAccent(laneTargetOf(params, lane)); }
+
 Curve cycleCurve(const Model& model, const Params& params, int lane) {
     const int source = laneSource(params, lane);
     const LaneShape shape = shapeOf(params, source);
@@ -67,6 +91,13 @@ float hairline(const Context& context) { return std::max(1.0f, snap(context.px(m
 class LaneSwitch final : public ParamFrame {
   public:
     LaneSwitch(Context& context, ParamId id) : ParamFrame(context, id, colour::iris) {}
+
+    void setAccent(unsigned accent) {
+        if (accent == accent_)
+            return;
+        accent_ = accent;
+        redraw();
+    }
 
   private:
     void paint(visage::Canvas& canvas) override {
@@ -146,7 +177,7 @@ class CurveEditor final : public visage::Frame {
         const bool on = params.on(field(lane_, LaneField::on));
         const bool editable = !following(params, lane_);
         const Curve curve = editable && gesture_.active() ? working_ : cycleCurve(context_.model, params, lane_);
-        const unsigned hue = on ? colour::iris : colour::textFaint;
+        const unsigned hue = on ? laneHue(params, lane_) : colour::textFaint;
 
         values_.resize(static_cast<std::size_t>(std::max(2.0f, std::ceil(plot.width) + 1.0f)));
         for (std::size_t i = 0; i < values_.size(); ++i) {
@@ -360,7 +391,7 @@ class MovementPanel final : public Panel {
                 values_[i] =
                     static_cast<float>(laneOutput(params, curves, lane, windowStart + t * kWindowQuarters)) * scale;
             }
-            const unsigned base = on ? colour::iris : colour::textFaint;
+            const unsigned base = on ? laneHue(params, lane) : colour::textFaint;
             const unsigned hue = following(params, lane) ? colour::withAlpha(base, kFollowerAlpha) : base;
             const float inset = px(metric::stroke) * 0.5f;
             drawCurve(canvas, context_, values_, left, top + inset, plotWidth, height - 2.0f * inset, hue, -1.0f, 1.0f,
@@ -482,7 +513,9 @@ class MovementPanel final : public Panel {
 
             const bool on = params.on(field(lane, LaneField::on));
             const unsigned dim = on ? colour::textDim : colour::textFaint;
-            controls.target->setAccent(on ? colour::iris : colour::textFaint);
+            const unsigned accent = on ? laneHue(params, lane) : colour::textFaint;
+            controls.on->setAccent(accent);
+            controls.target->setAccent(accent);
             controls.follow->setAccent(dim);
             for (Chip* chip : {controls.rate, controls.ratio, controls.phase, controls.shape, controls.depth})
                 chip->setAccent(dim);

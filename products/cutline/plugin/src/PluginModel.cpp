@@ -6,6 +6,7 @@
 #include <hba/dsp/lane_math.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace cl {
@@ -15,6 +16,8 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
     }
+    seedHistory_.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
+    seedCursor_ = 0;
 }
 
 PluginModel::~PluginModel() = default;
@@ -36,15 +39,16 @@ void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->e
 const ui::Visuals& PluginModel::visuals() {
     processor_.telemetry.read(visuals_);
     // When host transport is stopped, compile the live preview from current parameter values
-    // so tweaking Grammar/Gravity/Seed updates the piano roll immediately even before pressing Play.
+    // and overrides so tweaking Grammar/Gravity/Seed/Overrides updates the piano roll immediately.
     if (!visuals_.playing) {
         Params p;
         for (int i = 0; i < kParamCount; ++i)
             p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
-        HeldNotes held;
-        const std::uint32_t sig = phraseSignature(p, 0, held);
+        const PhraseOverrides ov = processor_.overrides.get();
+        const std::uint32_t sig = phraseSignature(p, 0, visuals_.heldNotes, ov);
         if (visuals_.plan.signature != sig || visuals_.plan.phraseIndex != 0)
-            compilePhrase(p, 0, held, visuals_.plan);
+            compilePhrase(p, 0, visuals_.heldNotes, visuals_.plan, ov);
+        visuals_.bpm = processor_.telemetry.lastBpm();
     }
     return visuals_;
 }
@@ -52,12 +56,50 @@ const ui::Visuals& PluginModel::visuals() {
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) { processor_.curves.set(lane, curve); }
 
+PhraseOverrides PluginModel::overrides() const { return processor_.overrides.get(); }
+void PluginModel::setOverrides(const PhraseOverrides& overrides) { processor_.overrides.set(overrides); }
+void PluginModel::clearOverrides() { processor_.overrides.clear(); }
+
+void PluginModel::pushSeedHistory(int seed) {
+    const int clamped = std::clamp(seed, 1, 999);
+    if (!seedHistory_.empty() && seedHistory_[seedCursor_] == clamped)
+        return;
+    if (seedCursor_ + 1 < seedHistory_.size())
+        seedHistory_.resize(seedCursor_ + 1);
+    seedHistory_.push_back(clamped);
+    if (seedHistory_.size() > 64)
+        seedHistory_.erase(seedHistory_.begin());
+    seedCursor_ = seedHistory_.size() - 1;
+}
+
 void PluginModel::rollSeed() {
-    const auto current = static_cast<std::uint32_t>(std::lround(get(ParamId::seed)));
+    const int current = std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999);
+    pushSeedHistory(current);
     const auto ticks = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks());
-    const int next = 1 + static_cast<int>(hba::dsp::laneHash(current * 2654435761U ^ ticks) % 999U);
+    int next =
+        1 + static_cast<int>(hba::dsp::laneHash(static_cast<std::uint32_t>(current) * 2654435761U ^ ticks) % 999U);
+    if (next == current)
+        next = (next % 999) + 1;
+    pushSeedHistory(next);
     begin(ParamId::seed);
     set(ParamId::seed, static_cast<float>(next));
+    end(ParamId::seed);
+}
+
+bool PluginModel::canStepSeedHistory(int delta) const {
+    if (delta < 0)
+        return seedCursor_ > 0;
+    if (delta > 0)
+        return seedCursor_ + 1 < seedHistory_.size();
+    return false;
+}
+
+void PluginModel::stepSeedHistory(int delta) {
+    if (!canStepSeedHistory(delta))
+        return;
+    seedCursor_ = static_cast<std::size_t>(static_cast<int>(seedCursor_) + (delta < 0 ? -1 : 1));
+    begin(ParamId::seed);
+    set(ParamId::seed, static_cast<float>(seedHistory_[seedCursor_]));
     end(ParamId::seed);
 }
 
@@ -67,9 +109,12 @@ void PluginModel::dragMidiPhrase() {
     Params params;
     for (int i = 0; i < kParamCount; ++i)
         params[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
+    ui::Visuals snap{};
+    processor_.telemetry.peek(snap);
     const double bpm = processor_.telemetry.lastBpm();
-    const auto file = processor_.exporter.writeTempFile(params, processor_.curves.all(), bpm,
-                                                        toJuce(processor_.presets.currentName()));
+    const auto file =
+        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.overrides.get(), snap.heldNotes,
+                                          bpm, snap.phraseIndex, toJuce(processor_.presets.currentName()));
     if (!file.existsAsFile())
         return;
     juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
@@ -89,8 +134,15 @@ std::vector<ui::PresetInfo> PluginModel::presets() const {
     return result;
 }
 
-void PluginModel::loadPreset(int index) { processor_.presets.load(index); }
-void PluginModel::stepPreset(int delta) { processor_.presets.step(delta); }
+void PluginModel::loadPreset(int index) {
+    processor_.presets.load(index);
+    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
+}
+
+void PluginModel::stepPreset(int delta) {
+    processor_.presets.step(delta);
+    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
+}
 
 void PluginModel::savePreset() {
     saveDialog_ = std::make_unique<juce::AlertWindow>("Save preset", juce::String(), juce::MessageBoxIconType::NoIcon);

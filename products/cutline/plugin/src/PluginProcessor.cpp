@@ -9,7 +9,8 @@ namespace cl {
 
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      state(*this, nullptr, "Cutline", makeParameterLayout()), curves(state), presets(state, curves), values_(state) {}
+      state(*this, nullptr, "Cutline", makeParameterLayout()), curves(state), overrides(state),
+      presets(state, curves, overrides), values_(state) {}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
@@ -70,6 +71,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
+    if (overrides.pull(audioOverrides_))
+        engine_.setOverrides(audioOverrides_);
 
     const Transport transport = readTransport(numSamples);
 
@@ -119,6 +122,7 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
         if (xml->hasTagName(state.state.getType())) {
             state.replaceState(juce::ValueTree::fromXml(*xml));
             curves.reloadFromState();
+            overrides.reloadFromState();
         }
     }
 }

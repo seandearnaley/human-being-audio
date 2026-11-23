@@ -8,6 +8,7 @@
 
 #include <array>
 #include <memory>
+#include <vector>
 
 namespace cl {
 
@@ -26,7 +27,14 @@ class PluginModel final : public ui::Model {
     Curve laneCurve(int lane) const override;
     void setLaneCurve(int lane, const Curve& curve) override;
 
+    PhraseOverrides overrides() const override;
+    void setOverrides(const PhraseOverrides& overrides) override;
+    void clearOverrides() override;
+
     void rollSeed() override;
+    bool canStepSeedHistory(int delta) const override;
+    void stepSeedHistory(int delta) override;
+
     void dragMidiPhrase() override;
     std::string exportStatus() const override;
 
@@ -39,9 +47,13 @@ class PluginModel final : public ui::Model {
     void setDragSource(juce::Component* source) { dragSource_ = source; }
 
   private:
+    void pushSeedHistory(int seed);
+
     PluginProcessor& processor_;
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
+    std::vector<int> seedHistory_;
+    std::size_t seedCursor_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     juce::Component* dragSource_ = nullptr;
 };

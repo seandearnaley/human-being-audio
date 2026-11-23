@@ -23,7 +23,8 @@ juce::File Presets::userDirectory() {
         .getChildFile("Presets");
 }
 
-Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves) : state_(state), curves_(curves) {
+Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, OverrideStore& overrides)
+    : state_(state), curves_(curves), overrides_(overrides) {
     scan();
 }
 
@@ -82,6 +83,7 @@ void Presets::load(int index) {
             parameter->setValueNotifyingHost(parameter->convertTo0to1(preset.params.values[i]));
     }
     curves_.setAll(preset.curves);
+    overrides_.set(preset.overrides);
     setCurrentName(preset.name);
 }
 
@@ -106,6 +108,7 @@ bool Presets::save(const juce::String& name) {
             preset.params.values[i] = parameter->convertFrom0to1(parameter->getValue());
     }
     preset.curves = curves_.all();
+    preset.overrides = overrides_.get();
 
     const auto directory = userDirectory();
     if (!directory.createDirectory())

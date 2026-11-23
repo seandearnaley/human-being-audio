@@ -21,6 +21,14 @@ struct Transport {
     bool playing = false;
 };
 
+enum ActivityBit : std::uint8_t {
+    kActNote = 1u << 0u,
+    kActBend = 1u << 1u,
+    kActCc74 = 1u << 2u,
+    kActCc1 = 1u << 3u,
+    kActPressure = 1u << 4u,
+};
+
 class Engine {
   public:
     Engine();
@@ -32,19 +40,22 @@ class Engine {
     void reset() noexcept CL_NONBLOCKING;
 
     void setLaneCurves(const LaneCurves& curves) noexcept CL_NONBLOCKING;
+    void setOverrides(const PhraseOverrides& overrides) noexcept CL_NONBLOCKING;
 
-    // Live MIDI input (used when InputMode::liveMidi is active).
+    // Live MIDI input (used when InputMode::transpose or InputMode::chordCarve is active).
     void inputNoteOn(int midiNote, int velocity) noexcept CL_NONBLOCKING;
     void inputNoteOff(int midiNote) noexcept CL_NONBLOCKING;
     void inputAllNotesOff() noexcept CL_NONBLOCKING;
 
     // Generates sample-accurate MIDI into `outMidi` and (optionally) renders the
-    // lightweight audition voice into `left`/`right` when non-null and enabled.
+    // lightweight 4-voice audition synth into `left`/`right` when non-null and enabled.
     void process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left, float* right,
                  int numSamples) noexcept CL_NONBLOCKING;
 
     // Lock-free telemetry snapshots for the Visage UI.
     const PhrasePlan& currentPlan() const noexcept CL_NONBLOCKING;
+    HeldNotes activeHeldNotes() const noexcept CL_NONBLOCKING;
+    std::int64_t currentPhraseIndex() const noexcept CL_NONBLOCKING;
     double playheadPhraseBeats() const noexcept CL_NONBLOCKING;
     double lanePpq() const noexcept CL_NONBLOCKING;
     std::array<float, kLaneCount> lanePhases() const noexcept CL_NONBLOCKING;
@@ -52,6 +63,7 @@ class Engine {
     std::uint64_t activeNotesLowMask() const noexcept CL_NONBLOCKING;
     std::uint64_t activeNotesHighMask() const noexcept CL_NONBLOCKING;
     int lastBlockEventCount() const noexcept CL_NONBLOCKING;
+    std::uint8_t lastActivityMask() const noexcept CL_NONBLOCKING;
     bool isPlaying() const noexcept CL_NONBLOCKING;
 
   private:

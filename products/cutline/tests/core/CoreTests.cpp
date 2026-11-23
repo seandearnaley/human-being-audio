@@ -49,3 +49,28 @@ TEST_CASE("Cutline presets round-trip parameters and custom curves through JSON"
     CHECK(parsed->params[cl::ParamId::outputMode] == Approx(1.0f));
     CHECK(parsed->curves[1] == cl::curves::rampDown());
 }
+
+TEST_CASE("Cutline presets preserve Live MIDI alias and round-trip PhraseOverrides", "[core]") {
+    std::string err;
+    const auto legacy = cl::parsePreset(R"({"name":"Legacy","inputMode":"Live MIDI"})", &err);
+    REQUIRE(legacy.has_value());
+    CHECK(legacy->params.choice(cl::ParamId::inputMode) == static_cast<int>(cl::InputMode::chordCarve));
+
+    cl::PhraseOverrides ov;
+    ov.fillStartFrac = 0.72f;
+    ov.turnStartFrac = 0.88f;
+    ov.spans[0].locked = true;
+    ov.spans[0].lockedSeed = 407;
+    ov.spans[2].roleOverride = static_cast<std::int8_t>(cl::Role::rest);
+    if (auto* n = ov.findOrCreateNote(3)) {
+        n->pitchDelta = 5;
+        n->velocityDelta = 28;
+        n->muted = true;
+        n->flipBend = true;
+    }
+
+    const auto json = cl::serialiseOverrides(ov);
+    const auto parsed = cl::parseOverrides(json);
+    REQUIRE(parsed.has_value());
+    CHECK(*parsed == ov);
+}

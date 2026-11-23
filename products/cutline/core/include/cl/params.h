@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Single source of truth for Cutline's parameter contract (54 total params,
+// Single source of truth for Cutline's parameter contract (58 total params,
 // 8 performance macros first for Ableton Live / controller bank 1).
 #pragma once
 
@@ -39,6 +39,10 @@ enum class ParamId : std::uint8_t {
     audition,
     auditionGain,
     ccThinMs,
+    phraseMode,
+    contour,
+    latch,
+    auditionTone,
 
     // Four tempo-locked MIDI/MPE expression lanes
     lane1On,
@@ -102,7 +106,10 @@ constexpr ParamId laneParam(int lane, LaneField field) noexcept {
 
 enum class Grammar : std::uint8_t { neuro = 0, bbcut11 = 1, warpcut = 2, halftime = 3, liquid = 4 };
 enum class OutputMode : std::uint8_t { mono = 0, mpe = 1, drum = 2 };
-enum class InputMode : std::uint8_t { seed = 0, liveMidi = 1 };
+enum class InputMode : std::uint8_t { seed = 0, transpose = 1, chordCarve = 2 };
+enum class PhraseMode : std::uint8_t { loop = 0, evolve = 1 };
+enum class Contour : std::uint8_t { autoShape = 0, pedal = 1, arch = 2, rise = 3, fall = 4, acid = 5 };
+enum class AuditionTone : std::uint8_t { reese = 0, sub = 1, pluck = 2, kit = 3 };
 enum class Attractor : std::uint8_t { downbeat = 0, backbeat = 1, offbeat16 = 2, triplet = 3 };
 enum class Scale : std::uint8_t { phrygian = 0, minor = 1, phrygianDom = 2, dorian = 3, pentMinor = 4, chromatic = 5 };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
@@ -127,7 +134,10 @@ namespace choices {
 inline constexpr std::array<std::string_view, 2> offOn{"Off", "On"};
 inline constexpr std::array<std::string_view, 5> grammar{"Neuro", "BBCut11", "WarpCut", "Halftime", "Liquid"};
 inline constexpr std::array<std::string_view, 3> outputMode{"Mono Ch1", "MPE Zone", "Drum Kit"};
-inline constexpr std::array<std::string_view, 2> inputMode{"Seed", "Live MIDI"};
+inline constexpr std::array<std::string_view, 3> inputMode{"Seed", "Transpose", "Chord Carve"};
+inline constexpr std::array<std::string_view, 2> phraseMode{"Loop", "Evolve"};
+inline constexpr std::array<std::string_view, 6> contour{"Auto", "Pedal", "Arch", "Rise", "Fall", "Acid"};
+inline constexpr std::array<std::string_view, 4> auditionTone{"Reese", "Sub", "Pluck", "Kit"};
 inline constexpr std::array<std::string_view, 3> phraseBars{"2 bars", "4 bars", "8 bars"};
 inline constexpr std::array<std::string_view, 4> attractor{"Downbeat", "Backbeat", "Offbeat 16", "Triplet"};
 inline constexpr std::array<std::string_view, 12> rootNote{"C",  "C#", "D",  "D#", "E",  "F",
@@ -217,6 +227,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::toggle("audition", "Audition", true),
     detail::ranged("auditionGain", "Aud gain", -36.0f, 0.0f, -9.0f, Unit::dB),
     detail::choice("ccThinMs", "CC rate", choices::ccThinMs, 1, false),
+    detail::choice("phraseMode", "Mode", choices::phraseMode, 0, true),
+    detail::choice("contour", "Contour", choices::contour, 0, true),
+    detail::toggle("latch", "Latch", false),
+    detail::choice("auditionTone", "Tone", choices::auditionTone, 0, false),
 
     CL_LANE(1, true, LaneTarget::pitchBend, 1, 0.0f, 0.32f),
     CL_LANE(2, true, LaneTarget::cc74Slide, 2, 0.0f, 0.76f),

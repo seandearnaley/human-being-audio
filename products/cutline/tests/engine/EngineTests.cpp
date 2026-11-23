@@ -256,18 +256,18 @@ TEST_CASE("MPE mode emits Lower Zone MCM RPN and stays well under VST3 event cei
     CHECK(maxBlockEvents <= cl::kMaxMidiEventsPerBlock);
 }
 
-TEST_CASE("Live MIDI input mode stays silent without held keys and re-phrases incoming notes", "[engine]") {
+TEST_CASE("Live MIDI Chord Carve and Transpose+Latch modes re-phrase and transpose cleanly", "[engine]") {
     cl::Engine engine;
     engine.prepare(48000.0, 256);
     cl::Params params;
-    params[cl::ParamId::inputMode] = static_cast<float>(cl::InputMode::liveMidi);
+    params[cl::ParamId::inputMode] = static_cast<float>(cl::InputMode::chordCarve);
     params[cl::ParamId::motion] = 0.0f;
 
     cl::MidiEventBuffer midi;
     std::array<float, 256> left{}, right{};
     const double beatsPerSample = 172.0 / 60.0 / 48000.0;
 
-    // No held keys -> zero Note Ons emitted.
+    // Chord Carve with no held keys & Latch off -> zero Note Ons emitted.
     int noteOnsIdle = 0;
     for (int b = 0; b < 40; ++b) {
         engine.process(params, {172.0, static_cast<double>(b * 256) * beatsPerSample, true}, midi, left.data(),
@@ -278,7 +278,7 @@ TEST_CASE("Live MIDI input mode stays silent without held keys and re-phrases in
     }
     CHECK(noteOnsIdle == 0);
 
-    // Hold F2 (41) and C3 (48) -> emitted Note Ons derive from held pitches.
+    // Hold F2 (41) and C3 (48) -> emitted Note Ons derive strictly from held pitches (and octaves).
     engine.inputNoteOn(41, 110);
     engine.inputNoteOn(48, 100);
     int noteOnsHeld = 0;
@@ -290,11 +290,106 @@ TEST_CASE("Live MIDI input mode stays silent without held keys and re-phrases in
             if (ev.isNoteOn()) {
                 ++noteOnsHeld;
                 const int n = ev.noteNumber();
-                CHECK((n == 41 || n == 48 || n == 53 || n == 60));
+                CHECK((n == 41 || n == 48 || n == 53 || n == 60 || n == 65 || n == 72));
             }
         }
     }
     CHECK(noteOnsHeld > 3);
+
+    // Transpose + Latch: press G2 (43), release key -> latched root stays on G2!
+    params[cl::ParamId::inputMode] = static_cast<float>(cl::InputMode::transpose);
+    params[cl::ParamId::latch] = 1.0f;
+    engine.inputAllNotesOff();
+    engine.inputNoteOn(43, 100);
+    engine.inputNoteOff(43);
+    engine.process(params, {172.0, 0.0, true}, midi, left.data(), right.data(), 256);
+    REQUIRE(engine.currentPlan().noteCount > 0);
+    CHECK(engine.currentPlan().notes[0].noteNumber == 43);
+}
+
+TEST_CASE("Core motif locks in Loop mode, evolves in Evolve mode, and respects Span Locks & Note Overrides",
+          "[engine]") {
+    cl::HeldNotes held;
+    cl::Params p;
+    p[cl::ParamId::seed] = 407.0f;
+    p[cl::ParamId::mutate] = 0.85f;
+    p[cl::ParamId::phraseMode] = static_cast<float>(cl::PhraseMode::loop);
+
+    cl::PhrasePlan p0, p1;
+    cl::compilePhrase(p, 0, held, p0);
+    cl::compilePhrase(p, 1, held, p1);
+    REQUIRE(p0.noteCount == p1.noteCount);
+    for (int i = 0; i < p0.noteCount; ++i)
+        CHECK(p0.notes[static_cast<std::size_t>(i)].noteNumber == p1.notes[static_cast<std::size_t>(i)].noteNumber);
+
+    // Evolve mode keeps beat 1 root anchor while allowing variation on phrase 1.
+    p[cl::ParamId::phraseMode] = static_cast<float>(cl::PhraseMode::evolve);
+    cl::PhrasePlan e0, e1;
+    cl::compilePhrase(p, 0, held, e0);
+    cl::compilePhrase(p, 1, held, e1);
+    CHECK(e0.notes[0].noteNumber == e1.notes[0].noteNumber);
+
+    // Span 0 locked at seed 407 stays identical even when rolling seed to 812.
+    cl::PhraseOverrides ov;
+    ov.spans[0].locked = true;
+    ov.spans[0].lockedSeed = 407;
+    ov.spans[3].roleOverride = static_cast<std::int8_t>(cl::Role::rest); // Silence Ratchet span
+    if (auto* n0 = ov.findOrCreateNote(0))
+        n0->muted = true;
+
+    p[cl::ParamId::phraseMode] = static_cast<float>(cl::PhraseMode::loop);
+    p[cl::ParamId::seed] = 812.0f;
+    cl::PhrasePlan lockedPlan;
+    cl::compilePhrase(p, 0, held, lockedPlan, ov);
+    REQUIRE(lockedPlan.noteCount > 0);
+    CHECK(lockedPlan.spans[0].locked);
+    CHECK(lockedPlan.notes[0].muted);
+    CHECK(lockedPlan.notes[0].noteNumber == p0.notes[0].noteNumber);
+    for (int i = 0; i < lockedPlan.noteCount; ++i)
+        CHECK(lockedPlan.notes[static_cast<std::size_t>(i)].role != cl::Role::ratchet);
+
+    // Scale-diatonic MPE voicing: every MPE note stays strictly inside active scale.
+    for (int sc = 0; sc < 5; ++sc) {
+        cl::Params mp;
+        mp[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::mpe);
+        mp[cl::ParamId::rootNote] = 2.0f; // D
+        mp[cl::ParamId::scale] = static_cast<float>(sc);
+        cl::PhrasePlan mpePlan;
+        cl::compilePhrase(mp, 0, held, mpePlan);
+        REQUIRE(mpePlan.noteCount > 4);
+        for (int i = 0; i < mpePlan.noteCount; ++i)
+            CHECK(cl::isNoteInScale(mpePlan.notes[static_cast<std::size_t>(i)].noteNumber, 2,
+                                    static_cast<cl::Scale>(sc)));
+    }
+}
+
+TEST_CASE("4-voice poly audition across all tones stays finite and reports live MIDI activity", "[engine]") {
+    for (int tone = 0; tone < 4; ++tone) {
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::mpe);
+        p[cl::ParamId::audition] = 1.0f;
+        p[cl::ParamId::auditionTone] = static_cast<float>(tone);
+
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> left{}, right{};
+        const double beatsPerBlock = (172.0 / 60.0 / 48000.0) * 256.0;
+        std::uint8_t seenAct = 0;
+        float maxSample = 0.0f;
+        for (int b = 0; b < 80; ++b) {
+            eng.process(p, {172.0, static_cast<double>(b) * beatsPerBlock, true}, midi, left.data(), right.data(), 256);
+            seenAct |= eng.lastActivityMask();
+            for (int i = 0; i < 256; ++i) {
+                REQUIRE(std::isfinite(left[static_cast<std::size_t>(i)]));
+                REQUIRE(std::isfinite(right[static_cast<std::size_t>(i)]));
+                maxSample = std::max(maxSample, std::abs(left[static_cast<std::size_t>(i)]));
+            }
+        }
+        CHECK((seenAct & cl::kActNote) != 0u);
+        CHECK((seenAct & cl::kActCc74) != 0u);
+        CHECK(maxSample <= 1.01f);
+    }
 }
 
 TEST_CASE("SMF binary exporter writes valid 960-PPQ header, balanced Note On/Off, and final EOT", "[smf]") {

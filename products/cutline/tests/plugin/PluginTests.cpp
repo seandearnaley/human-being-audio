@@ -61,9 +61,11 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     }
     CHECK(totalMidiOut > 50);
 
-    // Exported SMF parses cleanly through JUCE MidiFile
+    // Exported SMF parses cleanly through JUCE MidiFile (with overrides & held notes)
     cl::Params defaults;
-    const auto midFile = proc.exporter.writeTempFile(defaults, proc.curves.all(), 172.0, "TestExport");
+    cl::HeldNotes held;
+    const auto midFile =
+        proc.exporter.writeTempFile(defaults, proc.curves.all(), proc.overrides.get(), held, 172.0, 0, "TestExport");
     REQUIRE(midFile.existsAsFile());
     {
         juce::FileInputStream stream(midFile);
@@ -76,8 +78,13 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     }
     midFile.deleteFile();
 
-    // Round-trip state including custom curve
+    // Round-trip state including custom curve and phrase overrides
     proc.curves.set(0, cl::curves::rampDown());
+    cl::PhraseOverrides ov;
+    ov.spans[0].locked = true;
+    ov.spans[0].lockedSeed = 407;
+    ov.fillStartFrac = 0.72f;
+    proc.overrides.set(ov);
     if (auto* param = proc.state.getParameter("gravity"))
         param->setValueNotifyingHost(0.75f);
 
@@ -89,5 +96,6 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     restored.setStateInformation(stateBlob.getData(), static_cast<int>(stateBlob.getSize()));
 
     REQUIRE(restored.curves.get(0) == cl::curves::rampDown());
+    REQUIRE(restored.overrides.get() == ov);
     REQUIRE(restored.state.getParameter("gravity")->getValue() == Catch::Approx(0.75f).margin(1e-4f));
 }
