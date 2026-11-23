@@ -2,7 +2,7 @@
 
 * all plugins made with AI assistance by professional engineers with audio experience for free, made with love, care and support.
 
-Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, [Tract Form](products/tract-form), the bass synthesizer, and [Pole Field](products/pole-field), the morphing filterbank. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
+Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, [Tract Form](products/tract-form), the bass synthesizer, [Pole Field](products/pole-field), the morphing filterbank, and [Cutline](products/cutline), the expressive MIDI phrase articulator. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
 
 ## First build
 

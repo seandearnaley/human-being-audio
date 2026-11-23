@@ -37,23 +37,23 @@ const products = {
     bpm: 172,
     form: "prisms",
     image: tractImage,
-    alt: "Tract Form’s oscillator flow, formant controls, live analysis and four movement lanes",
-    body: "One master sine feeds two reese voices and a clean mono sub. Morph between vowels, fold the growl and draw movement across four tempo-locked lanes.",
+    alt: "Tract Form’s oscillator flow, formant controls, live analysis, modulation arcs and four movement lanes",
+    body: "One master sine feeds two reese voices and a clean mono sub. Morph between vowels, fold the growl, animate four tempo-locked lanes and play live with full MIDI expression.",
     features: [
       [
         "Sound engine",
         "Two phase-modulated reese voices share one pitch reference with the clean sub. Use Beat lock to align their movement to a note division.",
       ],
       [
-        "Movement",
-        "Four tempo-locked lanes can draw a custom modulation curve or follow another lane at a chosen ratio.",
+        "Movement & MIDI expression",
+        "Four tempo-locked curve lanes plus smooth CC1, CC74, aftertouch and RPN pitch-bend modulation, visualized with live modulation ghost arcs across macros and bars.",
       ],
       [
-        "Resample",
-        "Render four bars offline with 16× oversampling and drag the WAV into a session.",
+        "Resample & A/B workflow",
+        "Render four bars offline with 16× oversampling and drag the WAV into a session, with 64-step Undo/Redo and A/B compare in the top bar.",
       ],
     ],
-    credits: "Includes 30 factory presets and eight performance macros.",
+    credits: "Includes 30 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   "pole-field": {
     kind: "Morphing filterbank",
@@ -61,23 +61,23 @@ const products = {
     bpm: 172,
     form: "rings",
     image: poleFieldImage,
-    alt: "Pole Field’s 2D Z-plane unit circle, 14-pole magnitude curve, stereo goniometer and four movement lanes",
-    body: "Morph fourteen poles and fourteen zeros across 3D filter cubes with polar interpolation, inter-stage ADAA2 drive, mono Sub Lock and Burg LPC audio imprinting.",
+    alt: "Pole Field’s 2D Z-plane unit circle, 14-pole magnitude curve, stereo goniometer, modulation arcs and four movement lanes",
+    body: "Morph fourteen poles and fourteen zeros across 3D filter cubes with polar interpolation, inter-stage ADAA2 drive, mono Sub Lock, Burg LPC audio imprinting and live MIDI expression.",
     features: [
       [
         "14-pole Z-plane lattice",
-        "Seven cascaded TPT pole-zero sections in Serial, Hybrid or Parallel topology across eight curated morph cubes, plus MIDI formant pitch tracking.",
+        "Seven cascaded TPT pole-zero sections in Serial, Hybrid or Parallel topology across eight curated morph cubes, with MIDI pitch tracking and CC1/CC74/aftertouch morphing.",
       ],
       [
         "Inter-stage ADAA2 drive",
         "Place Tube, Clip, Fold, Buchla or Sine saturation before, between or after filter stages with matched 2×/4×/8× HIIR oversampling and clean mono Sub Lock.",
       ],
       [
-        "Audio imprint and movement",
-        "Load a WAV one-shot to stamp its 14th-order Burg LPC pole structure into the Imprint Cube, and animate parameters with four tempo-locked curve lanes.",
+        "Audio imprint, movement & A/B",
+        "Stamp any WAV’s 14th-order Burg LPC pole structure into the Imprint Cube, watch live modulation arcs across six macros, and compare edits with 64-step Undo/Redo and A/B slots.",
       ],
     ],
-    credits: "Includes 12 factory presets and eight performance macros.",
+    credits: "Includes 12 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   cutline: {
     kind: "MIDI articulator",
@@ -85,23 +85,23 @@ const products = {
     bpm: 172,
     form: "tube",
     image: cutlineImage,
-    alt: "Cutline’s phrase grammar tape, microtiming vector piano roll, eight macros and four expression lanes",
-    body: "Compile deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases bent through a continuous gravitational microtiming field, wrapped in four tempo-locked MPE and CC expression lanes.",
+    alt: "Cutline’s interactive phrase grammar tape, gravitational piano roll, velocity lane, eight macros and multi-hue expression lanes",
+    body: "Sculpt deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases directly on the piano roll, bend them through a gravitational microtiming field and drive any synth with four tempo-locked MPE and CC lanes.",
     features: [
       [
-        "Phrase grammar & pocket",
-        "Five BBCut-inspired grammars (Neuro, BBCut11, WarpCut, Halftime and Liquid) run from deterministic seeds or live held MIDI notes through a strictly monotonic microtiming gravity field.",
+        "Direct-manipulation Phrase Stage",
+        "Five BBCut-inspired grammars with Loop/Evolve modes, six melodic contours and 64-step seed history. Click spans to lock them, drag dividers, drag notes snapped to scale or Alt-click to mute.",
       ],
       [
-        "Mono, MPE & Drum modes",
-        "Stream Ableton-safe Ch 1 pitch-dive basslines, full MPE Lower Zone polyphonic expression (Ch 2–15, ±48 st) or Drum Kit ghost-note phrasing with four Bézier expression lanes.",
+        "Live MIDI, Mono, MPE & Drums",
+        "Play Live MIDI Transpose or Chord Carve with Latch, and stream Ableton-safe Mono Ch 1 (with RPN bend range), full MPE Lower Zone (Ch 2–15, ±48 st) or Drum Kit articulation with live activity LEDs.",
       ],
       [
-        "Audition & Drag .mid",
-        "Hear phrases immediately with the built-in audition voice on VST3/Standalone, load natively as a Logic Pro AU MIDI FX (aumi), or drag a 960-PPQ .mid phrase straight into your DAW.",
+        "Poly audition, Drag .mid & A/B",
+        "Preview immediately with the 4-voice poly audition synth (Reese, Sub, Pluck, Kit), drag the exact current 960-PPQ .mid phrase into your DAW, and compare takes with Undo/Redo and A/B slots.",
       ],
     ],
-    credits: "Includes 24 factory presets and eight performance macros.",
+    credits: "Includes 24 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
 };
 const platforms = {
@@ -321,10 +321,11 @@ export default async function Page() {
               <summary>macOS</summary>
               <div className="faq__body">
                 Close your host and open the signed, notarized PKG. It installs
-                the Audio Unit and VST3 in the system Audio Plug-Ins folder and
-                the standalone in Applications. Livecut Redux requires macOS 11
-                or later. Tract Form and Pole Field require macOS 12 or later.
-                Packages contain Apple Silicon and Intel binaries.
+                the Audio Unit (Audio Unit MIDI FX for Cutline) and VST3 in the
+                system Audio Plug-Ins folder and the standalone in Applications.
+                Livecut Redux requires macOS 11 or later. Tract Form, Pole Field
+                and Cutline require macOS 12 or later. Packages contain Apple
+                Silicon and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for

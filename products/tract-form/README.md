@@ -13,7 +13,7 @@ One master sine drives everything. It phase-modulates two detuned reese voices,
 and it also becomes a clean, mono, phase-locked sub that bypasses all processing.
 The growl can be as violent as you like and the sub never moves.
 
-VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on macOS. Beta 0.2.
+VST3 and standalone on macOS, Windows x64 and Ubuntu 26.04 x86_64. Audio Unit on macOS.
 
 On Ubuntu, the editor uses Vulkan through the desktop graphics driver. The studio’s Ubuntu test environment uses Mesa’s Vulkan driver.
 
@@ -25,9 +25,8 @@ On Ubuntu, the editor uses Vulkan through the desktop graphics driver. The studi
 - **Tract** morphs a five-formant filter between two vowels.
 - **Fold** is an anti-aliased wavefolder with drive and asymmetry.
 - **Mid/side** keeps everything below the crossover mono.
-- **Movement** is four tempo-locked lanes for phase, tract, fold and detune.
-- **Resample** renders four bars offline at 16× and hands you the file to drag
-  into your session.
+- **Movement & MIDI expression** pairs four tempo-locked curve lanes with smooth `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch-bend modulation, visualized with live modulation ghost arcs on macro knobs and bars.
+- **Resample & A/B workflow** renders four bars offline at 16× and hands you the WAV to drag into your session, alongside 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare.
 
 ## Install and release
 

@@ -6,11 +6,11 @@ Cutline compiles deterministic 2-, 4-, and 8-bar musical phrases (`Statement →
 
 ## Highlights
 
-- **Five phrase grammars**: `Neuro` (syncopated call/answer + pitch-dive turnarounds), `BBCut11` (odd-unit repeats + stutter rolls), `WarpCut` (accelerating ratchets), `Halftime` (heavy bar-3 pocket), and `Liquid` (legato overlap phrases), driven from either a deterministic seed or live held MIDI notes.
+- **Five phrase grammars & contours**: `Neuro`, `BBCut11`, `WarpCut`, `Halftime`, and `Liquid` with `Loop`/`Evolve` modes, six melodic contours (`Auto`, `Pedal`, `Arch`, `Rise`, `Fall`, `Acid`), 64-step `‹ Roll ›` seed history, and Live MIDI `Transpose` / `Chord Carve` + `Latch`.
+- **Direct-manipulation Phrase Stage**: click spans to Lock/Pin across rolls, drag dividers to resize fill/turnaround windows, right-click to override roles (including `REST`), drag notes vertically snapped to scale, Alt-click to mute, inspect timing/velocity/bend in the hover micro-HUD, and monitor live `NOTE / PB / CC74 / CC1 / AT` LEDs.
 - **Gravitational microtiming field**: continuous, strictly monotonic push/pull toward `Downbeat`, `Backbeat`, `Offbeat 16`, or `Triplet` pockets — mathematically guaranteed never to invert adjacent ratchets.
-- **Three first-class output modes**: `Mono Ch1` (Ableton Live track-to-track safe), `MPE Zone` (Lower Zone Ch 1 Master + Ch 2–15 Member with MCM RPN & ±48 st per-note pitch bends), and `Drum Kit` (Kick/Snare/Ghost/Hat/Ratchet articulation).
-- **Four shared expression lanes**: built on `hba::dsp::Curve` with custom breakpoint drawing, segment tension, and lane-follow ratios.
-- **Zero-friction audition & export**: optional built-in lightweight audition synth on the VST3/Standalone stereo bus plus one-drag `.mid` export straight onto any DAW MIDI track.
+- **Three first-class output modes**: `Mono Ch1` (Ableton Live track-to-track safe with RPN `00 00` bend range), `MPE Zone` (Lower Zone Ch 1 Master + Ch 2–15 Member with MCM RPN & ±48 st scale-diatonic voicing), and `Drum Kit` (Kick/Snare/Ghost/Hat/Ratchet articulation).
+- **Multi-hue expression lanes, poly audition & studio workflow**: four target-coded `hba::dsp::Curve` lanes, 4-voice poly audition synth (`Reese`, `Sub`, `Pluck`, `Kit`), exact current-phrase 960-PPQ `.mid` drag export, plus 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare.
 
 ## Building
 
