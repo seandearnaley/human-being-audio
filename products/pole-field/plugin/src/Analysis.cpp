@@ -48,6 +48,7 @@ void Analysis::setStatus(const Status& status) noexcept {
     effMorphZ_.store(status.effective.morphZ, std::memory_order_relaxed);
     effFreq_.store(status.effective.freq, std::memory_order_relaxed);
     effRes_.store(status.effective.res, std::memory_order_relaxed);
+    effDrive_.store(status.effective.drive, std::memory_order_relaxed);
     effTransform_.store(status.effective.transform, std::memory_order_relaxed);
     effSpread_.store(status.effective.spread, std::memory_order_relaxed);
     midiShiftSt_.store(status.effective.midiShiftSt, std::memory_order_relaxed);
@@ -160,6 +161,7 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.effMorphZ = effMorphZ_.load(std::memory_order_relaxed);
     visuals.effFreq = effFreq_.load(std::memory_order_relaxed);
     visuals.effRes = effRes_.load(std::memory_order_relaxed);
+    visuals.effDrive = effDrive_.load(std::memory_order_relaxed);
     visuals.effTransform = effTransform_.load(std::memory_order_relaxed);
     visuals.effSpread = effSpread_.load(std::memory_order_relaxed);
     visuals.midiShiftSt = midiShiftSt_.load(std::memory_order_relaxed);

@@ -43,6 +43,15 @@ struct Visuals {
     float hz = 0.0f;
     int note = -1;  // MIDI note, -1 when silent
     bool gate = false;
+
+    float effCoupling = 0.72f;
+    float effBeat = 0.38f;
+    float effReach = 96.0f;
+    float effMorph = 0.63f;
+    float effDrive = 0.42f;
+    float effSculpt = 6.0f;
+    float effWidth = 0.64f;
+    bool effActive = false;
 };
 
 enum class ResampleState { idle, rendering, ready };
@@ -80,6 +89,14 @@ public:
     // Starts a drag of the rendered file into the host. Called from a mouse drag
     // on the button once a render is ready.
     virtual void dragResampledFile() = 0;
+
+    virtual bool canUndo() const { return false; }
+    virtual bool canRedo() const { return false; }
+    virtual void undo() {}
+    virtual void redo() {}
+    virtual bool isSlotB() const { return false; }
+    virtual void toggleAB() {}
+    virtual void copyAB() {}
 };
 
 }

@@ -67,6 +67,7 @@ public:
         bool operator==(const Face&) const = default;
     };
     using FaceProvider = std::function<Face(const Knob&)>;
+    using ModProvider = std::function<float()>;
 
     Knob(Context& context, ParamId id, unsigned accent) : ParamFrame(context, id, accent) {}
 
@@ -76,6 +77,7 @@ public:
     // Replaces the default face. The provider may read other parameters; the
     // knob repaints whenever the face it returns changes.
     void setFace(FaceProvider provider);
+    void setModProvider(ModProvider provider);
 
     void tick() override;
 
@@ -85,6 +87,8 @@ private:
 
     FaceProvider provider_;
     Face drawnFace_;
+    ModProvider modProvider_;
+    float drawnMod_ = -1.0f;
 };
 
 // "Label ......... value". Toggles draw a switch, choices a chevron. With `bar`
@@ -92,13 +96,19 @@ private:
 // centre for a value that runs below zero.
 class Row final : public ParamFrame {
 public:
-    Row(Context& context, ParamId id, unsigned accent, std::string label = {}, bool bar = false);
+  using ModProvider = std::function<float()>;
+
+  Row(Context& context, ParamId id, unsigned accent, std::string label = {}, bool bar = false);
+  void setModProvider(ModProvider provider);
+  void tick() override;
 
 private:
     void paint(visage::Canvas& canvas) override;
 
     std::string label_;
     bool bar_;
+    ModProvider modProvider_;
+    float drawnMod_ = -1.0f;
 };
 
 // A value on its own in a small pill, for tight spots such as wire labels.
@@ -120,6 +130,7 @@ public:
 
     void setLabel(std::string label);
     void setAccent(unsigned accent);
+    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
 
     void draw(visage::Canvas& canvas) override;
     void mouseEnter(const visage::MouseEvent& e) override;
@@ -131,6 +142,7 @@ private:
     Context& context_;
     std::string label_;
     std::function<void()> onClick_;
+    std::function<void()> onRightClick_;
     unsigned accent_ = colour::text;
     bool hovered_ = false;
     bool pressed_ = false;

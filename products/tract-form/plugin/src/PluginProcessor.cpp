@@ -169,6 +169,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     status.ppq = engine_.lanePpq();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();
+    status.effective = engine_.effectiveState();
     analysis.setStatus(status);
 }
 

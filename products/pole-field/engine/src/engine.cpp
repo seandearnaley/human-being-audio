@@ -318,6 +318,7 @@ struct Engine::Impl {
                 effective.morphZ = static_cast<float>(sZ);
                 effective.freq = static_cast<float>(sFreq);
                 effective.res = static_cast<float>(sRes);
+                effective.drive = static_cast<float>(sDrive);
                 effective.transform = static_cast<float>(sXform);
                 effective.spread = static_cast<float>(sSpread);
                 effective.midiShiftSt = static_cast<float>(sMidi);

@@ -89,6 +89,7 @@ class Button final : public visage::Frame {
     void setLabel(std::string label);
     void setAccent(unsigned accent);
     void setOnDrag(std::function<void()> onDrag) { onDrag_ = std::move(onDrag); }
+    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
 
     void draw(visage::Canvas& canvas) override;
     void mouseEnter(const visage::MouseEvent& e) override;
@@ -102,6 +103,7 @@ class Button final : public visage::Frame {
     std::string label_;
     std::function<void()> onClick_;
     std::function<void()> onDrag_;
+    std::function<void()> onRightClick_;
     unsigned accent_ = colour::text;
     bool hovered_ = false;
     bool pressed_ = false;

@@ -31,6 +31,23 @@ struct Editor::Impl final : visage::EventTimer {
             canvas.fill(0, 0, window.width(), window.height());
         };
         window.onResize() += [this] { layout(); };
+        window.setAcceptsKeystrokes(true);
+        window.onKeyPress() = [this](const visage::KeyEvent& key) {
+            if (!key.isMainModifier())
+                return false;
+            if (key.keyCode() == visage::KeyCode::Z) {
+                if (key.isShiftDown())
+                    context.model.redo();
+                else
+                    context.model.undo();
+                return true;
+            }
+            if (key.keyCode() == visage::KeyCode::Y) {
+                context.model.redo();
+                return true;
+            }
+            return false;
+        };
         for (visage::Frame* child : children()) window.addChild(child);
     }
 

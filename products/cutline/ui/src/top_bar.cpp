@@ -30,7 +30,10 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
     : context_(context), previous_(context, "\u2039", [this] { context_.model.stepPreset(-1); }),
       name_(context, "", [this] { showPresetMenu(); }),
       next_(context, "\u203a", [this] { context_.model.stepPreset(1); }),
-      save_(context, "Save", [this] { context_.model.savePreset(); }) {
+      save_(context, "Save", [this] { context_.model.savePreset(); }),
+      undo_(context, "Undo", [this] { context_.model.undo(); }),
+      redo_(context, "Redo", [this] { context_.model.redo(); }),
+      ab_(context, "A", [this] { context_.model.toggleAB(); }) {
     addChild(&wordmark_);
     wordmark_.onDraw() += [this](visage::Canvas& canvas) { drawWordmark(canvas); };
     wordmark_.onToggle() = [open = std::move(showAbout)](visage::Button*, bool) {
@@ -44,9 +47,18 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
         wordmark_.notify(false);
         return true;
     };
-    for (auto* button : {&previous_, &name_, &next_, &save_})
+    for (auto* button : {&previous_, &name_, &next_, &save_, &undo_, &redo_, &ab_})
         addChild(button);
     save_.setAccent(colour::textDim);
+    ab_.setOnRightClick([this] {
+        visage::PopupMenu menu;
+        menu.addOption(1, context_.model.isSlotB() ? "Copy B \u2192 A" : "Copy A \u2192 B");
+        menu.onSelection() = [this](int opt) {
+            if (opt == 1)
+                context_.model.copyAB();
+        };
+        menu.show(&ab_);
+    });
     for (const auto& macro : kMacros) {
         macros_.push_back(std::make_unique<Knob>(context, macro.id, macro.accent));
         addChild(macros_.back().get());
@@ -59,10 +71,15 @@ TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
 
 void TopBar::tick() {
     auto current = context_.model.presetName();
-    if (current == shownPreset_)
-        return;
-    shownPreset_ = std::move(current);
-    name_.setLabel(shownPreset_);
+    if (current != shownPreset_) {
+        shownPreset_ = std::move(current);
+        name_.setLabel(shownPreset_);
+    }
+    undo_.setAccent(context_.model.canUndo() ? colour::textDim : colour::textFaint);
+    redo_.setAccent(context_.model.canRedo() ? colour::textDim : colour::textFaint);
+    const bool isB = context_.model.isSlotB();
+    ab_.setLabel(isB ? "B" : "A");
+    ab_.setAccent(isB ? colour::vermilion : colour::iris);
 }
 
 void TopBar::showPresetMenu() {
@@ -110,6 +127,12 @@ void TopBar::resized() {
     next_.setBounds(x, y, arrow, buttonHeight);
     x += arrow + px(metric::gap);
     save_.setBounds(x, y, px(52.0f), buttonHeight);
+    x += px(52.0f) + px(10.0f);
+    undo_.setBounds(x, y, px(44.0f), buttonHeight);
+    x += px(44.0f) + gap;
+    redo_.setBounds(x, y, px(44.0f), buttonHeight);
+    x += px(44.0f) + px(8.0f);
+    ab_.setBounds(x, y, px(34.0f), buttonHeight);
 
     const float knobWidth = px(64.0f);
     const float knobHeight = px(60.0f);

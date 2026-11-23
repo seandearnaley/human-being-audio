@@ -55,10 +55,17 @@ private:
 
 class Knob final : public ParamFrame {
 public:
-    Knob(Context& context, ParamId id, unsigned accent) : ParamFrame(context, id, accent) {}
+  using ModProvider = std::function<float()>;
+
+  Knob(Context& context, ParamId id, unsigned accent) : ParamFrame(context, id, accent) {}
+  void setModProvider(ModProvider provider);
+  void tick() override;
 
 private:
     void paint(visage::Canvas& canvas) override;
+
+    ModProvider modProvider_;
+    float drawnMod_ = -1.0f;
 };
 
 class Row final : public ParamFrame {
@@ -87,6 +94,7 @@ public:
 
     void setLabel(std::string label);
     void setAccent(unsigned accent);
+    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
 
     void draw(visage::Canvas& canvas) override;
     void mouseEnter(const visage::MouseEvent& e) override;
@@ -98,6 +106,7 @@ private:
     Context& context_;
     std::string label_;
     std::function<void()> onClick_;
+    std::function<void()> onRightClick_;
     unsigned accent_ = colour::text;
     bool hovered_ = false;
     bool pressed_ = false;

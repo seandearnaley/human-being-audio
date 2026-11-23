@@ -82,7 +82,20 @@ public:
     std::array<float, kLaneCount> lanePhases() const noexcept TF_NONBLOCKING;  // 0..1
     std::array<float, kLaneCount> laneValues() const noexcept TF_NONBLOCKING;  // -1..1, after depth and motion
 
-private:
+    // Effective modulated control values after lanes and MIDI expression, for live UI rings.
+    struct EffectiveState {
+        float coupling = 0.72f;
+        float beat = 0.38f;
+        float reach = 96.0f;
+        float morph = 0.63f;
+        float drive = 0.42f;
+        float sculpt = 6.0f;
+        float width = 0.64f;
+        bool active = false;
+    };
+    EffectiveState effectiveState() const noexcept TF_NONBLOCKING;
+
+  private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

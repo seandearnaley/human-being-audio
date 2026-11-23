@@ -271,6 +271,7 @@ TEST_CASE("MIDI expression (CC1, CC74, aftertouch) modulates X/Y/Z and Drive smo
     CHECK(modState.morphX == Catch::Approx(0.90f).margin(0.02f));
     CHECK(modState.morphY == Catch::Approx(0.75f).margin(0.02f));
     CHECK(modState.morphZ == Catch::Approx(0.65f).margin(0.02f));
+    CHECK(modState.drive == Catch::Approx(0.55f).margin(0.02f));
 
     double maxDiff = 0.0;
     for (int i = 0; i < total; ++i) {

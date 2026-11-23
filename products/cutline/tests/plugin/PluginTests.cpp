@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "PluginModel.h"
 #include "PluginProcessor.h"
 #include "cl/smf.h"
 
@@ -98,4 +99,75 @@ TEST_CASE("Cutline processor loads all 24 presets, generates MIDI + finite audio
     REQUIRE(restored.curves.get(0) == cl::curves::rampDown());
     REQUIRE(restored.overrides.get() == ov);
     REQUIRE(restored.state.getParameter("gravity")->getValue() == Catch::Approx(0.75f).margin(1e-4f));
+}
+
+TEST_CASE(
+    "Cutline PluginModel supports Undo/Redo, drag coalescing, and A/B compare across params, curves, and overrides",
+    "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    cl::PluginProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    cl::PluginModel model(proc);
+
+    CHECK_FALSE(model.canUndo());
+    CHECK_FALSE(model.canRedo());
+    CHECK_FALSE(model.isSlotB());
+
+    const float initialGravity = model.get(cl::ParamId::gravity);
+    model.begin(cl::ParamId::gravity);
+    model.set(cl::ParamId::gravity, 0.85f);
+    model.end(cl::ParamId::gravity);
+    CHECK(model.canUndo());
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
+
+    // Rapid consecutive override edits (simulating a continuous note/divider drag) coalesce into one undo step.
+    cl::PhraseOverrides ov1;
+    ov1.fillStartFrac = 0.68f;
+    model.setOverrides(ov1);
+    cl::PhraseOverrides ov2 = ov1;
+    ov2.fillStartFrac = 0.74f;
+    model.setOverrides(ov2);
+    CHECK(model.overrides() == ov2);
+
+    // One undo reverts the entire coalesced override drag back to empty overrides.
+    model.undo();
+    CHECK_FALSE(model.overrides().hasAny());
+    CHECK(model.canRedo());
+
+    // Second undo reverts the gravity parameter edit.
+    model.undo();
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(initialGravity).margin(1e-3f));
+
+    // Redo restores both steps cleanly.
+    model.redo();
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
+    model.redo();
+    CHECK(model.overrides() == ov2);
+
+    // A/B compare isolates edits and supports copy active -> other.
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
+
+    model.begin(cl::ParamId::gravity);
+    model.set(cl::ParamId::gravity, 0.20f);
+    model.end(cl::ParamId::gravity);
+    model.setLaneCurve(0, cl::curves::rampUp());
+
+    model.toggleAB();
+    CHECK_FALSE(model.isSlotB());
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
+    CHECK_FALSE(model.laneCurve(0) == cl::curves::rampUp());
+
+    model.toggleAB();
+    CHECK(model.isSlotB());
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.20f).margin(1e-3f));
+    CHECK(model.laneCurve(0) == cl::curves::rampUp());
+
+    model.copyAB();
+    model.toggleAB();
+    CHECK_FALSE(model.isSlotB());
+    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.20f).margin(1e-3f));
+    CHECK(model.laneCurve(0) == cl::curves::rampUp());
 }

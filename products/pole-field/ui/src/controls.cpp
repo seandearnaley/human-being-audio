@@ -131,6 +131,20 @@ bool ParamFrame::mouseWheel(const visage::MouseEvent& e) {
     return true;
 }
 
+void Knob::setModProvider(ModProvider provider) {
+    modProvider_ = std::move(provider);
+    redraw();
+}
+
+void Knob::tick() {
+    if (modProvider_) {
+        const float live = std::clamp(modProvider_(), 0.0f, 1.0f);
+        if (std::abs(live - drawnMod_) > 0.002f)
+            redraw();
+    }
+    ParamFrame::tick();
+}
+
 void Knob::paint(visage::Canvas& canvas) {
     const float labelHeight = context_.px(16.0f);
     const float diameter = std::min(width(), height() - labelHeight);
@@ -150,6 +164,26 @@ void Knob::paint(visage::Canvas& canvas) {
         canvas.setColor(accent_);
         canvas.roundedArc(x, 0.0f, diameter, thickness, start + sweep * (from + to) * 0.5f,
                           sweep * (to - from) * 0.5f);
+    }
+
+    if (modProvider_) {
+        const float modPos = std::clamp(modProvider_(), 0.0f, 1.0f);
+        drawnMod_ = modPos;
+        if (std::abs(modPos - position) > 0.004f) {
+            const float mFrom = std::min(position, modPos);
+            const float mTo = std::max(position, modPos);
+            const float ghostThick = context_.px(2.0f);
+            canvas.setColor(colour::withAlpha(colour::text, 0.82f));
+            canvas.roundedArc(x, 0.0f, diameter, ghostThick, start + sweep * (mFrom + mTo) * 0.5f,
+                              sweep * (mTo - mFrom) * 0.5f);
+            const float angle = start + sweep * modPos;
+            const float radius = diameter * 0.5f - thickness * 0.5f;
+            const float cx = x + diameter * 0.5f + radius * std::cos(angle);
+            const float cy = diameter * 0.5f + radius * std::sin(angle);
+            const float dot = context_.px(4.0f);
+            canvas.setColor(colour::text);
+            canvas.circle(cx - dot * 0.5f, cy - dot * 0.5f, dot);
+        }
     }
 
     const std::string face = withoutUnit(text());
@@ -246,8 +280,17 @@ void Button::draw(visage::Canvas& canvas) {
 
 void Button::mouseEnter(const visage::MouseEvent&) { hovered_ = true; redraw(); }
 void Button::mouseExit(const visage::MouseEvent&) { hovered_ = false; redraw(); }
-void Button::mouseDown(const visage::MouseEvent&) { pressed_ = true; redraw(); }
+void Button::mouseDown(const visage::MouseEvent& e) {
+    if (e.shouldTriggerPopup() && onRightClick_) {
+        onRightClick_();
+        return;
+    }
+    pressed_ = true;
+    redraw();
+}
 void Button::mouseUp(const visage::MouseEvent& e) {
+    if (!pressed_)
+        return;
     const bool inside = localBounds().contains(e.position);
     pressed_ = false;
     redraw();

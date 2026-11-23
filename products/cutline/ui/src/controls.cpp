@@ -270,7 +270,12 @@ void Button::mouseExit(const visage::MouseEvent&) {
     hovered_ = false;
     redraw();
 }
-void Button::mouseDown(const visage::MouseEvent&) {
+void Button::mouseDown(const visage::MouseEvent& e) {
+    if (e.shouldTriggerPopup()) {
+        if (onRightClick_)
+            onRightClick_();
+        return;
+    }
     pressed_ = true;
     dragged_ = false;
     redraw();

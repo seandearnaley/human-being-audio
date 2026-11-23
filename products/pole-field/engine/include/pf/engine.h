@@ -59,6 +59,7 @@ public:
         float morphZ = 0.18f;
         float freq = 0.0f;
         float res = 0.62f;
+        float drive = 0.34f;
         float transform = 0.0f;
         float spread = 0.22f;
         float midiShiftSt = 0.0f;
