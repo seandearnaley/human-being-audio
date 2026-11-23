@@ -1,0 +1,19 @@
+{
+    "name": "MPE Warp Swarm",
+    "category": "MPE",
+    "outputMode": "MPE Zone",
+    "grammar": "WarpCut",
+    "gravity": -0.34,
+    "ratchet": 0.82,
+    "glide": 0.86,
+    "density": 0.7,
+    "mutate": 0.78,
+    "motion": 0.92,
+    "velArc": 0.78,
+    "seed": 941,
+    "attractor": "Offbeat 16",
+    "rootNote": "C",
+    "octave": "3",
+    "scale": "Phryg Dom",
+    "bendRange": "±48 st"
+}

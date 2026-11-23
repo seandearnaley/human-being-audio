@@ -1,0 +1,15 @@
+{
+    "name": "Halftime Break",
+    "category": "Breaks",
+    "outputMode": "Drum Kit",
+    "grammar": "Halftime",
+    "gravity": 0.62,
+    "ratchet": 0.54,
+    "glide": 0.0,
+    "density": 0.58,
+    "mutate": 0.46,
+    "motion": 0.3,
+    "velArc": 0.78,
+    "seed": 144,
+    "attractor": "Triplet"
+}

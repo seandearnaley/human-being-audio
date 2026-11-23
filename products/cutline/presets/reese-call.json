@@ -1,0 +1,19 @@
+{
+    "name": "Reese Call",
+    "category": "Neuro",
+    "grammar": "Liquid",
+    "gravity": 0.18,
+    "ratchet": 0.24,
+    "glide": 0.78,
+    "density": 0.48,
+    "mutate": 0.44,
+    "motion": 0.72,
+    "velArc": 0.58,
+    "phraseBars": "8 bars",
+    "seed": 234,
+    "attractor": "Downbeat",
+    "rootNote": "D",
+    "octave": "2",
+    "scale": "Minor",
+    "legato": 0.86
+}

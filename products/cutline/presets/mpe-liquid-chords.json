@@ -1,0 +1,21 @@
+{
+    "name": "MPE Liquid Chords",
+    "category": "MPE",
+    "outputMode": "MPE Zone",
+    "grammar": "Liquid",
+    "gravity": 0.26,
+    "ratchet": 0.16,
+    "glide": 0.52,
+    "density": 0.5,
+    "mutate": 0.4,
+    "motion": 0.84,
+    "velArc": 0.6,
+    "phraseBars": "8 bars",
+    "seed": 618,
+    "attractor": "Downbeat",
+    "rootNote": "A",
+    "octave": "3",
+    "scale": "Dorian",
+    "bendRange": "±48 st",
+    "legato": 0.9
+}

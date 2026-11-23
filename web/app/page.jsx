@@ -3,6 +3,7 @@ import studio from "../../studio.json";
 import livecutImage from "../../products/livecut-redux/docs/editor.png";
 import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
 import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
+import cutlineImage from "../../products/cutline/press/screenshots/cutline-interface.png";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
 
@@ -78,6 +79,30 @@ const products = {
     ],
     credits: "Includes 12 factory presets and eight performance macros.",
   },
+  cutline: {
+    kind: "MIDI articulator",
+    hue: 262,
+    bpm: 172,
+    form: "tube",
+    image: cutlineImage,
+    alt: "Cutline’s phrase grammar tape, microtiming vector piano roll, eight macros and four expression lanes",
+    body: "Compile deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases bent through a continuous gravitational microtiming field, wrapped in four tempo-locked MPE and CC expression lanes.",
+    features: [
+      [
+        "Phrase grammar & pocket",
+        "Five BBCut-inspired grammars (Neuro, BBCut11, WarpCut, Halftime and Liquid) run from deterministic seeds or live held MIDI notes through a strictly monotonic microtiming gravity field.",
+      ],
+      [
+        "Mono, MPE & Drum modes",
+        "Stream Ableton-safe Ch 1 pitch-dive basslines, full MPE Lower Zone polyphonic expression (Ch 2–15, ±48 st) or Drum Kit ghost-note phrasing with four Bézier expression lanes.",
+      ],
+      [
+        "Audition & Drag .mid",
+        "Hear phrases immediately with the built-in audition voice on VST3/Standalone, load natively as a Logic Pro AU MIDI FX (aumi), or drag a 960-PPQ .mid phrase straight into your DAW.",
+      ],
+    ],
+    credits: "Includes 24 factory presets and eight performance macros.",
+  },
 };
 const platforms = {
   macos: "macOS",
@@ -114,7 +139,9 @@ function Product({ slug, release, unavailable }) {
               ? "Hear Rush on a drum loop"
               : slug === "pole-field"
                 ? "Hear Neuro Chew on a bassline"
-                : "Hear Tract Form on MIDI note 29"}
+                : slug === "cutline"
+                  ? "Hear Neuro Whip at 172 BPM"
+                  : "Hear Tract Form on MIDI note 29"}
           </figcaption>
           <audio
             controls

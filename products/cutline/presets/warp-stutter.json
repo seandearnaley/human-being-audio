@@ -1,0 +1,17 @@
+{
+    "name": "Warp Stutter",
+    "category": "Ratchet",
+    "grammar": "WarpCut",
+    "gravity": -0.32,
+    "ratchet": 0.92,
+    "glide": 0.58,
+    "density": 0.82,
+    "mutate": 0.72,
+    "motion": 0.85,
+    "velArc": 0.76,
+    "seed": 808,
+    "attractor": "Offbeat 16",
+    "rootNote": "G",
+    "octave": "2",
+    "scale": "Phryg Dom"
+}

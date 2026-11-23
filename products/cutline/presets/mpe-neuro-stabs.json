@@ -1,0 +1,19 @@
+{
+    "name": "MPE Neuro Stabs",
+    "category": "MPE",
+    "outputMode": "MPE Zone",
+    "grammar": "Neuro",
+    "gravity": 0.38,
+    "ratchet": 0.54,
+    "glide": 0.74,
+    "density": 0.58,
+    "mutate": 0.62,
+    "motion": 0.86,
+    "velArc": 0.72,
+    "seed": 442,
+    "attractor": "Backbeat",
+    "rootNote": "F",
+    "octave": "3",
+    "scale": "Phrygian",
+    "bendRange": "±48 st"
+}

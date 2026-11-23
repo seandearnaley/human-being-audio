@@ -146,6 +146,11 @@ jobs:
     if: contains(fromJSON(needs.plan.outputs.jobs), 'pole-field')
     uses: ./.github/workflows/pole-field.yml
 
+  cutline:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'cutline')
+    uses: ./.github/workflows/cutline.yml
+
   website:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'website')
@@ -159,7 +164,7 @@ jobs:
   required:
     name: Studio PR checks
     if: always()
-    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, website, factory]
+    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, cutline, website, factory]
     runs-on: ubuntu-26.04
     steps:
       - name: Require success from every selected job

@@ -1,0 +1,19 @@
+{
+    "name": "Velvet Roller",
+    "category": "Halftime",
+    "grammar": "Liquid",
+    "gravity": -0.22,
+    "ratchet": 0.28,
+    "glide": 0.54,
+    "density": 0.62,
+    "mutate": 0.42,
+    "motion": 0.82,
+    "velArc": 0.6,
+    "phraseBars": "8 bars",
+    "seed": 701,
+    "attractor": "Backbeat",
+    "rootNote": "G",
+    "octave": "2",
+    "scale": "Minor",
+    "legato": 0.88
+}
