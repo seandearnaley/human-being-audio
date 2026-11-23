@@ -9,9 +9,9 @@ Seven cascaded second-order pole-zero TPT SVF sections interpolate across 3D mor
 - **14-pole Z-plane morphing** across 8 curated 3D cubes (Serial, Hybrid or Parallel topology; 4P to 14P).
 - **Inter-stage ADAA drive** (Tube, Fold, Sine with asymmetry) selectable Pre, Inter or Post lattice inside HIIR oversampling (2×, 4× or 8×).
 - **Sub lock** splits and phase-aligns a clean mono sub below `Sub split` with continuous `Fit` phase rotation.
-- **MIDI pitch tracking** shifts all 14 poles and zeros smoothly with glide relative to F1.
+- **MIDI pitch tracking & expression** shifts all 14 poles and zeros smoothly with glide relative to F1, responds to `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch bend, and displays live modulation ghost arcs across the top-bar macros.
 - **Burg LPC WAV Imprint** extracts 7 conjugate pole pairs from any audio file into the Imprint Cube.
-- **Movement** provides four tempo-locked drawable and follower lanes targeting any morph or tone axis.
+- **Movement & A/B workflow** provides four tempo-locked drawable and follower lanes plus 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare across parameters, curves, and imprints.
 
 ## Building
 
