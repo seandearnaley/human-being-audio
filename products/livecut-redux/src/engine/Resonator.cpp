@@ -89,6 +89,7 @@ void Resonator::reset()
     wet = wetTarget = wetStep = 0;
     controlRemaining = 0;
     validBank = false;
+    bankQuiet = true;
     status = {};
     setParameters (requested);
 }
@@ -181,9 +182,21 @@ std::array<double, 2> Resonator::processBank (Bank& bank, double left, double ri
 void Resonator::process (float& left, float& right)
 {
     assert (std::isfinite (left) && std::isfinite (right));
+    if (controlRemaining > 0)
+        wet = --controlRemaining == 0 ? wetTarget : wet + wetStep;
+    status.wet = wet;
+    if (wet <= 0 && !fading) {
+        if (!bankQuiet && validBank) {
+            for (auto& voice : banks[active].voices)
+                voice.y1 = voice.y2 = {};
+            bankQuiet = true;
+        }
+        return;
+    }
     std::array<double, 2> filtered {};
     if (validBank)
     {
+        bankQuiet = false;
         filtered = processBank (banks[active], left, right);
         if (fading)
         {
@@ -207,9 +220,6 @@ void Resonator::process (float& left, float& right)
             status.retuneFramesRemaining = fading ? fadeFrames - fadePosition : 0;
         }
     }
-    if (controlRemaining > 0)
-        wet = --controlRemaining == 0 ? wetTarget : wet + wetStep;
-    status.wet = wet;
     if (wet <= 0)
         return;
     left = static_cast<float> (static_cast<double> (left) * (1 - wet) + filtered[0] * wet);

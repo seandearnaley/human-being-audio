@@ -22,19 +22,21 @@ std::string ImprintStore::label() const {
     return label_;
 }
 
-void ImprintStore::writeToState() {
-    state_.state.setProperty(kImprintProp, toJuce(serialiseImprint(imprint_)), nullptr);
-    state_.state.setProperty(kImprintLabelProp, toJuce(label_), nullptr);
+void ImprintStore::writeToState(const ImprintData& imprint, const std::string& label) {
+    state_.state.setProperty(kImprintProp, toJuce(serialiseImprint(imprint)), nullptr);
+    state_.state.setProperty(kImprintLabelProp, toJuce(label), nullptr);
 }
 
 void ImprintStore::set(const ImprintData& imprint, std::string sourceName) {
+    std::string finalLabel =
+        imprint.active ? (sourceName.empty() ? "Imprinted" : std::move(sourceName)) : "Imprint WAV";
     {
         const juce::SpinLock::ScopedLockType scoped(lock_);
         imprint_ = imprint;
-        label_ = imprint.active ? (sourceName.empty() ? "Imprinted" : std::move(sourceName)) : "Imprint WAV";
+        label_ = finalLabel;
     }
-    writeToState();
-    changed_.store(true);
+    writeToState(imprint, finalLabel);
+    changed_.store(true, std::memory_order_release);
 }
 
 void ImprintStore::clear() {

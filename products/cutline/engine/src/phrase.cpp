@@ -110,7 +110,9 @@ int effectiveBaseMidi(const Params& params, const HeldNotes& held) noexcept CL_N
     const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
     if (inputMode == InputMode::transpose && held.count > 0) {
         // Most recently played key sets the live root pitch directly.
-        return std::clamp(static_cast<int>(held.notes[static_cast<std::size_t>(held.count - 1)]), 12, 96);
+        const int key = held.lastPressed > 0 ? static_cast<int>(held.lastPressed)
+                                             : static_cast<int>(held.notes[static_cast<std::size_t>(held.count - 1)]);
+        return std::clamp(key, 12, 96);
     }
     const int root = std::clamp(params.choice(ParamId::rootNote), 0, 11);
     const int oct = std::clamp(params.choice(ParamId::octave), 0, 3) + 1; // MIDI C1=24, F1=29, F2=41
@@ -120,8 +122,9 @@ int effectiveBaseMidi(const Params& params, const HeldNotes& held) noexcept CL_N
 int resolvePitch(int degree, const Params& params, const HeldNotes& held, bool octaveLift) noexcept CL_NONBLOCKING {
     const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
     if (inputMode == InputMode::chordCarve && held.count > 0) {
-        const int idx = ((degree % held.count) + held.count) % held.count;
-        const int octWrap = (degree >= held.count ? 12 : 0) + (octaveLift ? 12 : 0);
+        const int oct = degree >= 0 ? (degree / held.count) : ((degree - held.count + 1) / held.count);
+        const int idx = degree - oct * held.count;
+        const int octWrap = (oct + (octaveLift ? 1 : 0)) * 12;
         const int base = static_cast<int>(held.notes[static_cast<std::size_t>(idx)]);
         return std::clamp(base + octWrap, 12, 120);
     }
@@ -133,9 +136,13 @@ int resolveHarmonyPitch(int baseDegree, int diatonicInterval, const Params& para
                         bool octaveLift) noexcept CL_NONBLOCKING {
     const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
     if (inputMode == InputMode::chordCarve && held.count > 1) {
-        const int idx = ((baseDegree + 1) % held.count + held.count) % held.count;
+        const int step = std::max(1, diatonicInterval - 1);
+        const int targetDeg = baseDegree + step;
+        const int oct = targetDeg >= 0 ? (targetDeg / held.count) : ((targetDeg - held.count + 1) / held.count);
+        const int idx = targetDeg - oct * held.count;
+        const int octWrap = (oct + (octaveLift ? 1 : 0)) * 12;
         const int base = static_cast<int>(held.notes[static_cast<std::size_t>(idx)]);
-        return std::clamp(base + (octaveLift ? 12 : 0), 12, 120);
+        return std::clamp(base + octWrap, 12, 120);
     }
     const auto scaleIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::scale), 0, 5));
     return scaleDegreeToMidi(baseDegree + diatonicInterval, effectiveBaseMidi(params, held), kScales[scaleIdx],
@@ -308,6 +315,7 @@ std::uint32_t phraseSignature(const Params& params, std::int64_t phraseIndex, co
     const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
     if (inputMode != InputMode::seed) {
         mix(static_cast<std::uint32_t>(held.count));
+        mix(static_cast<std::uint32_t>(held.lastPressed));
         for (int i = 0; i < held.count; ++i)
             mix(held.notes[static_cast<std::size_t>(i)]);
     }

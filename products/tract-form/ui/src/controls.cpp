@@ -105,6 +105,8 @@ void ParamFrame::mouseExit(const visage::MouseEvent&) {
 }
 
 void ParamFrame::mouseDown(const visage::MouseEvent& e) {
+    if (e.shouldTriggerPopup())
+        return;
     if (e.repeatClickCount() >= 2) return commit(spec_.def);
     if (spec_.kind == ParamKind::toggle) return commit(value() >= 0.5f ? 0.0f : 1.0f);
     if (spec_.kind == ParamKind::choice) return showMenu();
@@ -336,8 +338,9 @@ void Button::mouseExit(const visage::MouseEvent&) {
 }
 
 void Button::mouseDown(const visage::MouseEvent& e) {
-    if (e.shouldTriggerPopup() && onRightClick_) {
-        onRightClick_();
+    if (e.shouldTriggerPopup()) {
+        if (onRightClick_)
+            onRightClick_();
         return;
     }
     pressed_ = true;

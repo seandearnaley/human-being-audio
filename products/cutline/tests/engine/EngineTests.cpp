@@ -449,3 +449,163 @@ TEST_CASE("SMF binary exporter writes valid 960-PPQ header, balanced Note On/Off
         CHECK(ons == offs);
     }
 }
+
+TEST_CASE(
+    "Phase 1 Cutline regressions: positive shift/pre-roll, Kit tone in Mono/MPE, MPE ordering, HeldNotes, Sustain, SMF",
+    "[engine][smf]") {
+    // 1. Positive shiftMs and DAW count-in (ppq < 0) trigger beat-0 note exactly once (no machine-gun retrigger).
+    {
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::shiftMs] = 20.0f;
+        p[cl::ParamId::motion] = 0.0f;
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> l{}, r{};
+        const double beatsPerBlock = (172.0 / 60.0 / 48000.0) * 256.0;
+        int noteOnsInPreRoll = 0;
+        int totalNoteOnsFirstBeat = 0;
+        for (int b = -8; b < 32; ++b) {
+            const double ppq = static_cast<double>(b) * beatsPerBlock;
+            eng.process(p, {172.0, ppq, true}, midi, l.data(), r.data(), 256);
+            for (int i = 0; i < midi.count; ++i) {
+                if (midi.events[static_cast<std::size_t>(i)].isNoteOn()) {
+                    if (ppq + beatsPerBlock < 0.0)
+                        ++noteOnsInPreRoll;
+                    ++totalNoteOnsFirstBeat;
+                }
+            }
+        }
+        CHECK(noteOnsInPreRoll == 0);
+        CHECK(totalNoteOnsFirstBeat >= 1);
+        CHECK(totalNoteOnsFirstBeat <= 4);
+    }
+
+    // 2. Tone: Kit produces finite non-zero audio even in Mono and MPE modes.
+    for (auto mode : {cl::OutputMode::mono, cl::OutputMode::mpe}) {
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::outputMode] = static_cast<float>(mode);
+        p[cl::ParamId::audition] = 1.0f;
+        p[cl::ParamId::auditionTone] = static_cast<float>(cl::AuditionTone::kit);
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> l{}, r{};
+        const double beatsPerBlock = (172.0 / 60.0 / 48000.0) * 256.0;
+        float peak = 0.0f;
+        for (int b = 0; b < 80; ++b) {
+            eng.process(p, {172.0, static_cast<double>(b) * beatsPerBlock, true}, midi, l.data(), r.data(), 256);
+            for (int i = 0; i < 256; ++i) {
+                REQUIRE(std::isfinite(l[static_cast<std::size_t>(i)]));
+                peak = std::max(peak, std::abs(l[static_cast<std::size_t>(i)]));
+            }
+        }
+        CHECK(peak > 0.02f);
+    }
+
+    // 3. MPE emits initial PB/CC74/AT before Note On at the same sample offset & never collides channels.
+    {
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::mpe);
+        p[cl::ParamId::density] = 0.95f;
+        p[cl::ParamId::legato] = 0.95f;
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> l{}, r{};
+        const double beatsPerBlock = (172.0 / 60.0 / 48000.0) * 256.0;
+        std::array<int, 16> activeOnCh{};
+        activeOnCh.fill(-1);
+        bool sawPreNoteExpr = false;
+        bool sawCollision = false;
+        for (int b = 0; b < 120; ++b) {
+            eng.process(p, {172.0, static_cast<double>(b) * beatsPerBlock, true}, midi, l.data(), r.data(), 256);
+            for (int i = 0; i < midi.count; ++i) {
+                const auto& ev = midi.events[static_cast<std::size_t>(i)];
+                const int ch = ev.channel();
+                if (ev.isNoteOn() && ch >= 2 && ch <= 15) {
+                    if (activeOnCh[static_cast<std::size_t>(ch)] >= 0)
+                        sawCollision = true;
+                    activeOnCh[static_cast<std::size_t>(ch)] = ev.noteNumber();
+                    if (i > 0) {
+                        const auto& prev = midi.events[static_cast<std::size_t>(i - 1)];
+                        const std::uint8_t hi = prev.data[0] & 0xF0u;
+                        if (prev.channel() == ch && prev.sampleOffset == ev.sampleOffset &&
+                            (hi == 0xE0u || hi == 0xB0u || hi == 0xD0u))
+                            sawPreNoteExpr = true;
+                    }
+                } else if (ev.isNoteOff() && ch >= 2 && ch <= 15) {
+                    if (activeOnCh[static_cast<std::size_t>(ch)] == ev.noteNumber())
+                        activeOnCh[static_cast<std::size_t>(ch)] = -1;
+                }
+            }
+        }
+        CHECK(sawPreNoteExpr);
+        CHECK_FALSE(sawCollision);
+    }
+
+    // 4. HeldNotes stays pitch-sorted ascending while tracking lastPressed; CC64 Sustain holds keys.
+    {
+        cl::HeldNotes held;
+        held.push(55);
+        held.push(43);
+        held.push(48);
+        REQUIRE(held.count == 3);
+        CHECK(held.notes[0] == 43);
+        CHECK(held.notes[1] == 48);
+        CHECK(held.notes[2] == 55);
+        CHECK(held.lastPressed == 48);
+
+        cl::Engine eng;
+        eng.prepare(48000.0, 256);
+        cl::Params p;
+        p[cl::ParamId::inputMode] = static_cast<float>(cl::InputMode::chordCarve);
+        p[cl::ParamId::latch] = 0.0f;
+        eng.inputSustain(true);
+        eng.inputNoteOn(41, 100);
+        eng.inputNoteOff(41);
+        cl::MidiEventBuffer midi;
+        std::array<float, 256> l{}, r{};
+        eng.process(p, {172.0, 0.0, true}, midi, l.data(), r.data(), 256);
+        CHECK(eng.currentPlan().noteCount > 0);
+        eng.inputSustain(false);
+        eng.process(p, {172.0, 0.25, true}, midi, l.data(), r.data(), 256);
+        CHECK(eng.currentPlan().noteCount == 0);
+    }
+
+    // 5. SMF MPE routes CC74/AT to member channels (2..15), never Ch 1.
+    {
+        cl::HeldNotes held;
+        const auto curves = cl::defaultLaneCurves();
+        cl::Params p;
+        p[cl::ParamId::outputMode] = static_cast<float>(cl::OutputMode::mpe);
+        const auto smf = cl::exportPhraseSmf(p, curves, held, 172.0, 0);
+        std::size_t pos = 22;
+        bool sawMemberExpr = false;
+        bool sawMasterCc74OrAt = false;
+        while (pos < smf.size()) {
+            while (pos < smf.size() && (smf[pos++] & 0x80u) != 0u) {
+            }
+            const std::uint8_t status = smf[pos++];
+            if (status == 0xFF) {
+                ++pos;
+                const std::uint8_t len = smf[pos++];
+                pos += len;
+            } else {
+                const std::uint8_t hi = status & 0xF0u;
+                const int ch = (status & 0x0Fu) + 1;
+                const std::uint8_t d1 = smf[pos++];
+                if (hi != 0xC0u && hi != 0xD0u)
+                    ++pos;
+                if ((hi == 0xB0u && d1 == 74) || hi == 0xD0u) {
+                    if (ch >= 2 && ch <= 15)
+                        sawMemberExpr = true;
+                    if (ch == 1)
+                        sawMasterCc74OrAt = true;
+                }
+            }
+        }
+        CHECK(sawMemberExpr);
+        CHECK_FALSE(sawMasterCc74OrAt);
+    }
+}

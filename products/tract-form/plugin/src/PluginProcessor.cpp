@@ -30,16 +30,18 @@ PluginProcessor::~PluginProcessor() {
 }
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-    sampleRate_ = sampleRate;
-    blockSize_ = samplesPerBlock;
-    masterTap_.assign(static_cast<std::size_t>(samplesPerBlock), 0.0f);
-    growlTap_.assign(static_cast<std::size_t>(samplesPerBlock), 0.0f);
-    analysis.setSampleRate(sampleRate);
+    sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
+    blockSize_ = std::max(1, samplesPerBlock);
+    const auto tapSize = static_cast<std::size_t>(std::max(4096, blockSize_));
+    masterTap_.assign(tapSize, 0.0f);
+    growlTap_.assign(tapSize, 0.0f);
+    analysis.setSampleRate(sampleRate_);
     prepareEngine();
 }
 
 void PluginProcessor::prepareEngine() {
-    const auto quality = static_cast<std::size_t>(values_.snapshot().choice(ParamId::quality));
+    const auto quality = static_cast<std::size_t>(
+        std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
     engine_.setPitchBendRange(pitchBendRangeSt_);
     setLatencySamples(engine_.latencySamples());
@@ -85,7 +87,9 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     } else if (message.isNoteOff()) {
         engine_.noteOff(message.getNoteNumber());
     } else if (message.isPitchWheel()) {
-        engine_.pitchBend(pitchBendRangeSt_ * static_cast<float>(message.getPitchWheelValue() - 8192) / 8192.0f);
+        const int raw = message.getPitchWheelValue() - 8192;
+        const float norm = raw >= 0 ? static_cast<float>(raw) / 8191.0f : static_cast<float>(raw) / 8192.0f;
+        engine_.pitchBend(pitchBendRangeSt_ * norm);
     } else if (message.isController()) {
         const int ch = message.getChannel();
         const int cc = message.getControllerNumber();
@@ -103,9 +107,12 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
         }
         if (cc == 1) {
             engine_.setModWheel(static_cast<float>(val) / 127.0f);
+        } else if (cc == 64) {
+            engine_.sustain(val >= 64);
         } else if (cc == 74) {
             engine_.setTimbre(val == 64 ? 0.5f : static_cast<float>(val) / 127.0f);
         } else if (cc == 121) {
+            engine_.sustain(false);
             engine_.setModWheel(0.0f);
             engine_.setTimbre(0.5f);
             engine_.setAftertouch(0.0f);
@@ -116,7 +123,9 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     } else if (message.isChannelPressure()) {
         engine_.setAftertouch(static_cast<float>(message.getChannelPressureValue()) / 127.0f);
     } else if (message.isAftertouch()) {
-        engine_.setAftertouch(static_cast<float>(message.getAfterTouchValue()) / 127.0f);
+        const int active = engine_.activeNote();
+        if (active < 0 || message.getNoteNumber() == active)
+            engine_.setAftertouch(static_cast<float>(message.getAfterTouchValue()) / 127.0f);
     } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
         engine_.allNotesOff();
     }
@@ -126,7 +135,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
-    if (buffer.getNumChannels() < 2 || numSamples > static_cast<int>(masterTap_.size())) {
+    if (buffer.getNumChannels() < 2 || numSamples <= 0) {
         buffer.clear();
         return;
     }
@@ -137,15 +146,28 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
     const Transport blockStart = readTransport();
     lastBpm_.store(blockStart.bpm, std::memory_order_relaxed);
-    const double quartersPerSample = blockStart.bpm / 60.0 / sampleRate_;
+    const double safeSr = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+    const double quartersPerSample = blockStart.bpm / 60.0 / safeSr;
+    const int tapCap = static_cast<int>(masterTap_.size());
 
     // Render up to each MIDI event, then apply it, so notes land on their sample.
+    // Chunk through the preallocated tap buffers so oversized host blocks never
+    // drop audio or MIDI events.
     const auto render = [&](int from, int to) {
-        if (to <= from) return;
-        Transport transport = blockStart;
-        transport.ppq += quartersPerSample * from;
-        engine_.process(params, transport, left + from, right + from, to - from,
-                        { masterTap_.data() + from, growlTap_.data() + from });
+        while (from < to) {
+            const int chunk = tapCap > 0 ? std::min(to - from, tapCap) : (to - from);
+            Transport transport = blockStart;
+            transport.ppq += quartersPerSample * from;
+            Taps taps{};
+            if (tapCap > 0) {
+                taps.master = masterTap_.data();
+                taps.growl = growlTap_.data();
+            }
+            engine_.process(params, transport, left + from, right + from, chunk, taps);
+            if (tapCap > 0)
+                analysis.push(masterTap_.data(), growlTap_.data(), left + from, right + from, chunk);
+            from += chunk;
+        }
     };
     int cursor = 0;
     for (const auto metadata : midi) {
@@ -160,7 +182,6 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     render(cursor, numSamples);
     midi.clear();
 
-    analysis.push(masterTap_.data(), growlTap_.data(), left, right, numSamples);
     Analysis::Status status;
     status.gate = engine_.gateOpen();
     status.hz = engine_.currentHz();

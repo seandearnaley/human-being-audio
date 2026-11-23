@@ -17,12 +17,14 @@ LaneCurves CurveStore::all() const {
 }
 
 Curve CurveStore::get(int lane) const {
+    if (lane < 0 || lane >= kLaneCount)
+        return {};
     const juce::SpinLock::ScopedLockType scoped(lock_);
     return curves_[static_cast<std::size_t>(lane)];
 }
 
-void CurveStore::writeToState(int lane) {
-    state_.state.setProperty(propertyFor(lane), toJuce(serialiseCurve(curves_[static_cast<std::size_t>(lane)])), nullptr);
+void CurveStore::writeToState(int lane, const Curve& curve) {
+    state_.state.setProperty(propertyFor(lane), toJuce(serialiseCurve(curve)), nullptr);
 }
 
 void CurveStore::set(int lane, const Curve& curve) {
@@ -31,8 +33,8 @@ void CurveStore::set(int lane, const Curve& curve) {
         const juce::SpinLock::ScopedLockType scoped(lock_);
         curves_[static_cast<std::size_t>(lane)] = curve;
     }
-    writeToState(lane);
-    changed_.store(true);
+    writeToState(lane, curve);
+    changed_.store(true, std::memory_order_release);
 }
 
 void CurveStore::setAll(const LaneCurves& curves) {
@@ -40,8 +42,9 @@ void CurveStore::setAll(const LaneCurves& curves) {
         const juce::SpinLock::ScopedLockType scoped(lock_);
         curves_ = curves;
     }
-    for (int lane = 0; lane < kLaneCount; ++lane) writeToState(lane);
-    changed_.store(true);
+    for (int lane = 0; lane < kLaneCount; ++lane)
+        writeToState(lane, curves[static_cast<std::size_t>(lane)]);
+    changed_.store(true, std::memory_order_release);
 }
 
 void CurveStore::reloadFromState() {

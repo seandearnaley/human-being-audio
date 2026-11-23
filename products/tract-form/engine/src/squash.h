@@ -97,7 +97,8 @@ public:
         outPower_ += makeupCoef_ * (0.5 * (upperL * upperL + upperR * upperR) - outPower_);
         if (amount > 0.0) {
             const double match = 10.0 * std::log10((inPower_ + 1e-20) / (outPower_ + 1e-20));
-            makeupDb_ = std::clamp(match, 0.0, kSquashMaxMakeupDb) + kSquashLiftDb * amount;
+            const double matchScale = std::clamp(amount * 20.0, 0.0, 1.0);
+            makeupDb_ = std::clamp(match, 0.0, kSquashMaxMakeupDb) * matchScale + kSquashLiftDb * amount;
             const double gain = dbToGain(makeupDb_);
             outL *= gain;
             outR *= gain;

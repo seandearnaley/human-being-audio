@@ -22,7 +22,7 @@ class CurveStore {
     bool pull(LaneCurves& destination) noexcept;
 
   private:
-    void writeToState(int lane);
+    void writeToState(int lane, const Curve& curve);
 
     juce::AudioProcessorValueTreeState& state_;
     mutable juce::SpinLock lock_;

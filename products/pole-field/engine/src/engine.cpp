@@ -39,8 +39,8 @@ struct Engine::Impl {
     dsp::Limiter limiter {};
 
     // Smoothers
-    dsp::Smoother morphX {}, morphY {}, morphZ {}, freq {}, res {}, transform {}, drive {}, asym {}, spread {}, mix {},
-        subLock {}, subSplitHz {}, fit {}, inputGain {}, outputGain {}, limitAmt {}, ceiling {}, midiPitch {};
+    dsp::Smoother morphX{}, morphY{}, morphZ{}, freq{}, res{}, transform{}, drive{}, asym{}, spread{}, mix{}, subLock{},
+        subSplitHz{}, fit{}, inputGain{}, outputGain{}, limitAmt{}, ceiling{}, midiPitch{}, pitchBendSmooth{};
 
     LaneCurves laneCurves = defaultLaneCurves();
     ImprintData imprint {};
@@ -66,6 +66,7 @@ struct Engine::Impl {
     std::uint64_t sampleIndex = 0;
     std::array<dsp::PoleZeroCoefs, kNumStages> coefsL {};
     std::array<dsp::PoleZeroCoefs, kNumStages> coefsR {};
+    dsp::SvfCoefs splitCoefs{};
     double makeupL = 1.0;
     double makeupR = 1.0;
 
@@ -110,6 +111,8 @@ struct Engine::Impl {
         limitAmt.reset();
         ceiling.reset();
         midiPitch.reset();
+        pitchBendSmooth.reset();
+        splitCoefs = dsp::butterworth(110.0, sampleRate);
         noteCount = 0;
         activeNote = -1;
         pitchBendSt = 0.0f;
@@ -161,9 +164,9 @@ struct Engine::Impl {
         const double glideSec = static_cast<double>(params[ParamId::glide]) * 0.001;
         const double glideCoef = glideSec > 1.0e-4 ? dsp::onePoleCoef(glideSec, 1.0 / sampleRate) : 1.0;
 
-        const double targetMidiShift = (pitchTrackOn && activeNote >= 0)
-            ? static_cast<double>(activeNote - kRootMidiNote) + static_cast<double>(pitchBendSt)
-            : 0.0;
+        const double targetNoteShift =
+            (pitchTrackOn && activeNote >= 0) ? static_cast<double>(activeNote - kRootMidiNote) : 0.0;
+        const double targetBendShift = static_cast<double>(pitchBendSt);
 
         const double targetInGain = dsp::dbToGain(static_cast<double>(params[ParamId::inputGain]));
         const double targetOutGain = dsp::dbToGain(static_cast<double>(params[ParamId::outputGain]));
@@ -228,7 +231,9 @@ struct Engine::Impl {
             const double sOutGain = outputGain.step(targetOutGain, controlCoef);
             const double sLimit = limitAmt.step(targetLimit, controlCoef);
             const double sCeiling = ceiling.step(targetCeiling, controlCoef);
-            const double sMidi = midiPitch.step(targetMidiShift, glideCoef);
+            const double sNote = midiPitch.step(targetNoteShift, glideCoef);
+            const double sBend = pitchBendSmooth.step(targetBendShift, controlCoef);
+            const double sMidi = sNote + sBend;
 
             if ((sampleIndex % kCoefStride) == 0) {
                 const float totalFreq = static_cast<float>(sFreq + sMidi);
@@ -245,6 +250,7 @@ struct Engine::Impl {
                     coefsL[s] = dsp::PoleZeroCoefs::make(latL.stages[s], osRate);
                     coefsR[s] = dsp::PoleZeroCoefs::make(latR.stages[s], osRate);
                 }
+                splitCoefs = dsp::butterworth(sSubHz, sampleRate);
             }
             ++sampleIndex;
 
@@ -252,7 +258,6 @@ struct Engine::Impl {
             const double inR = static_cast<double>(right[n]) * sInGain;
 
             // Split clean mono sub below subSplit when Sub Lock is active.
-            const dsp::SvfCoefs splitCoefs = dsp::butterworth(sSubHz, sampleRate);
             double loL = 0.0, hiL = 0.0, loR = 0.0, hiR = 0.0;
             subSplit[0].process(splitCoefs, inL, loL, hiL);
             subSplit[1].process(splitCoefs, inR, loR, hiR);

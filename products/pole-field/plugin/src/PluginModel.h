@@ -22,6 +22,7 @@ public:
     void set(ParamId id, float real) override;
     void end(ParamId id) override;
 
+    void refreshVisuals() override;
     const ui::Visuals& visuals() override;
 
     Curve laneCurve(int lane) const override;
@@ -67,6 +68,7 @@ public:
     juce::int64 lastUpdateTicks_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
+    std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 }

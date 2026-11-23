@@ -282,3 +282,24 @@ TEST_CASE("MIDI expression (CC1, CC74, aftertouch) modulates X/Y/Z and Drive smo
     }
     CHECK(maxDiff > 1e-2);
 }
+
+TEST_CASE("Pitch bend responds quickly even with Pitch track OFF and 300 ms Glide", "[engine]") {
+    constexpr double fs = 48000.0;
+    pf::Engine eng;
+    eng.prepare(fs, 256, 4);
+
+    auto params = pf::Params::defaults();
+    params[pf::ParamId::pitchTrack] = 0.0f; // OFF
+    params[pf::ParamId::glide] = 300.0f;    // slow note glide
+    params[pf::ParamId::motion] = 0.0f;
+    eng.pitchBend(12.0f);
+
+    std::array<float, 256> l{}, r{};
+    // 10 blocks = ~53 ms: fast pitch bend smoother reaches near +12 st despite 300 ms note glide.
+    for (int b = 0; b < 10; ++b) {
+        l.fill(0.0f);
+        r.fill(0.0f);
+        eng.process(params, {172.0, 0.0, false}, l.data(), r.data(), 256);
+    }
+    CHECK(eng.effectiveState().midiShiftSt > 11.0f);
+}

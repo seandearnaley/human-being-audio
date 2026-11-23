@@ -9,7 +9,11 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
     }
 }
 
-PluginModel::~PluginModel() = default;
+PluginModel::~PluginModel() {
+    *alive_ = false;
+    if (saveDialog_)
+        saveDialog_->exitModalState(0);
+}
 
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -17,7 +21,7 @@ float PluginModel::get(ParamId id) const {
 }
 
 void PluginModel::begin(ParamId id) {
-    if (!applyingSnapshot_)
+    if (!applyingSnapshot_ && id != ParamId::quality)
         history_.push(captureSnapshot());
     parameters_[static_cast<std::size_t>(id)]->beginChangeGesture();
 }
@@ -29,13 +33,14 @@ void PluginModel::set(ParamId id, float real) {
 
 void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->endChangeGesture(); }
 
-const ui::Visuals& PluginModel::visuals() {
+void PluginModel::refreshVisuals() {
     const auto now = juce::Time::getHighResolutionTicks();
     const double seconds = lastUpdateTicks_ == 0 ? 0.0 : juce::Time::highResolutionTicksToSeconds(now - lastUpdateTicks_);
     lastUpdateTicks_ = now;
     processor_.analysis.update(visuals_, static_cast<float>(std::min(seconds, 0.25)));
-    return visuals_;
 }
+
+const ui::Visuals& PluginModel::visuals() { return visuals_; }
 
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
@@ -69,9 +74,14 @@ void PluginModel::savePreset() {
     saveDialog_->addTextEditor("name", toJuce(processor_.presets.currentName()));
     saveDialog_->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
     saveDialog_->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this](int result) {
-        if (result == 1) processor_.presets.save(saveDialog_->getTextEditorContents("name"));
-    }));
+    std::weak_ptr<bool> guard = alive_;
+    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this, guard](int result) {
+                                     const auto alive = guard.lock();
+                                     if (!alive || !*alive || !saveDialog_)
+                                         return;
+                                     if (result == 1)
+                                         processor_.presets.save(saveDialog_->getTextEditorContents("name"));
+                                 }));
 }
 
 ui::ResampleState PluginModel::resampleState() const { return processor_.resampler.state(); }
@@ -96,16 +106,22 @@ void PluginModel::dragResampledFile() {
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {
     Snapshot s;
-    for (std::size_t i = 0; i < kParams.size(); ++i)
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        if (static_cast<ParamId>(i) == ParamId::quality)
+            continue;
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
+    }
     s.curves = processor_.curves.all();
     return s;
 }
 
 void PluginModel::applySnapshot(const Snapshot& snapshot) {
     applyingSnapshot_ = true;
-    for (std::size_t i = 0; i < kParams.size(); ++i)
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        if (static_cast<ParamId>(i) == ParamId::quality)
+            continue;
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
+    }
     processor_.curves.setAll(snapshot.curves);
     applyingSnapshot_ = false;
 }

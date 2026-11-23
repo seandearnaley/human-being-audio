@@ -75,7 +75,9 @@ scripts=()
 entitlements=""
 if [[ $PRODUCT == livecut-redux ]]; then
     scripts=(--scripts "$product_dir/packaging/macos/scripts")
-    entitlements="$product_dir/packaging/macos/Standalone.entitlements"
+    entitlements="$repo/factory/release/audio-input.entitlements"
+elif [[ $PRODUCT == pole-field ]]; then
+    entitlements="$repo/factory/release/audio-input.entitlements"
 fi
 package "$artefacts/VST3/$NAME.vst3" "/Library/Audio/Plug-Ins/VST3" vst3 "" ${scripts[@]+"${scripts[@]}"}
 package "$artefacts/AU/$NAME.component" "/Library/Audio/Plug-Ins/Components" au ""

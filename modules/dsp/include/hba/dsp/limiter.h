@@ -182,10 +182,19 @@ public:
         const double held = hold_.process(covering);
         released_ = held < released_ ? held : released_ + releaseCoef_ * (held - released_);
 
+        if (box_.empty())
+            return;
         boxSum_ += released_ - box_[static_cast<std::size_t>(boxPos_)];
         box_[static_cast<std::size_t>(boxPos_)] = released_;
         boxPos_ = boxPos_ + 1 == lookahead_ ? 0 : boxPos_ + 1;
-        const double smooth = std::min(1.0, boxSum_ / lookahead_);
+        if (boxPos_ == 0) {
+            // Periodically re-sum to eliminate accumulated floating-point drift.
+            double exact = 0.0;
+            for (double v : box_)
+                exact += v;
+            boxSum_ = exact;
+        }
+        const double smooth = std::clamp(boxSum_ / lookahead_, 0.0, 1.0);
 
         gain_ = 1.0 - amount * (1.0 - smooth);
         left = delays_[0].process(left) * gain_;

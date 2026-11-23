@@ -62,6 +62,18 @@ std::vector<float> renderOffline(const RenderRequest& request, RenderStats* stat
         pos = end;
     }
 
+    if (tail == 0 && total > 0) {
+        const long long fadeFrames =
+            std::min(total, std::max(1LL, static_cast<long long>(std::llround(0.0015 * sampleRate))));
+        const long long fadeStart = total - fadeFrames;
+        for (long long i = 0; i < fadeFrames; ++i) {
+            const float gain = static_cast<float>(fadeFrames - 1 - i) / static_cast<float>(fadeFrames);
+            const auto frame = static_cast<std::size_t>(fadeStart + i) * 2;
+            out[frame] *= gain;
+            out[frame + 1] *= gain;
+        }
+    }
+
     if (stats != nullptr) {
         stats->latencySamples = latency;
         stats->oversampling = engine.oversamplingFactor();

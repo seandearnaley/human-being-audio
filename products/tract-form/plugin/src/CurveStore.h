@@ -29,12 +29,12 @@ public:
     bool pull(LaneCurves& destination) noexcept;
 
 private:
-    void writeToState(int lane);
+  void writeToState(int lane, const Curve& curve);
 
-    juce::AudioProcessorValueTreeState& state_;
-    LaneCurves curves_ = defaultLaneCurves();
-    mutable juce::SpinLock lock_;
-    std::atomic<bool> changed_ { true };
+  juce::AudioProcessorValueTreeState& state_;
+  LaneCurves curves_ = defaultLaneCurves();
+  mutable juce::SpinLock lock_;
+  std::atomic<bool> changed_{true};
 };
 
 }

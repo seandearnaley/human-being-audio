@@ -17,9 +17,9 @@ PhraseOverrides OverrideStore::get() const {
     return overrides_;
 }
 
-void OverrideStore::writeToState() {
-    if (overrides_.hasAny())
-        state_.state.setProperty(kOverridesProp, toJuce(serialiseOverrides(overrides_)), nullptr);
+void OverrideStore::writeToState(const PhraseOverrides& overrides) {
+    if (overrides.hasAny())
+        state_.state.setProperty(kOverridesProp, toJuce(serialiseOverrides(overrides)), nullptr);
     else
         state_.state.removeProperty(kOverridesProp, nullptr);
 }
@@ -29,7 +29,7 @@ void OverrideStore::set(const PhraseOverrides& overrides) {
         const juce::SpinLock::ScopedLockType scoped(lock_);
         overrides_ = overrides;
     }
-    writeToState();
+    writeToState(overrides);
     changed_.store(true, std::memory_order_release);
 }
 

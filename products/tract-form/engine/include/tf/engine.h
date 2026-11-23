@@ -53,6 +53,7 @@ public:
 
     void noteOn(int midiNote) noexcept TF_NONBLOCKING;
     void noteOff(int midiNote) noexcept TF_NONBLOCKING;
+    void sustain(bool down) noexcept TF_NONBLOCKING;
     void allNotesOff() noexcept TF_NONBLOCKING;
     void pitchBend(float semitones) noexcept TF_NONBLOCKING;
     void setPitchBendRange(float semitones) noexcept TF_NONBLOCKING;
@@ -71,6 +72,7 @@ public:
     // State of the last processed sample, for the interface.
     float currentHz() const noexcept TF_NONBLOCKING;
     bool gateOpen() const noexcept TF_NONBLOCKING;
+    int activeNote() const noexcept TF_NONBLOCKING;
     // Look-ahead limiter gain reduction, >= 0. It acts on the growl (the sub is
     // only limited if it alone exceeds the ceiling); this is the larger of the two.
     float gainReductionDb() const noexcept TF_NONBLOCKING;

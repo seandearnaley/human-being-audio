@@ -157,3 +157,32 @@ TEST_CASE("PoleField PluginModel supports Undo/Redo and A/B compare across param
     CHECK(model.get(pf::ParamId::morphX) == Catch::Approx(0.88f).margin(1e-3f));
     CHECK(model.imprint().active);
 }
+
+TEST_CASE("PoleField preset load clears stale imprint and oversized mono blocks render cleanly", "[plugin]") {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    pf::PluginProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+
+    pf::ImprintData imp;
+    imp.active = true;
+    imp.corner = pf::cubeAt(1).corners[2];
+    proc.imprint.set(imp, "StaleImprint");
+    REQUIRE(proc.imprint.get().active);
+
+    proc.presets.load(0);
+    CHECK_FALSE(proc.imprint.get().active);
+
+    // Oversized mono block (> 4096 samples) chunks safely instead of clearing to silence.
+    juce::AudioBuffer<float> mono(1, 5000);
+    for (int i = 0; i < 5000; ++i)
+        mono.setSample(0, i, 0.35f * std::sin(2.0f * 3.14159265f * 220.0f * static_cast<float>(i) / 48000.0f));
+    juce::MidiBuffer midi;
+    proc.processBlock(mono, midi);
+    float peak = 0.0f;
+    for (int i = 0; i < 5000; ++i) {
+        REQUIRE(std::isfinite(mono.getSample(0, i)));
+        peak = std::max(peak, std::abs(mono.getSample(0, i)));
+    }
+    CHECK(peak > 0.05f);
+}

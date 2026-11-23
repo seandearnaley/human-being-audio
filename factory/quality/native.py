@@ -60,7 +60,7 @@ def lint_inputs(product, sources, changes):
 
 
 def changed_files(base):
-    if not base:
+    if not base or set(base) == {"0"}:
         return None
     output = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", base, "HEAD"], cwd=ROOT)
     return [os.fsdecode(p) for p in output.split(b"\0") if p]

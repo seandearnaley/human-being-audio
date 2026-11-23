@@ -29,6 +29,17 @@ class AuditionSynth {
         gainCoef_ = hba::dsp::onePoleCoef(0.012, 1.0 / fs_);
         bendCoef_ = hba::dsp::onePoleCoef(0.006, 1.0 / fs_);
         qCoef_ = hba::dsp::onePoleCoef(0.010, 1.0 / fs_);
+        atkPluck_ = hba::dsp::onePoleCoef(0.0015, 1.0 / fs_);
+        relPluck_ = hba::dsp::onePoleCoef(0.035, 1.0 / fs_);
+        atkStd_ = hba::dsp::onePoleCoef(0.004, 1.0 / fs_);
+        relStd_ = hba::dsp::onePoleCoef(0.024, 1.0 / fs_);
+        pluckDecay_ = std::exp(-1.0 / (0.095 * fs_));
+        kickPitchDecay_ = std::exp(-1.0 / (0.025 * fs_));
+        kickEnvDecay_ = std::exp(-1.0 / (0.11 * fs_));
+        openHatDecay_ = std::exp(-1.0 / (0.09 * fs_));
+        shortDrumDecay_ = std::exp(-1.0 / (0.045 * fs_));
+        hatCoefs_ = hba::dsp::SvfCoefs::make(6800.0, 1.4, fs_);
+        snareCoefs_ = hba::dsp::SvfCoefs::make(1800.0, 1.4, fs_);
         reset();
     }
 
@@ -37,6 +48,7 @@ class AuditionSynth {
             v.reset();
         drumEnv_ = 0.0;
         drumPitch_ = 160.0;
+        drumPhase_ = 0.0;
         drumMode_ = false;
         drumIsKick_ = true;
         drumIsHat_ = false;
@@ -51,17 +63,25 @@ class AuditionSynth {
         ageCounter_ = 0;
     }
 
-    void noteOn(int channel, int note, int velocity, bool isDrum) noexcept CL_NONBLOCKING {
+    void noteOn(int channel, int note, int velocity, bool useKit, bool isDrumMode = false) noexcept CL_NONBLOCKING {
         const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
-        drumMode_ = isDrum;
-        if (isDrum) {
+        drumMode_ = useKit;
+        if (useKit) {
             drumVel_ = v;
             drumEnv_ = 1.0;
-            drumIsKick_ = (note == 36);
-            drumIsHat_ = (note == 42 || note == 46);
-            drumPitch_ = drumIsKick_ ? 165.0 : (note == 38 ? 220.0 : 340.0);
-            drumDecay_ = drumIsKick_ ? std::exp(-1.0 / (0.11 * fs_))
-                                     : (note == 46 ? std::exp(-1.0 / (0.09 * fs_)) : std::exp(-1.0 / (0.045 * fs_)));
+            drumPhase_ = 0.0;
+            if (isDrumMode) {
+                drumIsKick_ = (note == 36);
+                drumIsHat_ = (note == 42 || note == 46);
+                drumPitch_ = drumIsKick_ ? 165.0 : (note == 38 ? 205.0 : 320.0);
+                drumDecay_ = drumIsKick_ ? kickEnvDecay_ : (note == 46 ? openHatDecay_ : shortDrumDecay_);
+            } else {
+                // Allow Tone: Kit in Mono/MPE modes to articulate melodic pitches as Kick/Snare/Hat/Perc.
+                drumIsKick_ = (note < 46);
+                drumIsHat_ = (note >= 60);
+                drumPitch_ = drumIsKick_ ? 165.0 : (drumIsHat_ ? 340.0 : 210.0);
+                drumDecay_ = drumIsKick_ ? kickEnvDecay_ : shortDrumDecay_;
+            }
             return;
         }
 
@@ -153,15 +173,22 @@ class AuditionSynth {
                 noiseState_ = noiseState_ * 1664525U + 1013904223U;
                 const double noise = (static_cast<double>(noiseState_) / 2147483648.0) - 1.0;
                 if (drumIsKick_) {
-                    drumPitch_ = 46.0 + (drumPitch_ - 46.0) * std::exp(-1.0 / (0.025 * fs_));
-                    voices_[0].subPhase += drumPitch_ / fs_;
-                    if (voices_[0].subPhase >= 1.0)
-                        voices_[0].subPhase -= 1.0;
-                    sample = std::sin(6.283185307179586 * voices_[0].subPhase) * drumEnv_ * drumVel_ * 1.1;
+                    drumPitch_ = 46.0 + (drumPitch_ - 46.0) * kickPitchDecay_;
+                    drumPhase_ += drumPitch_ / fs_;
+                    if (drumPhase_ >= 1.0)
+                        drumPhase_ -= 1.0;
+                    sample = std::sin(6.283185307179586 * drumPhase_) * drumEnv_ * drumVel_ * 1.1;
+                } else if (drumIsHat_) {
+                    const double f = drumFilter_.highpass(hatCoefs_, noise);
+                    sample = f * drumEnv_ * drumVel_ * 0.85;
                 } else {
-                    const auto c = hba::dsp::SvfCoefs::make(drumIsHat_ ? 6800.0 : 1800.0, 1.4, fs_);
-                    const double f = drumIsHat_ ? drumFilter_.highpass(c, noise) : drumFilter_.bandpass(c, noise);
-                    sample = f * drumEnv_ * drumVel_ * 0.9;
+                    // Snare / perc: tonal pitch body blended with bandpass noise snap.
+                    drumPhase_ += drumPitch_ / fs_;
+                    if (drumPhase_ >= 1.0)
+                        drumPhase_ -= 1.0;
+                    const double body = std::sin(6.283185307179586 * drumPhase_) * drumEnv_ * drumEnv_;
+                    const double snap = drumFilter_.bandpass(snareCoefs_, noise);
+                    sample = (0.45 * body + 0.65 * snap) * drumEnv_ * drumVel_;
                 }
                 drumEnv_ *= drumDecay_;
             }
@@ -173,9 +200,9 @@ class AuditionSynth {
 
         const double cutoff = cutoffSmooth_.step(cutoffTarget_, cutoffCoef_);
         const double q = qSmooth_.step(qTarget_, qCoef_);
-        const double atk = 1.0 - std::exp(-1.0 / ((tone == AuditionTone::pluck ? 0.0015 : 0.004) * fs_));
-        const double rel = 1.0 - std::exp(-1.0 / ((tone == AuditionTone::pluck ? 0.035 : 0.024) * fs_));
-        const double pluckDecay = std::exp(-1.0 / (0.095 * fs_));
+        const double atk = tone == AuditionTone::pluck ? atkPluck_ : atkStd_;
+        const double rel = tone == AuditionTone::pluck ? relPluck_ : relStd_;
+        const auto reeseCoefs = hba::dsp::SvfCoefs::make(std::min(cutoff, 0.42 * fs_), q, fs_);
 
         double sumL = 0.0;
         double sumR = 0.0;
@@ -188,7 +215,7 @@ class AuditionSynth {
                 continue;
 
             v.env += ((v.gate ? 1.0 : 0.0) - v.env) * (v.gate ? atk : rel);
-            v.pluckEnv *= pluckDecay;
+            v.pluckEnv *= pluckDecay_;
 
             const double bend = v.bendSmooth.step(channelBend_[static_cast<std::size_t>(v.channel - 1)], bendCoef_);
             const double freq = 440.0 * std::pow(2.0, (static_cast<double>(v.note) + bend - 69.0) / 12.0);
@@ -224,13 +251,12 @@ class AuditionSynth {
                 voiceL = body * amp * (1.0 - pan * 0.5);
                 voiceR = body * amp * (1.0 + pan * 0.5);
             } else {
-                // Reese: dual detuned saws into ADAA1 Tanh + resonant SVF + clean mono sub.
+                // Reese: dual detuned saws into ADAA1 Tanh + resonant stereo SVF + clean mono sub.
                 const double sawA = 2.0 * v.phase - 1.0;
                 const double sawB = 2.0 * v.detPhase - 1.0;
                 const double sub = std::sin(6.283185307179586 * v.subPhase);
-                const auto coefs = hba::dsp::SvfCoefs::make(std::min(cutoff, 0.42 * fs_), q, fs_);
-                const double growl = v.filter.lowpass(coefs, v.shaper.process(0.55 * (sawA + sawB) * drive_));
-                const double side = (sawA - sawB) * 0.16;
+                const double growl = v.filter.lowpass(reeseCoefs, v.shaper.process(0.55 * (sawA + sawB) * drive_));
+                const double side = v.sideFilter.lowpass(reeseCoefs, (sawA - sawB) * 0.22);
                 const double amp = v.env * v.vel;
                 voiceL = (0.46 * sub + 0.54 * (growl + side)) * amp;
                 voiceR = (0.46 * sub + 0.54 * (growl - side)) * amp;
@@ -258,6 +284,7 @@ class AuditionSynth {
         std::uint64_t age = 0;
         hba::dsp::Smoother bendSmooth{};
         hba::dsp::SvfState filter{};
+        hba::dsp::SvfState sideFilter{};
         hba::dsp::Adaa1<hba::dsp::TanhShaper> shaper{};
 
         void reset() noexcept CL_NONBLOCKING {
@@ -267,6 +294,7 @@ class AuditionSynth {
             age = 0;
             bendSmooth.snap(0.0);
             filter.reset();
+            sideFilter.reset();
             shaper.reset();
         }
     };
@@ -276,6 +304,15 @@ class AuditionSynth {
     double gainCoef_ = 0.002;
     double bendCoef_ = 0.004;
     double qCoef_ = 0.003;
+    double atkPluck_ = 0.014;
+    double relPluck_ = 0.0006;
+    double atkStd_ = 0.005;
+    double relStd_ = 0.0009;
+    double pluckDecay_ = 0.9998;
+    double kickPitchDecay_ = 0.999;
+    double kickEnvDecay_ = 0.9998;
+    double openHatDecay_ = 0.9997;
+    double shortDrumDecay_ = 0.9995;
     double cutoffTarget_ = 900.0;
     double qTarget_ = 1.8;
     double drive_ = 1.8;
@@ -290,6 +327,7 @@ class AuditionSynth {
     double drumEnv_ = 0.0;
     double drumVel_ = 0.8;
     double drumPitch_ = 160.0;
+    double drumPhase_ = 0.0;
     double drumDecay_ = 0.999;
     std::uint32_t noiseState_ = 0x12345678U;
 
@@ -297,6 +335,8 @@ class AuditionSynth {
     hba::dsp::Smoother gainSmooth_{};
     hba::dsp::Smoother qSmooth_{};
     hba::dsp::SvfState drumFilter_{};
+    hba::dsp::SvfCoefs hatCoefs_{};
+    hba::dsp::SvfCoefs snareCoefs_{};
 };
 
 } // namespace cl

@@ -49,7 +49,8 @@ int main(int argc, char** argv) {
         buffer.clear();
         processor.processBlock(buffer, midi);
         // Read the analysis as the interface would, so the queue never overflows.
-        if (i % 2 == 0) model.visuals();
+        if (i % 2 == 0)
+            model.refreshVisuals();
     }
 
     tf::ui::Editor editor(model);

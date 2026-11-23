@@ -63,6 +63,6 @@ private:
     std::uint32_t controlFrames = 96, controlRemaining = 0;
     std::uint32_t fadeFrames = 2400, fadePosition = 0;
     std::size_t active = 0;
-    bool prepared = false, fading = false, validBank = false;
+    bool prepared = false, fading = false, validBank = false, bankQuiet = true;
 };
 } // namespace livecut::engine

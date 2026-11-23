@@ -46,7 +46,7 @@ public:
                 button_.setAccent(colour::textDim);
                 break;
             case ResampleState::ready:
-                button_.setLabel("Drag into Live");
+                button_.setLabel("Drag WAV");
                 button_.setAccent(colour::growl);
                 break;
         }
