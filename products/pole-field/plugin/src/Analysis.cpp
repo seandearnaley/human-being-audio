@@ -106,7 +106,8 @@ void Analysis::updateSpectrum(ui::Visuals& visuals, double sampleRate, float sec
     fft_.performFrequencyOnlyForwardTransform(fftBuffer_.data());
 
     constexpr float scale = 4.0f / kFftSize;
-    const double binHz = sampleRate / kFftSize;
+    const double safeSr = sampleRate > 1000.0 ? sampleRate : 48000.0;
+    const double binHz = safeSr / kFftSize;
     const int lastBin = kFftSize / 2 - 1;
     const float fall = kSpectrumFallDbPerSecond * seconds;
 

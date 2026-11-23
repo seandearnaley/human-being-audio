@@ -930,3 +930,28 @@ TEST_CASE("MIDI expression (CC1, CC74, aftertouch, RPN bend range) modulates cle
     render(e, s, {}, 4800);
     CHECK(semitones(e.currentHz(), noteHz(45)) == Catch::Approx(2.0).margin(1e-2));
 }
+
+TEST_CASE("Idle modulation state refreshes cleanly and CC64 Sustain holds monophonic notes", "[engine]") {
+    Engine e;
+    e.prepare(48000.0, 256, 4);
+    Params p = staticPatch();
+    p[ParamId::drive] = 0.2f;
+    std::array<float, 256> l{}, r{};
+
+    // Idle block refreshes effectiveState to match current parameter values.
+    e.process(p, {174.0, 0.0, false}, l.data(), r.data(), 256);
+    CHECK(e.effectiveState().drive == Catch::Approx(0.2f).margin(1e-3f));
+    p[ParamId::drive] = 0.85f;
+    e.process(p, {174.0, 0.0, false}, l.data(), r.data(), 256);
+    CHECK(e.effectiveState().drive == Catch::Approx(0.85f).margin(1e-3f));
+
+    // CC64 Sustain keeps gate open after key release until pedal up.
+    e.sustain(true);
+    e.noteOn(33);
+    e.noteOff(33);
+    e.process(p, {174.0, 0.0, false}, l.data(), r.data(), 256);
+    CHECK(e.gateOpen());
+    CHECK(e.activeNote() == 33);
+    e.sustain(false);
+    CHECK_FALSE(e.gateOpen());
+}

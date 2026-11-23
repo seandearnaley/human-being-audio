@@ -9,6 +9,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <memory>
 
 namespace tf {
 
@@ -22,6 +23,7 @@ public:
     void set(ParamId id, float real) override;
     void end(ParamId id) override;
 
+    void refreshVisuals() override;
     const ui::Visuals& visuals() override;
 
     Curve laneCurve(int lane) const override;
@@ -65,6 +67,7 @@ private:
   hba::studio::History<Snapshot> history_;
   bool applyingSnapshot_ = false;
   juce::int64 lastUpdateTicks_ = 0;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   std::unique_ptr<juce::AlertWindow> saveDialog_;
   juce::Component* dragSource_ = nullptr;
 };

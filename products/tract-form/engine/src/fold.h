@@ -100,6 +100,8 @@ public:
         if (mix < 1.0 && from != to) {
             const double wetFrom = tickModel(from, u) - shape(from, offsetCentroid);
             wet = mix * wet + (1.0 - mix) * wetFrom;
+        } else {
+            activeFrom_ = activeTo_;
         }
 
         u2_ = u1_;

@@ -223,6 +223,8 @@ struct Engine::Impl {
 
     // Notes and gate.
     NoteStack notes;
+    NoteStack physicalNotes;
+    bool sustainDown = false;
     Glide glide;
     Gate gate;
     DelayLine<double> gateDelay;
@@ -274,15 +276,15 @@ struct Engine::Impl {
         decSub.prepare(factor);
         decL.prepare(factor);
         decR.prepare(factor);
-        constexpr int kFoldTargetRate = 16;
-        localSub.prepare(factor, kFoldTargetRate);
-        localA.prepare(factor, kFoldTargetRate);
-        localB.prepare(factor, kFoldTargetRate);
+        const int foldTargetRate = effectiveOversampling(sampleRate, 16);
+        localSub.prepare(factor, foldTargetRate);
+        localA.prepare(factor, foldTargetRate);
+        localB.prepare(factor, foldTargetRate);
         clip2xL.prepare();
         clip2xR.prepare();
         clip2xSub.prepare();
         clip2xMaster.prepare();
-        decimatorDelayExact = measureDecimatorDelay(factor, kFoldTargetRate) + measureClipTripDelay();
+        decimatorDelayExact = measureDecimatorDelay(factor, foldTargetRate) + measureClipTripDelay();
         decimatorDelay = static_cast<int>(std::lround(decimatorDelayExact));
 
         feedback.prepare(static_cast<int>(std::ceil(kMaxFeedbackDelaySeconds * fo)));
@@ -387,6 +389,8 @@ struct Engine::Impl {
         resetDsp();
         gate.reset();
         notes.clear();
+        physicalNotes.clear();
+        sustainDown = false;
         pendingNote = -1;
         phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
         for (auto& s : smooth) s.reset();
@@ -407,6 +411,7 @@ struct Engine::Impl {
         wasPlaying = false;
         sinceAnchor = sinceNoteStart = 0;
         grDb = 0.0f;
+        effective = EffectiveState{};
     }
 
     int latency() const noexcept TF_NONBLOCKING { return decimatorDelay + limiter.latency(); }
@@ -446,6 +451,7 @@ struct Engine::Impl {
 
     void noteOn(int note) noexcept TF_NONBLOCKING {
         note = std::clamp(note, 0, 127);
+        physicalNotes.push(note);
         const bool legato = !notes.empty();
         notes.push(note);
         if (legato && pendingNote < 0) {
@@ -456,6 +462,10 @@ struct Engine::Impl {
     }
 
     void noteOff(int note) noexcept TF_NONBLOCKING {
+        note = std::clamp(note, 0, 127);
+        physicalNotes.remove(note);
+        if (sustainDown)
+            return;
         const bool wasTop = notes.top() == note;
         if (!notes.remove(note)) return;
         if (notes.empty()) {
@@ -467,8 +477,31 @@ struct Engine::Impl {
         }
     }
 
+    void sustain(bool down) noexcept TF_NONBLOCKING {
+        if (down == sustainDown)
+            return;
+        sustainDown = down;
+        if (sustainDown)
+            return;
+        const int prevTop = notes.top();
+        notes = physicalNotes;
+        if (notes.empty()) {
+            if (pendingNote >= 0)
+                pendingNote = -1;
+            else
+                gate.close();
+        } else if (notes.top() != prevTop) {
+            if (pendingNote >= 0)
+                pendingNote = notes.top();
+            else
+                glide.glideTo(notes.top(), glideMs * 1e-3 * fs);
+        }
+    }
+
     void allNotesOff() noexcept TF_NONBLOCKING {
         notes.clear();
+        physicalNotes.clear();
+        sustainDown = false;
         pendingNote = -1;
         if (gate.stage() != Gate::Stage::fade) gate.close();
     }
@@ -909,6 +942,7 @@ struct Engine::Impl {
 
         int n = 0;
         if (!idle) {
+            double blockMinLimGain = 1.0;
             for (; n < numSamples; ++n) {
                 if (countdown == 0) {
                     controlTick(p);
@@ -1013,6 +1047,7 @@ struct Engine::Impl {
                 double subL = subGated, subR = subGated;
                 std::array<double, 1> subDelayed { masterTap };
                 subLimiter.process(subL, subR, subDelayed, ceilingLin, base[limitAmt].value);
+                blockMinLimGain = std::min(blockMinLimGain, std::min(limiter.gain(), subLimiter.gain()));
                 outL += subL;
                 outR += subR;
                 outputClip(outL, outR, ceilingLin);
@@ -1036,7 +1071,7 @@ struct Engine::Impl {
                     silentCount = 0;
                 }
             }
-            grDb = static_cast<float>(-gainToDb(std::min(limiter.gain(), subLimiter.gain())));
+            grDb = static_cast<float>(-gainToDb(blockMinLimGain));
         }
         clipDb = static_cast<float>(clipMaxDb);
         clipMeanDb = static_cast<float>(clipSumDb / numSamples);
@@ -1054,6 +1089,35 @@ struct Engine::Impl {
             for (; n < numSamples; ++n) {
                 if (countdown == 0) {
                     laneTick(p, lanePpqAhead(controlBase), tickCoef);
+                    const double mw = smooth[modWheel_].step(modWheelTarget, tickCoef);
+                    const double ti = smooth[timbreOffset_].step(timbreOffsetTarget, tickCoef);
+                    const double at = smooth[aftertouch_].step(aftertouchTarget, tickCoef);
+                    effective.coupling = static_cast<float>(std::clamp(
+                        moved(LaneTarget::coupling, static_cast<double>(p[ParamId::coupling]), 0.0, 1.0) + 0.35 * at,
+                        0.0, 1.0));
+                    effective.beat =
+                        static_cast<float>(moved(LaneTarget::beat, static_cast<double>(p[ParamId::beat]), 0.0, 1.0));
+                    effective.reach = static_cast<float>(
+                        moved(LaneTarget::reach,
+                              static_cast<double>(
+                                  std::clamp(p[ParamId::reach], spec(ParamId::reach).min, spec(ParamId::reach).max)),
+                              spec(ParamId::reach).min, spec(ParamId::reach).max));
+                    effective.morph = static_cast<float>(std::clamp(
+                        moved(LaneTarget::morph, static_cast<double>(p[ParamId::morph]), 0.0, 1.0) + ti, 0.0, 1.0));
+                    effective.drive = static_cast<float>(std::clamp(
+                        moved(LaneTarget::drive, static_cast<double>(p[ParamId::drive]), 0.0, 1.0) + 0.35 * mw, 0.0,
+                        1.0));
+                    double sc = moved(LaneTarget::sculpt,
+                                      static_cast<double>(std::clamp(p[ParamId::sculpt], spec(ParamId::sculpt).min,
+                                                                     spec(ParamId::sculpt).max)),
+                                      spec(ParamId::sculpt).min, spec(ParamId::sculpt).max);
+                    if (at > 0.0)
+                        sc = std::clamp(sc * std::exp2(at), static_cast<double>(spec(ParamId::sculpt).min),
+                                        static_cast<double>(spec(ParamId::sculpt).max));
+                    effective.sculpt = static_cast<float>(sc);
+                    effective.width =
+                        static_cast<float>(moved(LaneTarget::width, static_cast<double>(p[ParamId::width]), 0.0, 1.0));
+                    effective.active = true;
                     countdown = controlBase;
                 }
                 --countdown;
@@ -1076,6 +1140,7 @@ int Engine::oversamplingFactor() const noexcept TF_NONBLOCKING { return impl_->f
 
 void Engine::noteOn(int midiNote) noexcept TF_NONBLOCKING { impl_->noteOn(midiNote); }
 void Engine::noteOff(int midiNote) noexcept TF_NONBLOCKING { impl_->noteOff(midiNote); }
+void Engine::sustain(bool down) noexcept TF_NONBLOCKING { impl_->sustain(down); }
 void Engine::allNotesOff() noexcept TF_NONBLOCKING { impl_->allNotesOff(); }
 void Engine::setLaneCurves(const LaneCurves& curves) noexcept TF_NONBLOCKING { impl_->laneCurves = curves; }
 
@@ -1104,6 +1169,7 @@ void Engine::process(const Params& params, const Transport& transport, float* le
 
 float Engine::currentHz() const noexcept TF_NONBLOCKING { return impl_->hz; }
 bool Engine::gateOpen() const noexcept TF_NONBLOCKING { return !impl_->notes.empty(); }
+int Engine::activeNote() const noexcept TF_NONBLOCKING { return impl_->notes.top(); }
 float Engine::gainReductionDb() const noexcept TF_NONBLOCKING { return std::max(0.0f, impl_->grDb); }
 double Engine::lanePpq() const noexcept TF_NONBLOCKING { return impl_->uiPpq; }
 float Engine::growlClipDb() const noexcept TF_NONBLOCKING { return impl_->clipDb; }

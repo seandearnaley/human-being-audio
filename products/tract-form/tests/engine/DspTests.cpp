@@ -434,3 +434,51 @@ TEST_CASE("the feedback delay interpolates fractional delays", "[dsp][feedback]"
     d.clear();
     CHECK(d.read(10.0) == 0.0);
 }
+
+TEST_CASE("Folder A->B->A switch after crossfade settles stays click-free", "[dsp][fold]") {
+    Folder folder;
+    folder.prepare(48000.0 * 16.0);
+    double prev = 0.0;
+    double maxJump = 0.0;
+    int sampleIdx = 0;
+    const auto run = [&](FoldType from, FoldType to, double mix, int n, bool track) {
+        for (int i = 0; i < n; ++i) {
+            const double x = 0.65 * std::sin(2.0 * kPi * 220.0 * static_cast<double>(sampleIdx++) / (48000.0 * 16.0));
+            const double y = folder.process(x, 6.0, 0.2, 1.0, from, to, mix);
+            REQUIRE(std::isfinite(y));
+            if (track)
+                maxJump = std::max(maxJump, std::abs(y - prev));
+            prev = y;
+        }
+    };
+    run(FoldType::fold, FoldType::fold, 1.0, 2048, false);
+    run(FoldType::fold, FoldType::tube, 0.5, 256, false);
+    run(FoldType::fold, FoldType::tube, 1.0, 2048, false);
+    // Switching back to Fold must re-prime Fold instead of using stale state from 2048 samples ago.
+    for (int i = 0; i <= 100; ++i)
+        run(FoldType::tube, FoldType::fold, static_cast<double>(i) / 100.0, 1, true);
+    CHECK(maxJump < 0.05);
+}
+
+TEST_CASE("Squash ramping amount to zero has no 1-sample gain pop", "[dsp][squash]") {
+    Squash squash;
+    squash.prepare(48000.0);
+    for (int i = 0; i < 4800; ++i) {
+        double l = 0.7 * std::sin(2.0 * kPi * 440.0 * i / 48000.0);
+        double r = l;
+        squash.process(l, r, 0.8);
+    }
+    double prevMakeup = squash.makeupDb();
+    double maxMakeupStep = 0.0;
+    for (int i = 0; i <= 500; ++i) {
+        const double amt = 0.8 * (1.0 - static_cast<double>(i) / 500.0);
+        double l = 0.7 * std::sin(2.0 * kPi * 440.0 * (4800 + i) / 48000.0);
+        double r = l;
+        squash.process(l, r, amt);
+        const double m = squash.makeupDb();
+        maxMakeupStep = std::max(maxMakeupStep, std::abs(m - prevMakeup));
+        prevMakeup = m;
+    }
+    CHECK(squash.makeupDb() == 0.0);
+    CHECK(maxMakeupStep < 0.5);
+}

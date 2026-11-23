@@ -21,7 +21,7 @@ class OverrideStore {
     bool pull(PhraseOverrides& destination) noexcept;
 
   private:
-    void writeToState();
+    void writeToState(const PhraseOverrides& overrides);
 
     juce::AudioProcessorValueTreeState& state_;
     mutable juce::SpinLock lock_;

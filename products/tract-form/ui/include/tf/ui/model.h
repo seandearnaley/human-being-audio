@@ -71,6 +71,7 @@ public:
     virtual void set(ParamId id, float real) = 0;
     virtual void end(ParamId id) = 0;
 
+    virtual void refreshVisuals() {}
     virtual const Visuals& visuals() = 0;
 
     // A lane's drawn curve, played when its shape is Custom.

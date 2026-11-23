@@ -128,6 +128,7 @@ void LivecutAudioProcessor::prepareToPlay (double sampleRate, int)
             spectralMix.reset (sampleRate, 0.002);
             spectralMix.setCurrentAndTargetValue (effective.spectralMix);
             processingRunning = false;
+            standalonePpq = 0.0;
             haveDelayedDisplay = false;
             stream = std::move (prepared);
             publishStopHandle ();
@@ -471,6 +472,15 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         input.timing = sync->timing;
         input.position = sync->position;
         input.ppq = *info->getPpqPosition ();
+    } else if (wrapperType == wrapperType_Standalone && processingSampleRate > 0.0) {
+        constexpr double standaloneBpm = 168.0;
+        constexpr double standaloneBeatsPerBar = 4.0;
+        const auto bar = static_cast<std::int64_t>(std::floor(standalonePpq / standaloneBeatsPerBar));
+        input.running = true;
+        input.timing = {standaloneBpm, standaloneBeatsPerBar};
+        input.position = {bar, standalonePpq - static_cast<double>(bar) * standaloneBeatsPerBar};
+        input.ppq = standalonePpq;
+        standalonePpq += (standaloneBpm / 60.0 / processingSampleRate) * static_cast<double>(frames);
     }
     if (!resources.appendContext (input, frames, transportEpochCounter))
     {

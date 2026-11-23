@@ -21,13 +21,13 @@ public:
     bool pull(ImprintData& destination) noexcept;
 
 private:
-    void writeToState();
+  void writeToState(const ImprintData& imprint, const std::string& label);
 
-    juce::AudioProcessorValueTreeState& state_;
-    mutable juce::SpinLock lock_;
-    ImprintData imprint_ {};
-    std::string label_ { "Imprint WAV" };
-    std::atomic<bool> changed_ { true };
+  juce::AudioProcessorValueTreeState& state_;
+  mutable juce::SpinLock lock_;
+  ImprintData imprint_{};
+  std::string label_{"Imprint WAV"};
+  std::atomic<bool> changed_{true};
 };
 
 }

@@ -94,8 +94,9 @@ TEST_CASE("the interface sees what is playing") {
 
     const auto on = juce::MidiMessage::noteOn(1, 29, 1.0f);
     host.run(4, &on);
-    model.visuals();  // drain the start-up
+    model.refreshVisuals(); // drain the start-up
     host.run(40);
+    model.refreshVisuals();
     const auto& visuals = model.visuals();
 
     CHECK(visuals.gate);
@@ -381,4 +382,21 @@ TEST_CASE("PluginModel supports Undo/Redo and A/B compare across params and curv
     model.toggleAB();
     CHECK(model.isSlotB());
     CHECK(model.get(ParamId::coupling) == Approx(0.90f).margin(1e-3f));
+}
+
+TEST_CASE("PluginProcessor chunks oversized host blocks cleanly and filters Poly AT to active note") {
+    Host host;
+    juce::AudioBuffer<float> big(2, 5000);
+    big.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 29, 1.0f), 0);
+    // Poly AT for a DIFFERENT note (40 != 29) should not push coupling above default.
+    midi.addEvent(juce::MidiMessage::aftertouchChange(1, 40, 127), 100);
+    host.processor.processBlock(big, midi);
+    CHECK(big.getMagnitude(0, 5000) > 0.1f);
+
+    PluginModel model(host.processor);
+    model.refreshVisuals();
+    CHECK(model.visuals().gate);
+    CHECK(model.visuals().effCoupling == Approx(host.processor.currentParams()[ParamId::coupling]).margin(0.05f));
 }

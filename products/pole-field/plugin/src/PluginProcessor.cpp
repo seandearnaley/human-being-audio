@@ -28,10 +28,10 @@ PluginProcessor::~PluginProcessor() {
 }
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-    sampleRate_ = sampleRate;
+    sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
-    monoScratchR_.assign(static_cast<std::size_t>(blockSize_), 0.0f);
-    analysis.setSampleRate(sampleRate);
+    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
+    analysis.setSampleRate(sampleRate_);
     prepareEngine();
 }
 
@@ -80,7 +80,10 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     } else if (message.isNoteOff()) {
         engine_.noteOff(message.getNoteNumber());
     } else if (message.isPitchWheel()) {
-        engine_.pitchBend(pitchBendRangeSt_ * static_cast<float>(message.getPitchWheelValue() - 8192) / 8192.0f);
+        const int centered = message.getPitchWheelValue() - 8192;
+        const float norm =
+            centered >= 0 ? static_cast<float>(centered) / 8191.0f : static_cast<float>(centered) / 8192.0f;
+        engine_.pitchBend(pitchBendRangeSt_ * norm);
     } else if (message.isController()) {
         const int ch = message.getChannel();
         const int cc = message.getControllerNumber();
@@ -124,15 +127,6 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (numSamples <= 0 || numChannels < 1) return;
 
     const bool isMono = numChannels == 1;
-    if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-        buffer.clear();
-        return;
-    }
-
-    float* left = buffer.getWritePointer(0);
-    float* right = isMono ? monoScratchR_.data() : buffer.getWritePointer(1);
-    if (isMono) std::copy_n(left, numSamples, right);
-
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
     if (imprint.pull(audioImprint_)) engine_.setImprint(audioImprint_);
@@ -142,9 +136,23 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const auto render = [&](int from, int to) {
         if (to <= from) return;
-        Transport transport = blockStart;
-        transport.ppq += quartersPerSample * from;
-        engine_.process(params, transport, left + from, right + from, to - from);
+        const int maxChunk = isMono ? static_cast<int>(monoScratchR_.size()) : (to - from);
+        int pos = from;
+        while (pos < to) {
+            const int chunk = std::min(maxChunk, to - pos);
+            float* left = buffer.getWritePointer(0) + pos;
+            float* right = isMono ? monoScratchR_.data() : (buffer.getWritePointer(1) + pos);
+            if (isMono)
+                std::copy_n(left, chunk, right);
+            Transport transport = blockStart;
+            transport.ppq += quartersPerSample * pos;
+            engine_.process(params, transport, left, right, chunk);
+            if (isMono) {
+                for (int i = 0; i < chunk; ++i)
+                    left[i] = 0.5f * (left[i] + right[i]);
+            }
+            pos += chunk;
+        }
     };
 
     int cursor = 0;
@@ -159,10 +167,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     midi.clear();
 
     if (isMono) {
-        for (int i = 0; i < numSamples; ++i) left[i] = 0.5f * (left[i] + right[i]);
+        const float* left = buffer.getReadPointer(0);
         analysis.push(left, left, numSamples);
     } else {
-        analysis.push(left, right, numSamples);
+        analysis.push(buffer.getReadPointer(0), buffer.getReadPointer(1), numSamples);
     }
 
     Analysis::Status status;

@@ -14,7 +14,7 @@ PluginProcessor::PluginProcessor()
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(1, samplesPerBlock)), 0.0f);
+    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, samplesPerBlock)), 0.0f);
     engine_.prepare(sampleRate_, samplesPerBlock);
     standalonePpq_ = 0.0;
 }
@@ -63,6 +63,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             engine_.inputNoteOn(msg.getNoteNumber(), msg.getVelocity());
         else if (msg.isNoteOff())
             engine_.inputNoteOff(msg.getNoteNumber());
+        else if (msg.isSustainPedalOn())
+            engine_.inputSustain(true);
+        else if (msg.isSustainPedalOff())
+            engine_.inputSustain(false);
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             engine_.inputAllNotesOff();
     }

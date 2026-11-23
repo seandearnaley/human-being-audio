@@ -56,6 +56,7 @@ public:
     virtual void set(ParamId id, float real) = 0;
     virtual void end(ParamId id) = 0;
 
+    virtual void refreshVisuals() {}
     virtual const Visuals& visuals() = 0;
 
     virtual Curve laneCurve(int lane) const = 0;

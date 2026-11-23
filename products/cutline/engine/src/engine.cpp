@@ -47,9 +47,12 @@ struct Engine::Impl {
     double sampleRate = 48000.0;
     LaneCurves curves = defaultLaneCurves();
     PhraseOverrides overrides{};
+    HeldNotes physicalHeld{};
     HeldNotes held{};
     HeldNotes latched{};
     HeldNotes lastEffectiveHeld{};
+    bool sustainDown = false;
+    bool wasLatch = false;
 
     PhrasePlan plan{};
     std::array<ActiveNote, kMaxActiveNotes> active{};
@@ -60,6 +63,7 @@ struct Engine::Impl {
     InputMode lastInputMode = InputMode::seed;
     bool mpeRpnSent = false;
     int lastMonoBendRangeSent = -1;
+    std::uint8_t nextMpeChannel = 2;
 
     // Deduplication state for continuous controllers (7-bit CC / 14-bit PB / 7-bit AT).
     std::array<int, 16> lastCc74{};
@@ -101,13 +105,17 @@ struct Engine::Impl {
     void reset() noexcept CL_NONBLOCKING {
         for (auto& slot : active)
             slot.active = false;
+        physicalHeld.clear();
         held.clear();
         latched.clear();
         lastEffectiveHeld.clear();
+        sustainDown = false;
+        wasLatch = false;
         wasPlaying = false;
         expectedNextPpq = 0.0;
         mpeRpnSent = false;
         lastMonoBendRangeSent = -1;
+        nextMpeChannel = 2;
         playheadBeats = 0.0;
         lastLanePpq = 0.0;
         lastPhraseIndex = 0;
@@ -123,7 +131,7 @@ struct Engine::Impl {
     }
 
     const HeldNotes& effectiveHeld(const Params& params) const noexcept CL_NONBLOCKING {
-        return (params.on(ParamId::latch) && held.count == 0) ? latched : held;
+        return params.on(ParamId::latch) ? latched : held;
     }
 
     void flushAllActive(MidiEventBuffer& outMidi, int sampleOffset) noexcept CL_NONBLOCKING {
@@ -174,11 +182,50 @@ struct Engine::Impl {
             compilePhrase(params, phraseIndex, h, plan, overrides);
     }
 
+    std::uint8_t allocFreeMpeChannel(MidiEventBuffer& outMidi, int offset) noexcept CL_NONBLOCKING {
+        for (int tries = 0; tries < 14; ++tries) {
+            const std::uint8_t cand = static_cast<std::uint8_t>(2 + ((nextMpeChannel - 2 + tries) % 14));
+            bool busy = false;
+            for (const auto& slot : active) {
+                if (slot.active && slot.channel == cand) {
+                    busy = true;
+                    break;
+                }
+            }
+            if (!busy) {
+                nextMpeChannel = static_cast<std::uint8_t>(2 + ((cand - 2 + 1) % 14));
+                return cand;
+            }
+        }
+        // All 14 member channels are busy: cleanly close the earliest-ending active MPE note and reuse its channel.
+        int victimIdx = -1;
+        for (int i = 0; i < kMaxActiveNotes; ++i) {
+            const auto& slot = active[static_cast<std::size_t>(i)];
+            if (slot.active && slot.channel >= 2 &&
+                (victimIdx < 0 || slot.absEndBeat < active[static_cast<std::size_t>(victimIdx)].absEndBeat)) {
+                victimIdx = i;
+            }
+        }
+        if (victimIdx >= 0) {
+            auto& victim = active[static_cast<std::size_t>(victimIdx)];
+            const std::uint8_t ch = victim.channel;
+            outMidi.pushCritical(MidiEvent::noteOff(offset, victim.channel, victim.note));
+            victim.active = false;
+            nextMpeChannel = static_cast<std::uint8_t>(2 + ((ch - 2 + 1) % 14));
+            return ch;
+        }
+        return 2;
+    }
+
     void triggerNote(const CompiledNote& note, double absStartBeat, double absEndBeat, int offset,
-                     MidiEventBuffer& outMidi, bool isDrum, int velBias) noexcept CL_NONBLOCKING {
+                     MidiEventBuffer& outMidi, const Params& params, OutputMode mode, double pbRangeSt,
+                     const std::array<float, kLaneCount>& sends, int velBias) noexcept CL_NONBLOCKING {
+        const bool isDrum = (mode == OutputMode::drum);
+        const std::uint8_t channel = (mode == OutputMode::mpe) ? allocFreeMpeChannel(outMidi, offset) : note.channel;
+
         // Never double-trigger the same (channel, note) without closing the prior note first.
         for (auto& slot : active) {
-            if (slot.active && slot.channel == note.channel && slot.note == note.noteNumber) {
+            if (slot.active && slot.channel == channel && slot.note == note.noteNumber) {
                 outMidi.pushCritical(MidiEvent::noteOff(offset, slot.channel, slot.note));
                 slot.active = false;
             }
@@ -205,24 +252,61 @@ struct Engine::Impl {
             victim.active = false;
         }
 
-        // Reset channel pitch bend cleanly right before attack if it drifted.
-        const auto chIdx = static_cast<std::size_t>(note.channel - 1);
-        if (!isDrum && lastBend[chIdx] != 8192) {
-            outMidi.push(MidiEvent::pitchBend(offset, note.channel, 8192, 1));
-            lastBend[chIdx] = 8192;
+        // MPE v1.0 & clean Mono attack: initialize per-note PB, CC74, and Channel Pressure BEFORE NoteOn (order=1).
+        const auto chIdx = static_cast<std::size_t>(channel - 1);
+        int initPb14 = 8192;
+        if (!isDrum) {
+            const double laneBendSt =
+                static_cast<double>(std::clamp(laneSum(params, sends, LaneTarget::pitchBend), -1.0f, 1.0f)) *
+                std::min(pbRangeSt, 12.0);
+            initPb14 = (mode == OutputMode::mpe) ? toPitchBend14(laneBendSt * 0.5, 48.0)
+                                                 : toPitchBend14(laneBendSt, pbRangeSt);
+            if (lastBend[chIdx] != initPb14) {
+                outMidi.push(MidiEvent::pitchBend(offset, channel, initPb14, 1));
+                lastBend[chIdx] = initPb14;
+            }
+            if (mode == OutputMode::mpe) {
+                bool hasCc74 = false;
+                bool hasAt = false;
+                for (int l = 0; l < kLaneCount; ++l) {
+                    if (!params.on(laneParam(l, LaneField::on)))
+                        continue;
+                    const auto t = laneTargetOf(params, l);
+                    if (t == LaneTarget::cc74Slide)
+                        hasCc74 = true;
+                    else if (t == LaneTarget::pressure)
+                        hasAt = true;
+                }
+                if (hasCc74) {
+                    const int v74 = toMidi7Bit(
+                        std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::cc74Slide)), -1.0, 1.0));
+                    if (lastCc74[chIdx] != v74) {
+                        if (outMidi.push(MidiEvent::controlChange(offset, channel, 74, v74, 1)))
+                            lastCc74[chIdx] = v74;
+                    }
+                }
+                if (hasAt) {
+                    const int vAt = toMidi7Bit(
+                        std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::pressure)), -1.0, 1.0));
+                    if (lastPressure[chIdx] != vAt) {
+                        if (outMidi.push(MidiEvent::channelPressure(offset, channel, vAt, 1)))
+                            lastPressure[chIdx] = vAt;
+                    }
+                }
+            }
         }
 
         const int velocity = std::clamp(static_cast<int>(note.velocity) + velBias, 1, 127);
-        outMidi.pushCritical(MidiEvent::noteOn(offset, note.channel, note.noteNumber, velocity));
+        outMidi.pushCritical(MidiEvent::noteOn(offset, channel, note.noteNumber, velocity));
 
         auto& slot = active[static_cast<std::size_t>(chosen)];
         slot.active = true;
-        slot.channel = note.channel;
+        slot.channel = channel;
         slot.note = note.noteNumber;
         slot.absStartBeat = absStartBeat;
         slot.absEndBeat = absEndBeat;
         slot.bendSemitones = note.bendSemitones;
-        slot.lastBend14 = 8192;
+        slot.lastBend14 = initPb14;
     }
 
     void emitContinuousAt(const Params& params, double tickBeat, int offset, MidiEventBuffer& outMidi, OutputMode mode,
@@ -317,7 +401,8 @@ struct Engine::Impl {
                 }
             } else {
                 // Mono Ch 1: follow most recently triggered active note's pitch bend + lane bend.
-                double noteBendSt = 0.0;
+                // When no note is held (release tail), hold the previous bend instead of snapping
+                // abruptly back to center; triggerNote resets bend cleanly right before the next attack.
                 const ActiveNote* newest = nullptr;
                 for (const auto& slot : active) {
                     if (slot.active && (newest == nullptr || slot.absStartBeat >= newest->absStartBeat))
@@ -326,15 +411,15 @@ struct Engine::Impl {
                 if (newest != nullptr) {
                     const double dur = std::max(1.0e-4, newest->absEndBeat - newest->absStartBeat);
                     const double frac = std::clamp((tickBeat - newest->absStartBeat) / dur, 0.0, 1.0);
-                    noteBendSt = static_cast<double>(newest->bendSemitones) * (frac * frac);
-                }
-                const int pb14 = toPitchBend14(noteBendSt + laneBendSt, pbRangeSt);
-                if (std::abs(pb14 - lastBend[0]) >= 16) {
-                    if (outMidi.push(MidiEvent::pitchBend(offset, 1, pb14))) {
-                        lastBend[0] = pb14;
-                        for (auto& slot : active) {
-                            if (slot.active)
-                                slot.lastBend14 = pb14;
+                    const double noteBendSt = static_cast<double>(newest->bendSemitones) * (frac * frac);
+                    const int pb14 = toPitchBend14(noteBendSt + laneBendSt, pbRangeSt);
+                    if (std::abs(pb14 - lastBend[0]) >= 16) {
+                        if (outMidi.push(MidiEvent::pitchBend(offset, 1, pb14))) {
+                            lastBend[0] = pb14;
+                            for (auto& slot : active) {
+                                if (slot.active)
+                                    slot.lastBend14 = pb14;
+                            }
                         }
                     }
                 }
@@ -357,6 +442,12 @@ struct Engine::Impl {
         const auto inputMode = static_cast<InputMode>(std::clamp(params.choice(ParamId::inputMode), 0, 2));
         const auto pbIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::bendRange), 0, 2));
         const double pbRangeSt = mode == OutputMode::mpe ? 48.0 : static_cast<double>(kBendRangeSemitones[pbIdx]);
+
+        // Clear latched chord when Latch is toggled OFF so re-enabling later never resurrects a stale chord.
+        const bool latchNow = params.on(ParamId::latch);
+        if (wasLatch && !latchNow)
+            latched = held;
+        wasLatch = latchNow;
 
         // Always keep current UI phrase plan up to date even while stopped.
         const double rawPpq = std::max(0.0, transport.ppq);
@@ -381,8 +472,14 @@ struct Engine::Impl {
             clearDedupe();
             mpeRpnSent = false;
             lastMonoBendRangeSent = -1;
+            nextMpeChannel = 2;
             lastOutputMode = mode;
             lastInputMode = inputMode;
+        }
+
+        // Releasing all keys in Chord Carve (Latch off) silences active notes cleanly.
+        if (inputMode == InputMode::chordCarve && effectiveHeld(params).count == 0) {
+            flushAllActive(outMidi, 0);
         }
 
         if (!transport.playing) {
@@ -396,8 +493,8 @@ struct Engine::Impl {
 
         // Detect transport start, loop wrap, or discontinuous jump.
         const double shiftBeats = static_cast<double>(params[ParamId::shiftMs]) * 1.0e-3 * (bpm / 60.0);
-        const double windowStart = std::max(0.0, transport.ppq - shiftBeats);
-        const double windowEnd = windowStart + static_cast<double>(numSamples) * beatsPerSample;
+        const double rawStart = transport.ppq - shiftBeats;
+        const double rawEnd = rawStart + static_cast<double>(numSamples) * beatsPerSample;
 
         if (!wasPlaying || transport.ppq < expectedNextPpq - 1.0e-4 ||
             std::abs(transport.ppq - expectedNextPpq) > 0.125) {
@@ -406,6 +503,17 @@ struct Engine::Impl {
         }
         wasPlaying = true;
         expectedNextPpq = transport.ppq + static_cast<double>(numSamples) * beatsPerSample;
+
+        // During DAW count-in/pre-roll or positive shiftMs delay before beat 0 arrives,
+        // wait cleanly instead of clamping windowStart to 0.0 and machine-gunning beat 0.
+        if (rawEnd <= 0.0) {
+            lastEventCount = outMidi.count;
+            renderAuditionAudio(params, outMidi, left, right, numSamples, mode == OutputMode::drum, pbRangeSt);
+            return;
+        }
+
+        const double windowStart = std::max(0.0, rawStart);
+        const double windowEnd = rawEnd;
 
         if (mode == OutputMode::mpe && !mpeRpnSent)
             emitMpeInit(outMidi, 0);
@@ -421,7 +529,7 @@ struct Engine::Impl {
         std::int64_t nextTickIdx = static_cast<std::int64_t>(std::ceil((windowStart - kEps) / tickBeats));
         double noteCursor = windowStart;
 
-        for (int iter = 0; iter < 512; ++iter) {
+        for (int iter = 0; iter < 2048; ++iter) {
             // 1. Earliest pending Note Off strictly before windowEnd
             int earliestOffSlot = -1;
             double earliestOffBeat = windowEnd;
@@ -477,26 +585,23 @@ struct Engine::Impl {
             if (earliestOffSlot >= 0 && earliestOffBeat <= nextNoteBeat + kEps &&
                 earliestOffBeat <= nextTickBeat + kEps) {
                 auto& slot = active[static_cast<std::size_t>(earliestOffSlot)];
-                const int offset = sampleOffsetOf(slot.absEndBeat, windowStart, beatsPerSample, numSamples);
+                const int offset = sampleOffsetOf(slot.absEndBeat, rawStart, beatsPerSample, numSamples);
                 outMidi.pushCritical(MidiEvent::noteOff(offset, slot.channel, slot.note));
                 slot.active = false;
             } else if (nextNoteIdx >= 0 && nextNoteBeat <= nextTickBeat + kEps) {
                 const CompiledNote note = plan.notes[static_cast<std::size_t>(nextNoteIdx)];
                 const double absEnd =
                     std::min(nextNotePEnd - 1.0e-4, nextNoteBeat + std::max(0.03, note.durationBeats));
-                const int offset = sampleOffsetOf(nextNoteBeat, windowStart, beatsPerSample, numSamples);
+                const int offset = sampleOffsetOf(nextNoteBeat, rawStart, beatsPerSample, numSamples);
 
-                std::array<float, kLaneCount> velSends{};
+                std::array<float, kLaneCount> sends{};
                 for (int l = 0; l < kLaneCount; ++l)
-                    velSends[static_cast<std::size_t>(l)] =
-                        static_cast<float>(laneSend(params, curves, l, nextNoteBeat));
-                const int velBias =
-                    static_cast<int>(std::lround(laneSum(params, velSends, LaneTarget::velocity) * 28.0f));
+                    sends[static_cast<std::size_t>(l)] = static_cast<float>(laneSend(params, curves, l, nextNoteBeat));
+                const int velBias = static_cast<int>(std::lround(laneSum(params, sends, LaneTarget::velocity) * 28.0f));
 
-                triggerNote(note, nextNoteBeat, absEnd, offset, outMidi, mode == OutputMode::drum, velBias);
+                triggerNote(note, nextNoteBeat, absEnd, offset, outMidi, params, mode, pbRangeSt, sends, velBias);
 
                 // Advance past simultaneous notes at the exact same beat (e.g., MPE chords) cleanly.
-                // Check if another note in `plan` starts at the exact same beat right after `nextNoteIdx`.
                 const std::int64_t pIdx = static_cast<std::int64_t>(std::floor(nextNoteBeat / phraseBeats));
                 const double pOrigin = static_cast<double>(pIdx) * phraseBeats;
                 for (int k = nextNoteIdx + 1; k < plan.noteCount; ++k) {
@@ -508,12 +613,12 @@ struct Engine::Impl {
                         break;
                     const double extraEnd =
                         std::min(nextNotePEnd - 1.0e-4, extraStart + std::max(0.03, extra.durationBeats));
-                    triggerNote(extra, extraStart, extraEnd, offset, outMidi, mode == OutputMode::drum, velBias);
+                    triggerNote(extra, extraStart, extraEnd, offset, outMidi, params, mode, pbRangeSt, sends, velBias);
                 }
                 noteCursor = nextNoteBeat + 2.0e-8;
             } else if (hasTick) {
                 if (nextTickBeat >= windowStart - kEps) {
-                    const int offset = sampleOffsetOf(nextTickBeat, windowStart, beatsPerSample, numSamples);
+                    const int offset = sampleOffsetOf(nextTickBeat, rawStart, beatsPerSample, numSamples);
                     emitContinuousAt(params, nextTickBeat, offset, outMidi, mode, pbRangeSt);
                 }
                 ++nextTickIdx;
@@ -554,6 +659,7 @@ struct Engine::Impl {
         const bool enabled = params.on(ParamId::audition);
         const float gainDb = params[ParamId::auditionGain];
         const auto tone = static_cast<AuditionTone>(std::clamp(params.choice(ParamId::auditionTone), 0, 3));
+        const bool useKit = isDrum || (tone == AuditionTone::kit);
 
         int evIdx = 0;
         for (int i = 0; i < numSamples; ++i) {
@@ -561,7 +667,7 @@ struct Engine::Impl {
                 const MidiEvent& ev = outMidi.events[static_cast<std::size_t>(evIdx++)];
                 const std::uint8_t status = ev.data[0] & 0xF0u;
                 if (ev.isNoteOn()) {
-                    audition.noteOn(ev.channel(), ev.noteNumber(), ev.data[2], isDrum);
+                    audition.noteOn(ev.channel(), ev.noteNumber(), ev.data[2], useKit, isDrum);
                 } else if (ev.isNoteOff()) {
                     audition.noteOff(ev.channel(), ev.noteNumber());
                 } else if (status == 0xE0u && ev.size == 3) {
@@ -591,13 +697,25 @@ void Engine::setOverrides(const PhraseOverrides& overrides) noexcept CL_NONBLOCK
 void Engine::inputNoteOn(int midiNote, int /*velocity*/) noexcept CL_NONBLOCKING {
     if (impl_->held.count == 0)
         impl_->latched.clear();
+    impl_->physicalHeld.push(midiNote);
     impl_->held.push(midiNote);
     impl_->latched.push(midiNote);
 }
-void Engine::inputNoteOff(int midiNote) noexcept CL_NONBLOCKING { impl_->held.remove(midiNote); }
+void Engine::inputNoteOff(int midiNote) noexcept CL_NONBLOCKING {
+    impl_->physicalHeld.remove(midiNote);
+    if (!impl_->sustainDown)
+        impl_->held.remove(midiNote);
+}
+void Engine::inputSustain(bool down) noexcept CL_NONBLOCKING {
+    impl_->sustainDown = down;
+    if (!down)
+        impl_->held = impl_->physicalHeld;
+}
 void Engine::inputAllNotesOff() noexcept CL_NONBLOCKING {
+    impl_->physicalHeld.clear();
     impl_->held.clear();
     impl_->latched.clear();
+    impl_->sustainDown = false;
 }
 
 void Engine::process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left,

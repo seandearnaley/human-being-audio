@@ -28,9 +28,6 @@ class ReleaseRecordTests(unittest.TestCase):
                 release.record(release.product("livecut-redux"), Path(tmp), "a" * 40)
             self.assertFalse((Path(tmp) / "release.json").exists())
 
-if __name__ == "__main__":
-    unittest.main()
-
 class ProductNotesTests(unittest.TestCase):
     def test_notes_bind_current_product_to_exact_source(self):
         sha = "f" * 40
@@ -41,3 +38,7 @@ class ProductNotesTests(unittest.TestCase):
             self.assertIn(item["version"], text)
             self.assertIn(f"/tree/{sha}/products/{slug}", text)
             self.assertIn("SHA256SUMS", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

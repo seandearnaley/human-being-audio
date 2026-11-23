@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 
     if (!midiOut.empty()) {
         cl::HeldNotes held;
-        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm, 0);
+        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm, 0, preset.overrides);
         std::ofstream out(midiOut, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!out) {
@@ -71,6 +71,7 @@ int main(int argc, char** argv) {
         cl::Engine engine;
         engine.prepare(kSr, kBlock);
         engine.setLaneCurves(preset.curves);
+        engine.setOverrides(preset.overrides);
 
         cl::Params params = preset.params;
         params[cl::ParamId::audition] = 1.0f;

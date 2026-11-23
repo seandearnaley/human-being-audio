@@ -11,9 +11,10 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
     }
+    refreshVisuals();
 }
 
-PluginModel::~PluginModel() = default;
+PluginModel::~PluginModel() { *alive_ = false; }
 
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -33,13 +34,14 @@ void PluginModel::set(ParamId id, float real) {
 
 void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->endChangeGesture(); }
 
-const ui::Visuals& PluginModel::visuals() {
+void PluginModel::refreshVisuals() {
     const auto now = juce::Time::getHighResolutionTicks();
     const double seconds = lastUpdateTicks_ == 0 ? 0.0 : juce::Time::highResolutionTicksToSeconds(now - lastUpdateTicks_);
     lastUpdateTicks_ = now;
     processor_.analysis.update(visuals_, static_cast<float>(std::min(seconds, 0.25)));
-    return visuals_;
 }
+
+const ui::Visuals& PluginModel::visuals() { return visuals_; }
 
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
@@ -59,14 +61,19 @@ void PluginModel::browseImprintAudio() {
         "*.wav;*.aiff;*.aif;*.flac");
 
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
-    fileChooser_->launchAsync(flags, [this](const juce::FileChooser& chooser) {
+    auto alive = alive_;
+    fileChooser_->launchAsync(flags, [this, alive](const juce::FileChooser& chooser) {
+        if (!*alive)
+            return;
         const juce::File file = chooser.getResult();
-        if (!file.existsAsFile()) return;
+        if (!file.existsAsFile())
+            return;
 
         juce::AudioFormatManager formats;
         formats.registerBasicFormats();
         std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
-        if (reader == nullptr || reader->lengthInSamples <= 0) return;
+        if (reader == nullptr || reader->lengthInSamples <= 0)
+            return;
 
         // Read up to 4 seconds for Burg LPC analysis so even huge files imprint instantaneously.
         const int maxSamples = static_cast<int>(std::min<juce::int64>(
@@ -79,7 +86,8 @@ void PluginModel::browseImprintAudio() {
         const float invCh = 1.0f / static_cast<float>(std::max(1, channels));
         for (int c = 0; c < channels; ++c) {
             const float* src = audio.getReadPointer(c);
-            for (int i = 0; i < maxSamples; ++i) mono[static_cast<std::size_t>(i)] += src[i] * invCh;
+            for (int i = 0; i < maxSamples; ++i)
+                mono[static_cast<std::size_t>(i)] += src[i] * invCh;
         }
 
         ImprintData data;
@@ -89,7 +97,8 @@ void PluginModel::browseImprintAudio() {
         if (!applyingSnapshot_)
             history_.push(captureSnapshot());
         std::string shortName = file.getFileNameWithoutExtension().toStdString();
-        if (shortName.size() > 18) shortName = shortName.substr(0, 17) + "\u2026";
+        if (shortName.size() > 18)
+            shortName = shortName.substr(0, 17) + "\u2026";
         processor_.imprint.set(data, std::move(shortName));
 
         // Switch immediately to Imprint Cube so the imprint is heard right away, keeping the undo step atomic.
@@ -129,9 +138,13 @@ void PluginModel::savePreset() {
     saveDialog_->addTextEditor("name", toJuce(processor_.presets.currentName()));
     saveDialog_->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
     saveDialog_->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this](int result) {
-        if (result == 1) processor_.presets.save(saveDialog_->getTextEditorContents("name"));
-    }));
+    auto alive = alive_;
+    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this, alive](int result) {
+                                     if (!*alive)
+                                         return;
+                                     if (result == 1 && saveDialog_ != nullptr)
+                                         processor_.presets.save(saveDialog_->getTextEditorContents("name"));
+                                 }));
 }
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {

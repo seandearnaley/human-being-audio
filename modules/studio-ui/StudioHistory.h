@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shared studio Undo/Redo + A/B compare state manager for Visage plugin models.
 // Header-only, dependency-free C++20.
 #pragma once

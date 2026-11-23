@@ -15,6 +15,8 @@ juce_add_plugin(PoleField
     NEEDS_MIDI_OUTPUT FALSE
     VST3_CATEGORIES Fx Filter
     AU_MAIN_TYPE kAudioUnitType_MusicEffect
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "Pole Field Standalone processes live audio input."
     ICON_BIG "${PROJECT_SOURCE_DIR}/brand/icon/png/icon-1024.png"
     COPY_PLUGIN_AFTER_BUILD ${PF_INSTALL_PLUGIN})
 

@@ -81,7 +81,10 @@ void Presets::load(int index) {
             parameter->setValueNotifyingHost(parameter->convertTo0to1(preset.params.values[i]));
     }
     curves_.setAll(preset.curves);
-    if (preset.imprint.active) imprint_.set(preset.imprint, preset.name);
+    if (preset.imprint.active)
+        imprint_.set(preset.imprint, preset.name);
+    else
+        imprint_.clear();
     setCurrentName(preset.name);
 }
 

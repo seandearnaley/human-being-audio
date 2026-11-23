@@ -190,6 +190,7 @@ struct Stage::Impl
         Wola::Controls active;
         std::int64_t expected = 0;
         std::uint64_t epoch = 1;
+        unsigned idleSpins = 0;
         try
         {
             while (healthy ())
@@ -197,16 +198,23 @@ struct Stage::Impl
                 auto *hooks = prepared.testHooks;
                 if (hooks && hooks->pause.load (std::memory_order_acquire))
                 {
-                    std::this_thread::sleep_for (std::chrono::microseconds (50));
+                    const auto sleepUs = idleSpins < 16 ? 50 : (idleSpins < 64 ? 200 : 1000);
+                    if (idleSpins < 64)
+                        ++idleSpins;
+                    std::this_thread::sleep_for(std::chrono::microseconds(sleepUs));
                     continue;
                 }
                 const auto *source = input.consumer ();
                 auto *destination = output.producer ();
                 if (!source || !destination)
                 {
-                    std::this_thread::sleep_for (std::chrono::microseconds (50));
+                    const auto sleepUs = idleSpins < 16 ? 50 : (idleSpins < 64 ? 200 : 1000);
+                    if (idleSpins < 64)
+                        ++idleSpins;
+                    std::this_thread::sleep_for(std::chrono::microseconds(sleepUs));
                     continue;
                 }
+                idleSpins = 0;
                 if (source->first != expected)
                 {
                     fail (Fault::workerFailure);

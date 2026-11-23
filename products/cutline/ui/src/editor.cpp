@@ -68,6 +68,7 @@ struct Editor::Impl final : visage::EventTimer {
     }
 
     void timerCallback() override {
+        context.model.refreshVisuals();
         const auto live = context.live;
         for (Live* frame : live)
             frame->tick();
@@ -104,7 +105,10 @@ int Editor::eventFd() const {
     return window != nullptr ? window->posixFd() : -1;
 }
 
-void Editor::dispatchEvents() { impl_->window.window()->processPluginFdEvents(); }
+void Editor::dispatchEvents() {
+    if (auto* window = impl_->window.window())
+        window->processPluginFdEvents();
+}
 #endif
 
 void Editor::renderToPng(const std::string& path, int width, int height) {

@@ -41,25 +41,34 @@ inline constexpr int kMaxHeldInputNotes = 16;
 struct HeldNotes {
     std::array<std::uint8_t, kMaxHeldInputNotes> notes{};
     int count = 0;
+    std::uint8_t lastPressed = 0;
 
-    void clear() noexcept CL_NONBLOCKING { count = 0; }
+    void clear() noexcept CL_NONBLOCKING {
+        count = 0;
+        lastPressed = 0;
+    }
     void push(int note) noexcept CL_NONBLOCKING {
         const auto n = static_cast<std::uint8_t>(note < 0 ? 0 : (note > 127 ? 127 : note));
+        lastPressed = n;
         for (int i = 0; i < count; ++i) {
-            if (notes[static_cast<std::size_t>(i)] == n) {
-                for (int j = i; j < count - 1; ++j)
-                    notes[static_cast<std::size_t>(j)] = notes[static_cast<std::size_t>(j + 1)];
-                notes[static_cast<std::size_t>(count - 1)] = n;
+            if (notes[static_cast<std::size_t>(i)] == n)
                 return;
-            }
         }
-        if (count < kMaxHeldInputNotes) {
-            notes[static_cast<std::size_t>(count++)] = n;
-        } else {
+        if (count >= kMaxHeldInputNotes) {
+            // Evict lowest note if full and new note is higher, else keep existing highest notes.
+            if (n < notes[0])
+                return;
             for (int i = 0; i < kMaxHeldInputNotes - 1; ++i)
                 notes[static_cast<std::size_t>(i)] = notes[static_cast<std::size_t>(i + 1)];
-            notes[kMaxHeldInputNotes - 1] = n;
+            --count;
         }
+        int insertAt = count;
+        while (insertAt > 0 && notes[static_cast<std::size_t>(insertAt - 1)] > n) {
+            notes[static_cast<std::size_t>(insertAt)] = notes[static_cast<std::size_t>(insertAt - 1)];
+            --insertAt;
+        }
+        notes[static_cast<std::size_t>(insertAt)] = n;
+        ++count;
     }
     void remove(int note) noexcept CL_NONBLOCKING {
         const auto n = static_cast<std::uint8_t>(note < 0 ? 0 : (note > 127 ? 127 : note));
@@ -68,6 +77,10 @@ struct HeldNotes {
                 for (int j = i; j < count - 1; ++j)
                     notes[static_cast<std::size_t>(j)] = notes[static_cast<std::size_t>(j + 1)];
                 --count;
+                if (count == 0)
+                    lastPressed = 0;
+                else if (lastPressed == n)
+                    lastPressed = notes[static_cast<std::size_t>(count - 1)];
                 return;
             }
         }

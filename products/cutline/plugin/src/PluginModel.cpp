@@ -18,9 +18,10 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
     }
     seedHistory_.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
     seedCursor_ = 0;
+    refreshVisuals();
 }
 
-PluginModel::~PluginModel() = default;
+PluginModel::~PluginModel() { *alive_ = false; }
 
 float PluginModel::get(ParamId id) const {
     const auto* parameter = parameters_[static_cast<std::size_t>(id)];
@@ -40,7 +41,7 @@ void PluginModel::set(ParamId id, float real) {
 
 void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->endChangeGesture(); }
 
-const ui::Visuals& PluginModel::visuals() {
+void PluginModel::refreshVisuals() {
     processor_.telemetry.read(visuals_);
     // When host transport is stopped, compile the live preview from current parameter values
     // and overrides so tweaking Grammar/Gravity/Seed/Overrides updates the piano roll immediately.
@@ -54,8 +55,9 @@ const ui::Visuals& PluginModel::visuals() {
             compilePhrase(p, 0, visuals_.heldNotes, visuals_.plan, ov);
         visuals_.bpm = processor_.telemetry.lastBpm();
     }
-    return visuals_;
 }
+
+const ui::Visuals& PluginModel::visuals() { return visuals_; }
 
 Curve PluginModel::laneCurve(int lane) const { return processor_.curves.get(lane); }
 void PluginModel::setLaneCurve(int lane, const Curve& curve) {
@@ -170,8 +172,11 @@ void PluginModel::savePreset() {
     saveDialog_->addTextEditor("name", toJuce(processor_.presets.currentName()));
     saveDialog_->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
     saveDialog_->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this](int result) {
-                                     if (result == 1)
+    auto alive = alive_;
+    saveDialog_->enterModalState(true, juce::ModalCallbackFunction::create([this, alive](int result) {
+                                     if (!*alive)
+                                         return;
+                                     if (result == 1 && saveDialog_ != nullptr)
                                          processor_.presets.save(saveDialog_->getTextEditorContents("name"));
                                  }));
 }

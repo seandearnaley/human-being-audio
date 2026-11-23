@@ -45,6 +45,7 @@ class Engine {
     // Live MIDI input (used when InputMode::transpose or InputMode::chordCarve is active).
     void inputNoteOn(int midiNote, int velocity) noexcept CL_NONBLOCKING;
     void inputNoteOff(int midiNote) noexcept CL_NONBLOCKING;
+    void inputSustain(bool down) noexcept CL_NONBLOCKING;
     void inputAllNotesOff() noexcept CL_NONBLOCKING;
 
     // Generates sample-accurate MIDI into `outMidi` and (optionally) renders the

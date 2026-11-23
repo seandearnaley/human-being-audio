@@ -107,6 +107,8 @@ void ParamFrame::mouseExit(const visage::MouseEvent&) {
 }
 
 void ParamFrame::mouseDown(const visage::MouseEvent& e) {
+    if (e.shouldTriggerPopup())
+        return;
     if (e.repeatClickCount() >= 2)
         return commit(spec_.def);
     if (spec_.kind == ParamKind::toggle)
@@ -289,6 +291,8 @@ void Button::mouseDrag(const visage::MouseEvent&) {
     }
 }
 void Button::mouseUp(const visage::MouseEvent& e) {
+    if (!pressed_)
+        return;
     const bool inside = localBounds().contains(e.position);
     const bool wasDragged = dragged_;
     pressed_ = false;
