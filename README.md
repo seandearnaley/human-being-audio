@@ -6,16 +6,16 @@ Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer,
 
 ## First build
 
-Clone with the pinned Livecut dependencies, then choose a product.
+Clone the repository and choose any product (`livecut-redux`, `tract-form`, `pole-field`, or `cutline`). All dependencies are fetched and cached automatically via `cmake/CPM.cmake` (no git submodules required).
 
 ```sh
-git clone --recurse-submodules https://github.com/seandearnaley/human-being-audio.git
+git clone https://github.com/seandearnaley/human-being-audio.git
 cd human-being-audio/products/livecut-redux
-# Or enter products/tract-form from the repo root.
+# Or enter products/tract-form, products/pole-field, or products/cutline from the repo root.
 cmake --workflow --preset check
 ```
 
-The workflow configures, builds and tests the selected product. For an existing clone, use `git submodule update --init --recursive`. The first Tract Form configure fetches its pinned dependencies. To reuse those sources between builds, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. Livecut’s tests also support `ctest --preset dev --parallel 4`. For daily edits, `cmake --build --preset dev` reuses the existing build.
+The workflow configures, builds and tests the selected product. The first configure fetches its pinned dependencies (`JUCE 9.0.5`, `Visage v1.0.0`, `nlohmann_json 3.12.0`, `Catch2 3.16.1`). To reuse those sources between builds and products, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. Livecut’s tests also support `ctest --preset dev --parallel 4`. For daily edits, `cmake --build --preset dev` reuses the existing build.
 
 | Native environment | One-time setup |
 | --- | --- |
