@@ -1,0 +1,19 @@
+{
+    "name": "Sub-Safe Break",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "Bounce",
+    "subdivision": "16",
+    "seed": 5,
+    "minPhraseBars": 2,
+    "maxPhraseBars": 4,
+    "fade": 2.5,
+    "bounceChance": 0.6,
+    "ratchetChance": 0.8,
+    "climb": 12,
+    "halftimeChance": 0.25,
+    "minPitch": -300.0,
+    "maxPitch": 400.0,
+    "subAnchor": 130.0,
+    "limiter": true
+}

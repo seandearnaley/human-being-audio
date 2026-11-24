@@ -56,7 +56,10 @@ double integratePinkPower (double width, double lowQ, double highQ, double step,
     }
     return sum * step;
 }
+} // namespace
 
+namespace detail {
+using namespace detail;
 // The low edge's q is the high edge's for a band, and fixed for a sweep.
 struct PinkPowerTable
 {
@@ -71,46 +74,43 @@ struct PinkPowerTable
             }
     }
 
-    double interpolate (double width, double q) const
-    {
+    double interpolate(double width, double q) const noexcept HBA_NONBLOCKING {
         const auto u = std::clamp ((width - tableWidthMin) / tableWidthStep, 0.0, static_cast<double> (tableWidths - 1));
         const auto v = std::clamp ((std::log2 (q) - tableLogQMin) / tableLogQStep, 0.0, static_cast<double> (tableQs - 1));
         const auto i = std::min (static_cast<std::size_t> (u), tableWidths - 2);
         const auto j = std::min (static_cast<std::size_t> (v), tableQs - 2);
         const auto a = u - static_cast<double> (i), b = v - static_cast<double> (j);
-        const auto at = [this] (std::size_t wi, std::size_t qi) { return logPower[wi * tableQs + qi]; };
+        const auto at = [this](std::size_t wi, std::size_t qi) noexcept { return logPower[wi * tableQs + qi]; };
         return std::lerp (std::lerp (at (i, j), at (i, j + 1), b), std::lerp (at (i + 1, j), at (i + 1, j + 1), b), a);
     }
 
     std::array<double, tableWidths * tableQs> logPower {};
     double logOpen = std::log (integratePinkPower (bandOpenOctaves, bandOpenQ, bandOpenQ, bandPowerStep, bandPowerMargin));
 };
+} // namespace detail
 
+namespace {
 // Built once, by the first prepare(), never on the audio thread.
-const PinkPowerTable& pinkPowerTable()
-{
-    static const PinkPowerTable table { std::nullopt };
+const detail::PinkPowerTable& pinkPowerTable() {
+    static const detail::PinkPowerTable table{std::nullopt};
     return table;
 }
 
-const PinkPowerTable& sweepPowerTable()
-{
-    static const PinkPowerTable table { sweepLowQ };
+const detail::PinkPowerTable& sweepPowerTable() {
+    static const detail::PinkPowerTable table{sweepLowQ};
     return table;
 }
 
 // SplitMix64's finaliser, used as a stateless hash rather than an RNG stream.
-std::uint64_t hash (std::uint64_t x)
-{
+std::uint64_t hash(std::uint64_t x) noexcept HBA_NONBLOCKING {
     x = (x ^ (x >> 30)) * UINT64_C (0xbf58476d1ce4e5b9);
     x = (x ^ (x >> 27)) * UINT64_C (0x94d049bb133111eb);
     return x ^ (x >> 31);
 }
 
-std::uint64_t identityHash (const CutIdentity& id)
-{
+std::uint64_t identityHash(const CutIdentity& id) noexcept HBA_NONBLOCKING {
     auto result = hash (id.seed + UINT64_C (0x9e3779b97f4a7c15));
-    const auto add = [&result] (std::uint64_t value) { result = hash (result ^ hash (value)); };
+    const auto add = [&result](std::uint64_t value) noexcept { result = hash(result ^ hash(value)); };
     add (static_cast<std::uint64_t> (id.phraseBar));
     add (std::bit_cast<std::uint64_t> (id.blockStartUnits == 0.0 ? 0.0 : id.blockStartUnits));
     add (std::bit_cast<std::uint64_t> (id.cutStartUnits == 0.0 ? 0.0 : id.cutStartUnits));
@@ -119,8 +119,7 @@ std::uint64_t identityHash (const CutIdentity& id)
     return result;
 }
 
-bool choose (std::uint64_t identity, std::uint64_t tag, bool enabled, float chance)
-{
+bool choose(std::uint64_t identity, std::uint64_t tag, bool enabled, float chance) noexcept HBA_NONBLOCKING {
     if (! enabled || chance <= 0.0f)
         return false;
     if (chance >= 1.0f)
@@ -129,26 +128,23 @@ bool choose (std::uint64_t identity, std::uint64_t tag, bool enabled, float chan
     return draw < chance;
 }
 
-double gain (double db) { return std::exp (db * (std::numbers::ln10 / 20.0)); }
+double gain(double db) noexcept HBA_NONBLOCKING { return std::exp(db * (std::numbers::ln10 / 20.0)); }
 
 // log(cosh(x)) without overflowing at high drive, and with a well-defined F(0).
-double logCosh (double x)
-{
+double logCosh(double x) noexcept HBA_NONBLOCKING {
     const auto magnitude = std::abs (x);
     return magnitude + std::log1p (std::exp (-2.0 * magnitude)) - std::numbers::ln2;
 }
 
-double cleanState (double x) { return std::abs (x) < 1.0e-30 ? 0.0 : x; }
+double cleanState(double x) noexcept HBA_NONBLOCKING { return std::abs(x) < 1.0e-30 ? 0.0 : x; }
 
 // The analogue two-pole low-pass's resonant peak, which it has above q 1/sqrt 2.
-double lowPassPeak (double q)
-{
+double lowPassPeak(double q) noexcept HBA_NONBLOCKING {
     return q > 1.0 / std::numbers::sqrt2 ? q / std::sqrt (1.0 - 1.0 / (4.0 * q * q)) : 1.0;
 }
 
 // The engine-only types: smoothed, level-held and held while they fade.
-bool smoothed (ImpactParameters::Filter::Type type)
-{
+bool smoothed(ImpactParameters::Filter::Type type) noexcept HBA_NONBLOCKING {
     return type == ImpactParameters::Filter::Type::band || type == ImpactParameters::Filter::Type::sweep;
 }
 } // namespace
@@ -175,8 +171,7 @@ double integrateSweepPinkPower (double widthOctaves, double q, double stepOctave
     return integratePinkPower (widthOctaves, sweepLowQ, q, stepOctaves, bandPowerMargin);
 }
 
-double tailNoteHz (double cutoffHz)
-{
+double tailNoteHz(double cutoffHz) noexcept HBA_NONBLOCKING {
     auto semitones = std::lround (12.0 * std::log2 (cutoffHz / 440.0));
     while (semitones < -9) // C4
         semitones += 12;
@@ -186,8 +181,7 @@ double tailNoteHz (double cutoffHz)
 }
 } // namespace detail
 
-void ImpactEffects::Ramp::setTarget (double value, std::uint32_t samples)
-{
+void ImpactEffects::Ramp::setTarget(double value, std::uint32_t samples) noexcept HBA_NONBLOCKING {
     if (value == target)
         return;
     target = value;
@@ -195,8 +189,7 @@ void ImpactEffects::Ramp::setTarget (double value, std::uint32_t samples)
     increment = (target - current) / samples;
 }
 
-double ImpactEffects::Ramp::next()
-{
+double ImpactEffects::Ramp::next() noexcept HBA_NONBLOCKING {
     if (remaining > 0)
         current = --remaining == 0 ? target : current + increment;
     return current;
@@ -210,14 +203,13 @@ void ImpactEffects::prepare (double newSampleRate)
     dcPole = std::exp (-2.0 * pi * 5.0 / sampleRate);
     smoothingPole = std::exp (-1.0 / (0.020 * sampleRate));
     tailRecoveryPole = std::exp (-1.0 / (0.040 * sampleRate));
-    pinkPowerTable(); // Builds the makeup tables off the audio thread.
-    sweepPowerTable();
+    bandPowerTable = &pinkPowerTable(); // Builds and caches the makeup tables off the audio thread.
+    sweepPowerTableData = &sweepPowerTable();
     reset();
     setParameters (parameters);
 }
 
-void ImpactEffects::reset()
-{
+void ImpactEffects::reset() noexcept HBA_NONBLOCKING {
     state = {};
     wet = {};
     adoptFilter();
@@ -230,8 +222,7 @@ void ImpactEffects::reset()
 
 // Clears everything the band runs on, including the high-pass stage it shares
 // with the single-SVF types.
-void ImpactEffects::resetBand()
-{
+void ImpactEffects::resetBand() noexcept HBA_NONBLOCKING {
     filterState = {};
     bandState = {};
     bandPrimed = false;
@@ -242,8 +233,7 @@ void ImpactEffects::resetBand()
     state.tailDuck = 1.0;
 }
 
-void ImpactEffects::adoptFilter()
-{
+void ImpactEffects::adoptFilter() noexcept HBA_NONBLOCKING {
     // A band or sweep switched on never inherits classic or another type's state.
     if (smoothed (requestedFilter.type) && requestedFilter.type != parameters.filter.type)
         resetBand();
@@ -259,8 +249,7 @@ void ImpactEffects::adoptFilter()
     bandHighTarget = std::log2 (static_cast<double> (requestedFilter.bandHighHz));
 }
 
-void ImpactEffects::setParameters (const ImpactParameters& next)
-{
+void ImpactEffects::setParameters(const ImpactParameters& next) noexcept HBA_NONBLOCKING {
     if (next.drive.mode != parameters.drive.mode)
         for (auto& channel : driveState)
             channel.primed = false;
@@ -321,8 +310,7 @@ void ImpactEffects::setParameters (const ImpactParameters& next)
     transientSlowRelease = std::exp (-1.0 / time);
 }
 
-void ImpactEffects::startCut (const CutIdentity& identity)
-{
+void ImpactEffects::startCut(const CutIdentity& identity) noexcept HBA_NONBLOCKING {
     ++state.cutsStarted;
     if (filterHeld && ! filterDetached)
     {
@@ -352,8 +340,7 @@ void ImpactEffects::startCut (const CutIdentity& identity)
         startTail (identity);
 }
 
-void ImpactEffects::startTail (const CutIdentity& identity)
-{
+void ImpactEffects::startTail(const CutIdentity& identity) noexcept HBA_NONBLOCKING {
     const auto& p = parameters.filter;
     // The cut after a roll's last strikes the tail, at tailLevel times the
     // roll's RMS, so a roll of silence strikes nothing. The RMS is the
@@ -388,8 +375,7 @@ void ImpactEffects::startTail (const CutIdentity& identity)
     tail.duckStep = (tail.duck - tailDuckFloor) / rampSamples;
 }
 
-double ImpactEffects::nextTail()
-{
+double ImpactEffects::nextTail() noexcept HBA_NONBLOCKING {
     if (tail.duckRemaining > 0)
         tail.duck = --tail.duckRemaining == 0 ? tailDuckFloor : tail.duck - tail.duckStep;
     else
@@ -414,8 +400,7 @@ double ImpactEffects::nextTail()
     return sample;
 }
 
-double ImpactEffects::nextEnvelope()
-{
+double ImpactEffects::nextEnvelope() noexcept HBA_NONBLOCKING {
     if (attackPosition < attackSamples)
         adEnvelope = static_cast<double> (++attackPosition) / static_cast<double> (attackSamples);
     else if (attackSamples == 0 && attackPosition == 0)
@@ -426,8 +411,8 @@ double ImpactEffects::nextEnvelope()
     return adEnvelope;
 }
 
-void ImpactEffects::processFilter (double& left, double& right, double envelope, double repeatProgress)
-{
+void ImpactEffects::processFilter(double& left, double& right, double envelope,
+                                  double repeatProgress) noexcept HBA_NONBLOCKING {
     const auto mix = wet[0].next();
     if (mix == 0.0)
     {
@@ -467,8 +452,8 @@ void ImpactEffects::processFilter (double& left, double& right, double envelope,
     right = channel (right, filterState[1]);
 }
 
-void ImpactEffects::processBand (double& left, double& right, double envelope, double repeatProgress, double mix)
-{
+void ImpactEffects::processBand(double& left, double& right, double envelope, double repeatProgress,
+                                double mix) noexcept HBA_NONBLOCKING {
     const auto& p = parameters.filter;
     if (! bandPrimed)
     {
@@ -549,9 +534,9 @@ void ImpactEffects::processBand (double& left, double& right, double envelope, d
     // what its resonance adds: never above 1, and never letting a tone on the
     // resonant peak gain more than 6 dB. So a dark sweep is quieter than the
     // open filter on broadband material, as any low-pass is.
-    const auto& table = sweep ? sweepPowerTable() : pinkPowerTable();
+    const auto* table = sweep ? sweepPowerTableData : bandPowerTable;
     const auto width = std::log2 (std::min (high, makeupHighestHz) / low);
-    const auto pink = std::exp (0.5 * (table.logOpen - table.interpolate (width, bandQ)));
+    const auto pink = table != nullptr ? std::exp(0.5 * (table->logOpen - table->interpolate(width, bandQ))) : 1.0;
     const auto hold = sweep ? std::min ({ sweepMakeupCeiling, pink, sweepPeakCeiling / lowPassPeak (bandQ) })
                             : std::min (makeupCeiling, pink);
     state.levelHoldGain = hold;
@@ -571,8 +556,7 @@ void ImpactEffects::processBand (double& left, double& right, double envelope, d
     right += mix * (hold * bandRight - right);
 }
 
-void ImpactEffects::processDrive (double& left, double& right, double envelope)
-{
+void ImpactEffects::processDrive(double& left, double& right, double envelope) noexcept HBA_NONBLOCKING {
     const auto mix = wet[1].next();
     if (mix == 0.0)
     {
@@ -618,8 +602,7 @@ void ImpactEffects::processDrive (double& left, double& right, double envelope)
     right = channel (right, driveState[1]);
 }
 
-void ImpactEffects::processTransient (double& left, double& right)
-{
+void ImpactEffects::processTransient(double& left, double& right) noexcept HBA_NONBLOCKING {
     const auto mix = wet[2].next();
     if (mix == 0.0)
     {
@@ -642,8 +625,7 @@ void ImpactEffects::processTransient (double& left, double& right)
     right *= amount;
 }
 
-void ImpactEffects::process (float& left, float& right)
-{
+void ImpactEffects::process(float& left, float& right) noexcept HBA_NONBLOCKING {
     const auto envelope = nextEnvelope();
     if (wet[0].current == 0.0 && wet[0].target == 0.0
         && wet[1].current == 0.0 && wet[1].target == 0.0

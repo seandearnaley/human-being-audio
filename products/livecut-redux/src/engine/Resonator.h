@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -32,12 +34,12 @@ public:
     // fixture is explicit: every requested voice must remain <=0.4*rate.
     // Returns rate support; stored invalid parameters remain explicit in diagnostics.
     bool prepare (double sampleRate);
-    void reset();
-    bool setParameters (const ResonatorParameters&);
-    void process (float& left, float& right);
-    const Diagnostics& diagnostics() const { return status; }
+    void reset() noexcept HBA_NONBLOCKING;
+    bool setParameters(const ResonatorParameters&) noexcept HBA_NONBLOCKING;
+    void process(float& left, float& right) noexcept HBA_NONBLOCKING;
+    const Diagnostics& diagnostics() const noexcept HBA_NONBLOCKING { return status; }
 
-private:
+  private:
     struct Voice
     {
         double a1 = 0.0, a2 = 0.0, b0 = 0.0, weight = 0.0;
@@ -49,11 +51,11 @@ private:
         ResonatorParameters parameters;
         double radius = 0.0, excitation = 1.0;
     };
-    State validate (const ResonatorParameters&) const;
-    void configure (Bank&, const ResonatorParameters&);
-    void beginRetune (const ResonatorParameters&);
-    void updateDiagnostics();
-    static std::array<double, 2> processBank (Bank&, double left, double right);
+    State validate(const ResonatorParameters&) const noexcept HBA_NONBLOCKING;
+    void configure(Bank&, const ResonatorParameters&) noexcept HBA_NONBLOCKING;
+    void beginRetune(const ResonatorParameters&) noexcept HBA_NONBLOCKING;
+    void updateDiagnostics() noexcept HBA_NONBLOCKING;
+    static std::array<double, 2> processBank(Bank&, double left, double right) noexcept HBA_NONBLOCKING;
 
     std::array<Bank, 2> banks;
     std::optional<ResonatorParameters> pending;

@@ -36,8 +36,8 @@ struct SelectionRig : T::SourceContext
         cutter.setParameters (params);
         cutter.beginRenderContext ({ 120.0, 1.0 }, {}, 0, 0, nullptr);
     }
-    std::optional<typename T::TransportBounds> sourceBoundsAt (std::int64_t frame) const override
-    {
+    std::optional<typename T::TransportBounds>
+    sourceBoundsAt(std::int64_t frame) const noexcept HBA_NONBLOCKING override {
         ++boundsQueries;
         return typename T::TransportBounds { 1, 0, endKnownAt >= 0 && written > endKnownAt ? epochEnd : std::nullopt };
     }

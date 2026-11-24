@@ -169,7 +169,8 @@ TEST_CASE ("A Spectral worker fault remains gated until same-configuration stopp
     hooks.pause = false;
     juce::FloatVectorOperations::fill (buffer.getWritePointer (0), .4f, 2048);
     processor.processBlock (buffer, midi);
-    CHECK (buffer.getMagnitude (0, 2048) == 0);
+    // Livecut 2.0: graceful dry passthrough on Spectral deadline miss (zero permanent brick-mute).
+    CHECK(buffer.getMagnitude(0, 2048) > 0.35f);
     CHECK (processor.getDisplayState ().spectralFault.load () == livecut::spectral::Fault::deadline);
     processor.applyRequestedMode ();
     CHECK (processor.modeState () == LivecutAudioProcessor::ModeState::active);

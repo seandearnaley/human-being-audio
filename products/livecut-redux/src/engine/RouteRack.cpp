@@ -24,8 +24,7 @@ bool RouteRack::prepare (double rate)
     return true;
 }
 
-void RouteRack::reset()
-{
+void RouteRack::reset() noexcept HBA_NONBLOCKING {
     fading = false;
     fadePosition = 0;
     cut = {};
@@ -39,8 +38,7 @@ void RouteRack::reset()
     lanes[1 - active] = lanes[active];
 }
 
-void RouteRack::setParameters (const RouteParameters& p)
-{
+void RouteRack::setParameters(const RouteParameters& p) noexcept HBA_NONBLOCKING {
     for (auto& lane : lanes)
     {
         lane.impact.setParameters (p.impact);
@@ -49,15 +47,13 @@ void RouteRack::setParameters (const RouteParameters& p)
     }
 }
 
-void RouteRack::requestRoute (EffectRoute route)
-{
+void RouteRack::requestRoute(EffectRoute route) noexcept HBA_NONBLOCKING {
     assert (route == EffectRoute::impactResonatorFrequency || route == EffectRoute::resonatorImpactFrequency
          || route == EffectRoute::impactFrequencyResonator);
     status.requested = route;
 }
 
-void RouteRack::barStarted()
-{
+void RouteRack::barStarted() noexcept HBA_NONBLOCKING {
     if (fading || status.requested == lanes[active].route)
         return;
     static_assert (std::is_trivially_copy_assignable_v<Lane>);
@@ -71,8 +67,7 @@ void RouteRack::barStarted()
     status.framesRemaining = fadeFrames;
 }
 
-void RouteRack::startCut (const RouteCutContext& context)
-{
+void RouteRack::startCut(const RouteCutContext& context) noexcept HBA_NONBLOCKING {
     cut = context;
     lanes[active].impact.startCut (context.identity);
     if (fading)
@@ -80,8 +75,7 @@ void RouteRack::startCut (const RouteCutContext& context)
     ++status.cutsStarted;
 }
 
-void RouteRack::Lane::process (float& left, float& right, bool selected)
-{
+void RouteRack::Lane::process(float& left, float& right, bool selected) noexcept HBA_NONBLOCKING {
     const auto processFrequency = [&]
     {
         const auto& ad = impact.diagnostics();
@@ -108,8 +102,7 @@ void RouteRack::Lane::process (float& left, float& right, bool selected)
     assert (false);
 }
 
-void RouteRack::process (float& left, float& right)
-{
+void RouteRack::process(float& left, float& right) noexcept HBA_NONBLOCKING {
     auto outgoingLeft = left, outgoingRight = right;
     lanes[active].process (outgoingLeft, outgoingRight, cut.frequencySelected);
     if (! fading)

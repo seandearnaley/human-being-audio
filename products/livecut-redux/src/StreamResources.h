@@ -66,8 +66,8 @@ struct StreamResources : private engine::Cutter::SourceContext
         return true;
     }
 
-    std::optional<engine::Cutter::TransportBounds> sourceBoundsAt (std::int64_t frame) const override
-    {
+    std::optional<engine::Cutter::TransportBounds>
+    sourceBoundsAt(std::int64_t frame) const noexcept HBA_NONBLOCKING override {
         if (const auto epoch = timeline.sourceEpoch (frame))
             return engine::Cutter::TransportBounds{epoch->id, epoch->start, epoch->end};
         return std::nullopt;

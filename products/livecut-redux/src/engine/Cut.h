@@ -2,6 +2,10 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -41,6 +45,40 @@ static_assert (sizeof (Cut) == 4 * sizeof (double));
 
 // The largest block is a CutProc11 stutter: under a bar of units, at up to 8 cuts per unit.
 inline constexpr std::size_t maxCutsPerBlock = 256;
+
+// Fixed-capacity real-time cut list (zero heap allocation, [[clang::nonblocking]]-safe).
+struct CutList {
+    std::array<Cut, maxCutsPerBlock> storage{};
+    std::size_t count = 0;
+
+    void clear() noexcept HBA_NONBLOCKING { count = 0; }
+    bool empty() const noexcept HBA_NONBLOCKING { return count == 0; }
+    std::size_t size() const noexcept HBA_NONBLOCKING { return count; }
+    Cut* data() noexcept HBA_NONBLOCKING { return storage.data(); }
+    const Cut* data() const noexcept HBA_NONBLOCKING { return storage.data(); }
+    Cut* begin() noexcept HBA_NONBLOCKING { return storage.data(); }
+    Cut* end() noexcept HBA_NONBLOCKING { return storage.data() + count; }
+    const Cut* begin() const noexcept HBA_NONBLOCKING { return storage.data(); }
+    const Cut* end() const noexcept HBA_NONBLOCKING { return storage.data() + count; }
+    Cut& operator[](std::size_t i) noexcept HBA_NONBLOCKING { return storage[i]; }
+    const Cut& operator[](std::size_t i) const noexcept HBA_NONBLOCKING { return storage[i]; }
+    Cut& front() noexcept HBA_NONBLOCKING { return storage[0]; }
+    const Cut& front() const noexcept HBA_NONBLOCKING { return storage[0]; }
+    Cut& back() noexcept HBA_NONBLOCKING { return storage[count - 1]; }
+    const Cut& back() const noexcept HBA_NONBLOCKING { return storage[count - 1]; }
+    void push_back(const Cut& cut) noexcept HBA_NONBLOCKING {
+        if (count < maxCutsPerBlock)
+            storage[count++] = cut;
+    }
+    void assign(std::size_t n, const Cut& cut) noexcept HBA_NONBLOCKING {
+        count = std::min(n, maxCutsPerBlock);
+        for (std::size_t i = 0; i < count; ++i)
+            storage[i] = cut;
+    }
+    void resize(std::size_t n) noexcept HBA_NONBLOCKING { count = std::min(n, maxCutsPerBlock); }
+    operator std::span<const Cut>() const noexcept HBA_NONBLOCKING { return {storage.data(), count}; }
+    operator std::span<Cut>() noexcept HBA_NONBLOCKING { return {storage.data(), count}; }
+};
 
 struct BlockContext
 {
@@ -98,8 +136,7 @@ struct CutParameters
     int loopDepth = 0;     // the levels nested inside it, 0 to 3
 };
 
-inline double totalUnits (std::span<const Cut> cuts)
-{
+inline double totalUnits(std::span<const Cut> cuts) noexcept HBA_NONBLOCKING {
     double total = 0.0;
 
     for (const auto& cut : cuts)

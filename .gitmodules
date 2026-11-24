@@ -1,8 +1,0 @@
-[submodule "products/livecut-redux/libs/JUCE"]
-	path = products/livecut-redux/libs/JUCE
-	url = https://github.com/juce-framework/JUCE
-	shallow = true
-[submodule "products/livecut-redux/libs/Catch2"]
-	path = products/livecut-redux/libs/Catch2
-	url = https://github.com/catchorg/Catch2
-	shallow = true

@@ -14,15 +14,17 @@
 namespace livecut::engine
 {
 
-void WarpCut::chooseBlock (Random& random,
-                           const CutParameters& params,
-                           const BlockContext& context,
-                           std::vector<Cut>& cuts)
-{
+namespace {
+constexpr std::array blockSizes{1.0, 2.0, 4.0};
+constexpr std::array blockWeights{0.5, 0.4, 0.1};
+constexpr std::array shortRolls{4, 8, 16};
+constexpr std::array longRolls{8, 16, 32};
+} // namespace
+
+void WarpCut::chooseBlock(Random& random, const CutParameters& params, const BlockContext& context,
+                          CutList& cuts) noexcept HBA_NONBLOCKING {
     cuts.clear();
 
-    static constexpr std::array blockSizes { 1.0, 2.0, 4.0 };
-    static constexpr std::array blockWeights { 0.5, 0.4, 0.1 };
     const auto unitsLeft = context.phraseUnits - context.unitsDone;
     const auto blockUnits = std::min (blockSizes[random.weighted (blockWeights)], unitsLeft);
 
@@ -39,8 +41,6 @@ void WarpCut::chooseBlock (Random& random,
         return;
     }
 
-    static constexpr std::array shortRolls { 4, 8, 16 };
-    static constexpr std::array longRolls { 8, 16, 32 };
     const auto blockBeats = blockUnits * context.beatsPerBar / context.unitsPerBar;
     const auto& rolls = blockBeats < 1.0 ? shortRolls : longRolls;
     const auto repeats = rolls[static_cast<std::size_t> (random.integer (0, static_cast<int> (rolls.size()) - 1))];

@@ -11,16 +11,14 @@ namespace livecut::engine
 {
 namespace
 {
-bool sameTuning (const ResonatorParameters& a, const ResonatorParameters& b)
-{
+bool sameTuning(const ResonatorParameters& a, const ResonatorParameters& b) noexcept HBA_NONBLOCKING {
     return std::array { a.rootHz, a.decayMs, a.excitationDb }
         == std::array { b.rootHz, b.decayMs, b.excitationDb }
         && a.intervals == b.intervals && a.weights == b.weights;
 }
 }
 
-Resonator::State Resonator::validate (const ResonatorParameters& p) const
-{
+Resonator::State Resonator::validate(const ResonatorParameters& p) const noexcept HBA_NONBLOCKING {
     if (! prepared)
         return State::unsupportedRate;
     if (! std::isfinite (p.rootHz) || p.rootHz < 40 || p.rootHz > 800
@@ -40,8 +38,7 @@ Resonator::State Resonator::validate (const ResonatorParameters& p) const
     return sum > 0 ? State::ready : State::invalidWeights;
 }
 
-void Resonator::configure (Bank& bank, const ResonatorParameters& p)
-{
+void Resonator::configure(Bank& bank, const ResonatorParameters& p) noexcept HBA_NONBLOCKING {
     bank = {};
     bank.parameters = p;
     bank.radius = std::exp (-std::log (1000.0) / (rate * .001 * p.decayMs));
@@ -79,8 +76,7 @@ bool Resonator::prepare (double sampleRate)
     return prepared;
 }
 
-void Resonator::reset()
-{
+void Resonator::reset() noexcept HBA_NONBLOCKING {
     banks = {};
     pending.reset();
     fading = false;
@@ -94,15 +90,13 @@ void Resonator::reset()
     setParameters (requested);
 }
 
-void Resonator::beginRetune (const ResonatorParameters& p)
-{
+void Resonator::beginRetune(const ResonatorParameters& p) noexcept HBA_NONBLOCKING {
     configure (banks[1 - active], p);
     fadePosition = 0;
     fading = true;
 }
 
-bool Resonator::setParameters (const ResonatorParameters& p)
-{
+bool Resonator::setParameters(const ResonatorParameters& p) noexcept HBA_NONBLOCKING {
     requested = p;
     status.state = validate (p);
     // Invalid mix has no usable dry proportion: selected invalid processing
@@ -142,8 +136,7 @@ bool Resonator::setParameters (const ResonatorParameters& p)
     return true;
 }
 
-void Resonator::updateDiagnostics()
-{
+void Resonator::updateDiagnostics() noexcept HBA_NONBLOCKING {
     status.retuning = fading;
     status.pending = pending.has_value();
     status.retuneFramesRemaining = fading ? fadeFrames - fadePosition : 0;
@@ -164,8 +157,7 @@ void Resonator::updateDiagnostics()
     }
 }
 
-std::array<double, 2> Resonator::processBank (Bank& bank, double left, double right)
-{
+std::array<double, 2> Resonator::processBank(Bank& bank, double left, double right) noexcept HBA_NONBLOCKING {
     std::array<double, 2> out {};
     const std::array<double, 2> excitation { left * bank.excitation, right * bank.excitation };
     for (auto& voice : bank.voices)
@@ -179,8 +171,7 @@ std::array<double, 2> Resonator::processBank (Bank& bank, double left, double ri
     return out;
 }
 
-void Resonator::process (float& left, float& right)
-{
+void Resonator::process(float& left, float& right) noexcept HBA_NONBLOCKING {
     assert (std::isfinite (left) && std::isfinite (right));
     if (controlRemaining > 0)
         wet = --controlRemaining == 0 ? wetTarget : wet + wetStep;

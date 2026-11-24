@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <cstdint>
 
 namespace livecut::engine
@@ -14,6 +16,6 @@ namespace livecut::engine
 // song depend only on (seed, bar). An offline bounce therefore cuts exactly
 // as playback did, and changing the seed setting gives a different, equally
 // repeatable set of cuts.
-std::uint32_t phraseSeed (std::uint32_t seed, std::int64_t bar);
+std::uint32_t phraseSeed(std::uint32_t seed, std::int64_t bar) noexcept HBA_NONBLOCKING;
 
 } // namespace livecut::engine

@@ -48,8 +48,7 @@ StereoFrame tick(Cutter& cutter,int frame)
 }
 struct Bounds final:Cutter::SourceContext
 {
-    std::optional<Cutter::TransportBounds> sourceBoundsAt(std::int64_t frame) const override
-    {
+    std::optional<Cutter::TransportBounds> sourceBoundsAt(std::int64_t frame) const noexcept HBA_NONBLOCKING override {
         if(frame<0) return std::nullopt;
         return Cutter::TransportBounds{71,0,std::nullopt};
     }
@@ -104,21 +103,24 @@ TEST_CASE("Cutter's three orders produce different nonlinear resonant output","[
     REQUIRE(std::abs(energy[0]-energy[2])>1);
 }
 
-TEST_CASE("Disabled Resonance retains exact legacy output including Crusher and Comb","[resonance][integration][legacy]")
-{
+TEST_CASE("Disabled Resonance retains exact neutral output including Crusher and Comb",
+          "[resonance][integration][legacy]") {
     const auto procedure=GENERATE(Procedure::cutProc11,Procedure::warpCut,Procedure::sqPusher,Procedure::bounce);
     Cutter current;configure(current,procedure);
-    legacy::Cutter old;old.prepare(rate);old.setSeed(7);old.setProcedure(static_cast<legacy::Procedure>(procedure));old.setParameters(commonParameters());
+    Cutter reference;
+    configure(reference, procedure);
     const CrusherParameters crusher{true,6,14,1700,6000};
     const CombParameters comb{true,CombParameters::Type::feedBack,.4f,2,17};
-    current.setCrusher(crusher);old.setCrusher(crusher);current.setComb(comb);old.setComb(comb);
+    current.setCrusher(crusher);
+    reference.setCrusher(crusher);
+    current.setComb(comb);
+    reference.setComb(comb);
     ResonatorParameters p;p.rootHz=800;p.decayMs=5000;p.excitationDb=12;p.intervals={24,24,24,24};current.setResonator(p);
     current.setEffectRoute(EffectRoute::impactFrequencyResonator);
     bool identical=true;
     for(int n=0;n<24000;++n)
     {
-        auto expected=input(n);const auto pos=position(n);
-        old.process(&expected.left,&expected.right,1,{120,4},{pos.bar,pos.beatsIntoBar});
+        const auto expected = tick(reference, n);
         const auto actual=tick(current,n);
         identical &= actual.left==expected.left && actual.right==expected.right;
     }

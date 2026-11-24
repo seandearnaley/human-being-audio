@@ -30,12 +30,11 @@ class PhraseCapture
     struct Storage;
 
 public:
-    static constexpr double maxSeconds = 64.0;
-    static constexpr std::size_t maxFrames = 64 * 192000;
-    enum class Status { empty, recording, ready, interrupted, busy, oversize };
+  static constexpr double maxSeconds = 16.0;
+  static constexpr std::size_t maxFrames = 16 * 192000;
+  enum class Status { empty, recording, ready, interrupted, busy, oversize };
 
-    class Lease
-    {
+  class Lease {
     public:
         Lease() = default;
         Lease (Lease&&) noexcept;
@@ -52,7 +51,7 @@ public:
         void release();
         std::shared_ptr<Storage> owner;
         int slot = -1;
-    };
+  };
 
     // Build storage off the callback guard, install only during exclusion.
     // Returned retired storage is destroyed by the caller after releasing it.

@@ -16,15 +16,13 @@ namespace livecut::engine
 namespace
 {
 constexpr auto pi = std::numbers::pi;
-std::uint64_t hash (std::uint64_t x)
-{
+std::uint64_t hash(std::uint64_t x) noexcept HBA_NONBLOCKING {
     x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
     x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
     return x ^ (x >> 31);
 }
 
-void panMatrix (float pan, float amp, float& ll, float& lr, float& rl, float& rr)
-{
+void panMatrix(float pan, float amp, float& ll, float& lr, float& rl, float& rr) noexcept HBA_NONBLOCKING {
     const auto angle = static_cast<double> (pan) * pi / 2;
     ll = static_cast<float> (amp * (pan < 0 ? 1.0 : std::cos (angle)));
     lr = static_cast<float> (amp * (pan < 0 ? 0.0 : std::sin (angle)));
@@ -33,10 +31,9 @@ void panMatrix (float pan, float amp, float& ll, float& lr, float& rl, float& rr
 }
 }
 
-double fractureDraw (const CutIdentity& id, std::uint64_t tag, std::uint64_t ordinal)
-{
+double fractureDraw(const CutIdentity& id, std::uint64_t tag, std::uint64_t ordinal) noexcept HBA_NONBLOCKING {
     auto result = hash (id.seed + UINT64_C(0x9e3779b97f4a7c15));
-    const auto add = [&result] (std::uint64_t value) { result = hash (result ^ hash (value)); };
+    const auto add = [&result](std::uint64_t value) noexcept { result = hash(result ^ hash(value)); };
     add (static_cast<std::uint64_t> (id.phraseBar));
     add (std::bit_cast<std::uint64_t> (std::fpclassify(id.blockStartUnits)==FP_ZERO ? 0.0 : id.blockStartUnits));
     add (std::bit_cast<std::uint64_t> (std::fpclassify(id.cutStartUnits)==FP_ZERO ? 0.0 : id.cutStartUnits));
@@ -45,8 +42,8 @@ double fractureDraw (const CutIdentity& id, std::uint64_t tag, std::uint64_t ord
     return static_cast<double> (hash (result ^ tag ^ hash (ordinal)) >> 11) * 0x1p-53;
 }
 
-void TapeTrajectory::start (double a, double b, int length, FractureParameters::Tape::Curve shape, double startPhase)
-{
+void TapeTrajectory::start(double a, double b, int length, FractureParameters::Tape::Curve shape,
+                           double startPhase) noexcept HBA_NONBLOCKING {
     landing = false;
     assert (std::isfinite (a) && a >= 0 && a <= 1 && std::isfinite (b) && b >= 0 && b <= 1);
     assert (std::isfinite (startPhase) && startPhase >= 0 && startPhase < 1);
@@ -57,13 +54,11 @@ void TapeTrajectory::start (double a, double b, int length, FractureParameters::
     phase = shape == FractureParameters::Tape::Curve::quadratic ? startPhase : 0.0;
 }
 
-bool TapeTrajectory::canLand (double lag, double speed, int length)
-{
+bool TapeTrajectory::canLand(double lag, double speed, int length) noexcept HBA_NONBLOCKING {
     return 4.0 * std::max (lag, 0.0) + std::max (length, 1) * (1.0 - speed) >= 0.0;
 }
 
-void TapeTrajectory::land (double lag, double speed, int length)
-{
+void TapeTrajectory::land(double lag, double speed, int length) noexcept HBA_NONBLOCKING {
     assert (canLand (lag, speed, length));
     from = 0.0;
     to = 1.0;
@@ -77,14 +72,12 @@ void TapeTrajectory::land (double lag, double speed, int length)
     landB = landLag - landA;
 }
 
-double TapeTrajectory::phaseAt (int frame) const
-{
+double TapeTrajectory::phaseAt(int frame) const noexcept HBA_NONBLOCKING {
     const auto u = frames == 1 ? (frame <= 0 ? 0.0 : 1.0) : std::clamp (static_cast<double> (frame) / (frames - 1), 0.0, 1.0);
     return phase + (1.0 - phase) * u;
 }
 
-double TapeTrajectory::speed (int frame) const
-{
+double TapeTrajectory::speed(int frame) const noexcept HBA_NONBLOCKING {
     if (landing)
     {
         const auto w = 1.0 - std::clamp (static_cast<double> (frame) / frames, 0.0, 1.0);
@@ -104,8 +97,7 @@ double TapeTrajectory::speed (int frame) const
     return std::clamp (from + (to-from)*shape,0.0,1.0);
 }
 
-double TapeTrajectory::position (int frame) const
-{
+double TapeTrajectory::position(int frame) const noexcept HBA_NONBLOCKING {
     if (landing)
     {
         // Relative to where it was re-timed: the frames played, less the lag left, plus the lag it had.
@@ -138,8 +130,7 @@ double TapeTrajectory::position (int frame) const
     return std::max (0.0,n*from+(to-from)*shapeSum) + std::max (frame-frames,0)*to;
 }
 
-std::int64_t TapeTrajectory::sourceFrames() const
-{
+std::int64_t TapeTrajectory::sourceFrames() const noexcept HBA_NONBLOCKING {
     return static_cast<std::int64_t> (std::ceil (position (frames-1)))+1;
 }
 
@@ -148,19 +139,14 @@ namespace
 constexpr double beatTolerance = 1.0e-9;
 constexpr std::uint64_t tapeStopTag = 0x5441504553544f50ULL; // "TAPESTOP"
 
-std::int64_t floorMod (std::int64_t value, std::int64_t divisor)
-{
+std::int64_t floorMod(std::int64_t value, std::int64_t divisor) noexcept HBA_NONBLOCKING {
     return ((value % divisor) + divisor) % divisor;
 }
 
-bool isBarLine (double beat, double beatsPerBar)
-{
-    return beat >= beatsPerBar - beatTolerance;
-}
+bool isBarLine(double beat, double beatsPerBar) noexcept HBA_NONBLOCKING { return beat >= beatsPerBar - beatTolerance; }
 
 // The candidate end before (bar, beat): the whole beat before it, or the bar line before that.
-void previousEnd (std::int64_t& bar, double& beat, double beatsPerBar)
-{
+void previousEnd(std::int64_t& bar, double& beat, double beatsPerBar) noexcept HBA_NONBLOCKING {
     const auto whole = std::ceil (beat - beatTolerance) - 1.0;
     if (whole >= 1.0 - beatTolerance)
         beat = whole;
@@ -172,23 +158,22 @@ void previousEnd (std::int64_t& bar, double& beat, double beatsPerBar)
 }
 } // namespace
 
-int tapeStopLevel (std::int64_t bar, double beat, double beatsPerBar)
-{
+int tapeStopLevel(std::int64_t bar, double beat, double beatsPerBar) noexcept HBA_NONBLOCKING {
     if (isBarLine (beat, beatsPerBar))
         return floorMod (bar + 1, 4) == 0 ? 0 : floorMod (bar + 1, 2) == 0 ? 1 : 2;
     return std::llround (beat) % 2 == 0 ? 3 : 4;
 }
 
-bool tapeStopEnds (std::uint32_t seed, double density, std::int64_t bar, double beat, double beatsPerBar)
-{
+bool tapeStopEnds(std::uint32_t seed, double density, std::int64_t bar, double beat,
+                  double beatsPerBar) noexcept HBA_NONBLOCKING {
     const auto level = tapeStopLevel (bar, beat, beatsPerBar);
     const auto chance = std::clamp (density + 1.0 - level, 0.0, 1.0);
     const auto at = isBarLine (beat, beatsPerBar) ? beatsPerBar : static_cast<double> (std::llround (beat));
     return fractureDraw ({ seed, bar, 0.0, at, 0, 1 }, tapeStopTag) < chance;
 }
 
-double tapeStopBeats (const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double beat, double beatsPerBar)
-{
+double tapeStopBeats(const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double beat,
+                     double beatsPerBar) noexcept HBA_NONBLOCKING {
     auto gap = 2.0 * beatsPerBar;
     auto earlierBar = bar;
     auto earlierBeat = beat;
@@ -210,10 +195,9 @@ double tapeStopBeats (const FractureParameters::Tape& tape, std::uint32_t seed, 
     return std::min ({ static_cast<double> (tape.stopBeats), beatsPerBar, gap / 2.0 });
 }
 
-bool layOutTapeStops (const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double fromBeat,
-                      double beatsPerBar, double unitsPerBeat, double blockUnits, bool spinUpFirst,
-                      std::vector<Cut>& cuts)
-{
+bool layOutTapeStops(const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double fromBeat,
+                     double beatsPerBar, double unitsPerBeat, double blockUnits, bool spinUpFirst,
+                     CutList& cuts) noexcept HBA_NONBLOCKING {
     assert (tape.stopBeats > 0.0f);
     cuts.clear();
     const auto end = fromBeat + blockUnits / unitsPerBeat;
@@ -265,8 +249,8 @@ bool layOutTapeStops (const FractureParameters::Tape& tape, std::uint32_t seed, 
     return endsInStop;
 }
 
-TapeCurve tapeCurveFor (const FractureParameters::Tape& tape, TapeMotion motion, std::uint64_t ordinal)
-{
+TapeCurve tapeCurveFor(const FractureParameters::Tape& tape, TapeMotion motion,
+                       std::uint64_t ordinal) noexcept HBA_NONBLOCKING {
     using Curve = FractureParameters::Tape::Curve;
     switch (motion)
     {
@@ -281,14 +265,12 @@ TapeCurve tapeCurveFor (const FractureParameters::Tape& tape, TapeMotion motion,
     return { start, end, tape.curve };
 }
 
-int GrainResampler::bucketFor (double rate)
-{
+int GrainResampler::bucketFor(double rate) noexcept HBA_NONBLOCKING {
     assert (std::isfinite (rate) && rate >= 0.125-1e-9 && rate <= 8.0+1e-9);
     return std::clamp (static_cast<int> (std::ceil (8*std::log2 (std::max (1.0,rate))-1e-12)),0,bucketCount-1);
 }
 
-int GrainResampler::tapsFor (double rate)
-{
+int GrainResampler::tapsFor(double rate) noexcept HBA_NONBLOCKING {
     const auto bucketRate = std::exp2 (bucketFor (rate)/8.0);
     return std::max (32,2*static_cast<int> (std::ceil (12*bucketRate-1e-12)));
 }
@@ -325,27 +307,25 @@ void GrainResampler::prepare()
     }
 }
 
-std::span<const float> GrainResampler::coefficientsFor (double rate, int phase) const
-{
+std::span<const float> GrainResampler::coefficientsFor(double rate, int phase) const noexcept HBA_NONBLOCKING {
     assert(phase>=0 && phase<=phaseCount && !coefficients.empty());
     const auto taps=tapsFor(rate);
     return {coefficients.data()+offsets[static_cast<std::size_t>(bucketFor(rate))]+static_cast<std::size_t>(phase*taps),static_cast<std::size_t>(taps)};
 }
 
-GrainResampler::Kernel GrainResampler::kernelFor (double rate) const
-{
+GrainResampler::Kernel GrainResampler::kernelFor(double rate) const noexcept HBA_NONBLOCKING {
     assert(!coefficients.empty());
     const auto taps=tapsFor(rate);
     return {coefficients.data()+offsets[static_cast<std::size_t>(bucketFor(rate))],taps,taps/2-1};
 }
 
-std::optional<StereoFrame> GrainResampler::read (const LivePlayer& player, SourceRegion source, double position, double rate) const
-{
+std::optional<StereoFrame> GrainResampler::read(const LivePlayer& player, SourceRegion source, double position,
+                                                double rate) const noexcept HBA_NONBLOCKING {
     return read(player,source,position,kernelFor(rate));
 }
 
-std::optional<StereoFrame> GrainResampler::read (const LivePlayer& player, SourceRegion source, double position, Kernel kernel) const
-{
+std::optional<StereoFrame> GrainResampler::read(const LivePlayer& player, SourceRegion source, double position,
+                                                Kernel kernel) const noexcept HBA_NONBLOCKING {
     if (!std::isfinite(position) || position<0 || position>=static_cast<double>(source.frameCount))
         return std::nullopt;
     const auto index=static_cast<std::int64_t>(position);
@@ -382,8 +362,7 @@ void FractureReader::prepare (double rate)
     reset();
 }
 
-void FractureReader::reset()
-{
+void FractureReader::reset() noexcept HBA_NONBLOCKING {
     state={};
     voices={};
     admitted=false;
@@ -391,8 +370,7 @@ void FractureReader::reset()
     nextGrain=0;
 }
 
-void FractureReader::setParameters (const FractureParameters& p)
-{
+void FractureReader::setParameters(const FractureParameters& p) noexcept HBA_NONBLOCKING {
     parameters=p;
     if(p.procedure==FractureProcedure::classic)
     {
@@ -403,16 +381,15 @@ void FractureReader::setParameters (const FractureParameters& p)
     }
 }
 
-std::int64_t FractureReader::grainPoolFrames (const FractureParameters::Grain& p, double cents, double rate)
-{
+std::int64_t FractureReader::grainPoolFrames(const FractureParameters::Grain& p, double cents,
+                                             double rate) noexcept HBA_NONBLOCKING {
     const auto length=std::max(2L,std::lround(p.sizeMs*rate/1000));
     const auto highest=std::exp2((cents+p.pitchSpreadCents)/1200);
     return static_cast<std::int64_t>(std::ceil(static_cast<double>(length-1)*highest))+1
          +std::lround(p.positionSpreadMs*rate/1000)+GrainResampler::tapsFor(highest)-1;
 }
 
-void FractureReader::startCut (const FractureCutContext& cut)
-{
+void FractureReader::startCut(const FractureCutContext& cut) noexcept HBA_NONBLOCKING {
     context=cut;
     state.family=parameters.procedure;
     state.source=cut.source;
@@ -432,15 +409,13 @@ void FractureReader::startCut (const FractureCutContext& cut)
     tape.start (speeds.from, speeds.to, cut.outputFrames, speeds.curve);
 }
 
-void FractureReader::fail (FractureState reason)
-{
+void FractureReader::fail(FractureState reason) noexcept HBA_NONBLOCKING {
     state.state=reason;
     state.activeVoices=0;
     voices={};
 }
 
-void FractureReader::retimeTape (int age, int remainingFrames)
-{
+void FractureReader::retimeTape(int age, int remainingFrames) noexcept HBA_NONBLOCKING {
     const auto speeds = tapeCurveFor (parameters.tape, context.cut.tape, context.ordinal);
     if (parameters.procedure != FractureProcedure::tapeCut || context.completeTapeSource)
         return;
@@ -471,8 +446,7 @@ void FractureReader::retimeTape (int age, int remainingFrames)
         tape.start (speed, speeds.to, remainingFrames, speeds.curve);
 }
 
-std::optional<TapeTail> FractureReader::tail() const
-{
+std::optional<TapeTail> FractureReader::tail() const noexcept HBA_NONBLOCKING {
     if (parameters.procedure != FractureProcedure::tapeCut || context.cut.tape == TapeMotion::cycle
         || state.state != FractureState::playing)
         return std::nullopt;
@@ -486,8 +460,7 @@ std::optional<TapeTail> FractureReader::tail() const
     return tail;
 }
 
-bool FractureReader::motionUnfinished() const
-{
+bool FractureReader::motionUnfinished() const noexcept HBA_NONBLOCKING {
     if (parameters.procedure != FractureProcedure::tapeCut || state.state != FractureState::playing
         || nextAge >= context.outputFrames)
         return false;
@@ -496,8 +469,7 @@ bool FractureReader::motionUnfinished() const
         || (context.cut.tape == TapeMotion::stop && tape.speed (nextAge - tapeSegmentAge) > 0.0);
 }
 
-bool TapeTail::next (const LivePlayer& player, float& left, float& right)
-{
+bool TapeTail::next(const LivePlayer& player, float& left, float& right) noexcept HBA_NONBLOCKING {
     const auto local = age - segmentAge;
     const auto speed = trajectory.speed (local);
     const auto position = base + trajectory.position (local);
@@ -514,8 +486,7 @@ bool TapeTail::next (const LivePlayer& player, float& left, float& right)
     return true;
 }
 
-bool FractureReader::launch()
-{
+bool FractureReader::launch() noexcept HBA_NONBLOCKING {
     auto chosen=voices.end();
     for(auto it=voices.begin();it!=voices.end();++it)
         if(!it->active) { chosen=it; break; }
@@ -542,8 +513,8 @@ bool FractureReader::launch()
     return true;
 }
 
-bool FractureReader::process (const LivePlayer& player, int age, int soundingFrames, float& left, float& right)
-{
+bool FractureReader::process(const LivePlayer& player, int age, int soundingFrames, float& left,
+                             float& right) noexcept HBA_NONBLOCKING {
     left=right=0;
     if(state.state==FractureState::sourceLost || state.state==FractureState::capacityError || state.state==FractureState::contextUnavailable
        || state.state==FractureState::ended || state.state==FractureState::transformBudgetExhausted)

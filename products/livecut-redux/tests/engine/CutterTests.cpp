@@ -584,38 +584,46 @@ TEST_CASE ("Phrase events report every in-buffer boundary before its output samp
 {
     struct Events final : Cutter::Observer
     {
-        void discontinuity (int offset) override { resets.push_back (offset); }
-        void phraseCompleted(int) override {}
-        void phraseStarted (int offset, bool full) override { starts.push_back ({ offset, full }); }
-        void processOutput(int, float, float, float&, float&) override { ++samples; }
-        std::vector<int> resets;
+        void discontinuity(int offset) noexcept HBA_NONBLOCKING override {
+            if (resetCount < resets.size())
+                resets[resetCount] = offset;
+            ++resetCount;
+        }
+        void phraseCompleted(int) noexcept HBA_NONBLOCKING override {}
+        void phraseStarted(int offset, bool full) noexcept HBA_NONBLOCKING override {
+            if (startCount < starts.size())
+                starts[startCount] = {offset, full};
+            ++startCount;
+        }
+        void processOutput(int, float, float, float&, float&) noexcept HBA_NONBLOCKING override { ++samples; }
+        std::array<int, 8> resets{};
+        std::size_t resetCount = 0;
         int samples = 0;
-        std::vector<std::pair<int, bool>> starts;
+        std::array<std::pair<int, bool>, 8> starts{};
+        std::size_t startCount = 0;
     } events;
     Cutter cutter;
     cutter.prepare (8000.0); // 16000 samples per 4/4 bar at 120 BPM
     CutParameters params;
     params.minPhraseBars = params.maxPhraseBars = 1;
-    cutter.setParameters (params);
-    events.starts.reserve(4);
-    events.resets.reserve(1);
+    cutter.setParameters(params);
     Buffer buffer (49001);
     cutter.process (buffer.left.data(), buffer.right.data(), 49001, { 120.0, 4.0 }, { 0, 0.0 }, &events);
-    REQUIRE (events.starts.size() == 4);
+    REQUIRE(events.startCount == 4);
     for (int phrase = 0; phrase < 4; ++phrase)
     {
         CHECK (events.starts[static_cast<std::size_t> (phrase)].first == phrase * 16000);
         CHECK (events.starts[static_cast<std::size_t> (phrase)].second);
     }
     CHECK(events.samples == 49001);
-    REQUIRE (events.resets.size() == 1);
+    REQUIRE(events.resetCount == 1);
     CHECK (events.resets[0] == 0);
 
-    events.starts.clear();
-    events.resets.clear();
+    events.startCount = 0;
+    events.resetCount = 0;
     cutter.process (buffer.left.data(), buffer.right.data(), 17000, { 120.0, 4.0 }, { 20, 1.0 }, &events);
-    REQUIRE (events.resets.size() == 1);
-    REQUIRE (events.starts.size() == 2);
+    REQUIRE(events.resetCount == 1);
+    REQUIRE(events.startCount == 2);
     CHECK (events.starts[0].first == 0);
     CHECK_FALSE (events.starts[0].second); // unit 2 is a partial phrase
     CHECK (events.starts[1].first == 12000);
@@ -626,10 +634,13 @@ TEST_CASE ("An exclusive-end completion is not repeated at the next phrase start
 {
     struct Events final : Cutter::Observer
     {
-        void discontinuity (int) override {}
-        void phraseStarted (int, bool) override { ++starts; }
-        void phraseCompleted (int offset) override { ++ends; lastEnd = offset; }
-        void processOutput (int, float, float, float&, float&) override {}
+        void discontinuity(int) noexcept HBA_NONBLOCKING override {}
+        void phraseStarted(int, bool) noexcept HBA_NONBLOCKING override { ++starts; }
+        void phraseCompleted(int offset) noexcept HBA_NONBLOCKING override {
+            ++ends;
+            lastEnd = offset;
+        }
+        void processOutput(int, float, float, float&, float&) noexcept HBA_NONBLOCKING override {}
         int starts = 0, ends = 0, lastEnd = -1;
     } events;
     Cutter cutter;
@@ -651,20 +662,18 @@ namespace
 {
 struct PadEvents final : Cutter::Observer
 {
-    void discontinuity (int offset) override
-    {
+    void discontinuity(int offset) noexcept HBA_NONBLOCKING override {
         if (resetCount < resets.size())
             resets[resetCount] = base + offset;
         ++resetCount;
     }
-    void phraseStarted (int offset, bool) override
-    {
+    void phraseStarted(int offset, bool) noexcept HBA_NONBLOCKING override {
         if (startCount < starts.size())
             starts[startCount] = base + offset;
         ++startCount;
     }
-    void phraseCompleted (int) override {}
-    void processOutput (int, float, float, float&, float&) override {}
+    void phraseCompleted(int) noexcept HBA_NONBLOCKING override {}
+    void processOutput(int, float, float, float&, float&) noexcept HBA_NONBLOCKING override {}
 
     std::int64_t base = 0;
     std::array<std::int64_t, 64> starts {}, resets {};

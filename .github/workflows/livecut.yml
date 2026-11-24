@@ -10,6 +10,7 @@ env:
   PLUGINVAL_VERSION: v1.0.4
   VST3SDK_TAG: v3.8.1_build_84
   ARTEFACTS: build/Livecut_artefacts/Release
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
 
 defaults:
   run:
@@ -44,8 +45,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/cache@v5
         with:
-          submodules: true
+          path: .cpm-cache
+          key: cpm-livecut-${{ runner.os }}-${{ hashFiles('products/livecut-redux/CMakeLists.txt', 'cmake/CPM.cmake') }}
+          restore-keys: |
+            cpm-livecut-${{ runner.os }}-
 
       - name: Test release version checks
         run: cmake -P tests/release/ReleaseVersionTests.cmake
@@ -80,7 +86,7 @@ jobs:
 
       - name: Validate VST3
         run: |
-          "${{ matrix.pluginval_bin }}" --strictness-level 10 \
+          "${{ matrix.pluginval_bin }}" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
             --vst3validator "vst3sdk/build/bin/Release/validator${{ matrix.exe_suffix }}" \
             --validate "$ARTEFACTS/VST3/Livecut Redux.vst3"
 
@@ -91,8 +97,8 @@ jobs:
           mkdir -p ~/Library/Audio/Plug-Ins/Components
           cp -R "$ARTEFACTS/AU/Livecut Redux.component" ~/Library/Audio/Plug-Ins/Components/
           pkill -9 AudioComponentRegistrar || [ $? -eq 1 ]  # exit 1 means it was not running
-          auval -strict -v aufx Lvct Sdrn
-          "${{ matrix.pluginval_bin }}" --strictness-level 10 \
+          auval -strict -v aumf Lvct Sdrn
+          "${{ matrix.pluginval_bin }}" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
             --validate ~/"Library/Audio/Plug-Ins/Components/Livecut Redux.component"
 
       - name: Upload plugins

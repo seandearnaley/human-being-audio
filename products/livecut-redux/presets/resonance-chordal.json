@@ -1,0 +1,20 @@
+{
+    "name": "Chordal Resonator",
+    "category": "Resonance",
+    "surface": "Classic",
+    "procedure": "Bounce",
+    "subdivision": "8",
+    "seed": 4,
+    "fade": 3.0,
+    "resonanceEnabled": true,
+    "resonanceRootHz": 87.3,
+    "resonanceDecayMs": 420.0,
+    "resonanceExcitationDb": 3.0,
+    "resonanceInterval1": 0,
+    "resonanceInterval2": 3,
+    "resonanceInterval3": 7,
+    "resonanceInterval4": 10,
+    "resonanceMix": 0.58,
+    "subAnchor": 105.0,
+    "limiter": true
+}

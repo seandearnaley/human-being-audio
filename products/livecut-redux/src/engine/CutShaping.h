@@ -13,8 +13,7 @@ namespace livecut::engine
 // Sweeps pan and amplitude between two random settings across a roll, and
 // pitch from the original up to a random offset. The first cut keeps the
 // original pitch because it plays the input live.
-inline void sweep (std::span<Cut> cuts, Random& random, const CutParameters& params)
-{
+inline void sweep(std::span<Cut> cuts, Random& random, const CutParameters& params) noexcept HBA_NONBLOCKING {
     const auto startPan = random.uniform (params.minPan, params.maxPan);
     const auto endPan = random.uniform (params.minPan, params.maxPan);
     const auto startAmp = random.uniform (params.minAmp, params.maxAmp);
@@ -33,8 +32,7 @@ inline void sweep (std::span<Cut> cuts, Random& random, const CutParameters& par
 // Gives every cut its own random pan, amplitude and pitch. The first cut
 // plays the input live and keeps its original pitch, but still draws its
 // random pitch so existing seeds keep the same pattern.
-inline void scatter (std::span<Cut> cuts, Random& random, const CutParameters& params)
-{
+inline void scatter(std::span<Cut> cuts, Random& random, const CutParameters& params) noexcept HBA_NONBLOCKING {
     for (auto& cut : cuts)
     {
         cut.pan = static_cast<float> (random.uniform (params.minPan, params.maxPan));

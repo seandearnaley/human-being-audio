@@ -6,11 +6,21 @@
 #include "DisplayState.h"
 #include "OutputMixer.h"
 #include "Parameters.h"
+#include "Presets.h"
 #include "StreamResources.h"
 #include "engine/Cutter.h"
 #include "engine/WetHold.h"
 
+#include <StudioHistory.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+
+#include <mutex>
+#include <vector>
+
+struct LivecutSnapshot {
+    std::vector<float> values;
+    bool operator==(const LivecutSnapshot&) const = default;
+};
 
 class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut::engine::Cutter::Observer, private juce::Timer
 {
@@ -94,6 +104,24 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     {
         return capture;
     }
+    livecut::Presets& getPresets() { return presets; }
+    const livecut::Presets& getPresets() const { return presets; }
+    LivecutSnapshot captureSnapshot() const;
+    void restoreSnapshot(const LivecutSnapshot&);
+    void pushUndoSnapshot();
+    void pushCoalescedUndo(std::uint64_t tag);
+    bool canUndo() const { return history.canUndo(); }
+    bool canRedo() const { return history.canRedo(); }
+    void undo();
+    void redo();
+    bool isSlotB() const { return history.isSlotB(); }
+    void toggleAB();
+    void copyAB();
+    void rollSeed();
+    void clearMidiAxisOverride() {
+        midiXOverride.store(-1.0f, std::memory_order_relaxed);
+        midiYOverride.store(-1.0f, std::memory_order_relaxed);
+    }
     juce::String holdStatusText () const;
 
   private:
@@ -102,15 +130,16 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     void reconcileLatency ();
     void observeTransport ();
     void observeTransport (const juce::Optional<juce::AudioPlayHead::PositionInfo> &);
+    void handleMidiInput(const juce::MidiBuffer& midi);
     void process (juce::AudioBuffer<float> &, bool bypass);
     livecut::Settings effectiveSettings (const livecut::Settings& user);
     void applyRenderSettings (const livecut::Settings& user);
     void publishDisplay ();
     void publishTransformDisplay ();
-    void discontinuity (int) override;
-    void barStarted (int, std::int64_t) override;
-    void phraseCompleted (int) override;
-    void phraseStarted (int, bool) override;
+    void discontinuity(int) noexcept HBA_NONBLOCKING override;
+    void barStarted(int, std::int64_t) noexcept HBA_NONBLOCKING override;
+    void phraseCompleted(int) noexcept HBA_NONBLOCKING override;
+    void phraseStarted(int, bool) noexcept HBA_NONBLOCKING override;
     void collectOrDispatch (livecut::spectral::Event);
     void dispatchEvent (const livecut::spectral::Event &);
     void renderSpectralOutput (const livecut::spectral::Result &, float &, float &);
@@ -121,10 +150,12 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     void enterReplacementLock ();
     bool enterCurrentOperation (std::uint64_t);
     void publishStopHandle ();
-    void processOutput (int, float dryLeft, float dryRight, float &left, float &right) override;
+    void processOutput(int, float dryLeft, float dryRight, float& left, float& right) noexcept HBA_NONBLOCKING override;
 
     juce::AudioProcessorValueTreeState parameters;
     livecut::SettingsReader settingsReader;
+    livecut::Presets presets;
+    hba::studio::History<LivecutSnapshot> history;
     livecut::spectral::TestHooks* spectralTestHooks = nullptr;
     std::unique_ptr<livecut::StreamResources> stream;
     livecut::DisplayState display;
@@ -151,8 +182,16 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     bool collectingAfter = false, haveDelayedDisplay = false;
     livecut::spectral::DisplaySnapshot delayedDisplay;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> spectralMix{1.0f};
-    // Lifecycle-only atomic shared_ptr access; audio never loads/refcounts this handle.
+    // Lifecycle-only mutex-protected stop handle; audio never acquires this lock.
+    mutable std::mutex stopHandleMutex;
     std::shared_ptr<const livecut::spectral::StopHandle> activeStopPublication;
+    // Real-time MIDI note pad performance state (C1..G1 = notes 36..43, CC1 -> X, CC74/AT -> Y).
+    std::uint8_t midiPadMask = 0;
+    int midiActiveProgram = 0;
+    std::atomic<float> midiXOverride{-1.0f};
+    std::atomic<float> midiYOverride{-1.0f};
+    std::size_t lastWaveformBin = livecut::DisplayState::waveformBins;
+    std::size_t lastCutCountBin = 0;
     std::atomic<bool> publishedSpectral{false};
     std::atomic<livecut::ProcessingMode> publishedMode{livecut::ProcessingMode::live};
     std::atomic<ModeState> publishedModeState{ModeState::unprepared};

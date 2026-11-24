@@ -1,0 +1,21 @@
+{
+    "name": "WarpCut Drill",
+    "category": "Glitch",
+    "surface": "Classic",
+    "procedure": "WarpCut",
+    "subdivision": "16",
+    "seed": 13,
+    "minPhraseBars": 1,
+    "maxPhraseBars": 2,
+    "fade": 2.0,
+    "straightChance": 0.15,
+    "regularChance": 0.45,
+    "ritardChance": 0.65,
+    "accel": 0.84,
+    "minPitch": -700.0,
+    "maxPitch": 1200.0,
+    "minPan": -0.65,
+    "maxPan": 0.65,
+    "subAnchor": 100.0,
+    "limiter": true
+}

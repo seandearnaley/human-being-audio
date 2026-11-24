@@ -18,20 +18,24 @@ public:
 
     // Forgets any state carried between blocks, for when the cutter switches
     // to this procedure part way through a phrase.
-    virtual void reset() {}
+    virtual void reset() noexcept HBA_NONBLOCKING {}
 
     // Called at the start of every phrase.
-    virtual int choosePhraseBars (Random& random, const CutParameters& params)
-    {
+    virtual int choosePhraseBars(Random& random, const CutParameters& params) noexcept HBA_NONBLOCKING {
         return random.integer (params.minPhraseBars, params.maxPhraseBars);
     }
 
     // Replaces `cuts` with the next block. The block lasts totalUnits (cuts),
     // which is never zero and never runs past the end of the phrase.
-    virtual void chooseBlock (Random& random,
-                              const CutParameters& params,
-                              const BlockContext& context,
-                              std::vector<Cut>& cuts) = 0;
+    virtual void chooseBlock(Random& random, const CutParameters& params, const BlockContext& context,
+                             CutList& cuts) noexcept HBA_NONBLOCKING = 0;
+
+    // Convenience overload for non-real-time callers and unit tests.
+    void chooseBlock(Random& random, const CutParameters& params, const BlockContext& context, std::vector<Cut>& cuts) {
+        CutList list;
+        chooseBlock(random, params, context, list);
+        cuts.assign(list.begin(), list.end());
+    }
 };
 
 } // namespace livecut::engine

@@ -2,11 +2,15 @@
 
 #pragma once
 
-#include <atomic>
-#include "engine/WetHold.h"
 #include "engine/Cutter.h"
 #include "engine/Fracture.h"
+#include "engine/WetHold.h"
 #include "spectral/SpectralStage.h"
+
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 
 namespace livecut
 {
@@ -16,8 +20,11 @@ namespace livecut
 // own, so a read may mix neighbouring blocks, which a display can tolerate.
 struct DisplayState
 {
+    static constexpr std::size_t waveformBins = 128;
+
     std::atomic<int> padActiveProgram{0}, padPendingProgram{-1};
     std::atomic<bool> padEngaged{false};
+    std::atomic<std::uint8_t> midiPadMask{0};
 
     enum class Status
     {
@@ -60,8 +67,16 @@ struct DisplayState
     std::atomic<bool> spectralConfigured { false };
     std::atomic<int> spectralFftSize { 0 }, spectralHop { 0 }, spectralDelay { 0 };
 
+    // Lock-free real-time visualization telemetry (input waveform, slice markers, output peak & limiter GR).
+    std::array<std::atomic<float>, waveformBins> waveform{};
+    std::array<std::atomic<float>, waveformBins> sliceMarks{};
+    std::atomic<float> outputPeakL{0.0f};
+    std::atomic<float> outputPeakR{0.0f};
+    std::atomic<float> limiterGrDb{0.0f};
+
     static_assert (std::atomic<Status>::is_always_lock_free);
     static_assert (std::atomic<double>::is_always_lock_free);
+    static_assert(std::atomic<float>::is_always_lock_free);
 };
 
 } // namespace livecut

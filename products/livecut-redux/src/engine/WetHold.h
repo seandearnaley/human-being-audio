@@ -16,12 +16,13 @@ class WetHold
 {
 public:
     enum class State { live, waiting, pendingEntry, held, pendingRelease, oversize };
-    static constexpr std::size_t maxFrames = 64 * 192000;
+    static constexpr std::size_t maxFrames = 16 * 192000;
     void prepare (double rate, std::size_t frames = 0)
     {
         sampleRate = rate;
-        capacity = frames != 0 ? std::min (frames, maxFrames)
-                              : static_cast<std::size_t> (std::min (std::ceil (64.0 * rate), static_cast<double> (maxFrames)));
+        capacity = frames != 0
+                       ? std::min(frames, maxFrames)
+                       : static_cast<std::size_t>(std::min(std::ceil(16.0 * rate), static_cast<double>(maxFrames)));
         for (auto& slot : slots)
             slot.resize (capacity);
         transitionSamples = std::max (1, static_cast<int> (std::lround (rate * 0.005)));
@@ -102,10 +103,21 @@ public:
         const auto frame = phase / durationBeats * static_cast<double> (length);
         const auto first = std::min (static_cast<std::size_t> (frame), length - 1);
         const auto second = (first + 1) % length;
-        const auto fraction = static_cast<float> (frame - static_cast<double> (first));
+        const auto prev = first == 0 ? length - 1 : first - 1;
+        const auto next = (second + 1) % length;
+        const auto t = static_cast<float>(frame - static_cast<double>(first));
         const auto& audio = slots[static_cast<std::size_t> (latest)];
-        auto heldLeft = audio[first].left + fraction * (audio[second].left - audio[first].left);
-        auto heldRight = audio[first].right + fraction * (audio[second].right - audio[first].right);
+        const auto catmull = [t](float p0, float p1, float p2, float p3) noexcept {
+            const float a0 = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
+            const float a1 = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
+            const float a2 = -0.5f * p0 + 0.5f * p2;
+            return ((a0 * t + a1) * t + a2) * t + p1;
+        };
+        auto heldLeft = length >= 4 ? catmull(audio[prev].left, audio[first].left, audio[second].left, audio[next].left)
+                                    : audio[first].left + t * (audio[second].left - audio[first].left);
+        auto heldRight = length >= 4
+                             ? catmull(audio[prev].right, audio[first].right, audio[second].right, audio[next].right)
+                             : audio[first].right + t * (audio[second].right - audio[first].right);
         const auto seam = std::min (seamFrames, static_cast<double> (length) / 4.0);
         const auto window = static_cast<float> (std::clamp (std::min (frame, static_cast<double> (length) - frame) / seam, 0.0, 1.0));
         heldLeft *= window;

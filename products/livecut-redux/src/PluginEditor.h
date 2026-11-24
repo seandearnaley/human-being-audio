@@ -1,40 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 #pragma once
 
+#include "PluginModel.h"
 #include "PluginProcessor.h"
-#include "ui/LivecutLookAndFeel.h"
+#include "StudioAbout.h"
+#include "lc/ui/editor.h"
 
-#include <juce_audio_processors/juce_audio_processors.h>
+#include <hba/host/visage_surface.h>
 
-#include <memory>
+class LivecutAudioProcessorEditor final : public juce::AudioProcessorEditor {
+  public:
+    static constexpr int baseWidth = lc::ui::kDefaultWidth;
+    static constexpr int baseHeight = lc::ui::kDefaultHeight;
 
-class LivecutAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
-{
-public:
-    // Everything is laid out once at this size and scaled as a whole when the window is resized.
-    static constexpr int baseWidth = 880;
-    static constexpr int baseHeight = 724;
-
-    explicit LivecutAudioProcessorEditor (LivecutAudioProcessor& p);
+    explicit LivecutAudioProcessorEditor(LivecutAudioProcessor& processor);
     ~LivecutAudioProcessorEditor() override;
 
-    void paint (juce::Graphics& g) override;
+    void paint(juce::Graphics& g) override;
     void resized() override;
+    void showAbout();
+    void parentHierarchyChanged() override;
 
-    // Reads the processor's display state into the phrase ruler. The timer calls it 30 times a second.
-    void refreshDisplay();
-    juce::String statusText() const;
+  private:
+    void attachWhenOnScreen();
+    void detachView();
 
-private:
-    class Panel;
+    livecut::PluginModel model_;
+    hba::host::VisageSurface nativeHost_;
+    lc::ui::Editor view_;
 
-    void timerCallback() override;
+    struct AboutPage final : hba::StudioAbout {
+        AboutPage();
+        void paint(juce::Graphics& g) override;
+    } about_;
 
-    LivecutAudioProcessor& livecutProcessor;
-    livecut::ui::LivecutLookAndFeel lookAndFeel; // outlives the panel, which is destroyed first
-    std::unique_ptr<Panel> panel;
-    juce::TooltipWindow tooltips { this, 600 };
+    void* attachedTo_ = nullptr;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LivecutAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LivecutAudioProcessorEditor)
 };

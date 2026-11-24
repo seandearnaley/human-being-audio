@@ -1,0 +1,20 @@
+{
+    "name": "Resonant Sweep",
+    "category": "Neuro",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 6,
+    "fade": 3.0,
+    "impactFilterEnabled": true,
+    "impactFilterType": "Low-pass",
+    "impactFilterCutoff": 750.0,
+    "impactFilterQ": 5.2,
+    "impactFilterEnvOctaves": 3.2,
+    "impactFilterRepeatOctaves": 1.8,
+    "impactFilterMix": 0.85,
+    "impactAttackMs": 2.0,
+    "impactDecayMs": 140.0,
+    "subAnchor": 100.0,
+    "limiter": true
+}

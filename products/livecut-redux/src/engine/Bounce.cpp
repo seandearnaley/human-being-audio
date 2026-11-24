@@ -16,11 +16,8 @@ namespace
 constexpr double epsilon = 1.0e-9;
 } // namespace
 
-void Bounce::chooseBlock (Random& random,
-                          const CutParameters& params,
-                          const BlockContext& context,
-                          std::vector<Cut>& cuts)
-{
+void Bounce::chooseBlock(Random& random, const CutParameters& params, const BlockContext& context,
+                         CutList& cuts) noexcept HBA_NONBLOCKING {
     cuts.clear();
 
     const auto unitsPerBar = static_cast<double> (context.unitsPerBar);

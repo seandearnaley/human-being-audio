@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -88,9 +90,10 @@ inline constexpr double sweepLowHz = 30.0, sweepLowQ = 0.707;
 // high-pass, with resonance q. The high-pass keeps sweepLowQ.
 double sweepPinkPower (double widthOctaves, double q);
 double integrateSweepPinkPower (double widthOctaves, double q, double stepOctaves);
+struct PinkPowerTable;
 // The tail's note for a cutoff: the nearest equal-tempered semitone, with A4
 // at 440 Hz, moved by whole octaves into C4 to B5.
-double tailNoteHz (double cutoffHz);
+double tailNoteHz(double cutoffHz) noexcept HBA_NONBLOCKING;
 } // namespace detail
 
 // JUCE-free, allocation-free stereo processing. Production rates are 8–384 kHz;
@@ -120,20 +123,20 @@ public:
     };
 
     void prepare (double sampleRate);
-    void reset();
-    void setParameters (const ImpactParameters&);
-    void startCut (const CutIdentity&);
-    void process (float& left, float& right);
+    void reset() noexcept HBA_NONBLOCKING;
+    void setParameters(const ImpactParameters&) noexcept HBA_NONBLOCKING;
+    void startCut(const CutIdentity&) noexcept HBA_NONBLOCKING;
+    void process(float& left, float& right) noexcept HBA_NONBLOCKING;
 
-    const Diagnostics& diagnostics() const { return state; }
+    const Diagnostics& diagnostics() const noexcept HBA_NONBLOCKING { return state; }
 
-private:
+  private:
     struct Ramp
     {
         double current = 0.0, target = 0.0, increment = 0.0;
         std::uint32_t remaining = 0;
-        void setTarget (double value, std::uint32_t samples);
-        double next();
+        void setTarget(double value, std::uint32_t samples) noexcept HBA_NONBLOCKING;
+        double next() noexcept HBA_NONBLOCKING;
     };
     struct FilterState { double ic1 = 0.0, ic2 = 0.0; };
     struct DriveState
@@ -160,15 +163,16 @@ private:
         std::uint32_t duckRemaining = 0;
     };
 
-    double nextEnvelope();
-    void adoptFilter();
-    void startTail (const CutIdentity&);
-    double nextTail();
-    void resetBand();
-    void processFilter (double& left, double& right, double envelope, double repeatProgress);
-    void processBand (double& left, double& right, double envelope, double repeatProgress, double mix);
-    void processDrive (double& left, double& right, double envelope);
-    void processTransient (double& left, double& right);
+    double nextEnvelope() noexcept HBA_NONBLOCKING;
+    void adoptFilter() noexcept HBA_NONBLOCKING;
+    void startTail(const CutIdentity&) noexcept HBA_NONBLOCKING;
+    double nextTail() noexcept HBA_NONBLOCKING;
+    void resetBand() noexcept HBA_NONBLOCKING;
+    void processFilter(double& left, double& right, double envelope, double repeatProgress) noexcept HBA_NONBLOCKING;
+    void processBand(double& left, double& right, double envelope, double repeatProgress,
+                     double mix) noexcept HBA_NONBLOCKING;
+    void processDrive(double& left, double& right, double envelope) noexcept HBA_NONBLOCKING;
+    void processTransient(double& left, double& right) noexcept HBA_NONBLOCKING;
 
     // The filter runs parameters.filter. A band switched off, or a type change
     // into or out of a band, while it sounds holds it: it adopts the requested
@@ -197,6 +201,8 @@ private:
     double smoothingPole = 0.0;
     Tail tail;
     double tailRecoveryPole = 0.0;
+    const detail::PinkPowerTable* bandPowerTable = nullptr;
+    const detail::PinkPowerTable* sweepPowerTableData = nullptr;
     std::array<DriveState, 2> driveState;
     double fastEnvelope = 0.0, slowEnvelope = 0.0;
     double transientAttack = 0.0, transientRelease = 0.0;

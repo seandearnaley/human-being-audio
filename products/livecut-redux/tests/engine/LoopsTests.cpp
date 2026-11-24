@@ -313,8 +313,7 @@ struct Epoch final : Cutter::SourceContext
 {
     std::uint64_t epoch = 1;
     std::int64_t first = 0;
-    std::optional<Cutter::TransportBounds> sourceBoundsAt (std::int64_t frame) const override
-    {
+    std::optional<Cutter::TransportBounds> sourceBoundsAt(std::int64_t frame) const noexcept HBA_NONBLOCKING override {
         if (frame < 0)
             return std::nullopt;
         if (frame < first)

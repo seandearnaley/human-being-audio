@@ -62,7 +62,7 @@ TEST_CASE ("Processor reports its identity", "[processor]")
     LivecutAudioProcessor processor;
 
     CHECK (processor.getName() == "Livecut Redux");
-    CHECK_FALSE (processor.acceptsMidi());
+    CHECK(processor.acceptsMidi());
     CHECK_FALSE (processor.producesMidi());
 }
 
@@ -87,12 +87,12 @@ TEST_CASE ("Processor reports a tail as long as the longest bar it cuts", "[proc
 }
 
 // Steinberg's VST3 validator rejects a program list containing an unnamed program.
-TEST_CASE ("Processor exposes exactly one named program", "[processor][programs]")
-{
+TEST_CASE("Processor exposes named factory presets", "[processor][programs]") {
     LivecutAudioProcessor processor;
 
-    REQUIRE (processor.getNumPrograms() == 1);
-    CHECK (processor.getProgramName (0).isNotEmpty());
+    REQUIRE(processor.getNumPrograms() >= 28);
+    for (int i = 0; i < processor.getNumPrograms(); ++i)
+        CHECK(processor.getProgramName(i).isNotEmpty());
 }
 
 TEST_CASE ("Processor defaults to a stereo input and output bus", "[processor][buses]")
@@ -103,8 +103,7 @@ TEST_CASE ("Processor defaults to a stereo input and output bus", "[processor][b
     CHECK (processor.getMainBusNumOutputChannels() == 2);
 }
 
-TEST_CASE ("Processor accepts only a stereo-to-stereo layout", "[processor][buses]")
-{
+TEST_CASE("Processor accepts stereo-to-stereo and mono-to-stereo layouts", "[processor][buses]") {
     LivecutAudioProcessor processor;
     const auto stereo = juce::AudioChannelSet::stereo();
     const auto mono = juce::AudioChannelSet::mono();
@@ -112,7 +111,7 @@ TEST_CASE ("Processor accepts only a stereo-to-stereo layout", "[processor][buse
 
     CHECK (processor.checkBusesLayoutSupported (makeLayout (stereo, stereo)));
     CHECK_FALSE (processor.checkBusesLayoutSupported (makeLayout (mono, mono)));
-    CHECK_FALSE (processor.checkBusesLayoutSupported (makeLayout (mono, stereo)));
+    CHECK(processor.checkBusesLayoutSupported(makeLayout(mono, stereo)));
     CHECK_FALSE (processor.checkBusesLayoutSupported (makeLayout (stereo, mono)));
     CHECK_FALSE (processor.checkBusesLayoutSupported (makeLayout (surround, surround)));
 }

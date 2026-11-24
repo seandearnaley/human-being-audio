@@ -1,27 +1,41 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Both must be set before project() to apply to every target. macOS 11 is the
-
 # The engine and UI libraries are linked into loadable plugin modules.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# first release with Apple Silicon, so it is the floor for a universal binary.
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+# Minimum macOS version matching the studio Visage + CPM baseline.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures to build")
 
 project(Livecut VERSION 1.0.3 LANGUAGES C CXX)
+
+if(APPLE)
+    enable_language(OBJC OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(CMakeDependentOption)
+cmake_dependent_option(LIVECUT_BUILD_PLUGIN "Build the interface and the plugin (fetches JUCE and Visage)" ON "NOT HBA_RTSAN" OFF)
 option(LIVECUT_BUILD_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(LIVECUT_COPY_PLUGIN_AFTER_BUILD "Install the plugins into the user's plug-in folders after building" OFF)
 
-add_subdirectory(libs/JUCE)
+find_program(LIVECUT_CCACHE ccache HINTS /opt/homebrew/bin /usr/local/bin)
+if(LIVECUT_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    set(CMAKE_C_COMPILER_LAUNCHER "${LIVECUT_CCACHE}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${LIVECUT_CCACHE}")
+endif()
 
-# The cutting engine is plain C++ with no JUCE dependency, so it can be tested in isolation.
+include("${PROJECT_SOURCE_DIR}/../../cmake/CPM.cmake")
+include("${PROJECT_SOURCE_DIR}/../../cmake/StudioHelpers.cmake")
+CPMAddPackage(NAME nlohmann_json GITHUB_REPOSITORY nlohmann/json VERSION 3.12.0 SYSTEM YES)
+
+# The cutting engine is plain C++ with no JUCE dependency, so it can be tested in isolation and under RTSan.
 add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
+add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/core" "${PROJECT_BINARY_DIR}/studio-core")
+
 add_library(LivecutEngine STATIC
     src/engine/Accent.h
     src/engine/WetHold.h
@@ -50,153 +64,147 @@ add_library(LivecutEngine STATIC
     src/engine/WarpCut.cpp)
 target_include_directories(LivecutEngine PUBLIC src)
 target_compile_features(LivecutEngine PUBLIC cxx_std_20)
-target_link_libraries(LivecutEngine
-    PUBLIC hba_dsp
-    PRIVATE
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_warning_flags)
+target_link_libraries(LivecutEngine PUBLIC hba_dsp)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(LivecutEngine PRIVATE -Wall -Wextra -Wpedantic)
+    hba_require_nonblocking(LivecutEngine)
+elseif(MSVC)
+    target_compile_options(LivecutEngine PRIVATE /W4)
+else()
+    target_compile_options(LivecutEngine PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
-# The FFT adapter and worker are shared by plugin and processor tests.
-add_library(LivecutSpectral STATIC
-    src/spectral/SpectralStage.h
-    src/spectral/SpectralStage.cpp
-    src/spectral/SpectralKernel.h
-    src/spectral/SpectralKernel.cpp
-    src/spectral/JuceFft.cpp)
-target_include_directories(LivecutSpectral PUBLIC src)
-target_compile_features(LivecutSpectral PUBLIC cxx_std_20)
-target_link_libraries(LivecutSpectral PRIVATE juce::juce_dsp
-    juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+if(LIVECUT_BUILD_PLUGIN)
+    CPMAddPackage(NAME visage GITHUB_REPOSITORY VitalAudio/visage GIT_TAG v1.0.0 SYSTEM YES)
+    CPMAddPackage(NAME JUCE GITHUB_REPOSITORY juce-framework/JUCE GIT_TAG 9.0.5 SYSTEM YES)
+    add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/visage-ui" "${PROJECT_BINARY_DIR}/studio-visage-ui")
+    add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/plugin-host" "${PROJECT_BINARY_DIR}/studio-plugin-host")
+    add_subdirectory(ui)
 
-include("${PROJECT_SOURCE_DIR}/../../cmake/StudioProduct.cmake")
-hba_product(livecut-redux)
+    # The FFT adapter and worker are shared by plugin and processor tests.
+    add_library(LivecutSpectral STATIC
+        src/spectral/SpectralStage.h
+        src/spectral/SpectralStage.cpp
+        src/spectral/SpectralKernel.h
+        src/spectral/SpectralKernel.cpp
+        src/spectral/JuceFft.cpp)
+    target_include_directories(LivecutSpectral PUBLIC src)
+    target_compile_features(LivecutSpectral PUBLIC cxx_std_20)
+    target_link_libraries(LivecutSpectral PRIVATE juce::juce_dsp
+        juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
-juce_add_plugin(Livecut
-    PRODUCT_NAME "${HBA_name}"
-    DESCRIPTION "BBCut-style live beat slicer"
-    COMPANY_NAME "${HBA_publisher}"
-    COMPANY_WEBSITE "${HBA_website}"
-    BUNDLE_ID "${HBA_bundle}"
-    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
-    PLUGIN_MANUFACTURER_CODE "${HBA_manufacturerCode}"
-    PLUGIN_CODE "${HBA_pluginCode}"
-    FORMATS VST3 AU Standalone
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    VST3_CATEGORIES Fx
-    AU_MAIN_TYPE kAudioUnitType_Effect
-    MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "Livecut Redux cuts the audio coming into your Mac."
-    COPY_PLUGIN_AFTER_BUILD ${LIVECUT_COPY_PLUGIN_AFTER_BUILD})
+    include("${PROJECT_SOURCE_DIR}/../../cmake/StudioProduct.cmake")
+    hba_product(livecut-redux)
 
-target_compile_definitions(Livecut
-    PUBLIC
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0)
+    juce_add_plugin(Livecut
+        PRODUCT_NAME "${HBA_name}"
+        DESCRIPTION "BBCut-style live beat slicer"
+        COMPANY_NAME "${HBA_publisher}"
+        COMPANY_WEBSITE "${HBA_website}"
+        BUNDLE_ID "${HBA_bundle}"
+        ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
+        PLUGIN_MANUFACTURER_CODE "${HBA_manufacturerCode}"
+        PLUGIN_CODE "${HBA_pluginCode}"
+        FORMATS VST3 AU Standalone
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT TRUE
+        NEEDS_MIDI_OUTPUT FALSE
+        VST3_CATEGORIES Fx
+        AU_MAIN_TYPE kAudioUnitType_MusicEffect
+        MICROPHONE_PERMISSION_ENABLED TRUE
+        MICROPHONE_PERMISSION_TEXT "Livecut Redux cuts the audio coming into your Mac."
+        COPY_PLUGIN_AFTER_BUILD ${LIVECUT_COPY_PLUGIN_AFTER_BUILD})
 
-# The skin's typeface, embedded in the binary.
-juce_add_binary_data(LivecutAssets
-    HEADER_NAME LivecutAssets.h
-    NAMESPACE livecut::assets
-    SOURCES
-        assets/fonts/BricolageGrotesque.ttf)
+    target_compile_definitions(Livecut
+        PUBLIC
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_VST3_CAN_REPLACE_VST2=0)
 
-# Plugin sources live in an INTERFACE library so the test runner can compile
-# the same code without linking against a plugin wrapper.
-add_library(LivecutCode INTERFACE)
-target_sources(LivecutCode
-    INTERFACE
-        src/CaptureService.cpp
-        src/CaptureService.h
-        src/StreamResources.h
-        src/OutputMixer.h
-        src/PhraseCapture.cpp
-        src/PhraseCapture.h
-        src/DisplayState.h
-        src/HostSync.cpp
-        src/HostSync.h
-        src/PadSurface.cpp
-        src/PadSurface.h
-        src/Parameters.cpp
-        src/Parameters.h
-        src/PluginEditor.cpp
-        src/PluginEditor.h
-        src/PluginProcessor.cpp
-        src/PluginProcessor.h
-        src/ui/AboutSheet.cpp
-        src/ui/AboutSheet.h
-        src/ui/Controls.cpp
-        src/ui/Controls.h
-        src/ui/FrameClock.h
-        src/ui/LivecutLookAndFeel.cpp
-        src/ui/LivecutLookAndFeel.h
-        src/ui/PadArt.cpp
-        src/ui/PadArt.h
-        src/ui/PadPage.cpp
-        src/ui/PadPage.h
-        src/ui/PhraseRuler.cpp
-        src/ui/PhraseRuler.h
-        src/ui/RangeSlider.cpp
-        src/ui/RangeSlider.h
-        src/ui/Theme.cpp
-        src/ui/Theme.h
-        src/ui/XYPad.cpp
-        src/ui/XYPad.h)
-target_include_directories(LivecutCode INTERFACE src)
-target_link_libraries(LivecutCode INTERFACE hba_studio_ui LivecutEngine LivecutSpectral LivecutAssets juce::juce_audio_utils)
+    file(GLOB LIVECUT_PRESET_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/presets/*.json")
+    juce_add_binary_data(LivecutPresets
+        HEADER_NAME LivecutPresetsData.h
+        NAMESPACE LivecutPresetsData
+        SOURCES ${LIVECUT_PRESET_FILES})
 
-target_link_libraries(Livecut
-    PRIVATE
-        LivecutCode
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
+    # Compile plugin sources once into Livecut (JUCE's SharedCode static archive)
+    # so tests link directly instead of recompiling plugin & JUCE.
+    target_sources(Livecut
+        PRIVATE
+            src/CaptureService.cpp
+            src/CaptureService.h
+            src/Presets.cpp
+            src/Presets.h
+            src/StreamResources.h
+            src/OutputMixer.h
+            src/PhraseCapture.cpp
+            src/PhraseCapture.h
+            src/DisplayState.h
+            src/HostSync.cpp
+            src/HostSync.h
+            src/PadSurface.cpp
+            src/PadSurface.h
+            src/Parameters.cpp
+            src/Parameters.h
+            src/PluginModel.cpp
+            src/PluginModel.h
+            src/PluginEditor.cpp
+            src/PluginEditor.h
+            src/PluginProcessor.cpp
+            src/PluginProcessor.h)
+    target_include_directories(Livecut PUBLIC src)
+    target_include_directories(Livecut SYSTEM INTERFACE "${JUCE_SOURCE_DIR}/modules")
+    target_link_libraries(Livecut
+        PRIVATE
+            hba_plugin_host
+            lc_ui
+            LivecutPresets
+        PUBLIC
+            hba_core
+            hba_studio_ui
+            hba_plugin_host_headers
+            LivecutEngine
+            LivecutSpectral
+            juce::juce_audio_utils
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+endif()
 
 if(LIVECUT_BUILD_TESTS)
     enable_testing()
-    add_subdirectory(libs/Catch2 EXCLUDE_FROM_ALL)
-    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libs/Catch2/extras")
+    CPMAddPackage(NAME Catch2 GITHUB_REPOSITORY catchorg/Catch2 VERSION 3.16.1 SYSTEM YES)
+    list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
     include(Catch)
 
-    # Tests only run on the build machine, so skip the other slice of a universal build.
-    function(livecut_build_for_host_only target)
-        if(APPLE)
-            set_target_properties(${target} PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
-        endif()
-    endfunction()
+    if(LIVECUT_BUILD_PLUGIN)
+        add_executable(LivecutTests
+            tests/engine/AllocationCounter.cpp
+            tests/SpectralTests.cpp
+            tests/ResonanceProcessorTests.cpp
+            tests/ResonanceStateTests.cpp
+            tests/CaptureTests.cpp
+            tests/HostSyncTests.cpp
+            tests/ParametersTests.cpp
+            tests/PadProcessorTests.cpp
+            tests/PluginProcessorTests.cpp
+            tests/FractureStateTests.cpp
+            tests/FractureProcessorTests.cpp
+            tests/ImpactStateTests.cpp
+            tests/ImpactProcessorTests.cpp
+            tests/RecutProcessorTests.cpp
+            tests/Livecut2Tests.cpp)
+        hba_build_for_host_only(LivecutTests)
+        target_link_libraries(LivecutTests
+            PRIVATE
+                Livecut
+                lc_ui
+                Catch2::Catch2WithMain
+                juce::juce_recommended_config_flags
+                juce::juce_recommended_warning_flags)
 
-    add_executable(LivecutTests
-        tests/engine/AllocationCounter.cpp
-        tests/SpectralTests.cpp
-        tests/ResonanceProcessorTests.cpp
-        tests/ResonanceStateTests.cpp
-        tests/CaptureTests.cpp
-        tests/EditorTests.cpp
-        tests/HostSyncTests.cpp
-        tests/ParametersTests.cpp
-        tests/PadEditorTests.cpp
-        tests/PadProcessorTests.cpp
-        tests/PluginProcessorTests.cpp
-        tests/FractureStateTests.cpp
-        tests/FractureProcessorTests.cpp
-        tests/ImpactStateTests.cpp
-        tests/ImpactProcessorTests.cpp
-        tests/RecutProcessorTests.cpp
-        tests/SkinTests.cpp)
-    livecut_build_for_host_only(LivecutTests)
-    # The JucePlugin_* definitions only exist on the plugin target, so copy them.
-    target_compile_definitions(LivecutTests PRIVATE $<TARGET_PROPERTY:Livecut,COMPILE_DEFINITIONS>)
-    target_link_libraries(LivecutTests
-        PRIVATE
-            LivecutCode
-            Catch2::Catch2WithMain
-            juce::juce_recommended_config_flags
-            juce::juce_recommended_warning_flags)
-
-    catch_discover_tests(LivecutTests DISCOVERY_MODE PRE_TEST)
+        catch_discover_tests(LivecutTests DISCOVERY_MODE PRE_TEST)
+    endif()
 
     add_executable(LivecutEngineTests
         "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
@@ -238,16 +246,14 @@ if(LIVECUT_BUILD_TESTS)
         tests/engine/TapeTests.cpp
         tests/engine/WarpCutTests.cpp)
     target_include_directories(LivecutEngineTests PRIVATE tests)
-    livecut_build_for_host_only(LivecutEngineTests)
+    hba_build_for_host_only(LivecutEngineTests)
     target_link_libraries(LivecutEngineTests
         PRIVATE
             LivecutEngine
-            Catch2::Catch2WithMain
-            juce::juce_recommended_config_flags
-            juce::juce_recommended_warning_flags)
+            Catch2::Catch2WithMain)
 
     if(HBA_RTSAN)
-        hba_realtime_suite(LivecutEngineTests "[cutter]")
+        hba_realtime_suite(LivecutEngineTests "[cutter],[effects],[impact],[frequency],[resonator],[fracture]")
     else()
         catch_discover_tests(LivecutEngineTests DISCOVERY_MODE PRE_TEST)
     endif()

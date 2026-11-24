@@ -137,6 +137,8 @@ inline constexpr auto padHold = "padHold";
 inline constexpr auto padQuantize = "padQuantize";
 inline constexpr auto surface = "surface";
 inline constexpr auto padStraight = "padStraight";
+inline constexpr auto subAnchor = "subAnchor";
+inline constexpr auto limiter = "limiter";
 } // namespace ids
 
 inline constexpr std::array subdivisions { 6, 8, 12, 16, 18, 24, 32 };
@@ -155,6 +157,8 @@ struct Settings
     double fadeMilliseconds = 0.0;
     float wet = 1.0f;
     float outputTrimDb = 0.0f;
+    float subAnchorHz = 0.0f;
+    bool limiter = false;
     double swingPercent = 50.0;
     float accent = 0.0f;
     bool hold = false;
@@ -313,6 +317,8 @@ private:
     Source padQuantize;
     Source surface;
     Source padStraight;
+    Source subAnchor;
+    Source limiter;
 };
 
 void applySettings (engine::Cutter& cutter, const Settings& settings);

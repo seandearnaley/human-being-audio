@@ -81,20 +81,22 @@ class TapeTrajectory
 public:
     // A quadratic curve may start part of the way along, at `phase` in [0, 1), so a
     // brake re-timed for a new tempo keeps its shape rather than starting over.
-    void start (double from, double to, int frames, FractureParameters::Tape::Curve, double phase = 0.0);
-    double speed (int frame) const;
-    double position (int frame) const;
-    std::int64_t sourceFrames() const;
-    // How far along the curve frame `frame` is, counting a starting phase.
-    double phaseAt (int frame) const;
-    // A spin-up re-timed for a new tempo: from `lag` frames behind the track at
-    // `speed`, it lands on the track at speed 1 with no acceleration left after
-    // `frames`, then plays on at 1. Its lag is w^3 (a + b w), w running from 1 to
-    // 0, which stays at or above 0 (never ahead of the input) whenever
-    // a = 4 lag + frames (1 - speed) is; canLand says so. The first spin-up is the
-    // case lag 0, speed 0.
-    static bool canLand (double lag, double speed, int frames);
-    void land (double lag, double speed, int frames);
+  void start(double from, double to, int frames, FractureParameters::Tape::Curve,
+             double phase = 0.0) noexcept HBA_NONBLOCKING;
+  double speed(int frame) const noexcept HBA_NONBLOCKING;
+  double position(int frame) const noexcept HBA_NONBLOCKING;
+  std::int64_t sourceFrames() const noexcept HBA_NONBLOCKING;
+  // How far along the curve frame `frame` is, counting a starting phase.
+  double phaseAt(int frame) const noexcept HBA_NONBLOCKING;
+  // A spin-up re-timed for a new tempo: from `lag` frames behind the track at
+  // `speed`, it lands on the track at speed 1 with no acceleration left after
+  // `frames`, then plays on at 1. Its lag is w^3 (a + b w), w running from 1 to
+  // 0, which stays at or above 0 (never ahead of the input) whenever
+  // a = 4 lag + frames (1 - speed) is; canLand says so. The first spin-up is the
+  // case lag 0, speed 0.
+  static bool canLand(double lag, double speed, int frames) noexcept HBA_NONBLOCKING;
+  void land(double lag, double speed, int frames) noexcept HBA_NONBLOCKING;
+
 private:
     double from = 1.0, to = 0.0, phase = 0.0;
     bool landing = false;
@@ -110,7 +112,7 @@ struct TapeCurve
     double from = 1.0, to = 0.0;
     FractureParameters::Tape::Curve curve = FractureParameters::Tape::Curve::smooth;
 };
-TapeCurve tapeCurveFor (const FractureParameters::Tape&, TapeMotion, std::uint64_t ordinal);
+TapeCurve tapeCurveFor(const FractureParameters::Tape&, TapeMotion, std::uint64_t ordinal) noexcept HBA_NONBLOCKING;
 
 class LivePlayer;
 
@@ -120,21 +122,24 @@ class GrainResampler
 public:
     static constexpr int phaseCount = 256, bucketCount = 25, maximumTaps = 192;
     void prepare();
-    static int bucketFor (double rate);
-    static int tapsFor (double rate);
-    static int leftGuard (double rate) { return tapsFor (rate) / 2 - 1; }
-    static int rightGuard (double rate) { return tapsFor (rate) / 2; }
+    static int bucketFor(double rate) noexcept HBA_NONBLOCKING;
+    static int tapsFor(double rate) noexcept HBA_NONBLOCKING;
+    static int leftGuard(double rate) noexcept HBA_NONBLOCKING { return tapsFor(rate) / 2 - 1; }
+    static int rightGuard(double rate) noexcept HBA_NONBLOCKING { return tapsFor(rate) / 2; }
     struct Kernel
     {
         const float* coefficients = nullptr;
         int taps = 0;
         int leftGuard = 0;
     };
-    Kernel kernelFor (double rate) const;
-    std::optional<StereoFrame> read (const LivePlayer&, SourceRegion, double position, double rate) const;
-    std::optional<StereoFrame> read (const LivePlayer&, SourceRegion, double position, Kernel) const;
-    std::span<const float> coefficientsFor (double rate, int phase) const;
-private:
+    Kernel kernelFor(double rate) const noexcept HBA_NONBLOCKING;
+    std::optional<StereoFrame> read(const LivePlayer&, SourceRegion, double position,
+                                    double rate) const noexcept HBA_NONBLOCKING;
+    std::optional<StereoFrame> read(const LivePlayer&, SourceRegion, double position,
+                                    Kernel) const noexcept HBA_NONBLOCKING;
+    std::span<const float> coefficientsFor(double rate, int phase) const noexcept HBA_NONBLOCKING;
+
+  private:
     std::array<std::size_t,bucketCount> offsets {};
     std::vector<float> coefficients;
 };
@@ -163,7 +168,7 @@ struct TapeTail
     int age = 0, segmentAge = 0;
     float ll = 1, lr = 0, rl = 0, rr = 1;
     // Renders the next frame of the motion; false once its source is gone.
-    bool next (const LivePlayer&, float& left, float& right);
+    bool next(const LivePlayer&, float& left, float& right) noexcept HBA_NONBLOCKING;
 };
 
 // Owns eight Grain voices and one Tape trajectory; no processing allocations.
@@ -171,20 +176,22 @@ class FractureReader
 {
 public:
     void prepare (double sampleRate);
-    void reset();
-    void setParameters (const FractureParameters&);
-    static std::int64_t grainPoolFrames (const FractureParameters::Grain&, double cents, double sampleRate);
-    void startCut (const FractureCutContext&);
-    void fail (FractureState);
-    void retimeTape (int age, int remainingFrames);
+    void reset() noexcept HBA_NONBLOCKING;
+    void setParameters(const FractureParameters&) noexcept HBA_NONBLOCKING;
+    static std::int64_t grainPoolFrames(const FractureParameters::Grain&, double cents,
+                                        double sampleRate) noexcept HBA_NONBLOCKING;
+    void startCut(const FractureCutContext&) noexcept HBA_NONBLOCKING;
+    void fail(FractureState) noexcept HBA_NONBLOCKING;
+    void retimeTape(int age, int remainingFrames) noexcept HBA_NONBLOCKING;
     // The sounding motion from its next frame on, if a pad motion is playing.
-    std::optional<TapeTail> tail() const;
+    std::optional<TapeTail> tail() const noexcept HBA_NONBLOCKING;
     // Whether a playing stop still sounds, or a spin-up hasn't landed, before its last frame.
-    bool motionUnfinished() const;
+    bool motionUnfinished() const noexcept HBA_NONBLOCKING;
     // Returns true exactly once when the source is first admitted for this cut.
-    bool process (const LivePlayer&, int age, int soundingFrames, float& left, float& right);
-    const FractureDiagnostics& diagnostics() const { return state; }
-private:
+    bool process(const LivePlayer&, int age, int soundingFrames, float& left, float& right) noexcept HBA_NONBLOCKING;
+    const FractureDiagnostics& diagnostics() const noexcept HBA_NONBLOCKING { return state; }
+
+  private:
     struct Voice
     {
         bool active = false;
@@ -193,7 +200,7 @@ private:
         float ll = 1, lr = 0, rl = 0, rr = 1;
         GrainResampler::Kernel kernel;
     };
-    bool launch();
+    bool launch() noexcept HBA_NONBLOCKING;
     double sampleRate = 48000;
     FractureParameters parameters;
     FractureCutContext context;
@@ -208,7 +215,7 @@ private:
 };
 
 // Independent tagged selection shared by new-family planning and grain voices.
-double fractureDraw (const CutIdentity&, std::uint64_t tag, std::uint64_t ordinal = 0);
+double fractureDraw(const CutIdentity&, std::uint64_t tag, std::uint64_t ordinal = 0) noexcept HBA_NONBLOCKING;
 
 // The pad's Tape. Stops end on whole beats inside a bar and on bar lines, and
 // the cut after each one spins up for this many beats (a 32nd note).
@@ -218,26 +225,37 @@ inline constexpr double tapeSpinUpBeats = 0.125;
 // inside the bar or the bar line (`beatsPerBar`): 0 at the end of the last bar of
 // every four (counted from the host's bar 0), 1 at any other even bar's end, 2 at
 // any other bar line, 3 on an even beat inside the bar, 4 on any other beat.
-int tapeStopLevel (std::int64_t bar, double beat, double beatsPerBar);
+int tapeStopLevel(std::int64_t bar, double beat, double beatsPerBar) noexcept HBA_NONBLOCKING;
 
 // Whether a stop ends there: a fixed draw from the seed, the bar and the beat
 // against clamp (density + 1 - level, 0, 1). So raising the density only adds
 // stops, and the same spot in the same bar always stops the same way.
-bool tapeStopEnds (std::uint32_t seed, double density, std::int64_t bar, double beat, double beatsPerBar);
+bool tapeStopEnds(std::uint32_t seed, double density, std::int64_t bar, double beat,
+                  double beatsPerBar) noexcept HBA_NONBLOCKING;
 
 // How long a stop ending there is: min (stopBeats, the bar, half the gap back to
 // the latest stop ending in the two bars before it; with none, the gap is two bars, so
 // the bar caps it).
-double tapeStopBeats (const FractureParameters::Tape&, std::uint32_t seed, std::int64_t bar, double beat, double beatsPerBar);
+double tapeStopBeats(const FractureParameters::Tape&, std::uint32_t seed, std::int64_t bar, double beat,
+                     double beatsPerBar) noexcept HBA_NONBLOCKING;
 
 // Lays out host `bar` from `fromBeat` to its line as play, stop and spin-up
 // cuts of `unitsPerBeat` units, summing exactly to `blockUnits`. Opens with a
 // spin-up when the block before ended in a stop. A stop that would begin before
 // what's already laid out (after a mid-bar engage) is skipped, never shortened.
 // Returns whether the bar ends in a stop, so the next block opens with its spin-up.
-// Allocates nothing when `cuts` has maxCutsPerBlock reserved.
-bool layOutTapeStops (const FractureParameters::Tape&, std::uint32_t seed, std::int64_t bar, double fromBeat,
-                      double beatsPerBar, double unitsPerBeat, double blockUnits, bool spinUpFirst,
-                      std::vector<Cut>& cuts);
+bool layOutTapeStops(const FractureParameters::Tape&, std::uint32_t seed, std::int64_t bar, double fromBeat,
+                     double beatsPerBar, double unitsPerBeat, double blockUnits, bool spinUpFirst,
+                     CutList& cuts) noexcept HBA_NONBLOCKING;
+
+inline bool layOutTapeStops(const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double fromBeat,
+                            double beatsPerBar, double unitsPerBeat, double blockUnits, bool spinUpFirst,
+                            std::vector<Cut>& cuts) {
+    CutList list;
+    const auto endsInStop =
+        layOutTapeStops(tape, seed, bar, fromBeat, beatsPerBar, unitsPerBeat, blockUnits, spinUpFirst, list);
+    cuts.assign(list.begin(), list.end());
+    return endsInStop;
+}
 
 } // namespace livecut::engine

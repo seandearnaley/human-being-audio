@@ -16,6 +16,10 @@ public:
     const PhraseCapture& rolling() const { return recorder; }
     bool requestCapture();
     bool requestSave (const juce::File& target);
+    // One-drag phrase export: writes the latest completed (or captured) phrase to a
+    // clean temp 32-bit float stereo WAV ready for DAW drag-and-drop. Non-audio thread only.
+    juce::File prepareDragWav(const juce::String& label = "Phrase");
+    bool hasPhraseReady() const { return recorder.hasLatest() || captured() != nullptr; }
     bool isBusy() const { return working.load (std::memory_order_acquire); }
     std::shared_ptr<const CapturedPhrase> captured() const;
     juce::String statusText() const;

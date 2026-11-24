@@ -13,11 +13,16 @@
 namespace livecut::engine
 {
 
-void CutProc11::chooseBlock (Random& random,
-                             const CutParameters& params,
-                             const BlockContext& context,
-                             std::vector<Cut>& cuts)
-{
+namespace {
+constexpr std::array cutsPerUnit{1, 2, 3, 4, 6, 8};
+constexpr std::array stutterWeights{0.4, 0.3, 0.1, 0.1, 0.05, 0.05};
+// Straight keeps the even speeds at their original weights.
+constexpr std::array straightCutsPerUnit{1, 2, 4, 8};
+constexpr std::array straightWeights{0.4, 0.3, 0.1, 0.05};
+} // namespace
+
+void CutProc11::chooseBlock(Random& random, const CutParameters& params, const BlockContext& context,
+                            CutList& cuts) noexcept HBA_NONBLOCKING {
     const auto unitsLeft = static_cast<int> (std::lround (context.phraseUnits - context.unitsDone));
     assert (unitsLeft >= 1);
     cuts.clear();
@@ -28,13 +33,8 @@ void CutProc11::chooseBlock (Random& random,
     {
         // Roll out the rest of the phrase in cuts of 1/n units. Livecut's
         // weighted choice of n replaces BBCut's fixed stutter speed.
-        static constexpr std::array cutsPerUnit { 1, 2, 3, 4, 6, 8 };
-        static constexpr std::array weights { 0.4, 0.3, 0.1, 0.1, 0.05, 0.05 };
-        // Straight keeps the even speeds at their original weights.
-        static constexpr std::array straightCutsPerUnit { 1, 2, 4, 8 };
-        static constexpr std::array straightWeights { 0.4, 0.3, 0.1, 0.05 };
-        const auto perUnit = params.straight ? straightCutsPerUnit[random.weighted (straightWeights)]
-                                             : cutsPerUnit[random.weighted (weights)];
+        const auto perUnit = params.straight ? straightCutsPerUnit[random.weighted(straightWeights)]
+                                             : cutsPerUnit[random.weighted(stutterWeights)];
 
         Cut cut;
         cut.units = 1.0 / perUnit;

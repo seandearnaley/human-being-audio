@@ -1,0 +1,11 @@
+{
+    "name": "Loop Fold",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Loops",
+    "padX": 0.48,
+    "padY": 0.76,
+    "padQuantize": "Bar",
+    "subAnchor": 90.0,
+    "limiter": true
+}

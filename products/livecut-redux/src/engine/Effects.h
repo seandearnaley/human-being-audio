@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <cstddef>
 #include <vector>
 
@@ -10,8 +12,7 @@ namespace livecut::engine
 
 // Both effects choose a random start and end setting for each block and sweep
 // between them across the block's cuts, as Livecut does.
-inline double sweepSetting (double start, double end, std::size_t cut, std::size_t cuts)
-{
+inline double sweepSetting(double start, double end, std::size_t cut, std::size_t cuts) noexcept HBA_NONBLOCKING {
     return start + (end - start) * static_cast<double> (cut) / static_cast<double> (cuts);
 }
 
@@ -29,14 +30,15 @@ class BitCrusher
 {
 public:
     void prepare (double sampleRate);
-    void setBlock (double startBits, double endBits, double startHz, double endHz);
-    void startCut (std::size_t cut, std::size_t cuts);
-    void process (float& left, float& right);
+    void clear() noexcept HBA_NONBLOCKING;
+    void setBlock(double startBits, double endBits, double startHz, double endHz) noexcept HBA_NONBLOCKING;
+    void startCut(std::size_t cut, std::size_t cuts) noexcept HBA_NONBLOCKING;
+    void process(float& left, float& right) noexcept HBA_NONBLOCKING;
 
-    double bits() const { return currentBits; }
-    double holdSamples() const { return hold; }
+    double bits() const noexcept HBA_NONBLOCKING { return currentBits; }
+    double holdSamples() const noexcept HBA_NONBLOCKING { return hold; }
 
-private:
+  private:
     double sampleRate = 48000.0;
     double startBits = 32.0, endBits = 32.0, startHz = 192000.0, endHz = 192000.0;
     double currentBits = 32.0;
@@ -68,14 +70,15 @@ public:
     static constexpr double maxDelayMs = 50.0;
 
     void prepare (double sampleRate);
-    void setBlock (const CombParameters& params, double startMs, double endMs);
-    void startCut (std::size_t cut, std::size_t cuts);
-    void process (float& left, float& right);
+    void clear() noexcept HBA_NONBLOCKING;
+    void setBlock(const CombParameters& params, double startMs, double endMs) noexcept HBA_NONBLOCKING;
+    void startCut(std::size_t cut, std::size_t cuts) noexcept HBA_NONBLOCKING;
+    void process(float& left, float& right) noexcept HBA_NONBLOCKING;
 
-    double delaySamples() const { return targetDelay; }
+    double delaySamples() const noexcept HBA_NONBLOCKING { return targetDelay; }
 
-private:
-    float read (const std::vector<float>& line, double delay) const;
+  private:
+    float read(const std::vector<float>& line, double delay) const noexcept HBA_NONBLOCKING;
 
     double sampleRate = 48000.0;
     CombParameters::Type type = CombParameters::Type::feedForward;

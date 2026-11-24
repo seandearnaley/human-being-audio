@@ -27,15 +27,13 @@ constexpr double floorBeats = 1.0 / 32.0;
 constexpr double floorSeconds = .030;
 
 // The shortest cut of a geometric roll `beats` long in `n` cuts, `rushRatio ^ |curve|` from first to last.
-double shortestCut (double beats, int n, double curve)
-{
+double shortestCut(double beats, int n, double curve) noexcept HBA_NONBLOCKING {
     const auto a = std::abs (curve) * std::log (rushRatio) / std::max (n - 1, 1);
     return a == 0.0 ? beats / n : beats * std::expm1 (-a) / std::expm1 (-n * a) * std::exp (-(n - 1) * a);
 }
 
 // Appends a roll's cut lengths, in beats, first to last, none shorter than `shortest` beats.
-void rollLengths (double beats, double curve, bool straight, double shortest, std::vector<Cut>& cuts)
-{
+void rollLengths(double beats, double curve, bool straight, double shortest, CutList& cuts) noexcept HBA_NONBLOCKING {
     const auto add = [&cuts] (double length)
     {
         Cut cut;
@@ -111,8 +109,8 @@ void rollLengths (double beats, double curve, bool straight, double shortest, st
 }
 } // namespace
 
-void Rush::chooseBlock (Random&, const CutParameters& params, const BlockContext& context, std::vector<Cut>& cuts)
-{
+void Rush::chooseBlock(Random&, const CutParameters& params, const BlockContext& context,
+                       CutList& cuts) noexcept HBA_NONBLOCKING {
     assert (params.rollBeats >= 0.0 && params.rollBeats <= 4.0);
     assert (params.rollCurve >= -1.0 && params.rollCurve <= 1.0);
     cuts.clear();

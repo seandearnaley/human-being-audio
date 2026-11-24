@@ -1,0 +1,21 @@
+{
+    "name": "Ghost Roll 16s",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "16",
+    "seed": 9,
+    "minPhraseBars": 2,
+    "maxPhraseBars": 4,
+    "fade": 3.0,
+    "minAmp": 0.55,
+    "maxAmp": 1.0,
+    "duty": 0.88,
+    "fillDuty": 0.75,
+    "minRepeats": 1,
+    "maxRepeats": 3,
+    "stutterChance": 0.9,
+    "swing": 58.0,
+    "subAnchor": 90.0,
+    "limiter": true
+}
