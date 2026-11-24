@@ -227,8 +227,11 @@ TEST_CASE("Apple libmalloc counts no audio callback allocations for note and Sys
     const auto sysex = juce::MidiMessage::createSysExMessage(payload.data(), static_cast<int>(payload.size()));
     {
         // The counter does count: copying a long message is one allocation.
+        // Escape the raw pointer via volatile so Release LTO cannot elide the heap copy.
         const AllocationCount allocations;
         const juce::MidiMessage copy(sysex);
+        const auto* volatile escaped = copy.getRawData();
+        CHECK(escaped != nullptr);
         CHECK(allocations.get() == 1);
     }
     CHECK(allocationsFor(juce::MidiMessage::noteOn(1, 29, 1.0f)) == 0);
