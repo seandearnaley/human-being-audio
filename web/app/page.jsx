@@ -15,21 +15,24 @@ const products = {
     bpm: 168,
     form: "monoliths",
     image: livecutImage,
-    alt: "Livecut Redux’s orange performance pad, eight program tabs and phrase ruler",
-    body: "Cut a break into phrases of repeats that follow your host’s tempo. Play eight programs from the pad, or open Classic to shape the original BBCut procedures.",
+    alt: "Livecut Redux 2.0’s GPU performance pad, eight MIDI-playable program tabs, live phrase waveform tape and output peak meter",
+    body: "Cut a break into tempo-locked phrases of repeats with causal cubic resampling and mono Sub-Anchor. Play eight GPU-rendered programs from the pad or over MIDI C1–G1, or open Classic for deep BBCut, Fracture and Tuned Resonator control.",
     features: [
       [
-        "Pad and Classic",
-        "Move across the pad to play two settings of a program. Switch to Classic for direct access to the four cutting procedures.",
+        "Pad, MIDI & Classic",
+        "Move across the pad or trigger all eight programs live via MIDI C1–G1 with CC1/CC74/aftertouch expression. Switch to Classic for direct access to CutProc11, WarpCut, SQPusher, Bounce, GrainCut, TapeCut and Tuned Resonator.",
       ],
       [
-        "Host transport",
-        "Cuts follow the host tempo and transport. At rest, the dry signal passes through the output trim.",
+        "Sub-Anchor & safety limiter",
+        "Keep sub-bass mono and rock-solid beneath breakbeat chops with a global LR4 Sub-Anchor crossover (40–200 Hz) and zero-latency C² linked safety limiter.",
       ],
-      ["Capture", "Save the last complete phrase as a stereo WAV."],
+      [
+        "One-drag WAV & A/B workflow",
+        "Drag the last complete phrase straight into your DAW as a 32-bit float stereo WAV, backed by 64-step Undo/Redo, A/B compare and Roll Seed.",
+      ],
     ],
     credits:
-      "A modern port of Remy Muller’s Livecut, based on Nick Collins’ BBCut.",
+      "Includes 28 factory presets, Undo/Redo and A/B compare. A modern Visage port of Remy Muller’s Livecut, based on Nick Collins’ BBCut.",
   },
   "tract-form": {
     kind: "Bass synthesizer",
@@ -37,23 +40,23 @@ const products = {
     bpm: 172,
     form: "prisms",
     image: tractImage,
-    alt: "Tract Form’s oscillator flow, formant controls, live analysis, modulation arcs and four movement lanes",
-    body: "One master sine feeds two reese voices and a clean mono sub. Morph between vowels, fold the growl, animate four tempo-locked lanes and play live with full MIDI expression.",
+    alt: "Tract Form’s oscillator flow, Pre/Post formant tract, live analysis, modulation arcs and four movement lanes",
+    body: "One master sine feeds two phase-modulated reese voices and a clean LR8-locked mono sub. Morph vowels Pre or Post ADAA2 wavefolding, shape ADSR & Sub Punch, carve Stereo Sculpt notches and animate four tempo-locked lanes.",
     features: [
       [
-        "Sound engine",
-        "Two phase-modulated reese voices share one pitch reference with the clean sub. Use Beat lock to align their movement to a note division.",
+        "Sub-locked neuro bass engine",
+        "Phase-aligned LR8 crossover with Dome Hilbert phase rotation, continuous Sub Warmth, ADSR + Sub Punch envelope, and 2×/4×/8× oversampled ADAA2 shaping (Fold, Sine, Tube, Buchla, Clip).",
       ],
       [
-        "Movement & MIDI expression",
-        "Four tempo-locked curve lanes plus smooth CC1, CC74, aftertouch and RPN pitch-bend modulation, visualized with live modulation ghost arcs across macros and bars.",
+        "Pre/Post vocal tract & Stereo Sculpt",
+        "Morph six vowels before or after wavefolding, carve multi-notch Bell, Phaser or Comb Stereo Sculpt, and drive everything via four Sync/Retrig/1-Shot lanes plus smooth CC1, CC74, aftertouch and RPN pitch bend.",
       ],
       [
         "Resample & A/B workflow",
-        "Render four bars offline with 16× oversampling and drag the WAV into a session, with 64-step Undo/Redo and A/B compare in the top bar.",
+        "Render four bars offline with 16× oversampling and drag the WAV into a session, with zero-latency C² safety limiting, 64-step Undo/Redo and A/B compare.",
       ],
     ],
-    credits: "Includes 30 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   "pole-field": {
     kind: "Morphing filterbank",
@@ -62,22 +65,22 @@ const products = {
     form: "rings",
     image: poleFieldImage,
     alt: "Pole Field’s 2D Z-plane unit circle, 14-pole magnitude curve, stereo goniometer, modulation arcs and four movement lanes",
-    body: "Morph fourteen poles and fourteen zeros across 3D filter cubes with polar interpolation, inter-stage ADAA2 drive, mono Sub Lock, Burg LPC audio imprinting and live MIDI expression.",
+    body: "Morph fourteen poles and fourteen zeros across twelve 3D filter cubes with polar interpolation, audio-rate FM, envelope following, inter-stage ADAA2 drive, mono Sub Lock and Burg LPC audio imprinting.",
     features: [
       [
         "14-pole Z-plane lattice",
-        "Seven cascaded TPT pole-zero sections in Serial, Hybrid or Parallel topology across eight curated morph cubes, with MIDI pitch tracking and CC1/CC74/aftertouch morphing.",
+        "Seven cascaded TPT pole-zero sections in Serial, Hybrid or Parallel topology across twelve curated morph cubes, with Stereo/Mid/Side modes, audio-rate FM, MIDI pitch tracking and CC1/CC74/aftertouch morphing.",
       ],
       [
-        "Inter-stage ADAA2 drive",
-        "Place Tube, Clip, Fold, Buchla or Sine saturation before, between or after filter stages with matched 2×/4×/8× HIIR oversampling and clean mono Sub Lock.",
+        "Inter-stage ADAA2 drive & Sub Lock",
+        "Place Tube, Clip, Fold, Buchla or Sine saturation before, between or after filter stages with matched 2×/4×/8× HIIR oversampling, mono LR4 Sub Lock and zero-latency safety limiting.",
       ],
       [
-        "Audio imprint, movement & A/B",
-        "Stamp any WAV’s 14th-order Burg LPC pole structure into the Imprint Cube, watch live modulation arcs across six macros, and compare edits with 64-step Undo/Redo and A/B slots.",
+        "Audio imprint, Env lanes & A/B",
+        "Stamp any WAV’s 14th-order Burg LPC pole structure into the Imprint Cube, modulate from internal Input/Sidechain envelope followers, and compare edits with 64-step Undo/Redo and A/B slots.",
       ],
     ],
-    credits: "Includes 12 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   cutline: {
     kind: "MIDI articulator",
@@ -85,23 +88,23 @@ const products = {
     bpm: 172,
     form: "tube",
     image: cutlineImage,
-    alt: "Cutline’s interactive phrase grammar tape, gravitational piano roll, velocity lane, eight macros and multi-hue expression lanes",
-    body: "Sculpt deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases directly on the piano roll, bend them through a gravitational microtiming field and drive any synth with four tempo-locked MPE and CC lanes.",
+    alt: "Cutline’s interactive phrase grammar tape, chord progression strip, gravitational piano roll, velocity lane and multi-hue expression lanes",
+    body: "Sculpt deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases on a tactile piano roll with a Chord Progression Strip, bend them through a gravitational microtiming field and drive any synth with four MPE and CC lanes.",
     features: [
       [
-        "Direct-manipulation Phrase Stage",
-        "Five BBCut-inspired grammars with Loop/Evolve modes, six melodic contours and 64-step seed history. Click spans to lock them, drag dividers, drag notes snapped to scale or Alt-click to mute.",
+        "Tactile Phrase Stage & Chord Strip",
+        "Five BBCut-inspired grammars with Loop/Evolve modes, polyphonic breaks, Chord Progression Strip and 64-step seed history. Click spans to lock them, drag dividers, drag scale-snapped notes and durations or Alt-click to mute.",
       ],
       [
         "Live MIDI, Mono, MPE & Drums",
         "Play Live MIDI Transpose or Chord Carve with Latch, and stream Ableton-safe Mono Ch 1 (with RPN bend range), full MPE Lower Zone (Ch 2–15, ±48 st) or Drum Kit articulation with live activity LEDs.",
       ],
       [
-        "Poly audition, Drag .mid & A/B",
-        "Preview immediately with the 4-voice poly audition synth (Reese, Sub, Pluck, Kit), drag the exact current 960-PPQ .mid phrase into your DAW, and compare takes with Undo/Redo and A/B slots.",
+        "8-voice PolyBLEP audition & Drag .mid",
+        "Preview immediately with the anti-aliased 8-voice poly audition synth (Reese, Sub, Pluck, Kit), drag the exact current 960-PPQ .mid phrase into your DAW, and compare takes with Undo/Redo and A/B slots.",
       ],
     ],
-    credits: "Includes 24 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 32 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
 };
 const platforms = {
@@ -321,11 +324,11 @@ export default async function Page() {
               <summary>macOS</summary>
               <div className="faq__body">
                 Close your host and open the signed, notarized PKG. It installs
-                the Audio Unit (Audio Unit MIDI FX for Cutline) and VST3 in the
-                system Audio Plug-Ins folder and the standalone in Applications.
-                Livecut Redux requires macOS 11 or later. Tract Form, Pole Field
-                and Cutline require macOS 12 or later. Packages contain Apple
-                Silicon and Intel binaries.
+                the Audio Unit (Audio Unit Music Effect for Livecut Redux, Audio
+                Unit MIDI FX for Cutline) and VST3 in the system Audio Plug-Ins
+                folder and the standalone in Applications. All four plugins
+                require macOS 12 or later and contain universal Apple Silicon
+                and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for

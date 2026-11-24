@@ -15,7 +15,7 @@ A red download check means the release is already published. After fixing the si
 gh workflow run verify-downloads.yml --ref main -f tag=pole-field/v0.1.0
 ```
 
-Each release contains a universal macOS PKG, a Windows x64 installer, an Ubuntu 26.04 x86_64 archive, SHA256SUMS and release.json. Verify a downloaded file with `gh attestation verify FILE -R seandearnaley/human-being-audio`. Clone the source at the commit recorded in release.json with submodules as described in the repository README.
+Each release contains a universal macOS PKG, a Windows x64 installer, an Ubuntu 26.04 x86_64 archive, SHA256SUMS and release.json. Verify a downloaded file with `gh attestation verify FILE -R seandearnaley/human-being-audio`. Clone the source at the commit recorded in release.json as described in the repository README.
 
 ## Signing credentials and access
 
