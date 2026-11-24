@@ -1,0 +1,16 @@
+{
+  "version": 6,
+  "include": ["../../cmake/native-presets.json"],
+  "configurePresets": [
+    {
+      "name": "engine",
+      "displayName": "Core, engine and offline tools",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "TG_BUILD_PLUGIN": "OFF" }
+    }
+  ],
+  "buildPresets": [{ "name": "engine", "configurePreset": "engine" }],
+  "testPresets": [
+    { "name": "engine", "configurePreset": "engine", "output": { "outputOnFailure": true } }
+  ]
+}

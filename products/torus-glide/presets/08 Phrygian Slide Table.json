@@ -1,0 +1,77 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Phrygian Slide Table",
+  "category": "Copedent",
+  "params": {
+    "mode": "Copedent",
+    "rootKey": "F",
+    "scale": "Phrygian",
+    "voicingPack": "Phrygian Tension",
+    "morph": 0.0,
+    "morphAuto": true,
+    "gravity": 65.0,
+    "gravityMode": "Scale Wells",
+    "stagger": 52.0,
+    "staggerOrder": "Inner First",
+    "anchorSub": false,
+    "timbre": "Reese Saw",
+    "detune": 11.0,
+    "width": 84.0,
+    "subAnchor": 80.0,
+    "subCutoff": 84.0,
+    "drive": 38.0,
+    "driveModel": "Tube",
+    "filterHz": 2600.0,
+    "filterRes": 20.0,
+    "attackMs": 24.0,
+    "releaseMs": 360.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 100.0,
+    "lane1Target": "Morph",
+    "lane2Rate": "2 Bars",
+    "lane2Depth": 28.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      -0.35,
+      "smooth"
+    ],
+    [
+      0.33,
+      -0.3,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.67,
+      0.35,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.96,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -0.6,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.9,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

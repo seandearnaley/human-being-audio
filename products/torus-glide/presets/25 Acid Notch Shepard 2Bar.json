@@ -1,0 +1,67 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Acid Notch Shepard 2Bar",
+  "category": "Spiral",
+  "params": {
+    "mode": "Spiral",
+    "rootKey": "D",
+    "scale": "Diminished",
+    "spiralDir": "Rise",
+    "loopBars": "2 Bars",
+    "spiralRatio": "Tritone",
+    "spiralStack": "Tritone Dyad",
+    "bellCenter": 410.0,
+    "bellWidth": 78.0,
+    "timbre": "Wavefold FM",
+    "detune": 13.0,
+    "width": 86.0,
+    "space": 36.0,
+    "subAnchor": 84.0,
+    "subWarmth": 52.0,
+    "subCutoff": 82.0,
+    "drive": 68.0,
+    "driveModel": "Sine Fold",
+    "filterMode": "Neuro Notch",
+    "filterHz": 1400.0,
+    "filterRes": 74.0,
+    "rissetGate": 25.0,
+    "attackMs": 6.0,
+    "releaseMs": 140.0,
+    "lane1Rate": "2 Bars",
+    "lane1Depth": 58.0,
+    "lane1Target": "Filter",
+    "lane2Rate": "1 Bar",
+    "lane2Depth": 34.0,
+    "lane2Target": "Drive",
+    "outputDb": -3.5
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "line"
+    ],
+    [
+      0.995,
+      1.0,
+      0.0,
+      "hold"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

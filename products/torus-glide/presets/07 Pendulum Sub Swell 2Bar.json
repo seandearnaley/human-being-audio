@@ -1,0 +1,64 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Pendulum Sub Swell 2Bar",
+  "category": "Spiral",
+  "params": {
+    "mode": "Spiral",
+    "rootKey": "F",
+    "scale": "Aeolian",
+    "spiralDir": "Pendulum",
+    "loopBars": "2 Bars",
+    "spiralRatio": "Fifth (3:2)",
+    "spiralStack": "Single Bass",
+    "bellCenter": 210.0,
+    "bellWidth": 78.0,
+    "timbre": "Reese Saw",
+    "detune": 18.0,
+    "width": 70.0,
+    "subAnchor": 96.0,
+    "subCutoff": 88.0,
+    "drive": 58.0,
+    "driveModel": "Sine Fold",
+    "filterHz": 1480.0,
+    "filterRes": 26.0,
+    "rissetGate": 0.0,
+    "attackMs": 8.0,
+    "releaseMs": 150.0,
+    "lane1Rate": "2 Bars",
+    "lane1Depth": 40.0,
+    "lane1Target": "Filter",
+    "lane2Rate": "1 Bar",
+    "lane2Depth": 28.0,
+    "lane2Target": "Drive",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -0.6,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.9,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

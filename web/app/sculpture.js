@@ -536,6 +536,36 @@ async function startStage() {
     };
   });
 
+  /* ---- Helix: a twisted torus knot around a locked sub-anchor ring (Torus Glide) ---- */
+  defineForm('helix', ({ group, solid, wireOpacity, accent }) => {
+    const cyan = vec3(0.28, 0.78, 0.96);
+    const knotGeo = new THREE.TorusKnotGeometry(0.72, 0.16, 220, 32, 2, 3);
+    const pos = deform(positionLocal);
+    const { mask, edge } = crystal(solid, vec3(1.5));
+    const mat = glassMaterial({ color: 0xe6f2f8, metalness: 0.74, roughness: 0.12 });
+    mat.positionNode = pos;
+    mat.opacityNode = mask; mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(260, 880);
+    mat.emissiveNode = cyan.mul(0.22).add(accent.mul(edge.mul(3.2)));
+    const knot = new THREE.Mesh(knotGeo, mat);
+    const knotWire = new THREE.Mesh(knotGeo, wireMaterial(cyan, wireOpacity));
+    knotWire.material.positionNode = pos;
+    const anchorGeo = new THREE.TorusGeometry(0.44, 0.028, 12, 160);
+    const anchorMask = crystal(solid, vec3(3.2));
+    const anchorMat = new THREE.MeshStandardNodeMaterial({ color: 0x0a0d12, roughness: 0.35, metalness: 0.2 });
+    anchorMat.emissiveNode = vec3(0.30, 0.88, 0.65).mul(1.7);
+    anchorMat.opacityNode = anchorMask.mask; anchorMat.alphaTest = 0.5;
+    const anchor = new THREE.Mesh(anchorGeo, anchorMat);
+    anchor.rotation.x = Math.PI * 0.5;
+    group.add(knot, knotWire, anchor);
+    return (dt, moving) => {
+      if (moving) {
+        knot.rotation.y = knotWire.rotation.y += dt * 0.14;
+        knot.rotation.x = knotWire.rotation.x += dt * 0.05;
+      }
+    };
+  });
+
   /* ---- floor rings: a faint polar grid (the gallery plinth) ---- */
   const gridColor = uniform(new THREE.Color());
   {

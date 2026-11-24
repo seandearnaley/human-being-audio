@@ -1,0 +1,64 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Pure Risset Glass 4Bar",
+  "category": "Spiral",
+  "params": {
+    "mode": "Spiral",
+    "rootKey": "Eb",
+    "scale": "Lydian #11",
+    "spiralDir": "Rise",
+    "loopBars": "4 Bars",
+    "spiralRatio": "Octave (2:1)",
+    "spiralStack": "Quartal Dark",
+    "bellCenter": 520.0,
+    "bellWidth": 90.0,
+    "timbre": "Pure Sine",
+    "detune": 4.0,
+    "width": 65.0,
+    "subAnchor": 62.0,
+    "subCutoff": 76.0,
+    "drive": 8.0,
+    "driveModel": "Tube",
+    "filterHz": 9200.0,
+    "filterRes": 8.0,
+    "rissetGate": 0.0,
+    "attackMs": 80.0,
+    "releaseMs": 680.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 20.0,
+    "lane1Target": "Bell Center",
+    "lane2Rate": "4 Bars",
+    "lane2Depth": 15.0,
+    "lane2Target": "Filter",
+    "outputDb": -2.5
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -0.6,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.9,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Sidewinder F Bass 4Bar",
+  "category": "Spiral",
+  "params": {
+    "mode": "Spiral",
+    "rootKey": "F",
+    "scale": "Phrygian",
+    "spiralDir": "Rise",
+    "loopBars": "4 Bars",
+    "spiralRatio": "Octave (2:1)",
+    "spiralStack": "Single Bass",
+    "bellCenter": 240.0,
+    "bellWidth": 82.0,
+    "timbre": "Reese Saw",
+    "detune": 16.0,
+    "width": 76.0,
+    "subAnchor": 92.0,
+    "subCutoff": 86.0,
+    "drive": 56.0,
+    "driveModel": "Tube",
+    "filterHz": 1650.0,
+    "filterRes": 28.0,
+    "rissetGate": 0.0,
+    "attackMs": 8.0,
+    "releaseMs": 140.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 28.0,
+    "lane1Target": "Bell Center",
+    "lane2Rate": "2 Bars",
+    "lane2Depth": 36.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "line"
+    ],
+    [
+      0.995,
+      1.0,
+      0.0,
+      "hold"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -0.6,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.9,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

@@ -6,3 +6,4 @@ The three-second stereo examples are captured from the production 1.0/2.0 engine
 - `tract-form.flac` — Tract Form 1.0 rendering `Coupled Reese` on MIDI note 29 at 172 BPM (`tf-render`).
 - `pole-field.flac` — Pole Field 1.0 processing Tract Form’s bassline through `Neuro Chew` (14P Serial) with inter-stage Buchla ADAA2 drive, Morph X/Y sweep, and mono `Sub Lock`.
 - `cutline.flac` — Cutline 1.0 rendering `Neuro Whip` at 172 BPM through its anti-aliased 8-voice PolyBLEP audition synth (`cutline-render`).
+- `torus-glide.flac` — Torus Glide 1.0 rendering `Mobius Neuro Notch Bass` at 172 BPM on MIDI note 41 (`tg-render`).

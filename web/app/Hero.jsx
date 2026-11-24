@@ -13,7 +13,7 @@ export default function Hero() {
           <span>Human Being Audio.</span>
         </h1>
         <p className="hero__lede">
-          Cut up a breakbeat, synthesize a bassline, morph it through a filterbank or articulate MIDI phrases. Free to download,
+          Cut up a breakbeat, synthesize a bassline, morph it through a filterbank, articulate MIDI phrases or glide chords across an endless pitch torus. Free to download,
           open to study, built for making music.
         </p>
         <div className="hero__actions">
@@ -93,6 +93,15 @@ export default function Hero() {
               />
             </svg>
             Prisms
+          </label>
+          <label className="chip">
+            <input type="radio" name="form" value="helix" />
+            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
+              <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(-28 8 8)" />
+              <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(28 8 8)" />
+              <circle cx="8" cy="8" r="1.5" />
+            </svg>
+            Helix
           </label>
         </fieldset>
 

@@ -1,0 +1,68 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Mobius Risset Stutter",
+  "category": "Mobius",
+  "params": {
+    "mode": "Mobius",
+    "rootKey": "F",
+    "scale": "Diminished",
+    "voicingPack": "Mobius Dim7",
+    "spiralDir": "Rise",
+    "loopBars": "4 Bars",
+    "bellCenter": 460.0,
+    "bellWidth": 84.0,
+    "morphAuto": true,
+    "gravity": 62.0,
+    "gravityMode": "Scale Wells",
+    "stagger": 42.0,
+    "staggerOrder": "Inner First",
+    "timbre": "Wavefold FM",
+    "detune": 14.0,
+    "width": 86.0,
+    "subAnchor": 84.0,
+    "subCutoff": 84.0,
+    "drive": 50.0,
+    "driveModel": "Sine Fold",
+    "filterHz": 3400.0,
+    "filterRes": 28.0,
+    "rissetGate": 76.0,
+    "attackMs": 10.0,
+    "releaseMs": 200.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 36.0,
+    "lane1Target": "Filter",
+    "lane2Rate": "1 Bar",
+    "lane2Depth": 22.0,
+    "lane2Target": "Drive",
+    "outputDb": -3.5
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "line"
+    ],
+    [
+      0.995,
+      1.0,
+      0.0,
+      "hold"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

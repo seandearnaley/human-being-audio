@@ -15,12 +15,13 @@ test("browse the studio products, inspect images and open install notes", async 
   await expect(studioMark).toHaveAttribute("src", tabIcon!);
   await page.getByRole("link", { name: "Browse the plugins" }).click();
   const cards = page.locator("article[data-plugin]");
-  await expect(cards).toHaveCount(4);
+  await expect(cards).toHaveCount(5);
   for (const [index, slug, name] of [
     [0, "livecut-redux", "Livecut Redux"],
     [1, "tract-form", "Tract Form"],
     [2, "pole-field", "Pole Field"],
     [3, "cutline", "Cutline"],
+    [4, "torus-glide", "Torus Glide"],
   ] as const) {
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", new RegExp(name));
     const card = cards.nth(index);
@@ -89,7 +90,7 @@ test("browse the studio products, inspect images and open install notes", async 
 test("all examples decode and play only on request", async ({ page }) => {
   await page.goto("/");
   const examples = page.locator("audio");
-  await expect(examples).toHaveCount(4);
+  await expect(examples).toHaveCount(5);
   for (const example of await examples.all()) {
     expect(await example.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
     const duration = await example.evaluate(async (el: HTMLAudioElement) => {
@@ -121,10 +122,10 @@ test("catalogue and navigation work without JavaScript", async ({
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto(baseURL!);
-  await expect(page.locator("article[data-plugin]")).toHaveCount(4);
+  await expect(page.locator("article[data-plugin]")).toHaveCount(5);
   await expect(
     page.getByRole("link", { name: "Source and build instructions" }),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
   const hashLinks = await page
     .locator('a[href^="#"]')
     .evaluateAll((links) => links.map((el) => el.getAttribute("href")!));

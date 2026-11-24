@@ -1,0 +1,80 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Slide Steel Cinema Swell",
+  "category": "Copedent",
+  "params": {
+    "mode": "Copedent",
+    "rootKey": "E",
+    "scale": "Harmonic Min",
+    "voicingPack": "Neo-Riemann PLR",
+    "morph": 0.0,
+    "morphAuto": true,
+    "gravity": 62.0,
+    "gravityMode": "Scale Wells",
+    "stagger": 74.0,
+    "staggerOrder": "Inner First",
+    "anchorSub": true,
+    "timbre": "Reese Saw",
+    "detune": 11.0,
+    "width": 92.0,
+    "space": 68.0,
+    "subAnchor": 82.0,
+    "subWarmth": 40.0,
+    "subCutoff": 82.0,
+    "drive": 32.0,
+    "driveModel": "Tube",
+    "filterMode": "LP 24",
+    "filterHz": 2450.0,
+    "filterRes": 20.0,
+    "attackMs": 55.0,
+    "releaseMs": 820.0,
+    "lane1Rate": "8 Bars",
+    "lane1Depth": 100.0,
+    "lane1Target": "Morph",
+    "lane2Rate": "4 Bars",
+    "lane2Depth": 32.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      -0.35,
+      "smooth"
+    ],
+    [
+      0.33,
+      -0.3,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.67,
+      0.35,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.96,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

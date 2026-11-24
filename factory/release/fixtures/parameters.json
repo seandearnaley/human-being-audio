@@ -14,5 +14,9 @@
   "cutline": {
     "gravity": 0.72,
     "ratchet": 0.81
+  },
+  "torus-glide": {
+    "scale_gravity": 0.74,
+    "stereo_space": 0.62
   }
 }

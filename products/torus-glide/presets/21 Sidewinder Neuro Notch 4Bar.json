@@ -1,0 +1,67 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Sidewinder Neuro Notch 4Bar",
+  "category": "Spiral",
+  "params": {
+    "mode": "Spiral",
+    "rootKey": "F",
+    "scale": "Phrygian",
+    "spiralDir": "Rise",
+    "loopBars": "4 Bars",
+    "spiralRatio": "Octave (2:1)",
+    "spiralStack": "Single Bass",
+    "bellCenter": 260.0,
+    "bellWidth": 84.0,
+    "timbre": "Reese Saw",
+    "detune": 18.0,
+    "width": 82.0,
+    "space": 24.0,
+    "subAnchor": 96.0,
+    "subWarmth": 64.0,
+    "subCutoff": 86.0,
+    "drive": 62.0,
+    "driveModel": "Tube",
+    "filterMode": "Neuro Notch",
+    "filterHz": 980.0,
+    "filterRes": 62.0,
+    "rissetGate": 0.0,
+    "attackMs": 8.0,
+    "releaseMs": 145.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 30.0,
+    "lane1Target": "Bell Center",
+    "lane2Rate": "2 Bars",
+    "lane2Depth": 52.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "line"
+    ],
+    [
+      0.995,
+      1.0,
+      0.0,
+      "hold"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

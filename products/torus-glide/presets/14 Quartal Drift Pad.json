@@ -1,0 +1,65 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Quartal Drift Pad",
+  "category": "Copedent",
+  "params": {
+    "mode": "Copedent",
+    "rootKey": "C",
+    "scale": "Hirajoshi",
+    "voicingPack": "Quartal Drift",
+    "morph": 0.0,
+    "morphAuto": true,
+    "gravity": 74.0,
+    "gravityMode": "Scale Wells",
+    "stagger": 68.0,
+    "staggerOrder": "Low to High",
+    "anchorSub": true,
+    "timbre": "Wavefold FM",
+    "detune": 8.0,
+    "width": 90.0,
+    "subAnchor": 66.0,
+    "subCutoff": 76.0,
+    "drive": 22.0,
+    "driveModel": "Sine Fold",
+    "filterHz": 3600.0,
+    "filterRes": 18.0,
+    "attackMs": 120.0,
+    "releaseMs": 1100.0,
+    "lane1Rate": "8 Bars",
+    "lane1Depth": 100.0,
+    "lane1Target": "Morph",
+    "lane2Rate": "4 Bars",
+    "lane2Depth": 28.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -0.6,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.9,
+      0.0,
+      "smooth"
+    ]
+  ]
+}

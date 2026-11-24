@@ -1,0 +1,101 @@
+{
+  "format": "torus-glide-preset",
+  "version": 1,
+  "name": "Pedal Steel Sub Drone",
+  "category": "Copedent",
+  "params": {
+    "mode": "Copedent",
+    "rootKey": "F",
+    "scale": "Dorian",
+    "voicingPack": "Slide Steel Dark",
+    "morph": 0.0,
+    "morphAuto": true,
+    "gravity": 58.0,
+    "gravityMode": "Hybrid",
+    "stagger": 72.0,
+    "staggerOrder": "Inner First",
+    "anchorSub": true,
+    "timbre": "Formant Choir",
+    "detune": 8.0,
+    "width": 88.0,
+    "subAnchor": 92.0,
+    "subCutoff": 86.0,
+    "drive": 30.0,
+    "driveModel": "Tube",
+    "filterHz": 2400.0,
+    "filterRes": 22.0,
+    "attackMs": 32.0,
+    "releaseMs": 480.0,
+    "lane1Rate": "4 Bars",
+    "lane1Depth": 100.0,
+    "lane1Target": "Morph",
+    "lane2Rate": "2 Bars",
+    "lane2Depth": 24.0,
+    "lane2Target": "Filter",
+    "outputDb": -3.0
+  },
+  "lane1Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.2,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.25,
+      -0.333,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.45,
+      -0.333,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      0.333,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.7,
+      0.333,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.75,
+      1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.95,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ],
+  "lane2Curve": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      "smooth"
+    ],
+    [
+      0.5,
+      1.0,
+      0.0,
+      "smooth"
+    ]
+  ]
+}
