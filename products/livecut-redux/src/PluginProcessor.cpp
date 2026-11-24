@@ -1208,6 +1208,19 @@ void LivecutAudioProcessor::setStateInformation (const void *data, int sizeInByt
         restored.appendChild (child, nullptr);
     }
     parameters.replaceState (restored);
+    // APVTS::replaceState skips setValueNotifyingHost when the snapped denormalised
+    // value equals unnormalisedValue, leaving discrete/boolean parameters whose raw
+    // normalised value drifted (e.g. 0.35 -> false) out of sync with the host.
+    for (auto* parameter : getParameters()) {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+            ranged != nullptr && ranged->isDiscrete()) {
+            if (const auto* raw = parameters.getRawParameterValue(ranged->getParameterID())) {
+                const float expected = ranged->convertTo0to1(raw->load(std::memory_order_relaxed));
+                if (!juce::approximatelyEqual(ranged->getValue(), expected))
+                    ranged->setValueNotifyingHost(expected);
+            }
+        }
+    }
     resetHoldRequested.store (true, std::memory_order_release);
     applyPending.store (true, std::memory_order_release);
 }

@@ -273,3 +273,29 @@ TEST_CASE("PluginModel and FakeModel expose all studio controls and telemetry", 
     CHECK(fake.visuals().cutting);
     CHECK(fake.visuals().waveform[0] > 0.0f);
 }
+
+TEST_CASE("setStateInformation snaps drifted discrete and boolean normalised host values", "[v2][state]") {
+    LivecutAudioProcessor proc;
+    auto* attackAlign = proc.getParameterState().getParameter(livecut::ids::attackAlign);
+    auto* limiter = proc.getParameterState().getParameter(livecut::ids::limiter);
+    auto* padQuantize = proc.getParameterState().getParameter(livecut::ids::padQuantize);
+    REQUIRE(attackAlign != nullptr);
+    REQUIRE(limiter != nullptr);
+    REQUIRE(padQuantize != nullptr);
+
+    // Save state with attackAlign=false (0), padQuantize=Beat (0), limiter=true (1)
+    limiter->setValueNotifyingHost(1.0f);
+    juce::MemoryBlock saved;
+    proc.getStateInformation(saved);
+
+    // Simulate a host / pluginval fuzzing boolean & discrete parameters to unsnapped floats
+    attackAlign->setValue(0.39f);
+    limiter->setValue(0.62f);
+    padQuantize->setValue(0.31f);
+
+    proc.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+
+    CHECK(attackAlign->getValue() == Catch::Approx(0.0f).margin(1.0e-5f));
+    CHECK(limiter->getValue() == Catch::Approx(1.0f).margin(1.0e-5f));
+    CHECK(padQuantize->getValue() == Catch::Approx(0.0f).margin(1.0e-5f));
+}
