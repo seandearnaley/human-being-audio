@@ -1,67 +1,67 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Mobius Falling Choir",
-  "category": "Mobius",
-  "params": {
-    "mode": "Mobius",
-    "rootKey": "Eb",
-    "scale": "Diminished",
-    "voicingPack": "Mobius Dim7",
-    "spiralDir": "Fall",
-    "loopBars": "8 Bars",
-    "bellCenter": 380.0,
-    "bellWidth": 88.0,
-    "morphAuto": true,
-    "gravity": 70.0,
-    "gravityMode": "Hybrid",
-    "stagger": 58.0,
-    "staggerOrder": "High to Low",
-    "timbre": "Formant Choir",
-    "detune": 10.0,
-    "width": 96.0,
-    "subAnchor": 76.0,
-    "subCutoff": 80.0,
-    "drive": 24.0,
-    "driveModel": "Tube",
-    "filterHz": 2700.0,
-    "filterRes": 20.0,
-    "attackMs": 70.0,
-    "releaseMs": 820.0,
-    "lane1Rate": "8 Bars",
-    "lane1Depth": -35.0,
-    "lane1Target": "Filter",
-    "lane2Rate": "4 Bars",
-    "lane2Depth": 20.0,
-    "lane2Target": "Bell Center",
-    "outputDb": -3.0
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      1.0,
-      0.0,
-      "line"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Falling Choir",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "Eb",
+        "scale": "Diminished",
+        "voicingPack": "Mobius Dim7",
+        "spiralDir": "Fall",
+        "loopBars": "8 Bars",
+        "bellCenter": 380.0,
+        "bellWidth": 88.0,
+        "morphAuto": true,
+        "gravity": 70.0,
+        "gravityMode": "Hybrid",
+        "stagger": 58.0,
+        "staggerOrder": "High to Low",
+        "timbre": "Formant Choir",
+        "detune": 10.0,
+        "width": 96.0,
+        "subAnchor": 76.0,
+        "subCutoff": 80.0,
+        "drive": 24.0,
+        "driveModel": "Tube",
+        "filterHz": 2700.0,
+        "filterRes": 20.0,
+        "attackMs": 70.0,
+        "releaseMs": 820.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": -35.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 20.0,
+        "lane2Target": "Bell Center",
+        "outputDb": -3.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            -1.0,
+            0.0,
+            "hold"
+        ]
     ],
-    [
-      0.995,
-      -1.0,
-      0.0,
-      "hold"
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -0.6,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      0.9,
-      0.0,
-      "smooth"
-    ]
-  ]
 }

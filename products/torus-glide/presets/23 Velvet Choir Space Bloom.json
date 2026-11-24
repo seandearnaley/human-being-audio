@@ -1,80 +1,80 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Velvet Choir Space Bloom",
-  "category": "Copedent",
-  "params": {
-    "mode": "Copedent",
-    "rootKey": "D",
-    "scale": "Aeolian",
-    "voicingPack": "Unison Bloom",
-    "morph": 0.0,
-    "morphAuto": true,
-    "gravity": 56.0,
-    "gravityMode": "Hybrid",
-    "stagger": 68.0,
-    "staggerOrder": "Outside In",
-    "anchorSub": false,
-    "timbre": "Formant Choir",
-    "detune": 8.0,
-    "width": 94.0,
-    "space": 82.0,
-    "subAnchor": 68.0,
-    "subWarmth": 25.0,
-    "subCutoff": 78.0,
-    "drive": 20.0,
-    "driveModel": "Tube",
-    "filterMode": "LP 24",
-    "filterHz": 3400.0,
-    "filterRes": 16.0,
-    "attackMs": 75.0,
-    "releaseMs": 950.0,
-    "lane1Rate": "8 Bars",
-    "lane1Depth": 100.0,
-    "lane1Target": "Morph",
-    "lane2Rate": "4 Bars",
-    "lane2Depth": 36.0,
-    "lane2Target": "Space",
-    "outputDb": -2.5
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      -1.0,
-      -0.35,
-      "smooth"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Velvet Choir Space Bloom",
+    "category": "Copedent",
+    "params": {
+        "mode": "Copedent",
+        "rootKey": "D",
+        "scale": "Aeolian",
+        "voicingPack": "Unison Bloom",
+        "morph": 0.0,
+        "morphAuto": true,
+        "gravity": 56.0,
+        "gravityMode": "Hybrid",
+        "stagger": 68.0,
+        "staggerOrder": "Outside In",
+        "anchorSub": false,
+        "timbre": "Formant Choir",
+        "detune": 8.0,
+        "width": 94.0,
+        "space": 82.0,
+        "subAnchor": 68.0,
+        "subWarmth": 25.0,
+        "subCutoff": 78.0,
+        "drive": 20.0,
+        "driveModel": "Tube",
+        "filterMode": "LP 24",
+        "filterHz": 3400.0,
+        "filterRes": 16.0,
+        "attackMs": 75.0,
+        "releaseMs": 950.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 100.0,
+        "lane1Target": "Morph",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 36.0,
+        "lane2Target": "Space",
+        "outputDb": -2.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            -0.35,
+            "smooth"
+        ],
+        [
+            0.33,
+            -0.3,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.67,
+            0.35,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.96,
+            1.0,
+            0.0,
+            "smooth"
+        ]
     ],
-    [
-      0.33,
-      -0.3,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.67,
-      0.35,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.96,
-      1.0,
-      0.0,
-      "smooth"
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -0.6,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      0.9,
-      0.0,
-      "smooth"
-    ]
-  ]
 }

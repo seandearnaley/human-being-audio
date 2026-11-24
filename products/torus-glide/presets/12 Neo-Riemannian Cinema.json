@@ -1,101 +1,101 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Neo-Riemannian Cinema",
-  "category": "Copedent",
-  "params": {
-    "mode": "Copedent",
-    "rootKey": "E",
-    "scale": "Harmonic Min",
-    "voicingPack": "Neo-Riemann PLR",
-    "morph": 0.0,
-    "morphAuto": true,
-    "gravity": 52.0,
-    "gravityMode": "Scale Wells",
-    "stagger": 56.0,
-    "staggerOrder": "High to Low",
-    "anchorSub": false,
-    "timbre": "Reese Saw",
-    "detune": 13.0,
-    "width": 94.0,
-    "subAnchor": 78.0,
-    "subCutoff": 82.0,
-    "drive": 34.0,
-    "driveModel": "Tube",
-    "filterHz": 2200.0,
-    "filterRes": 16.0,
-    "attackMs": 65.0,
-    "releaseMs": 720.0,
-    "lane1Rate": "8 Bars",
-    "lane1Depth": 100.0,
-    "lane1Target": "Morph",
-    "lane2Rate": "4 Bars",
-    "lane2Depth": 32.0,
-    "lane2Target": "Filter",
-    "outputDb": -3.0
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "smooth"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Neo-Riemannian Cinema",
+    "category": "Copedent",
+    "params": {
+        "mode": "Copedent",
+        "rootKey": "E",
+        "scale": "Harmonic Min",
+        "voicingPack": "Neo-Riemann PLR",
+        "morph": 0.0,
+        "morphAuto": true,
+        "gravity": 52.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 56.0,
+        "staggerOrder": "High to Low",
+        "anchorSub": false,
+        "timbre": "Reese Saw",
+        "detune": 13.0,
+        "width": 94.0,
+        "subAnchor": 78.0,
+        "subCutoff": 82.0,
+        "drive": 34.0,
+        "driveModel": "Tube",
+        "filterHz": 2200.0,
+        "filterRes": 16.0,
+        "attackMs": 65.0,
+        "releaseMs": 720.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 100.0,
+        "lane1Target": "Morph",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 32.0,
+        "lane2Target": "Filter",
+        "outputDb": -3.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.2,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.25,
+            -0.333,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.45,
+            -0.333,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.333,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.7,
+            0.333,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.75,
+            1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.95,
+            1.0,
+            0.0,
+            "smooth"
+        ]
     ],
-    [
-      0.2,
-      -1.0,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.25,
-      -0.333,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.45,
-      -0.333,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      0.333,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.7,
-      0.333,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.75,
-      1.0,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.95,
-      1.0,
-      0.0,
-      "smooth"
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -0.6,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      0.9,
-      0.0,
-      "smooth"
-    ]
-  ]
 }

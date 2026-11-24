@@ -1,64 +1,64 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Tritone Tension 2Bar",
-  "category": "Spiral",
-  "params": {
-    "mode": "Spiral",
-    "rootKey": "D",
-    "scale": "Diminished",
-    "spiralDir": "Rise",
-    "loopBars": "2 Bars",
-    "spiralRatio": "Tritone",
-    "spiralStack": "Tritone Dyad",
-    "bellCenter": 360.0,
-    "bellWidth": 76.0,
-    "timbre": "Wavefold FM",
-    "detune": 11.0,
-    "width": 84.0,
-    "subAnchor": 82.0,
-    "subCutoff": 80.0,
-    "drive": 68.0,
-    "driveModel": "Tri Fold",
-    "filterHz": 2600.0,
-    "filterRes": 36.0,
-    "rissetGate": 0.0,
-    "attackMs": 6.0,
-    "releaseMs": 160.0,
-    "lane1Rate": "2 Bars",
-    "lane1Depth": 45.0,
-    "lane1Target": "Drive",
-    "lane2Rate": "1 Bar",
-    "lane2Depth": 35.0,
-    "lane2Target": "Filter",
-    "outputDb": -4.0
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "line"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Tritone Tension 2Bar",
+    "category": "Spiral",
+    "params": {
+        "mode": "Spiral",
+        "rootKey": "D",
+        "scale": "Diminished",
+        "spiralDir": "Rise",
+        "loopBars": "2 Bars",
+        "spiralRatio": "Tritone",
+        "spiralStack": "Tritone Dyad",
+        "bellCenter": 360.0,
+        "bellWidth": 76.0,
+        "timbre": "Wavefold FM",
+        "detune": 11.0,
+        "width": 84.0,
+        "subAnchor": 82.0,
+        "subCutoff": 80.0,
+        "drive": 68.0,
+        "driveModel": "Tri Fold",
+        "filterHz": 2600.0,
+        "filterRes": 36.0,
+        "rissetGate": 0.0,
+        "attackMs": 6.0,
+        "releaseMs": 160.0,
+        "lane1Rate": "2 Bars",
+        "lane1Depth": 45.0,
+        "lane1Target": "Drive",
+        "lane2Rate": "1 Bar",
+        "lane2Depth": 35.0,
+        "lane2Target": "Filter",
+        "outputDb": -4.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
     ],
-    [
-      0.995,
-      1.0,
-      0.0,
-      "hold"
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      1.0,
-      0.0,
-      "smooth"
-    ]
-  ]
 }

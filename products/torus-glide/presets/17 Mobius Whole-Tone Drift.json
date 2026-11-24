@@ -1,67 +1,67 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Mobius Whole-Tone Drift",
-  "category": "Mobius",
-  "params": {
-    "mode": "Mobius",
-    "rootKey": "D",
-    "scale": "Whole Tone",
-    "voicingPack": "Mobius Whole-Tone",
-    "spiralDir": "Rise",
-    "loopBars": "8 Bars",
-    "bellCenter": 560.0,
-    "bellWidth": 90.0,
-    "morphAuto": true,
-    "gravity": 72.0,
-    "gravityMode": "Scale Wells",
-    "stagger": 60.0,
-    "staggerOrder": "Low to High",
-    "timbre": "Formant Choir",
-    "detune": 9.0,
-    "width": 94.0,
-    "subAnchor": 68.0,
-    "subCutoff": 78.0,
-    "drive": 22.0,
-    "driveModel": "Tube",
-    "filterHz": 3800.0,
-    "filterRes": 18.0,
-    "attackMs": 85.0,
-    "releaseMs": 800.0,
-    "lane1Rate": "8 Bars",
-    "lane1Depth": 24.0,
-    "lane1Target": "Bell Center",
-    "lane2Rate": "4 Bars",
-    "lane2Depth": 26.0,
-    "lane2Target": "Filter",
-    "outputDb": -2.5
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "smooth"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Whole-Tone Drift",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "D",
+        "scale": "Whole Tone",
+        "voicingPack": "Mobius Whole-Tone",
+        "spiralDir": "Rise",
+        "loopBars": "8 Bars",
+        "bellCenter": 560.0,
+        "bellWidth": 90.0,
+        "morphAuto": true,
+        "gravity": 72.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 60.0,
+        "staggerOrder": "Low to High",
+        "timbre": "Formant Choir",
+        "detune": 9.0,
+        "width": 94.0,
+        "subAnchor": 68.0,
+        "subCutoff": 78.0,
+        "drive": 22.0,
+        "driveModel": "Tube",
+        "filterHz": 3800.0,
+        "filterRes": 18.0,
+        "attackMs": 85.0,
+        "releaseMs": 800.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 24.0,
+        "lane1Target": "Bell Center",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 26.0,
+        "lane2Target": "Filter",
+        "outputDb": -2.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
     ],
-    [
-      0.5,
-      1.0,
-      0.0,
-      "smooth"
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -0.6,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      0.9,
-      0.0,
-      "smooth"
-    ]
-  ]
 }

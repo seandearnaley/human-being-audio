@@ -1,67 +1,67 @@
 {
-  "format": "torus-glide-preset",
-  "version": 1,
-  "name": "Mobius Neuro Interlude",
-  "category": "Mobius",
-  "params": {
-    "mode": "Mobius",
-    "rootKey": "F",
-    "scale": "Phrygian",
-    "voicingPack": "Mobius Dim7",
-    "spiralDir": "Rise",
-    "loopBars": "8 Bars",
-    "bellCenter": 310.0,
-    "bellWidth": 82.0,
-    "morphAuto": true,
-    "gravity": 56.0,
-    "gravityMode": "Scale Wells",
-    "stagger": 38.0,
-    "staggerOrder": "Inner First",
-    "timbre": "Reese Saw",
-    "detune": 18.0,
-    "width": 84.0,
-    "subAnchor": 92.0,
-    "subCutoff": 86.0,
-    "drive": 60.0,
-    "driveModel": "Buchla Fold",
-    "filterHz": 2100.0,
-    "filterRes": 30.0,
-    "attackMs": 14.0,
-    "releaseMs": 260.0,
-    "lane1Rate": "8 Bars",
-    "lane1Depth": 40.0,
-    "lane1Target": "Filter",
-    "lane2Rate": "2 Bars",
-    "lane2Depth": 25.0,
-    "lane2Target": "Drive",
-    "outputDb": -3.5
-  },
-  "lane1Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "line"
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Neuro Interlude",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "voicingPack": "Mobius Dim7",
+        "spiralDir": "Rise",
+        "loopBars": "8 Bars",
+        "bellCenter": 310.0,
+        "bellWidth": 82.0,
+        "morphAuto": true,
+        "gravity": 56.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 38.0,
+        "staggerOrder": "Inner First",
+        "timbre": "Reese Saw",
+        "detune": 18.0,
+        "width": 84.0,
+        "subAnchor": 92.0,
+        "subCutoff": 86.0,
+        "drive": 60.0,
+        "driveModel": "Buchla Fold",
+        "filterHz": 2100.0,
+        "filterRes": 30.0,
+        "attackMs": 14.0,
+        "releaseMs": 260.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 40.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "2 Bars",
+        "lane2Depth": 25.0,
+        "lane2Target": "Drive",
+        "outputDb": -3.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
     ],
-    [
-      0.995,
-      1.0,
-      0.0,
-      "hold"
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
     ]
-  ],
-  "lane2Curve": [
-    [
-      0.0,
-      -1.0,
-      0.0,
-      "smooth"
-    ],
-    [
-      0.5,
-      1.0,
-      0.0,
-      "smooth"
-    ]
-  ]
 }
