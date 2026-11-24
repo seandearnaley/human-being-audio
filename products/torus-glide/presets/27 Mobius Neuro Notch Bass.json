@@ -1,0 +1,70 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Neuro Notch Bass",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "voicingPack": "Mobius Dim7",
+        "spiralDir": "Rise",
+        "loopBars": "4 Bars",
+        "bellCenter": 290.0,
+        "bellWidth": 82.0,
+        "morphAuto": true,
+        "gravity": 58.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 34.0,
+        "staggerOrder": "Inner First",
+        "timbre": "Reese Saw",
+        "detune": 20.0,
+        "width": 84.0,
+        "space": 28.0,
+        "subAnchor": 96.0,
+        "subWarmth": 68.0,
+        "subCutoff": 86.0,
+        "drive": 64.0,
+        "driveModel": "Buchla Fold",
+        "filterMode": "Neuro Notch",
+        "filterHz": 1100.0,
+        "filterRes": 66.0,
+        "attackMs": 10.0,
+        "releaseMs": 220.0,
+        "lane1Rate": "4 Bars",
+        "lane1Depth": 48.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "1 Bar",
+        "lane2Depth": 28.0,
+        "lane2Target": "Drive",
+        "outputDb": -3.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

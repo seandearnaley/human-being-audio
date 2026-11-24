@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="334" viewBox="0 0 2100 334">
+  <g transform="translate(64, 256)" fill="none" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">
+    <!-- t (cyan spiral stem) -->
+    <path d="M56,-218 V-48 Q56,0 104,0 H126" stroke="#48c8f5"/>
+    <path d="M12,-142 H122" stroke="#e6ebf0"/>
+    <!-- o (torus ring) -->
+    <circle cx="242" cy="-72" r="70" stroke="#e6ebf0"/>
+    <!-- r -->
+    <path d="M386,0 V-142 M386,-92 Q408,-142 466,-142" stroke="#e6ebf0"/>
+    <!-- u -->
+    <path d="M532,-142 V-54 A60,54 0 0 0 652,-54 V-142 M652,-54 V0" stroke="#e6ebf0"/>
+    <!-- s -->
+    <path d="M842,-124 Q818,-146 776,-144 Q728,-142 728,-108 Q728,-74 786,-66 Q846,-58 846,-26 Q846,4 786,2 Q744,0 722,-20" stroke="#e6ebf0"/>
+    <!-- helix divider dot -->
+    <circle cx="942" cy="-72" r="18" fill="#4ee0a6" stroke="none"/>
+    <!-- g (magenta bend) -->
+    <circle cx="1096" cy="-72" r="68" stroke="#df72e8"/>
+    <path d="M1164,-140 V12 Q1164,62 1098,62 Q1058,62 1036,44" stroke="#df72e8"/>
+    <!-- l -->
+    <path d="M1248,-222 V0" stroke="#e6ebf0"/>
+    <!-- i -->
+    <path d="M1332,-136 V0" stroke="#e6ebf0"/>
+    <circle cx="1332" cy="-210" r="16" fill="#48c8f5" stroke="none"/>
+    <!-- d -->
+    <circle cx="1484" cy="-72" r="68" stroke="#e6ebf0"/>
+    <path d="M1552,-222 V0" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M1634,-72 H1774 A70,70 0 1 0 1752,-18" stroke="#e6ebf0"/>
+    <!-- glide curve flourish -->
+    <path d="M1856,-22 C1896,-22 1906,-148 1956,-148" stroke="#4ee0a6" stroke-width="28"/>
+    <circle cx="1956" cy="-148" r="16" fill="#df72e8" stroke="none"/>
+  </g>
+</svg>

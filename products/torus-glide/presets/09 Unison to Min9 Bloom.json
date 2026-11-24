@@ -1,0 +1,65 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Unison to Min9 Bloom",
+    "category": "Copedent",
+    "params": {
+        "mode": "Copedent",
+        "rootKey": "D",
+        "scale": "Aeolian",
+        "voicingPack": "Unison Bloom",
+        "morph": 0.0,
+        "morphAuto": true,
+        "gravity": 48.0,
+        "gravityMode": "Hybrid",
+        "stagger": 64.0,
+        "staggerOrder": "Outside In",
+        "anchorSub": false,
+        "timbre": "Formant Choir",
+        "detune": 9.0,
+        "width": 92.0,
+        "subAnchor": 72.0,
+        "subCutoff": 80.0,
+        "drive": 26.0,
+        "driveModel": "Tube",
+        "filterHz": 3100.0,
+        "filterRes": 18.0,
+        "attackMs": 45.0,
+        "releaseMs": 550.0,
+        "lane1Rate": "4 Bars",
+        "lane1Depth": 100.0,
+        "lane1Target": "Morph",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 36.0,
+        "lane2Target": "Filter",
+        "outputDb": -2.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

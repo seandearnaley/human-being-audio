@@ -1,0 +1,67 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Dim7 Rise 4Bar",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "F",
+        "scale": "Diminished",
+        "voicingPack": "Mobius Dim7",
+        "spiralDir": "Rise",
+        "loopBars": "4 Bars",
+        "bellCenter": 440.0,
+        "bellWidth": 86.0,
+        "morphAuto": true,
+        "gravity": 64.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 46.0,
+        "staggerOrder": "Inner First",
+        "timbre": "Reese Saw",
+        "detune": 12.0,
+        "width": 88.0,
+        "subAnchor": 82.0,
+        "subCutoff": 84.0,
+        "drive": 40.0,
+        "driveModel": "Tube",
+        "filterHz": 2900.0,
+        "filterRes": 22.0,
+        "attackMs": 22.0,
+        "releaseMs": 380.0,
+        "lane1Rate": "4 Bars",
+        "lane1Depth": 28.0,
+        "lane1Target": "Bell Center",
+        "lane2Rate": "2 Bars",
+        "lane2Depth": 30.0,
+        "lane2Target": "Filter",
+        "outputDb": -3.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

@@ -1,0 +1,64 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Sub Abyss Fall 4Bar",
+    "category": "Spiral",
+    "params": {
+        "mode": "Spiral",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "spiralDir": "Fall",
+        "loopBars": "4 Bars",
+        "spiralRatio": "Octave (2:1)",
+        "spiralStack": "Single Bass",
+        "bellCenter": 195.0,
+        "bellWidth": 86.0,
+        "timbre": "Reese Saw",
+        "detune": 19.0,
+        "width": 80.0,
+        "subAnchor": 95.0,
+        "subCutoff": 88.0,
+        "drive": 64.0,
+        "driveModel": "Buchla Fold",
+        "filterHz": 1350.0,
+        "filterRes": 34.0,
+        "rissetGate": 0.0,
+        "attackMs": 10.0,
+        "releaseMs": 190.0,
+        "lane1Rate": "4 Bars",
+        "lane1Depth": -32.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "1 Bar",
+        "lane2Depth": 22.0,
+        "lane2Target": "Drive",
+        "outputDb": -3.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            -1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

@@ -1,0 +1,70 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Mobius Space Cathedral",
+    "category": "Mobius",
+    "params": {
+        "mode": "Mobius",
+        "rootKey": "Eb",
+        "scale": "Diminished",
+        "voicingPack": "Mobius Dim7",
+        "spiralDir": "Rise",
+        "loopBars": "8 Bars",
+        "bellCenter": 490.0,
+        "bellWidth": 90.0,
+        "morphAuto": true,
+        "gravity": 74.0,
+        "gravityMode": "Hybrid",
+        "stagger": 56.0,
+        "staggerOrder": "Low to High",
+        "timbre": "Formant Choir",
+        "detune": 7.0,
+        "width": 98.0,
+        "space": 90.0,
+        "subAnchor": 64.0,
+        "subWarmth": 22.0,
+        "subCutoff": 76.0,
+        "drive": 16.0,
+        "driveModel": "Tube",
+        "filterMode": "LP 24",
+        "filterHz": 4200.0,
+        "filterRes": 14.0,
+        "attackMs": 110.0,
+        "releaseMs": 1200.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 26.0,
+        "lane1Target": "Bell Center",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 30.0,
+        "lane2Target": "Space",
+        "outputDb": -2.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

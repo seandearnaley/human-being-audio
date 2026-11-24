@@ -1,0 +1,77 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Just Intonation Glass",
+    "category": "Copedent",
+    "params": {
+        "mode": "Copedent",
+        "rootKey": "E",
+        "scale": "Lydian #11",
+        "voicingPack": "Quartal Drift",
+        "morph": 0.0,
+        "morphAuto": true,
+        "gravity": 90.0,
+        "gravityMode": "Just Intonation",
+        "stagger": 44.0,
+        "staggerOrder": "Low to High",
+        "anchorSub": false,
+        "timbre": "Pure Sine",
+        "detune": 3.0,
+        "width": 78.0,
+        "subAnchor": 58.0,
+        "subCutoff": 74.0,
+        "drive": 10.0,
+        "driveModel": "Tube",
+        "filterHz": 9800.0,
+        "filterRes": 8.0,
+        "attackMs": 95.0,
+        "releaseMs": 900.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 100.0,
+        "lane1Target": "Morph",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 18.0,
+        "lane2Target": "Filter",
+        "outputDb": -2.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            -0.35,
+            "smooth"
+        ],
+        [
+            0.33,
+            -0.3,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.67,
+            0.35,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.96,
+            1.0,
+            0.0,
+            "smooth"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

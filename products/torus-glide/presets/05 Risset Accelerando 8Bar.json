@@ -1,0 +1,64 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Risset Accelerando 8Bar",
+    "category": "Spiral",
+    "params": {
+        "mode": "Spiral",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "spiralDir": "Rise",
+        "loopBars": "8 Bars",
+        "spiralRatio": "Octave (2:1)",
+        "spiralStack": "Power Fifth",
+        "bellCenter": 480.0,
+        "bellWidth": 82.0,
+        "timbre": "Pulse Sub",
+        "detune": 12.0,
+        "width": 78.0,
+        "subAnchor": 86.0,
+        "subCutoff": 84.0,
+        "drive": 52.0,
+        "driveModel": "Tube",
+        "filterHz": 3800.0,
+        "filterRes": 32.0,
+        "rissetGate": 82.0,
+        "attackMs": 12.0,
+        "releaseMs": 220.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 45.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "2 Bars",
+        "lane2Depth": 25.0,
+        "lane2Target": "Drive",
+        "outputDb": -3.0
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -0.6,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            0.9,
+            0.0,
+            "smooth"
+        ]
+    ]
+}

@@ -34,6 +34,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Ctln",
       "license": "AGPL-3.0-or-later"
+    },
+    "torus-glide": {
+      "name": "Torus Glide",
+      "artifacts": "plugin/TorusGlide_artefacts/Release",
+      "bundle": "com.humanbeingmusic.torusglide",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Trgl",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

@@ -1,0 +1,64 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Phrygian Riser 8Bar",
+    "category": "Spiral",
+    "params": {
+        "mode": "Spiral",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "spiralDir": "Rise",
+        "loopBars": "8 Bars",
+        "spiralRatio": "Octave (2:1)",
+        "spiralStack": "Phrygian b9",
+        "bellCenter": 420.0,
+        "bellWidth": 88.0,
+        "timbre": "Reese Saw",
+        "detune": 14.0,
+        "width": 90.0,
+        "subAnchor": 74.0,
+        "subCutoff": 82.0,
+        "drive": 46.0,
+        "driveModel": "Tube",
+        "filterHz": 3400.0,
+        "filterRes": 24.0,
+        "rissetGate": 0.0,
+        "attackMs": 35.0,
+        "releaseMs": 420.0,
+        "lane1Rate": "8 Bars",
+        "lane1Depth": 55.0,
+        "lane1Target": "Filter",
+        "lane2Rate": "4 Bars",
+        "lane2Depth": 30.0,
+        "lane2Target": "Bell Center",
+        "outputDb": -3.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ]
+}

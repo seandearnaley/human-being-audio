@@ -27,7 +27,13 @@ def plan_checks(products, changes):
     paths = set(changes or [])
     full = changes is None or ".github/workflows/native.yml" in paths or any(p.startswith("factory/quality/") for p in paths)
     native = affected(products, changes)
-    extra = {"livecut-redux": "livecut", "tract-form": "tract-form", "pole-field": "pole-field", "cutline": "cutline"}
+    extra = {
+        "livecut-redux": "livecut",
+        "tract-form": "tract-form",
+        "pole-field": "pole-field",
+        "cutline": "cutline",
+        "torus-glide": "torus-glide",
+    }
     windows = [p for p in native if p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []
     if not native and any(p.startswith("research/") and Path(p).suffix in

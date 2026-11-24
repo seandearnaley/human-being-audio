@@ -4,6 +4,7 @@ import livecutImage from "../../products/livecut-redux/docs/editor.png";
 import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
 import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
 import cutlineImage from "../../products/cutline/press/screenshots/cutline-interface.png";
+import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-glide-interface.png";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
 
@@ -106,6 +107,30 @@ const products = {
     ],
     credits: "Includes 32 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
+  "torus-glide": {
+    kind: "Pitch-manifold synth",
+    hue: 198,
+    bpm: 172,
+    form: "helix",
+    image: torusGlideImage,
+    alt: "Torus Glide’s interactive 5-voice Möbius ribbon canvas, Scale Gravity rails, live chord capture pills, sound and stereo space core, and two tempo-locked movement lanes",
+    body: "Unify bar-locked Shepard-Risset bass spirals, programmable non-pop polyphonic chord bends and hybrid Möbius endless chord glides in one engine. Lock a mono Sub-Anchor beneath 7-octave spirals, bend five voices smoothly through Scale and Just-Intonation Gravity Wells, or stream live MPE.",
+    features: [
+      [
+        "Spiral, Copedent & Möbius modes",
+        "Glide 7-octave bar-locked Shepard-Risset bass and chord spirals with constant-RMS Hann² normalization, program 4-scene dark voicings with Tymoczko Auto-Lead, Pedal-Steel stagger and Scale/JI Gravity Wells, or fuse both into Möbius infinite chord glides.",
+      ],
+      [
+        "Neuro Notch, Sub-Anchor & Stereo Space",
+        "Five timbres (Reese Saw, Pure Sine, Formant Choir, Wavefold FM, Pulse Sub) feeding an LR4 mono Sub-Anchor with harmonic warmth, HIIR oversampled ADAA2 shaping, 4-mode Cytomic SVF (LP 12, LP 24, Bandpass, Neuro Notch) and upper-band Stereo Space.",
+      ],
+      [
+        "Live chord capture, MPE & Drag exports",
+        "Hold any MIDI chord and click Cap A–D to capture voicings live, switch scenes via C0–D#0 keyswitches, stream MPE Lower Zone (±48 st), or drag 8× bar-locked .wav loops and 960-PPQ .mid clips straight into your DAW.",
+      ],
+    ],
+    credits: "Includes 28 factory presets, two drawable movement lanes, Undo/Redo and A/B compare.",
+  },
 };
 const platforms = {
   macos: "macOS",
@@ -144,7 +169,9 @@ function Product({ slug, release, unavailable }) {
                 ? "Hear Neuro Chew on a bassline"
                 : slug === "cutline"
                   ? "Hear Neuro Whip at 172 BPM"
-                  : "Hear Tract Form on MIDI note 29"}
+                  : slug === "torus-glide"
+                    ? "Hear Mobius Neuro Notch Bass at 172 BPM"
+                    : "Hear Tract Form on MIDI note 29"}
           </figcaption>
           <audio
             controls

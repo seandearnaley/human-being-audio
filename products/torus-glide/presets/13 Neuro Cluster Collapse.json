@@ -1,0 +1,65 @@
+{
+    "format": "torus-glide-preset",
+    "version": 1,
+    "name": "Neuro Cluster Collapse",
+    "category": "Copedent",
+    "params": {
+        "mode": "Copedent",
+        "rootKey": "F",
+        "scale": "Phrygian",
+        "voicingPack": "Neuro Cluster",
+        "morph": 0.0,
+        "morphAuto": true,
+        "gravity": 35.0,
+        "gravityMode": "Scale Wells",
+        "stagger": 28.0,
+        "staggerOrder": "Outside In",
+        "anchorSub": false,
+        "timbre": "Reese Saw",
+        "detune": 22.0,
+        "width": 86.0,
+        "subAnchor": 94.0,
+        "subCutoff": 88.0,
+        "drive": 68.0,
+        "driveModel": "Buchla Fold",
+        "filterHz": 2100.0,
+        "filterRes": 34.0,
+        "attackMs": 6.0,
+        "releaseMs": 140.0,
+        "lane1Rate": "2 Bars",
+        "lane1Depth": 100.0,
+        "lane1Target": "Morph",
+        "lane2Rate": "1 Bar",
+        "lane2Depth": 42.0,
+        "lane2Target": "Filter",
+        "outputDb": -3.5
+    },
+    "lane1Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "line"
+        ],
+        [
+            0.995,
+            1.0,
+            0.0,
+            "hold"
+        ]
+    ],
+    "lane2Curve": [
+        [
+            0.0,
+            -1.0,
+            0.0,
+            "smooth"
+        ],
+        [
+            0.5,
+            1.0,
+            0.0,
+            "smooth"
+        ]
+    ]
+}
