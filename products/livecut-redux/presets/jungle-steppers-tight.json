@@ -1,0 +1,17 @@
+{
+    "name": "Steppers Tight",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "Bounce",
+    "subdivision": "8",
+    "seed": 2,
+    "minPhraseBars": 4,
+    "maxPhraseBars": 4,
+    "fade": 2.5,
+    "bounceChance": 0.48,
+    "ratchetChance": 0.65,
+    "climb": 5,
+    "halftimeChance": 0.12,
+    "subAnchor": 105.0,
+    "limiter": true
+}

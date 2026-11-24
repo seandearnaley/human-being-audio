@@ -38,24 +38,24 @@ public:
         std::uint64_t cutsStarted = 0;
     };
     bool prepare (double sampleRate);
-    void reset();
-    void setParameters (const RouteParameters&); // Existing next-block contract.
-    void requestRoute (EffectRoute); // Structural; no switch until an eligible bar.
-    void barStarted();
-    void startCut (const RouteCutContext&);
-    void process (float& left, float& right);
-    const Diagnostics& diagnostics() const { return status; }
-    const ImpactEffects& impact() const { return lanes[active].impact; }
-    const Resonator& resonator() const { return lanes[active].resonator; }
+    void reset() noexcept HBA_NONBLOCKING;
+    void setParameters(const RouteParameters&) noexcept HBA_NONBLOCKING; // Existing next-block contract.
+    void requestRoute(EffectRoute) noexcept HBA_NONBLOCKING;             // Structural; no switch until an eligible bar.
+    void barStarted() noexcept HBA_NONBLOCKING;
+    void startCut(const RouteCutContext&) noexcept HBA_NONBLOCKING;
+    void process(float& left, float& right) noexcept HBA_NONBLOCKING;
+    const Diagnostics& diagnostics() const noexcept HBA_NONBLOCKING { return status; }
+    const ImpactEffects& impact() const noexcept HBA_NONBLOCKING { return lanes[active].impact; }
+    const Resonator& resonator() const noexcept HBA_NONBLOCKING { return lanes[active].resonator; }
 
-private:
+  private:
     struct Lane
     {
         ImpactEffects impact;
         FrequencyEffects frequency;
         Resonator resonator;
         EffectRoute route = EffectRoute::impactResonatorFrequency;
-        void process (float& left, float& right, bool frequencySelected);
+        void process(float& left, float& right, bool frequencySelected) noexcept HBA_NONBLOCKING;
     };
     std::array<Lane, 2> lanes;
     RouteCutContext cut;

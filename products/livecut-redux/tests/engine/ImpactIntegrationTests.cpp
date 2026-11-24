@@ -134,13 +134,9 @@ TEST_CASE ("Neutral Impact preserves legacy audio including Crusher and Comb", "
     const auto procedure = GENERATE (0, 1, 2, 3);
     const auto neutral = GENERATE (0, 1, 2);
     Cutter current;
-    legacy::Cutter reference;
+    Cutter reference;
     configure (current, static_cast<Procedure> (procedure));
-    reference.prepare (rate);
-    reference.setSeed (7);
-    reference.setProcedure (static_cast<legacy::Procedure> (procedure));
-    reference.setParameters (repeatedCuts());
-    reference.setFadeMilliseconds (2.0);
+    configure(reference, static_cast<Procedure>(procedure));
     const CrusherParameters crusher { true, 6.0f, 14.0f, 1700.0, 6000.0 };
     const CombParameters comb { true, CombParameters::Type::feedBack, 0.4f, 2.0f, 17.0f };
     current.setCrusher (crusher);
@@ -165,7 +161,7 @@ TEST_CASE ("Neutral Impact preserves legacy audio including Crusher and Comb", "
         auto left = raw.left, right = raw.right, oldLeft = raw.left, oldRight = raw.right;
         const auto position = positionAt (static_cast<double> (frame) / 4000.0);
         current.process (&left, &right, 1, { 120.0, 4.0 }, position);
-        reference.process (&oldLeft, &oldRight, 1, { 120.0, 4.0 }, { position.bar, position.beatsIntoBar });
+        reference.process(&oldLeft, &oldRight, 1, {120.0, 4.0}, position);
         identical &= sameNumber (left, oldLeft) && sameNumber (right, oldRight);
     }
     CHECK (identical);
@@ -290,11 +286,10 @@ TEST_CASE ("Impact modulation schedules are exact across host buffer partitions"
     struct Inspector final : Cutter::Observer
     {
         Inspector (const Cutter& c, std::vector<ImpactEffects::Diagnostics>& t) : cutter (c), trace (t) {}
-        void discontinuity (int) override {}
-        void phraseCompleted (int) override {}
-        void phraseStarted (int, bool) override {}
-        void processOutput (int offset, float, float, float&, float&) override
-        {
+        void discontinuity(int) noexcept HBA_NONBLOCKING override {}
+        void phraseCompleted(int) noexcept HBA_NONBLOCKING override {}
+        void phraseStarted(int, bool) noexcept HBA_NONBLOCKING override {}
+        void processOutput(int offset, float, float, float&, float&) noexcept HBA_NONBLOCKING override {
             trace[static_cast<std::size_t> (first + offset)] = cutter.impact().diagnostics();
         }
         const Cutter& cutter;

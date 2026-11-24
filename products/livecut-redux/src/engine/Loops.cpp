@@ -21,31 +21,30 @@ constexpr double epsilon = 1.0e-9;          // units: a block that ends an ulp o
 constexpr double floorBeats = 1.0 / 16.0;   // no replay is shorter
 constexpr int passes = 4;                   // a phrase: the track, then three repeats
 
+constexpr std::array<int, 1> wholeLevels{0};
+constexpr std::array<int, 2> halfLevels{1, 1};
+constexpr std::array<int, 4> quarterLevels{2, 2, 2, 2};
+constexpr std::array<int, 6> eighthLevels{2, 2, 3, 3, 3, 3};
+
 // Pass `k`'s cuts, as levels: 0 the whole loop, 1 its first half, 2 its first
 // quarter, 3 its first eighth. The deepest levels fill the end of the phrase.
-std::span<const int> levels (int pass, int depth)
-{
-    static constexpr std::array<int, 1> whole { 0 };
-    static constexpr std::array<int, 2> halves { 1, 1 };
-    static constexpr std::array<int, 4> quarters { 2, 2, 2, 2 };
-    static constexpr std::array<int, 6> eighths { 2, 2, 3, 3, 3, 3 };
+std::span<const int> levels(int pass, int depth) noexcept HBA_NONBLOCKING {
     if (pass <= 1 || (pass == 2 && depth < 2) || (pass == 3 && depth == 0))
-        return whole;
+        return wholeLevels;
     if (pass == 2 || depth == 1)
-        return halves;
+        return halfLevels;
     if (depth == 2)
-        return quarters;
-    return eighths;
+        return quarterLevels;
+    return eighthLevels;
 }
 } // namespace
 
-int Loops::choosePhraseBars (Random&, const CutParameters& params)
-{
+int Loops::choosePhraseBars(Random&, const CutParameters& params) noexcept HBA_NONBLOCKING {
     return std::max (1, static_cast<int> (std::lround (passes * params.loopBars)));
 }
 
-void Loops::chooseBlock (Random&, const CutParameters& params, const BlockContext& context, std::vector<Cut>& cuts)
-{
+void Loops::chooseBlock(Random&, const CutParameters& params, const BlockContext& context,
+                        CutList& cuts) noexcept HBA_NONBLOCKING {
     assert (params.loopBars == 0.0 || params.loopBars == 1.0 || params.loopBars == .5 || params.loopBars == .25);
     assert (params.loopDepth >= 0 && params.loopDepth <= 3);
     cuts.clear();

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -163,20 +165,19 @@ public:
         return true;
     }
 
-    std::uint64_t epoch() const noexcept { return currentEpoch; }
-    std::int64_t nextFrame() const noexcept { return written; }
+    std::uint64_t epoch() const noexcept HBA_NONBLOCKING { return currentEpoch; }
+    std::int64_t nextFrame() const noexcept HBA_NONBLOCKING { return written; }
     // Current epoch's analysed interval is [epochFirstFrame(), analyzedFrames()).
     // This is not a continuous prefix across discarded partial epoch windows.
-    std::int64_t analyzedFrames() const noexcept { return analyzedEnd; }
-    std::int64_t epochFirstFrame() const noexcept { return epochFirst; }
-    int windowFrames() const noexcept { return hop; }
-    std::size_t markerCount() const noexcept { return count; }
+    std::int64_t analyzedFrames() const noexcept HBA_NONBLOCKING { return analyzedEnd; }
+    std::int64_t epochFirstFrame() const noexcept HBA_NONBLOCKING { return epochFirst; }
+    int windowFrames() const noexcept HBA_NONBLOCKING { return hop; }
+    std::size_t markerCount() const noexcept HBA_NONBLOCKING { return count; }
     // Since reset; saturates at UINT64_MAX. Old marker loss is never hidden.
-    std::uint64_t overwrittenMarkers() const noexcept { return overwritten; }
+    std::uint64_t overwrittenMarkers() const noexcept HBA_NONBLOCKING { return overwritten; }
 
     // Oldest to newest. Marker retention does NOT guarantee audio retention.
-    std::optional<OnsetMarker> marker (std::size_t index) const noexcept
-    {
+    std::optional<OnsetMarker> marker(std::size_t index) const noexcept HBA_NONBLOCKING {
         if (index >= count)
             return std::nullopt;
         const auto oldest = (writeSlot + history.size() - count) % history.size();
@@ -190,10 +191,8 @@ public:
     // No qualifying retained marker => nullopt, never a grid point or unrelated
     // epoch's attack. Equal distances choose earlier.
     // minimumRiseDb filters measured energy rise, not perceptual confidence.
-    std::optional<OnsetMarker> nearest (SourceBounds source, std::int64_t target,
-                                       std::int64_t first, std::int64_t end,
-                                       double minimumRiseDb = 0.0) const noexcept
-    {
+    std::optional<OnsetMarker> nearest(SourceBounds source, std::int64_t target, std::int64_t first, std::int64_t end,
+                                       double minimumRiseDb = 0.0) const noexcept HBA_NONBLOCKING {
         if (! active || source.epoch == 0 || source.epoch > currentEpoch
             || source.firstFrame < 0 || source.endFrame <= source.firstFrame
             || source.firstFrame > written

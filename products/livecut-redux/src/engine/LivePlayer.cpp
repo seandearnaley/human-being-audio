@@ -15,8 +15,7 @@
 namespace livecut::engine
 {
 
-float fadeEnvelope (int t, int fade, int length)
-{
+float fadeEnvelope(int t, int fade, int length) noexcept HBA_NONBLOCKING {
     const auto time = static_cast<double> (t);
     const auto fadeLength = static_cast<double> (fade);
     const auto attack = 1.0 - std::exp (-5.0 * time / fadeLength);
@@ -24,8 +23,7 @@ float fadeEnvelope (int t, int fade, int length)
     return static_cast<float> (attack * release);
 }
 
-int playableSamples (int length, double rate, int recorded, int capacity)
-{
+int playableSamples(int length, double rate, int recorded, int capacity) noexcept HBA_NONBLOCKING {
     const auto readable = [&] (int t)
     {
         const auto index = static_cast<std::int64_t> (static_cast<double> (t) * rate);
@@ -62,19 +60,14 @@ void LivePlayer::prepare (int newCapacity, std::size_t retainedFrames)
         throw std::runtime_error ("Cannot prepare source history");
     sourceError = false;
     transform.reset();
-    playing.clear();
-    playing.reserve (maxCutsPerBlock);
+    playingCount = 0;
     current = 0;
     position = 0;
 }
 
-void LivePlayer::setFadeSamples (int samples)
-{
-    fade = std::max (samples, 1);
-}
+void LivePlayer::setFadeSamples(int samples) noexcept HBA_NONBLOCKING { fade = std::max(samples, 1); }
 
-int LivePlayer::playableFor (const PlayingCut& cut, int soundingLength) const
-{
+int LivePlayer::playableFor(const PlayingCut& cut, int soundingLength) const noexcept HBA_NONBLOCKING {
     // A live cut reading slower than the recording never catches up with it.
     if (cut.pitched && cut.start == 0 && cut.rate < 1.0)
         return soundingLength;
@@ -83,17 +76,16 @@ int LivePlayer::playableFor (const PlayingCut& cut, int soundingLength) const
                        : soundingLength;
 }
 
-void LivePlayer::startBlock (std::span<const Cut> cuts, double newSamplesPerUnit)
-{
+void LivePlayer::startBlock(std::span<const Cut> cuts, double newSamplesPerUnit) noexcept HBA_NONBLOCKING {
     startBlock (cuts, newSamplesPerUnit, sourceForNextFrame());
 }
 
-void LivePlayer::startBlock (std::span<const Cut> cuts, double newSamplesPerUnit, SourceRegion newSource)
-{
+void LivePlayer::startBlock(std::span<const Cut> cuts, double newSamplesPerUnit,
+                            SourceRegion newSource) noexcept HBA_NONBLOCKING {
     source = newSource;
     transform.reset();
     assert (cuts.size() <= maxCutsPerBlock);
-    playing.clear();
+    playingCount = 0;
     current = 0;
     position = 0;
     exactRetime = false;
@@ -135,22 +127,20 @@ void LivePlayer::startBlock (std::span<const Cut> cuts, double newSamplesPerUnit
             playingCut.rightToLeft = static_cast<float> (amp * (cut.pan > 0.0f ? 0.0 : -std::sin (angle)));
             playingCut.rightToRight = static_cast<float> (amp * (cut.pan > 0.0f ? 1.0 : std::cos (angle)));
 
-            playing.push_back (playingCut);
+            if (playingCount < maxCutsPerBlock)
+                playing[playingCount++] = playingCut;
         }
 
         start = end;
     }
 }
 
-void LivePlayer::setSamplesPerUnit (double newSamplesPerUnit)
-{
+void LivePlayer::setSamplesPerUnit(double newSamplesPerUnit) noexcept HBA_NONBLOCKING {
     const auto unchanged = std::abs (newSamplesPerUnit - samplesPerUnit) <= 1.0e-9 * samplesPerUnit;
     const auto exactElapsed = retimedUnits + (position - retimedPosition) / samplesPerUnit;
 
-    if (unchanged || current >= playing.size())
-    {
-        if (exactRetime && current < playing.size())
-        {
+    if (unchanged || current >= playingCount) {
+        if (exactRetime && current < playingCount) {
             retimedUnits = exactElapsed;
             retimedPosition = position;
         }
@@ -182,8 +172,7 @@ void LivePlayer::setSamplesPerUnit (double newSamplesPerUnit)
     auto end = samplesFromCutStart (unitsFromNow);
     now.size = end;
 
-    for (auto i = current + 1; i < playing.size(); ++i)
-    {
+    for (auto i = current + 1; i < playingCount; ++i) {
         auto& cut = playing[i];
         unitsFromNow += cut.units;
         const auto nextEnd = samplesFromCutStart (unitsFromNow);
@@ -199,11 +188,9 @@ void LivePlayer::setSamplesPerUnit (double newSamplesPerUnit)
     skipFinishedCuts();
 }
 
-void LivePlayer::skipFinishedCuts()
-{
+void LivePlayer::skipFinishedCuts() noexcept HBA_NONBLOCKING {
     // A faster tempo can shrink what's left of a cut, or a whole cut, to nothing.
-    while (current < playing.size() && position >= playing[current].size)
-    {
+    while (current < playingCount && position >= playing[current].size) {
         ++current;
         position = 0;
         retimedUnits = 0.0;
@@ -212,21 +199,18 @@ void LivePlayer::skipFinishedCuts()
     }
 }
 
-SourceRegion LivePlayer::sourceAtFrame (std::int64_t frame) const
-{
+SourceRegion LivePlayer::sourceAtFrame(std::int64_t frame) const noexcept HBA_NONBLOCKING {
     return { history.retainedRegion().epoch, frame, capacity };
 }
 
-SourceRegion LivePlayer::sourceForNextFrame() const
-{
+SourceRegion LivePlayer::sourceForNextFrame() const noexcept HBA_NONBLOCKING {
     const auto retained = history.retainedRegion();
     return sourceAtFrame (retained.firstFrame + retained.frameCount);
 }
 
-void LivePlayer::resetRendering()
-{
+void LivePlayer::resetRendering() noexcept HBA_NONBLOCKING {
     transform.reset();
-    playing.clear();
+    playingCount = 0;
     current = 0;
     position = 0;
     retimedUnits = 0.0;
@@ -234,46 +218,37 @@ void LivePlayer::resetRendering()
     sourceError = false;
 }
 
-void LivePlayer::resetSource()
-{
-    sourceError = ! history.reset();
-}
+void LivePlayer::resetSource() noexcept HBA_NONBLOCKING { sourceError = !history.reset(); }
 
-bool LivePlayer::ingestFrame (float left, float right)
-{
+bool LivePlayer::ingestFrame(float left, float right) noexcept HBA_NONBLOCKING {
     if (! history.append ({ left, right }))
         sourceError = true;
     return ! sourceError;
 }
 
-std::optional<StereoFrame> LivePlayer::readSourceFrame (double relativeFrame) const
-{
+std::optional<StereoFrame> LivePlayer::readSourceFrame(double relativeFrame) const noexcept HBA_NONBLOCKING {
     if (! std::isfinite (relativeFrame) || relativeFrame < 0.0 || relativeFrame >= static_cast<double> (source.frameCount))
         return std::nullopt;
     const auto index = static_cast<std::int64_t> (relativeFrame);
-    // Validate the double fraction before AudioHistory converts it to float
-    // for classic interpolation; a value below one can round to float 1.0.
-    return history.readFractional (source, index, relativeFrame - static_cast<double> (index));
+    // Validate the double fraction before cubic interpolation; a value below one can round to float 1.0.
+    return history.readCubic(source, index, relativeFrame - static_cast<double>(index));
 }
 
-std::optional<StereoFrame> LivePlayer::readSourceFrame (SourceRegion region, double relativeFrame) const
-{
+std::optional<StereoFrame> LivePlayer::readSourceFrame(SourceRegion region,
+                                                       double relativeFrame) const noexcept HBA_NONBLOCKING {
     if (! std::isfinite (relativeFrame) || relativeFrame < 0.0 || relativeFrame >= static_cast<double> (region.frameCount))
         return std::nullopt;
     const auto index = static_cast<std::int64_t> (relativeFrame);
-    return history.readFractional (region, index, relativeFrame - static_cast<double> (index));
+    return history.readCubic(region, index, relativeFrame - static_cast<double>(index));
 }
 
-void LivePlayer::process (float& left, float& right)
-{
+void LivePlayer::process(float& left, float& right) noexcept HBA_NONBLOCKING {
     ingestFrame (left, right);
     renderFrame (left, right);
 }
 
-void LivePlayer::advanceToUnits (double logicalUnits)
-{
-    while (current < playing.size() && logicalUnits >= playing[current].logicalStart + playing[current].units)
-    {
+void LivePlayer::advanceToUnits(double logicalUnits) noexcept HBA_NONBLOCKING {
+    while (current < playingCount && logicalUnits >= playing[current].logicalStart + playing[current].units) {
         ++current;
         position = 0;
         retimedUnits = 0.0;
@@ -282,21 +257,18 @@ void LivePlayer::advanceToUnits (double logicalUnits)
     }
 }
 
-int LivePlayer::currentSoundingFrames() const
-{
-    return current < playing.size() ? playing[current].soundingFrames : 0;
+int LivePlayer::currentSoundingFrames() const noexcept HBA_NONBLOCKING {
+    return current < playingCount ? playing[current].soundingFrames : 0;
 }
 
-void LivePlayer::markCurrentTransformDecided()
-{
-    if (current < playing.size() && position == 0)
+void LivePlayer::markCurrentTransformDecided() noexcept HBA_NONBLOCKING {
+    if (current < playingCount && position == 0)
         playing[current].transformDecided = true;
 }
 
-bool LivePlayer::setCurrentTransform (SourceRegion completeFixedSpan, bool reverse)
-{
-    if (current >= playing.size() || position != 0 || playing[current].transformDecided
-        || sourceError || completeFixedSpan.frameCount > capacity || ! sourceAvailable (completeFixedSpan))
+bool LivePlayer::setCurrentTransform(SourceRegion completeFixedSpan, bool reverse) noexcept HBA_NONBLOCKING {
+    if (current >= playingCount || position != 0 || playing[current].transformDecided || sourceError ||
+        completeFixedSpan.frameCount > capacity || !sourceAvailable(completeFixedSpan))
         return false;
     auto& cut = playing[current];
     const auto required = requiredSourceFrames (cut.soundingFrames, cut.rate, capacity);
@@ -307,19 +279,15 @@ bool LivePlayer::setCurrentTransform (SourceRegion completeFixedSpan, bool rever
     return true;
 }
 
-bool LivePlayer::sourceAvailable (SourceRegion completeFixedSpan) const
-{
+bool LivePlayer::sourceAvailable(SourceRegion completeFixedSpan) const noexcept HBA_NONBLOCKING {
     return history.isAvailable (completeFixedSpan);
 }
 
-SourceRegion LivePlayer::retainedSource() const
-{
-    return history.retainedRegion();
-}
+SourceRegion LivePlayer::retainedSource() const noexcept HBA_NONBLOCKING { return history.retainedRegion(); }
 
-void LivePlayer::retimeMusicalCut (int samplesToEnd, int samplesToGate, std::int64_t renderedExclusiveEnd)
-{
-    if (current >= playing.size())
+void LivePlayer::retimeMusicalCut(int samplesToEnd, int samplesToGate,
+                                  std::int64_t renderedExclusiveEnd) noexcept HBA_NONBLOCKING {
+    if (current >= playingCount)
         return;
     auto& cut = playing[current];
     cut.size = position + std::max (samplesToEnd, 1);
@@ -331,16 +299,14 @@ void LivePlayer::retimeMusicalCut (int samplesToEnd, int samplesToGate, std::int
     cut.soundingFrames = sounding;
 }
 
-std::optional<LivePlayer::Tail> LivePlayer::tail() const
-{
+std::optional<LivePlayer::Tail> LivePlayer::tail() const noexcept HBA_NONBLOCKING {
     if (transform)
         return std::nullopt;
     return tail (current, position);
 }
 
-std::optional<LivePlayer::Tail> LivePlayer::tail (std::size_t index, int from) const
-{
-    if (index >= playing.size() || playing[index].playable < std::min (from + 1, playing[index].size))
+std::optional<LivePlayer::Tail> LivePlayer::tail(std::size_t index, int from) const noexcept HBA_NONBLOCKING {
+    if (index >= playingCount || playing[index].playable < std::min(from + 1, playing[index].size))
         return std::nullopt;
     const auto& cut = playing[index];
     Tail tail;
@@ -354,8 +320,7 @@ std::optional<LivePlayer::Tail> LivePlayer::tail (std::size_t index, int from) c
     return tail;
 }
 
-bool LivePlayer::Tail::next (const LivePlayer& player, float& left, float& right)
-{
+bool LivePlayer::Tail::next(const LivePlayer& player, float& left, float& right) noexcept HBA_NONBLOCKING {
     left = right = 0.0f;
     const auto frame = player.readSourceFrame (source, position);
     if (! frame)
@@ -366,19 +331,16 @@ bool LivePlayer::Tail::next (const LivePlayer& player, float& left, float& right
     return true;
 }
 
-void LivePlayer::advanceFrame (bool advanceBySamples)
-{
-    if (current >= playing.size())
+void LivePlayer::advanceFrame(bool advanceBySamples) noexcept HBA_NONBLOCKING {
+    if (current >= playingCount)
         return;
     ++position;
     if (advanceBySamples)
         skipFinishedCuts();
 }
 
-void LivePlayer::renderFrame (float& left, float& right, bool advanceBySamples)
-{
-    if (current >= playing.size())
-    {
+void LivePlayer::renderFrame(float& left, float& right, bool advanceBySamples) noexcept HBA_NONBLOCKING {
+    if (current >= playingCount) {
         left = 0.0f;
         right = 0.0f;
         return;
@@ -399,7 +361,7 @@ void LivePlayer::renderFrame (float& left, float& right, bool advanceBySamples)
         {
             if (const auto coordinate = readCoordinate (position, transform->rate, transform->source.frameCount, transform->reverse);
                 coordinate && sourceAvailable (transform->source))
-                frame = history.readFractional (transform->source, coordinate->index, coordinate->fraction);
+                frame = history.readCubic(transform->source, coordinate->index, coordinate->fraction);
         }
         else
         {

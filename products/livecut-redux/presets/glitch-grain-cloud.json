@@ -1,0 +1,18 @@
+{
+    "name": "Grain Cloud Chop",
+    "category": "Glitch",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 10,
+    "fade": 3.0,
+    "fractureProcedure": "GrainCut",
+    "fractureActivity": 0.72,
+    "fractureGrainSizeMs": 48.0,
+    "fractureGrainDensity": 2.8,
+    "fractureGrainPositionSpreadMs": 55.0,
+    "fractureGrainPitchSpreadCents": 450.0,
+    "fractureGrainPanSpread": 0.6,
+    "subAnchor": 110.0,
+    "limiter": true
+}

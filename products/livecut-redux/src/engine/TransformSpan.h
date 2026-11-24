@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -17,8 +19,7 @@ namespace transform_span_detail
 {
 // INT64_MAX rounds up to 2^63 as a double. Check BEFORE converting back to an
 // integer, and reject rounded input identities rather than address a neighbor.
-inline std::optional<double> exactInteger (std::int64_t value) noexcept
-{
+inline std::optional<double> exactInteger(std::int64_t value) noexcept HBA_NONBLOCKING {
     const auto converted = static_cast<double> (value);
     if (value < 0 || converted >= 0x1p63 || static_cast<std::int64_t> (converted) != value)
         return std::nullopt;
@@ -34,9 +35,8 @@ inline std::optional<double> exactInteger (std::int64_t value) noexcept
 // Every planned output and source integer must be exactly representable as a
 // double, so N-1 and the resulting last source index cannot exceed 2^53. This
 // excludes ambiguous enormous identities without restricting audio spans.
-inline std::optional<std::int64_t> requiredSourceFrames (std::int64_t outputFrames, double rate,
-                                                        std::int64_t maxSourceFrames) noexcept
-{
+inline std::optional<std::int64_t> requiredSourceFrames(std::int64_t outputFrames, double rate,
+                                                        std::int64_t maxSourceFrames) noexcept HBA_NONBLOCKING {
     if (outputFrames <= 0 || maxSourceFrames <= 0 || ! std::isfinite (rate) || rate <= 0.0)
         return std::nullopt;
     const auto lastOutput = transform_span_detail::exactInteger (outputFrames - 1);
@@ -64,9 +64,8 @@ inline std::optional<std::int64_t> requiredSourceFrames (std::int64_t outputFram
 // just its endpoint: fixedFrameCount-1 cannot exceed 2^53 in either direction.
 // Keep fraction as double: one just below 1 can round to float 1 and still
 // requires the next source frame. Exact integer reads require only that frame.
-inline std::optional<ReadCoordinate> readCoordinate (std::int64_t outputFrame, double rate,
-                                                    std::int64_t fixedFrameCount, bool reverse) noexcept
-{
+inline std::optional<ReadCoordinate> readCoordinate(std::int64_t outputFrame, double rate, std::int64_t fixedFrameCount,
+                                                    bool reverse) noexcept HBA_NONBLOCKING {
     if (fixedFrameCount <= 0 || fixedFrameCount - 1 > (std::int64_t { 1 } << 53)
         || ! std::isfinite (rate) || rate <= 0.0)
         return std::nullopt;

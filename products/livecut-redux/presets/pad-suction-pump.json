@@ -1,0 +1,11 @@
+{
+    "name": "Suction Pump",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Suction",
+    "padX": 0.54,
+    "padY": 0.68,
+    "padQuantize": "Bar",
+    "subAnchor": 85.0,
+    "limiter": true
+}

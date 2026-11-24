@@ -5,15 +5,20 @@
 #include "HostSync.h"
 #include "PadSurface.h"
 #include "PluginEditor.h"
+
+#include <hba/dsp/lane_math.h>
+
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <thread>
 
-LivecutAudioProcessor::LivecutAudioProcessor (livecut::spectral::TestHooks* hooks)
-    : AudioProcessor (BusesProperties ()
-                          .withInput ("Input", juce::AudioChannelSet::stereo (), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo (), true)),
-      parameters (*this, nullptr, "Livecut", livecut::createParameterLayout ()), settingsReader (parameters), spectralTestHooks (hooks)
-{
+LivecutAudioProcessor::LivecutAudioProcessor(livecut::spectral::TestHooks* hooks)
+    : AudioProcessor(BusesProperties()
+                         .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+      parameters(*this, nullptr, "Livecut", livecut::createParameterLayout()), settingsReader(parameters),
+      presets(parameters), spectralTestHooks(hooks) {
     startTimer (100);
 }
 
@@ -41,7 +46,11 @@ void LivecutAudioProcessor::enterReplacementLock ()
     // than wait behind an offline callback using a newer uncancelled worker.
     for (;;)
     {
-        const auto stop = std::atomic_load_explicit (&activeStopPublication, std::memory_order_acquire);
+        std::shared_ptr<const livecut::spectral::StopHandle> stop;
+        {
+            const std::lock_guard lock(stopHandleMutex);
+            stop = activeStopPublication;
+        }
         if (stop)
             stop->requestStop ();
         if (getCallbackLock ().tryEnter ())
@@ -63,9 +72,8 @@ bool LivecutAudioProcessor::enterCurrentOperation (std::uint64_t operation)
 
 void LivecutAudioProcessor::publishStopHandle ()
 {
-    std::atomic_store_explicit (&activeStopPublication,
-                                stream ? stream->stopPublication : std::shared_ptr<const livecut::spectral::StopHandle>{},
-                                std::memory_order_release);
+    const std::lock_guard lock(stopHandleMutex);
+    activeStopPublication = stream ? stream->stopPublication : std::shared_ptr<const livecut::spectral::StopHandle>{};
 }
 
 LivecutAudioProcessor::~LivecutAudioProcessor ()
@@ -124,7 +132,14 @@ void LivecutAudioProcessor::prepareToPlay (double sampleRate, int)
             padGain = settings.surface == livecut::Surface::pad ? 0.0f : 1.0f;
             std::swap (wetHold, preparedHold);
             retiredCapture = capture.rolling ().installPrepared (std::move (preparedCapture));
-            mixer.prepare (sampleRate, effective.wet, effective.outputTrimDb);
+            mixer.prepare(sampleRate, effective.wet, effective.outputTrimDb, effective.subAnchorHz, effective.limiter);
+            midiPadMask = 0;
+            display.midiPadMask.store(0, std::memory_order_relaxed);
+            lastWaveformBin = livecut::DisplayState::waveformBins;
+            for (auto& bin : display.waveform)
+                bin.store(0.0f, std::memory_order_relaxed);
+            for (auto& bin : display.sliceMarks)
+                bin.store(0.0f, std::memory_order_relaxed);
             spectralMix.reset (sampleRate, 0.002);
             spectralMix.setCurrentAndTargetValue (effective.spectralMix);
             processingRunning = false;
@@ -338,10 +353,9 @@ void LivecutAudioProcessor::tryApplyMode ()
             return;
         if (generation != configurationGeneration)
             return; // the newer lifecycle owns both its state and retry flag
-        if (publishedGeneration != configurationGeneration || rate != processingSampleRate ||
-            requested.requestedMode != settingsReader.read ().requestedMode ||
-            requested.requestedSpectral != settingsReader.read ().requestedSpectral)
-        {
+        if (publishedGeneration != configurationGeneration || !juce::exactlyEqual(rate, processingSampleRate) ||
+            requested.requestedMode != settingsReader.read().requestedMode ||
+            requested.requestedSpectral != settingsReader.read().requestedSpectral) {
             applyPending = true;
             publishedModeState = ModeState::pendingHostChange;
             return; // stale prebuild freed after this guard
@@ -400,13 +414,57 @@ void LivecutAudioProcessor::observeTransport (const juce::Optional<juce::AudioPl
 
 bool LivecutAudioProcessor::isBusesLayoutSupported (const BusesLayout &layouts) const
 {
-    // The cutter pans and rotates a stereo pair, so stereo in/out is the only layout that makes sense.
-    return layouts.getMainInputChannelSet () == juce::AudioChannelSet::stereo () &&
-           layouts.getMainOutputChannelSet () == juce::AudioChannelSet::stereo ();
+    // Supports Stereo->Stereo and Mono->Stereo (input duplicated to stereo before panning/cutting).
+    const auto in = layouts.getMainInputChannelSet();
+    const auto out = layouts.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::stereo() &&
+           (in == juce::AudioChannelSet::stereo() || in == juce::AudioChannelSet::mono());
 }
 
-void LivecutAudioProcessor::processBlock (juce::AudioBuffer<float> &buffer, juce::MidiBuffer &)
-{
+void LivecutAudioProcessor::handleMidiInput(const juce::MidiBuffer& midi) {
+    for (const auto meta : midi) {
+        const auto msg = meta.getMessage();
+        if (msg.isNoteOn()) {
+            const int note = msg.getNoteNumber();
+            if (note >= 36 && note <= 43) {
+                const int prog = note - 36;
+                midiPadMask |= static_cast<std::uint8_t>(1u << static_cast<unsigned>(prog));
+                midiActiveProgram = prog;
+            }
+        } else if (msg.isNoteOff()) {
+            const int note = msg.getNoteNumber();
+            if (note >= 36 && note <= 43) {
+                const int prog = note - 36;
+                midiPadMask &= static_cast<std::uint8_t>(~(1u << static_cast<unsigned>(prog)));
+                if (midiPadMask != 0 && prog == midiActiveProgram) {
+                    for (int p = 7; p >= 0; --p) {
+                        if ((midiPadMask & static_cast<std::uint8_t>(1u << static_cast<unsigned>(p))) != 0) {
+                            midiActiveProgram = p;
+                            break;
+                        }
+                    }
+                }
+            }
+        } else if (msg.isAllNotesOff() || msg.isAllSoundOff()) {
+            midiPadMask = 0;
+        } else if (msg.isController()) {
+            const int cc = msg.getControllerNumber();
+            const float norm = static_cast<float>(msg.getControllerValue()) / 127.0f;
+            if (cc == 1)
+                midiXOverride.store(norm, std::memory_order_relaxed);
+            else if (cc == 74)
+                midiYOverride.store(norm, std::memory_order_relaxed);
+        } else if (msg.isChannelPressure()) {
+            midiYOverride.store(static_cast<float>(msg.getChannelPressureValue()) / 127.0f, std::memory_order_relaxed);
+        } else if (msg.isAftertouch()) {
+            midiYOverride.store(static_cast<float>(msg.getAfterTouchValue()) / 127.0f, std::memory_order_relaxed);
+        }
+    }
+    display.midiPadMask.store(midiPadMask, std::memory_order_relaxed);
+}
+
+void LivecutAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    handleMidiInput(midi);
     process (buffer, false);
 }
 
@@ -447,19 +505,38 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         return;
     }
     auto &resources = *stream;
+    const auto frames = buffer.getNumSamples();
+    // Mono-to-stereo bus support: mirror mono input onto right output channel before processing.
+    if (getTotalNumInputChannels() == 1 && buffer.getNumChannels() >= 2 && frames > 0)
+        buffer.copyFrom(1, 0, buffer, 0, 0, frames);
     if (resources.fault || (resources.spectral && resources.spectral->fault () != livecut::spectral::Fault::none))
     {
-        if (buffer.getNumSamples () > 0)
+        if (frames > 0)
             observeTransport ();
         failStream ();
+        // Graceful fallback on Spectral worker deadline: pass dry input cleanly instead of brick-muting.
+        if (resources.spectral && resources.spectral->fault() == livecut::spectral::Fault::deadline)
+            return;
         buffer.clear ();
         return;
     }
-    const auto frames = buffer.getNumSamples ();
     if (frames == 0)
         return;
     livecut::RenderContext input;
     input.settings = settingsReader.read ();
+    // Apply MIDI C1-G1 Pad triggering & CC1/CC74/AT -> X/Y when on the Pad surface.
+    if (input.settings.surface == livecut::Surface::pad) {
+        if (midiPadMask != 0) {
+            input.settings.padProgram = static_cast<livecut::engine::PadProgram>(midiActiveProgram);
+            input.settings.padTouch = true;
+        }
+        const float mx = midiXOverride.load(std::memory_order_relaxed);
+        const float my = midiYOverride.load(std::memory_order_relaxed);
+        if (mx >= 0.0f)
+            input.settings.padX = mx;
+        if (my >= 0.0f)
+            input.settings.padY = my;
+    }
     input.bypass = bypass;
     input.resetHold = resetHoldRequested.exchange (false, std::memory_order_acq_rel);
     const auto *head = getPlayHead ();
@@ -670,9 +747,11 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         // Original position at this sample's exclusive end. It cannot be read
         // later from a Cutter whose phrase/context may already have retired.
         const auto position =
-            ((static_cast<double> (context.position.bar) - static_cast<double> (resources.cutter.phraseStartBar ())) +
-             (context.position.beatsIntoBar + (resources.rendering->offset + 1) * processingBeatsPerSample) / context.timing.beatsPerBar) *
-            resources.cutter.activeUnitsPerBar ();
+            ((static_cast<double>(context.position.bar) - static_cast<double>(resources.cutter.phraseStartBar())) +
+             (context.position.beatsIntoBar +
+              static_cast<double>(resources.rendering->offset + 1) * processingBeatsPerSample) /
+                 context.timing.beatsPerBar) *
+            resources.cutter.activeUnitsPerBar();
         processingBeat = context.ppq + static_cast<double> (resources.rendering->offset + 1) * processingBeatsPerSample;
         ++resources.nextRender;
         const auto contextEnded = ++resources.rendering->offset == resources.rendering->segment.frameCount;
@@ -695,7 +774,13 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
             if (result.recoveryRequired)
             {
                 failStream ();
-                buffer.clear (i, frames - i);
+                // Graceful dry fallback on Spectral deadline miss instead of brick-muting remaining samples.
+                if (result.fault == livecut::spectral::Fault::deadline) {
+                    left = raw->left;
+                    right = raw->right;
+                } else {
+                    buffer.clear(i, frames - i);
+                }
                 break;
             }
             if (result.valid)
@@ -714,6 +799,34 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         }
     }
     publishTransformDisplay ();
+    // Publish lock-free output peak, limiter GR, and live phrase waveform / slice-onset overlay.
+    float peakL = 0.0f;
+    float peakR = 0.0f;
+    const float* outL = buffer.getReadPointer(0);
+    const float* outR = buffer.getReadPointer(1);
+    for (int i = 0; i < frames; ++i) {
+        peakL = std::max(peakL, std::abs(outL[i]));
+        peakR = std::max(peakR, std::abs(outR[i]));
+    }
+    display.outputPeakL.store(peakL, std::memory_order_relaxed);
+    display.outputPeakR.store(peakR, std::memory_order_relaxed);
+    display.limiterGrDb.store(mixer.gainReductionDb(), std::memory_order_relaxed);
+    const double totalUnits = static_cast<double>(std::max(1, resources.cutter.phraseBarCount()) *
+                                                  std::max(1, resources.cutter.activeUnitsPerBar()));
+    const double normPos = std::clamp(resources.cutter.positionInPhrase() / totalUnits, 0.0, 0.9999);
+    const auto bin = static_cast<std::size_t>(normPos * static_cast<double>(livecut::DisplayState::waveformBins));
+    const float env = std::min(1.0f, std::max(peakL, peakR));
+    if (bin != lastWaveformBin) {
+        display.waveform[bin].store(env, std::memory_order_relaxed);
+        const bool cutEdge = resources.cutter.isCutting() && resources.cutter.player().currentCut() != lastCutCountBin;
+        display.sliceMarks[bin].store(cutEdge ? 1.0f : 0.0f, std::memory_order_relaxed);
+        lastWaveformBin = bin;
+        lastCutCountBin = resources.cutter.player().currentCut();
+    } else {
+        const float prev = display.waveform[bin].load(std::memory_order_relaxed);
+        if (env > prev)
+            display.waveform[bin].store(env, std::memory_order_relaxed);
+    }
     if (resources.fault)
         display.status = livecut::DisplayState::Status::streamError;
     else if (!produced)
@@ -756,25 +869,21 @@ void LivecutAudioProcessor::collectOrDispatch (livecut::spectral::Event event)
     else
         collectingPacket->before.append (event);
 }
-void LivecutAudioProcessor::discontinuity (int)
-{
+void LivecutAudioProcessor::discontinuity(int) noexcept HBA_NONBLOCKING {
     collectOrDispatch ({livecut::spectral::EventKind::discontinuity});
 }
-void LivecutAudioProcessor::barStarted (int, std::int64_t bar)
-{
+void LivecutAudioProcessor::barStarted(int, std::int64_t bar) noexcept HBA_NONBLOCKING {
     collectOrDispatch ({livecut::spectral::EventKind::barStarted, false, bar});
 }
-void LivecutAudioProcessor::phraseCompleted (int)
-{
+void LivecutAudioProcessor::phraseCompleted(int) noexcept HBA_NONBLOCKING {
     collectOrDispatch ({livecut::spectral::EventKind::phraseCompleted});
 }
-void LivecutAudioProcessor::phraseStarted (int, bool fullStart)
-{
+void LivecutAudioProcessor::phraseStarted(int, bool fullStart) noexcept HBA_NONBLOCKING {
     collectOrDispatch (
         {livecut::spectral::EventKind::phraseStarted, fullStart, 0, stream->cutter.phraseBarCount () * processingBeatsPerBar});
 }
-void LivecutAudioProcessor::processOutput (int, float dryLeft, float dryRight, float &left, float &right)
-{
+void LivecutAudioProcessor::processOutput(int, float dryLeft, float dryRight, float& left,
+                                          float& right) noexcept HBA_NONBLOCKING {
     if (renderSettings.surface == livecut::Surface::pad)
     {
         left = dryLeft + padGain * (left - dryLeft);
@@ -799,7 +908,7 @@ void LivecutAudioProcessor::renderSpectralOutput (const livecut::spectral::Resul
     if (context.resetHold)
         wetHold.interrupt ();
     wetHold.request (context.hold);
-    mixer.setTargets (context.globalMix, context.trimDb);
+    mixer.setTargets(context.globalMix, context.trimDb, renderSettings.subAnchorHz, renderSettings.limiter);
     for (std::size_t i = 0; i < packet.before.count; ++i)
         dispatchEvent (packet.before.items[i]);
     const auto wet = result.localWet ();
@@ -932,7 +1041,8 @@ void LivecutAudioProcessor::applyRenderSettings (const livecut::Settings& user)
         spectralMix.setTargetValue (renderSettings.spectralMix);
     else
     {
-        mixer.setTargets (renderSettings.wet, renderSettings.outputTrimDb);
+        mixer.setTargets(renderSettings.wet, renderSettings.outputTrimDb, renderSettings.subAnchorHz,
+                         renderSettings.limiter);
         wetHold.request (renderSettings.hold);
     }
 }
@@ -985,10 +1095,7 @@ const juce::String LivecutAudioProcessor::getName () const
 {
     return JucePlugin_Name;
 }
-bool LivecutAudioProcessor::acceptsMidi () const
-{
-    return false;
-}
+bool LivecutAudioProcessor::acceptsMidi() const { return true; }
 bool LivecutAudioProcessor::producesMidi () const
 {
     return false;
@@ -999,21 +1106,69 @@ double LivecutAudioProcessor::getTailLengthSeconds () const
     return std::numeric_limits<double>::infinity ();
 }
 
-// Some hosts misbehave when a plugin reports zero programs, so expose exactly one.
-int LivecutAudioProcessor::getNumPrograms ()
-{
-    return 1;
-}
+int LivecutAudioProcessor::getNumPrograms() { return std::max(1, static_cast<int>(presets.all().size())); }
 int LivecutAudioProcessor::getCurrentProgram ()
 {
-    return 0;
+    const int idx = presets.currentIndex();
+    return idx >= 0 ? idx : 0;
 }
-void LivecutAudioProcessor::setCurrentProgram (int) {}
-const juce::String LivecutAudioProcessor::getProgramName (int)
-{
+void LivecutAudioProcessor::setCurrentProgram(int index) {
+    if (index >= 0 && index < static_cast<int>(presets.all().size()))
+        presets.load(index);
+}
+const juce::String LivecutAudioProcessor::getProgramName(int index) {
+    if (index >= 0 && index < static_cast<int>(presets.all().size()))
+        return juce::String::fromUTF8(presets.all()[static_cast<std::size_t>(index)].name.c_str());
     return "Default";
 }
 void LivecutAudioProcessor::changeProgramName (int, const juce::String &) {}
+
+LivecutSnapshot LivecutAudioProcessor::captureSnapshot() const {
+    LivecutSnapshot snap;
+    const auto& params = getParameters();
+    snap.values.reserve(static_cast<std::size_t>(params.size()));
+    for (auto* p : params)
+        snap.values.push_back(p->getValue());
+    return snap;
+}
+
+void LivecutAudioProcessor::restoreSnapshot(const LivecutSnapshot& snap) {
+    const auto& params = getParameters();
+    const auto count = std::min(static_cast<std::size_t>(params.size()), snap.values.size());
+    for (std::size_t i = 0; i < count; ++i)
+        params[static_cast<int>(i)]->setValueNotifyingHost(snap.values[i]);
+}
+
+void LivecutAudioProcessor::pushUndoSnapshot() { history.push(captureSnapshot()); }
+
+void LivecutAudioProcessor::pushCoalescedUndo(std::uint64_t tag) {
+    history.pushCoalesced(captureSnapshot(), tag, static_cast<std::int64_t>(juce::Time::getMillisecondCounter()));
+}
+
+void LivecutAudioProcessor::undo() {
+    if (const auto prev = history.undo(captureSnapshot()))
+        restoreSnapshot(*prev);
+}
+
+void LivecutAudioProcessor::redo() {
+    if (const auto next = history.redo(captureSnapshot()))
+        restoreSnapshot(*next);
+}
+
+void LivecutAudioProcessor::toggleAB() { restoreSnapshot(history.toggleAB(captureSnapshot())); }
+
+void LivecutAudioProcessor::copyAB() { history.copyActiveToOther(captureSnapshot()); }
+
+void LivecutAudioProcessor::rollSeed() {
+    pushUndoSnapshot();
+    if (auto* p = dynamic_cast<juce::AudioParameterInt*>(parameters.getParameter(livecut::ids::seed))) {
+        const int cur = p->get();
+        int next = 1 + static_cast<int>(hba::dsp::laneHash(static_cast<std::uint32_t>(cur) * 2654435761U + 17U) % 16U);
+        if (next == cur)
+            next = (cur % 16) + 1;
+        p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(next)));
+    }
+}
 
 void LivecutAudioProcessor::getStateInformation (juce::MemoryBlock &destData)
 {
@@ -1053,6 +1208,19 @@ void LivecutAudioProcessor::setStateInformation (const void *data, int sizeInByt
         restored.appendChild (child, nullptr);
     }
     parameters.replaceState (restored);
+    // APVTS::replaceState skips setValueNotifyingHost when the snapped denormalised
+    // value equals unnormalisedValue, leaving discrete/boolean parameters whose raw
+    // normalised value drifted (e.g. 0.35 -> false) out of sync with the host.
+    for (auto* parameter : getParameters()) {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+            ranged != nullptr && ranged->isDiscrete()) {
+            if (const auto* raw = parameters.getRawParameterValue(ranged->getParameterID())) {
+                const float expected = ranged->convertTo0to1(raw->load(std::memory_order_relaxed));
+                if (!juce::approximatelyEqual(ranged->getValue(), expected))
+                    ranged->setValueNotifyingHost(expected);
+            }
+        }
+    }
     resetHoldRequested.store (true, std::memory_order_release);
     applyPending.store (true, std::memory_order_release);
 }

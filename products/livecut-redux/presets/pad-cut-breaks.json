@@ -1,0 +1,12 @@
+{
+    "name": "Cut Breaks",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Cut",
+    "padX": 0.62,
+    "padY": 0.58,
+    "padQuantize": "Beat",
+    "subAnchor": 95.0,
+    "limiter": true,
+    "wet": 1.0
+}

@@ -1,0 +1,22 @@
+{
+    "name": "Spectral Smear Pad",
+    "category": "Resonance",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 2,
+    "fade": 4.0,
+    "resonanceEnabled": true,
+    "resonanceRootHz": 130.8,
+    "resonanceDecayMs": 900.0,
+    "resonanceInterval1": 0,
+    "resonanceInterval2": 5,
+    "resonanceInterval3": 7,
+    "resonanceInterval4": 12,
+    "resonanceMix": 0.42,
+    "resonanceSpectralEnabled": true,
+    "resonanceSmearMs": 650.0,
+    "resonanceSpectralMix": 0.72,
+    "subAnchor": 100.0,
+    "limiter": true
+}

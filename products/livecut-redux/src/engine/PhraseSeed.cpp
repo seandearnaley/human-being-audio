@@ -5,8 +5,7 @@
 namespace livecut::engine
 {
 
-std::uint32_t phraseSeed (std::uint32_t seed, std::int64_t bar)
-{
+std::uint32_t phraseSeed(std::uint32_t seed, std::int64_t bar) noexcept HBA_NONBLOCKING {
     // SplitMix64's finaliser (Steele, Lea and Flood) over the seed in the high
     // word and the bar in the low word. It is a bijection on 64 bits in which
     // every input bit affects every output bit, so neither neighbouring bars

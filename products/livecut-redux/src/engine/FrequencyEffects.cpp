@@ -25,8 +25,7 @@ double agm (double arithmetic, double geometric)
 }
 } // namespace
 
-void FrequencyEffects::Ramp::setTarget (double value, std::uint32_t samples)
-{
+void FrequencyEffects::Ramp::setTarget(double value, std::uint32_t samples) noexcept HBA_NONBLOCKING {
     const auto change = value - target;
     if (change == 0.0)
         return;
@@ -35,15 +34,13 @@ void FrequencyEffects::Ramp::setTarget (double value, std::uint32_t samples)
     increment = (target - current) / samples;
 }
 
-double FrequencyEffects::Ramp::next()
-{
+double FrequencyEffects::Ramp::next() noexcept HBA_NONBLOCKING {
     if (remaining > 0)
         current = --remaining == 0 ? target : current + increment;
     return current;
 }
 
-double FrequencyEffects::Allpass::process (double input, double coefficient)
-{
+double FrequencyEffects::Allpass::process(double input, double coefficient) noexcept HBA_NONBLOCKING {
     const auto value = coefficient * (input + y2) - x2;
     const auto output = std::abs (value) < 1.0e-30 ? 0.0 : value;
     x2 = x1;
@@ -53,9 +50,8 @@ double FrequencyEffects::Allpass::process (double input, double coefficient)
     return output;
 }
 
-std::array<double, 2> FrequencyEffects::Quadrature::process (
-    double input, const std::array<double, coefficientCount>& coefficients)
-{
+std::array<double, 2> FrequencyEffects::Quadrature::process(
+    double input, const std::array<double, coefficientCount>& coefficients) noexcept HBA_NONBLOCKING {
     auto real = input, imag = input;
     for (std::size_t section = 0; section < coefficientCount; ++section)
         if ((section & 1U) == 0)
@@ -103,15 +99,13 @@ void FrequencyEffects::prepare (double newSampleRate)
     reset();
 }
 
-void FrequencyEffects::reset()
-{
+void FrequencyEffects::reset() noexcept HBA_NONBLOCKING {
     channels = {};
     frequency = wet = mode = {};
     phase = 0.0;
 }
 
-void FrequencyEffects::setParameters (const FrequencyParameters& next)
-{
+void FrequencyEffects::setParameters(const FrequencyParameters& next) noexcept HBA_NONBLOCKING {
     assert (std::isfinite (next.chance) && std::isfinite (next.mix)
             && std::isfinite (next.rateHz) && std::isfinite (next.envelopeHz) && std::isfinite (next.repeatHz));
     assert (next.mode == FrequencyParameters::Mode::ring || next.mode == FrequencyParameters::Mode::frequencyShift);
@@ -123,9 +117,8 @@ void FrequencyEffects::setParameters (const FrequencyParameters& next)
     parameters.repeatHz = std::clamp (parameters.repeatHz, -2000.0f, 2000.0f);
 }
 
-void FrequencyEffects::process (float& left, float& right, double envelope,
-                                double repeatProgress, bool selected)
-{
+void FrequencyEffects::process(float& left, float& right, double envelope, double repeatProgress,
+                               bool selected) noexcept HBA_NONBLOCKING {
     assert (std::isfinite (left) && std::isfinite (right)
             && std::isfinite (envelope) && std::isfinite (repeatProgress));
     const auto target = std::clamp (parameters.rateHz + parameters.envelopeHz * std::clamp (envelope, 0.0, 1.0)
@@ -137,17 +130,20 @@ void FrequencyEffects::process (float& left, float& right, double envelope,
     // Explicitly fade to exact dry at zero Hz, including a settled carrier.
     wet.setTarget (parameters.enabled && selected && target != 0.0 ? parameters.mix : 0.0, rampSamples);
     const auto hz = frequency.next(), mix = wet.next(), shiftMix = mode.next();
-    const auto cosine = std::cos (phase), sine = std::sin (phase);
+    const bool audible = mix > 0.0;
+    const auto cosine = audible ? std::cos(phase) : 1.0;
+    const auto sine = audible ? std::sin(phase) : 0.0;
     const std::array<float*, 2> samples { &left, &right };
     for (std::size_t channel = 0; channel < samples.size(); ++channel)
     {
         const auto dry = static_cast<double> (*samples[channel]);
         const auto pair = channels[channel].process (dry, coefficients);
-        const auto ring = dry * cosine;
-        const auto translated = pair[0] * cosine - pair[1] * sine;
-        const auto processed = ring + shiftMix * (translated - ring);
-        if (mix > 0.0)
+        if (audible) {
+            const auto ring = dry * cosine;
+            const auto translated = pair[0] * cosine - pair[1] * sine;
+            const auto processed = ring + shiftMix * (translated - ring);
             *samples[channel] = static_cast<float> (dry + mix * (processed - dry));
+        }
     }
     // Keep carrier and quadrature warm while disabled or chance-false. No
     // cut-local oscillator reset or legacy random-stream consumption occurs.

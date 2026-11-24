@@ -32,9 +32,8 @@ public:
     enum class State { invalid, pending, ready, overflow };
     struct Choice { OnsetMarker marker; std::int64_t sourceStart; };
 
-    State reset (std::int64_t nominalOrigin, std::uint64_t transportEpoch,
-                 std::int64_t exactEpochStart, double sampleRate, double thresholdDb) noexcept
-    {
+    State reset(std::int64_t nominalOrigin, std::uint64_t transportEpoch, std::int64_t exactEpochStart,
+                double sampleRate, double thresholdDb) noexcept HBA_NONBLOCKING {
         status = State::invalid;
         size = 0;
         if (! std::isfinite (sampleRate) || sampleRate < 8000.0 || sampleRate > 384000.0
@@ -62,8 +61,8 @@ public:
     // No marker scan occurs until coverage is complete, and at most one scan
     // occurs for this block. A newer detector epoch alone does not close ours.
     template <typename Detector>
-    State update (const Detector& detector, std::optional<std::int64_t> exactEpochEnd = std::nullopt) noexcept
-    {
+    State update(const Detector& detector,
+                 std::optional<std::int64_t> exactEpochEnd = std::nullopt) noexcept HBA_NONBLOCKING {
         if (status != State::pending)
             return status;
         const auto hop = detector.windowFrames();
@@ -123,10 +122,9 @@ public:
         return status;
     }
 
-    State state() const noexcept { return status; }
-    std::size_t count() const noexcept { return size; }
-    std::optional<OnsetMarker> candidate (std::size_t index) const noexcept
-    {
+    State state() const noexcept HBA_NONBLOCKING { return status; }
+    std::size_t count() const noexcept HBA_NONBLOCKING { return size; }
+    std::optional<OnsetMarker> candidate(std::size_t index) const noexcept HBA_NONBLOCKING {
         return index < size ? std::optional { candidates[index] } : std::nullopt;
     }
 
@@ -136,8 +134,8 @@ public:
     // value is independent of this cache; the owner freezes it into PlayingCut.
     // Source validity may change between activations, but cached origins never do.
     template <typename Predicate>
-    std::optional<Choice> nearestEligible (std::int64_t requiredFrames, Predicate&& eligible) const
-    {
+    std::optional<Choice> nearestEligible(std::int64_t requiredFrames,
+                                          Predicate&& eligible) const noexcept HBA_NONBLOCKING {
         if (status != State::ready || requiredFrames <= 0)
             return std::nullopt;
         std::optional<Choice> best;
@@ -162,7 +160,11 @@ public:
     }
 
 private:
-    State fail (State failure) noexcept { size = 0; status = failure; return status; }
+  State fail(State failure) noexcept HBA_NONBLOCKING {
+      size = 0;
+      status = failure;
+      return status;
+  }
     std::array<OnsetMarker, 5> candidates {};
     std::size_t size = 0;
     std::int64_t nominal = 0, epochStart = 0, first = 0, end = 0, preroll = 0;

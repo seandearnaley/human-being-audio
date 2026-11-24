@@ -56,7 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: ${{ inputs.product == 'livecut-redux' }}
           persist-credentials: false
       - uses: actions/cache@v5
         with:

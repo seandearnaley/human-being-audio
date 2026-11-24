@@ -1,0 +1,11 @@
+{
+    "name": "Bounce Climb",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Bounce",
+    "padX": 0.65,
+    "padY": 0.72,
+    "padQuantize": "Beat",
+    "subAnchor": 90.0,
+    "limiter": true
+}

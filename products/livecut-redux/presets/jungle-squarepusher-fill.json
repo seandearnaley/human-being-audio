@@ -1,0 +1,17 @@
+{
+    "name": "Squarepusher Fill",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "SQPusher",
+    "subdivision": "16",
+    "seed": 7,
+    "minPhraseBars": 2,
+    "maxPhraseBars": 4,
+    "fade": 2.0,
+    "activity": 0.78,
+    "minPan": -0.35,
+    "maxPan": 0.35,
+    "accent": 0.45,
+    "subAnchor": 100.0,
+    "limiter": true
+}

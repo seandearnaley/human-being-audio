@@ -1,0 +1,19 @@
+{
+    "name": "Amen 172 Chopper",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "16",
+    "seed": 4,
+    "minPhraseBars": 2,
+    "maxPhraseBars": 4,
+    "fade": 2.5,
+    "minRepeats": 0,
+    "maxRepeats": 2,
+    "stutterChance": 0.85,
+    "stutterArea": 0.5,
+    "swing": 54.0,
+    "accent": 0.35,
+    "subAnchor": 95.0,
+    "limiter": true
+}

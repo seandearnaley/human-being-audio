@@ -1,0 +1,16 @@
+{
+    "name": "Damped Comb Dub",
+    "category": "Glitch",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 5,
+    "fade": 3.0,
+    "comb": true,
+    "combType": "Feedback",
+    "combFeedback": 0.76,
+    "minDelay": 3.5,
+    "maxDelay": 18.0,
+    "subAnchor": 115.0,
+    "limiter": true
+}

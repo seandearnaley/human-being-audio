@@ -1,0 +1,11 @@
+{
+    "name": "Glitch Stutter",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Glitch",
+    "padX": 0.7,
+    "padY": 0.66,
+    "padQuantize": "Beat",
+    "subAnchor": 110.0,
+    "limiter": true
+}

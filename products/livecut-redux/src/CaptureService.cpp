@@ -79,6 +79,35 @@ bool CaptureService::requestSave (const juce::File& target)
     return true;
 }
 
+juce::File CaptureService::prepareDragWav(const juce::String& label) {
+    CapturedPhrase phrase;
+    if (auto lease = recorder.acquireLatest()) {
+        phrase.sampleRate = lease.sampleRate();
+        phrase.spectralWarmup = lease.spectralWarmup();
+        for (std::size_t ch = 0; ch < 2; ++ch) {
+            const auto samples = lease.channel(ch);
+            phrase.channels[ch].assign(samples.begin(), samples.end());
+        }
+    } else if (const auto snap = captured(); snap != nullptr) {
+        phrase = *snap;
+    }
+    if (phrase.size() == 0 || !(phrase.sampleRate > 0.0))
+        return {};
+
+    auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("LivecutReduxDrag");
+    if (!dir.createDirectory())
+        return {};
+
+    juce::String safe = juce::File::createLegalFileName(label.trim());
+    if (safe.isEmpty())
+        safe = "Phrase";
+    const auto stamp = juce::String(juce::Time::currentTimeMillis());
+    const auto target = dir.getChildFile("Livecut-" + safe + "-" + stamp + ".wav");
+    if (writeWav(phrase, target).failed())
+        return {};
+    return target;
+}
+
 juce::Result CaptureService::writeWav (const CapturedPhrase& phrase, const juce::File& target)
 {
     if (phrase.size() == 0 || phrase.channels[1].size() != phrase.size() || ! (phrase.sampleRate > 0.0))
@@ -140,7 +169,7 @@ juce::String CaptureService::statusText() const
         }
         case Operation::idle: break;
     }
-    if (const auto snapshot = captured(); snapshot != nullptr && snapshot->spectralWarmup)
+    if (const auto currentSnapshot = captured(); currentSnapshot != nullptr && currentSnapshot->spectralWarmup)
         operationText += "Captured while spectral path was warming; ";
     const auto previous = recorder.hasLatest() ? " (last full phrase available)" : "";
     switch (recorder.status())

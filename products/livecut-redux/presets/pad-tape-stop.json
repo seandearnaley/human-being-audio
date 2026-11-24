@@ -1,0 +1,11 @@
+{
+    "name": "Tape Stop",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Tape",
+    "padX": 0.6,
+    "padY": 0.55,
+    "padQuantize": "Bar",
+    "subAnchor": 0.0,
+    "limiter": true
+}

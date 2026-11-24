@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <cmath>
 #include <optional>
 
@@ -24,51 +26,46 @@ namespace livecut::engine
 class SwingGrid
 {
 public:
-    static std::optional<double> toPhysical (double logical, double beatsPerBar,
-                                            double swingPercent = 50.0) noexcept
-    {
-        if (! valid (logical, beatsPerBar, swingPercent))
-            return std::nullopt;
-        if (swingPercent <= 50.0 || logical >= std::floor (beatsPerBar))
-            return logical;
+  static std::optional<double> toPhysical(double logical, double beatsPerBar,
+                                          double swingPercent = 50.0) noexcept HBA_NONBLOCKING {
+      if (!valid(logical, beatsPerBar, swingPercent))
+          return std::nullopt;
+      if (swingPercent <= 50.0 || logical >= std::floor(beatsPerBar))
+          return logical;
 
-        const auto fraction = logical - std::floor (logical);
-        if (fraction <= 0.0)
-            return logical;
+      const auto fraction = logical - std::floor(logical);
+      if (fraction <= 0.0)
+          return logical;
 
-        const auto amount = 2.0 * (swingPercent / 100.0) - 1.0;
-        const auto distance = fraction <= 0.5 ? fraction : 1.0 - fraction;
-        // Adding a nonnegative delay also avoids roundoff creating an advance.
-        return logical + amount * distance;
-    }
+      const auto amount = 2.0 * (swingPercent / 100.0) - 1.0;
+      const auto distance = fraction <= 0.5 ? fraction : 1.0 - fraction;
+      // Adding a nonnegative delay also avoids roundoff creating an advance.
+      return logical + amount * distance;
+  }
 
-    static std::optional<double> toLogical (double physical, double beatsPerBar,
-                                           double swingPercent = 50.0) noexcept
-    {
-        if (! valid (physical, beatsPerBar, swingPercent))
-            return std::nullopt;
-        if (swingPercent <= 50.0 || physical >= std::floor (beatsPerBar))
-            return physical;
+  static std::optional<double> toLogical(double physical, double beatsPerBar,
+                                         double swingPercent = 50.0) noexcept HBA_NONBLOCKING {
+      if (!valid(physical, beatsPerBar, swingPercent))
+          return std::nullopt;
+      if (swingPercent <= 50.0 || physical >= std::floor(beatsPerBar))
+          return physical;
 
-        const auto start = std::floor (physical);
-        const auto fraction = physical - start;
-        if (fraction <= 0.0)
-            return physical;
+      const auto start = std::floor(physical);
+      const auto fraction = physical - start;
+      if (fraction <= 0.0)
+          return physical;
 
-        const auto ratio = swingPercent / 100.0;
-        const auto logical = fraction <= ratio ? 0.5 * fraction / ratio
-                                               : 0.5 + 0.5 * (fraction - ratio) / (1.0 - ratio);
-        return start + logical;
-    }
+      const auto ratio = swingPercent / 100.0;
+      const auto logical = fraction <= ratio ? 0.5 * fraction / ratio : 0.5 + 0.5 * (fraction - ratio) / (1.0 - ratio);
+      return start + logical;
+  }
 
 private:
-    static bool valid (double position, double beatsPerBar, double swingPercent) noexcept
-    {
-        return std::isfinite (position) && std::isfinite (beatsPerBar)
-            && std::isfinite (swingPercent) && beatsPerBar > 0.0
-            && position >= 0.0 && position <= beatsPerBar
-            && swingPercent >= 50.0 && swingPercent <= 75.0;
-    }
+  static bool valid(double position, double beatsPerBar, double swingPercent) noexcept HBA_NONBLOCKING {
+      return std::isfinite(position) && std::isfinite(beatsPerBar) && std::isfinite(swingPercent) &&
+             beatsPerBar > 0.0 && position >= 0.0 && position <= beatsPerBar && swingPercent >= 50.0 &&
+             swingPercent <= 75.0;
+  }
 };
 
 } // namespace livecut::engine

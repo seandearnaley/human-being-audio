@@ -1,0 +1,11 @@
+{
+    "name": "Filter Sing",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Filter",
+    "padX": 0.58,
+    "padY": 0.74,
+    "padQuantize": "Beat",
+    "subAnchor": 100.0,
+    "limiter": true
+}

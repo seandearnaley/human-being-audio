@@ -13,7 +13,8 @@ namespace livecut::engine
 class Bounce final : public CutProcedure
 {
 public:
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  using CutProcedure::chooseBlock;
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 };
 
 // The pad's Rush: the track as it is, and a roll into every bar line that runs
@@ -21,8 +22,9 @@ public:
 class Rush final : public CutProcedure
 {
 public:
-    int choosePhraseBars (Random&, const CutParameters&) override { return 1; }
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  using CutProcedure::chooseBlock;
+  int choosePhraseBars(Random&, const CutParameters&) noexcept HBA_NONBLOCKING override { return 1; }
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 };
 
 // The pad's Loops: a phrase of four passes of a loop, the track and then its
@@ -31,22 +33,25 @@ public:
 class Loops final : public CutProcedure
 {
 public:
-    int choosePhraseBars (Random&, const CutParameters&) override;
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  using CutProcedure::chooseBlock;
+  int choosePhraseBars(Random&, const CutParameters&) noexcept HBA_NONBLOCKING override;
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 };
 
 // Nick Collins' BBCutProc11: odd-length cuts, repeated, with a stutter roll near the end of each phrase.
 class CutProc11 final : public CutProcedure
 {
 public:
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  using CutProcedure::chooseBlock;
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 };
 
 // Nick Collins' WarpCutProc1: straight slices or rolls that are even, accelerating or slowing.
 class WarpCut final : public CutProcedure
 {
 public:
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  using CutProcedure::chooseBlock;
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 };
 
 // Nick Collins' SQPusher1: quaver and semiquaver cuts, with a transcribed
@@ -54,14 +59,15 @@ public:
 class SQPusher final : public CutProcedure
 {
 public:
-    // A fill is a list of blocks; each block lists its cut lengths in beats.
-    using Fill = std::vector<std::vector<double>>;
+  using CutProcedure::chooseBlock;
+  // A fill is a list of blocks; each block lists its cut lengths in beats.
+  using Fill = std::vector<std::vector<double>>;
 
-    static const std::vector<Fill>& fills();
+  static const std::vector<Fill>& fills();
 
-    void reset() override;
-    int choosePhraseBars (Random&, const CutParameters&) override;
-    void chooseBlock (Random&, const CutParameters&, const BlockContext&, std::vector<Cut>&) override;
+  void reset() noexcept HBA_NONBLOCKING override;
+  int choosePhraseBars(Random&, const CutParameters&) noexcept HBA_NONBLOCKING override;
+  void chooseBlock(Random&, const CutParameters&, const BlockContext&, CutList&) noexcept HBA_NONBLOCKING override;
 
 private:
     int fill = -1; // index of the fill being played, or -1 outside a fill

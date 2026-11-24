@@ -1,0 +1,11 @@
+{
+    "name": "Rush Drop",
+    "category": "Pad",
+    "surface": "Pad",
+    "padProgram": "Rush",
+    "padX": 0.78,
+    "padY": 0.64,
+    "padQuantize": "Bar",
+    "subAnchor": 100.0,
+    "limiter": true
+}

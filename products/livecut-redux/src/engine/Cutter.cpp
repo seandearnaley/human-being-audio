@@ -30,30 +30,33 @@ constexpr double jumpToleranceBeats = 1.0e-3;
 // always takes it.
 constexpr double rushTieBeats = 1.0e-9;
 
-bool hasSwingWarp (double swing, double beatsPerBar)
-{
+bool hasSwingWarp(double swing, double beatsPerBar) noexcept HBA_NONBLOCKING {
     // SwingGrid only warps complete pairs of eighths (one quarter note).
     return swing > 50.0 && beatsPerBar >= 1.0;
 }
 } // namespace
 
-Cutter::Cutter()
-{
-    cuts.reserve (maxCutsPerBlock);
-}
+Cutter::Cutter() = default;
 
 void Cutter::prepare (double newSampleRate, std::int64_t latencyFrames)
 {
     sampleRate = newSampleRate;
-    const auto retained = static_cast<std::size_t> (std::ceil (64.0 * sampleRate)) + static_cast<std::size_t> (latencyFrames)
-                        + static_cast<std::size_t> (std::ceil (.020 * sampleRate))
-                        + static_cast<std::size_t> (std::ceil (.002 * sampleRate)) + 2;
+    // 24s retained source covers 8-bar phrases and odd-meter Loops (e.g. 13/8 @ 80 BPM)
+    // while cutting total per-instance RAM ~3.7x vs the legacy 64s buffers.
+    const auto retained = static_cast<std::size_t>(std::ceil(24.0 * sampleRate)) +
+                          static_cast<std::size_t>(latencyFrames) +
+                          static_cast<std::size_t>(std::ceil(.020 * sampleRate)) +
+                          static_cast<std::size_t>(std::ceil(.002 * sampleRate)) + 2;
     livePlayer.prepare (static_cast<int> (std::ceil (maxBarSeconds * sampleRate)), retained);
     bitCrusher.prepare (sampleRate);
     combFilter.prepare (sampleRate);
     fractureReader.prepare (sampleRate);
     tapeTailFrames = std::max (1, static_cast<int> (std::lround (.005 * sampleRate)));
     rushJoinFrames = std::max (1, static_cast<int> (std::lround (.002 * sampleRate)));
+    legacyGateStep = 1.0f / static_cast<float>(std::max(1, static_cast<int>(std::lround(.002 * sampleRate))));
+    crusherGate = 0.0f;
+    combGate = 0.0f;
+    legacyGatesPrimed = false;
     holdCheckpoints.assign (static_cast<std::size_t> (std::ceil (maxBarSeconds * sampleRate / holdCheckpoint)) + 2, 0.0);
     if (! routeRack.prepare (sampleRate))
         throw std::runtime_error ("Cannot prepare effect rack");
@@ -154,8 +157,7 @@ void Cutter::setFadeMilliseconds (double milliseconds)
     livePlayer.setFadeSamples (static_cast<int> (std::lround (milliseconds * sampleRate / 1000.0)));
 }
 
-void Cutter::reset()
-{
+void Cutter::reset() noexcept HBA_NONBLOCKING {
     resetRendering();
     rushJoin.reset();
     rushJump.reset();
@@ -164,8 +166,7 @@ void Cutter::reset()
     transforms = {};
 }
 
-void Cutter::resetRendering()
-{
+void Cutter::resetRendering() noexcept HBA_NONBLOCKING {
     // A jump in the host's position (a seek, a loop's wrap) lets the roll's sound
     // run on under what follows, as at its own joins. It counts only if rendering
     // carries on from the next frame. A join still fading keeps fading over it, so
@@ -189,6 +190,11 @@ void Cutter::resetRendering()
     livePlayer.resetRendering();
     fractureReader.reset();
     routeRack.reset();
+    crusherGate = 0.0f;
+    combGate = 0.0f;
+    legacyGatesPrimed = false;
+    bitCrusher.clear();
+    combFilter.clear();
     fractureCut.reset();
     frequencySelected = false;
     fractureBpm = 0;
@@ -210,8 +216,7 @@ void Cutter::resetRendering()
 // What Rush or Loops plays from `frame` on, as a tail: the cut it was playing, run
 // on past its end if it has just ended, or the input once a track block has run
 // out. A Loops replay block that has run out plays its last cut on.
-std::optional<LivePlayer::Tail> Cutter::rushSound (std::int64_t frame) const
-{
+std::optional<LivePlayer::Tail> Cutter::rushSound(std::int64_t frame) const noexcept HBA_NONBLOCKING {
     if (! hasActivePlan || ! seamless (activePlan))
         return std::nullopt;
     const auto& cuts = livePlayer.cuts();
@@ -237,8 +242,7 @@ std::optional<LivePlayer::Tail> Cutter::rushSound (std::int64_t frame) const
 // starts on, and the first one in a phrase captures the pass it starts in, from
 // that pass's first frame, if it is in this epoch. A replay reads the phrase's loop
 // from 2 ms before its start, at each level's gain.
-void Cutter::startLoopsBlock (const Timing& timing)
-{
+void Cutter::startLoopsBlock(const Timing& timing) noexcept HBA_NONBLOCKING {
     const auto frame = planningSource.firstFrame;
     const auto bounds = sourceContext != nullptr ? sourceContext->sourceBoundsAt (frame) : std::nullopt;
     const auto first = std::max (bounds ? bounds->first : std::int64_t { 0 }, livePlayer.retainedSource().firstFrame);
@@ -301,8 +305,7 @@ void Cutter::startLoopsBlock (const Timing& timing)
 // The pad's Loops: choose the phrase's read frame. Snap to the nearest hit within
 // 20 ms, or a quarter of the loop, of the capture's first frame; every frame of
 // that window has been analysed by now. Then 2 ms of preroll before it.
-void Cutter::snapLoop (const Timing& timing, std::int64_t frame)
-{
+void Cutter::snapLoop(const Timing& timing, std::int64_t frame) noexcept HBA_NONBLOCKING {
     const auto bounds = sourceContext != nullptr ? sourceContext->sourceBoundsAt (frame) : std::nullopt;
     const auto first = std::max (bounds ? bounds->first : std::int64_t { 0 }, livePlayer.retainedSource().firstFrame);
     const auto loopFrames = hold.passUnits * samplesPerUnit (timing);
@@ -329,8 +332,7 @@ void Cutter::snapLoop (const Timing& timing, std::int64_t frame)
 // The pad's Loops: the level hold's running sum of the loop's energy, from its read
 // frame, at most `most` frames of history, never past the frame being rendered or
 // the loop's end. It notes the sum at each level's length on the way.
-void Cutter::sumLoopHold (std::int64_t frame, std::int64_t most)
-{
+void Cutter::sumLoopHold(std::int64_t frame, std::int64_t most) noexcept HBA_NONBLOCKING {
     const auto capacity = static_cast<std::int64_t> (holdCheckpoints.size() - 1) * holdCheckpoint;
     const auto end = std::min (frame + 1 - loop.readFrame, capacity);
     std::int64_t reads = 0;
@@ -352,8 +354,7 @@ void Cutter::sumLoopHold (std::int64_t frame, std::int64_t most)
 
 // The pad's Loops: the hold's sum over the loop's first `length` frames, from the
 // checkpoint at or before it, adding the rest in the same order as the running sum.
-double Cutter::loopHoldSumTo (std::int64_t length, std::int64_t frame)
-{
+double Cutter::loopHoldSumTo(std::int64_t length, std::int64_t frame) noexcept HBA_NONBLOCKING {
     const auto checkpoint = length / holdCheckpoint;
     auto sum = holdCheckpoints[static_cast<std::size_t> (checkpoint)];
     std::int64_t reads = 0;
@@ -370,8 +371,8 @@ double Cutter::loopHoldSumTo (std::int64_t length, std::int64_t frame)
     return sum;
 }
 
-void Cutter::mixTail (std::optional<LivePlayer::Tail>& tail, int& age, int frames, float& left, float& right)
-{
+void Cutter::mixTail(std::optional<LivePlayer::Tail>& tail, int& age, int frames, float& left,
+                     float& right) noexcept HBA_NONBLOCKING {
     if (! tail)
         return;
     // A linear crossfade that starts wholly on the tail, which continues the sample before.
@@ -386,8 +387,7 @@ void Cutter::mixTail (std::optional<LivePlayer::Tail>& tail, int& age, int frame
         tail.reset();
 }
 
-void Cutter::drop (int sampleOffset, Observer* observer)
-{
+void Cutter::drop(int sampleOffset, Observer* observer) noexcept HBA_NONBLOCKING {
     cutting = false;
     queueHead = queued = 0;
     hasActivePlan = false;
@@ -400,8 +400,8 @@ void Cutter::drop (int sampleOffset, Observer* observer)
         observer->discontinuity (sampleOffset);
 }
 
-void Cutter::process (float* left, float* right, int numSamples, const Timing& timing, const Position& position, Observer* observer)
-{
+void Cutter::process(float* left, float* right, int numSamples, const Timing& timing, const Position& position,
+                     Observer* observer) noexcept HBA_NONBLOCKING {
     const auto first = nextInputFrame();
     beginRenderContext (timing, position, first, 0, observer);
     for (int i = 0; i < numSamples; ++i)
@@ -412,8 +412,7 @@ void Cutter::process (float* left, float* right, int numSamples, const Timing& t
     endRenderContext (numSamples, observer);
 }
 
-bool Cutter::ingestInputFrame (std::int64_t frame, StereoFrame raw)
-{
+bool Cutter::ingestInputFrame(std::int64_t frame, StereoFrame raw) noexcept HBA_NONBLOCKING {
     if (frame != nextInputFrame() || ! livePlayer.ingestFrame (raw.left, raw.right))
     {
         processingError = Error::renderDiscontinuity;
@@ -422,8 +421,8 @@ bool Cutter::ingestInputFrame (std::int64_t frame, StereoFrame raw)
     return true;
 }
 
-void Cutter::beginRenderContext (const Timing& timing, const Position& position, std::int64_t firstFrame, int sampleOffset, Observer* observer)
-{
+void Cutter::beginRenderContext(const Timing& timing, const Position& position, std::int64_t firstFrame,
+                                int sampleOffset, Observer* observer) noexcept HBA_NONBLOCKING {
     if (renderContextActive || firstFrame < 0 || firstFrame > nextInputFrame())
     {
         processingError = Error::renderDiscontinuity;
@@ -485,15 +484,14 @@ void Cutter::beginRenderContext (const Timing& timing, const Position& position,
     renderContextActive = true;
 }
 
-Position Cutter::renderPosition() const
-{
+Position Cutter::renderPosition() const noexcept HBA_NONBLOCKING {
     if (renderBeats >= renderTiming.beatsPerBar - 0.5 * renderBeatsPerSample)
         return { renderBar + 1, renderBeats - renderTiming.beatsPerBar };
     return { renderBar, renderBeats };
 }
 
-void Cutter::renderOne (std::int64_t frame, float& left, float& right, int sampleOffset, Observer* observer)
-{
+void Cutter::renderOne(std::int64_t frame, float& left, float& right, int sampleOffset,
+                       Observer* observer) noexcept HBA_NONBLOCKING {
     if (! renderContextActive || frame != renderCursor || frame >= nextInputFrame())
     {
         processingError = Error::renderDiscontinuity;
@@ -696,26 +694,37 @@ void Cutter::renderOne (std::int64_t frame, float& left, float& right, int sampl
 
         mixTail (rushEntry, rushEntryAge, tapeTailFrames, left, right);
 
-        // The effects always run, so switching one on picks up a current
-        // delay line and hold rather than stale audio.
-        auto crushedLeft = left;
-        auto crushedRight = right;
-        bitCrusher.process (crushedLeft, crushedRight);
-
-        if (crusherParams.enabled)
-        {
-            left = crushedLeft;
-            right = crushedRight;
+        // 2 ms smooth bypass gate ramps + idle early-out on BitCrusher & Comb:
+        // prime on first cut after reset, then ramp smoothly on any live toggle.
+        if (!legacyGatesPrimed) {
+            crusherGate = crusherParams.enabled ? 1.0f : 0.0f;
+            combGate = combParams.enabled ? 1.0f : 0.0f;
+            legacyGatesPrimed = true;
+        }
+        const float prevCrusherGate = crusherGate;
+        crusherGate = crusherParams.enabled ? std::min(1.0f, crusherGate + legacyGateStep)
+                                            : std::max(0.0f, crusherGate - legacyGateStep);
+        if (crusherGate > 0.0f) {
+            auto crushedLeft = left;
+            auto crushedRight = right;
+            bitCrusher.process(crushedLeft, crushedRight);
+            left += crusherGate * (crushedLeft - left);
+            right += crusherGate * (crushedRight - right);
+        } else if (prevCrusherGate > 0.0f) {
+            bitCrusher.clear();
         }
 
-        auto combedLeft = left;
-        auto combedRight = right;
-        combFilter.process (combedLeft, combedRight);
-
-        if (combParams.enabled)
-        {
-            left = combedLeft;
-            right = combedRight;
+        const float prevCombGate = combGate;
+        combGate =
+            combParams.enabled ? std::min(1.0f, combGate + legacyGateStep) : std::max(0.0f, combGate - legacyGateStep);
+        if (combGate > 0.0f) {
+            auto combedLeft = left;
+            auto combedRight = right;
+            combFilter.process(combedLeft, combedRight);
+            left += combGate * (combedLeft - left);
+            right += combGate * (combedRight - right);
+        } else if (prevCombGate > 0.0f) {
+            combFilter.clear();
         }
 
         routeRack.process (left, right);
@@ -776,8 +785,7 @@ void Cutter::renderOne (std::int64_t frame, float& left, float& right, int sampl
     beats += beatsPerSample;
 }
 
-void Cutter::endRenderContext (int sampleOffset, Observer* observer)
-{
+void Cutter::endRenderContext(int sampleOffset, Observer* observer) noexcept HBA_NONBLOCKING {
     if (! renderContextActive)
         return;
     renderContextActive = false;
@@ -810,8 +818,7 @@ void Cutter::endRenderContext (int sampleOffset, Observer* observer)
     }
 }
 
-double Cutter::samplesPerUnit (const Timing& timing) const
-{
+double Cutter::samplesPerUnit(const Timing& timing) const noexcept HBA_NONBLOCKING {
     return sampleRate * 60.0 / timing.bpm * timing.beatsPerBar / unitsPerBar;
 }
 
@@ -820,8 +827,7 @@ double Cutter::samplesPerUnit (const Timing& timing) const
 // lies no more than half a sample after the frame, or with `tie` 10^-9 beats more,
 // so the earlier of two frames takes a boundary exactly half a sample between them.
 // Other blocks activate by the same test without the tie.
-bool Cutter::reached (double boundary, double beats, double halfSample, bool tie)
-{
+bool Cutter::reached(double boundary, double beats, double halfSample, bool tie) noexcept HBA_NONBLOCKING {
     return ! (boundary > beats + halfSample + (tie ? rushTieBeats : 0.0));
 }
 
@@ -829,8 +835,8 @@ bool Cutter::reached (double boundary, double beats, double halfSample, bool tie
 // a block on it would activate by, before this frame's bar line wraps the position.
 // The next bar's line counts as its fourth quarter, so an idle Cutter, whose wrap
 // doesn't take a tie, notes it on the same frame a Rush or Loops bar line would start.
-void Cutter::trackQuarters (std::int64_t frame, std::int64_t bar, double beats, double halfSample, double beatsPerSample, double beatsPerBar)
-{
+void Cutter::trackQuarters(std::int64_t frame, std::int64_t bar, double beats, double halfSample, double beatsPerSample,
+                           double beatsPerBar) noexcept HBA_NONBLOCKING {
     const auto boundary = [&] (int q)
     {
         // As planBlock places a block on it: its units into the bar, in beats.
@@ -856,8 +862,7 @@ void Cutter::trackQuarters (std::int64_t frame, std::int64_t bar, double beats, 
     }
 }
 
-CutProcedure& Cutter::procedureFor (Procedure p)
-{
+CutProcedure& Cutter::procedureFor(Procedure p) noexcept HBA_NONBLOCKING {
     switch (p)
     {
         case Procedure::cutProc11: return cutProc11;
@@ -872,8 +877,7 @@ CutProcedure& Cutter::procedureFor (Procedure p)
     return cutProc11;
 }
 
-void Cutter::applyStructuralChanges()
-{
+void Cutter::applyStructuralChanges() noexcept HBA_NONBLOCKING {
     if (pendingProcedure != procedure)
     {
         procedureFor (pendingProcedure).reset();
@@ -885,8 +889,7 @@ void Cutter::applyStructuralChanges()
     fractureProcedure = fractureParams.procedure;
 }
 
-void Cutter::startPhrase (std::int64_t bar, int unitsIntoBar, const Timing& timing)
-{
+void Cutter::startPhrase(std::int64_t bar, int unitsIntoBar, const Timing& timing) noexcept HBA_NONBLOCKING {
     applyStructuralChanges();
 
     // Reseeding on every phrase makes the cuts depend only on the seed and the position.
@@ -912,8 +915,7 @@ void Cutter::startPhrase (std::int64_t bar, int unitsIntoBar, const Timing& timi
     planBlock (timing);
 }
 
-void Cutter::planBlock (const Timing& timing)
-{
+void Cutter::planBlock(const Timing& timing) noexcept HBA_NONBLOCKING {
     blockStart = blockEnd;
 
     BlockContext context;
@@ -1009,8 +1011,7 @@ void Cutter::planBlock (const Timing& timing)
     maximumQueued = std::max (maximumQueued, queued);
 }
 
-void Cutter::chooseFractureBlock (const BlockContext& context)
-{
+void Cutter::chooseFractureBlock(const BlockContext& context) noexcept HBA_NONBLOCKING {
     cuts.clear();
     const auto intoBar = blockStart-std::floor(blockStart/unitsPerBar)*unitsPerBar;
     const auto remaining = std::min(unitsPerBar-intoBar,context.phraseUnits-blockStart);
@@ -1064,8 +1065,7 @@ void Cutter::chooseFractureBlock (const BlockContext& context)
     }
 }
 
-void Cutter::startFractureCut (std::int64_t frame)
-{
+void Cutter::startFractureCut(std::int64_t frame) noexcept HBA_NONBLOCKING {
     const auto index=livePlayer.currentCut();
     if(index>=livePlayer.cuts().size() || (fractureCut && *fractureCut==index))
         return;
@@ -1183,8 +1183,8 @@ void Cutter::startFractureCut (std::int64_t frame)
     fractureReader.startCut(context);
 }
 
-void Cutter::renderSource (std::int64_t frame,float& left,float& right,bool advanceBySamples)
-{
+void Cutter::renderSource(std::int64_t frame, float& left, float& right,
+                          bool advanceBySamples) noexcept HBA_NONBLOCKING {
     if(activePlan.fracture.procedure==FractureProcedure::classic)
     {
         // The player lays a block out in samples from its first frame, but the next
@@ -1270,8 +1270,8 @@ void Cutter::renderSource (std::int64_t frame,float& left,float& right,bool adva
     livePlayer.advanceFrame(advanceBySamples);
 }
 
-void Cutter::activatePlans (std::int64_t bar, double beats, double halfSample, const Timing& timing)
-{
+void Cutter::activatePlans(std::int64_t bar, double beats, double halfSample,
+                           const Timing& timing) noexcept HBA_NONBLOCKING {
     while (queued > 0)
     {
         const auto& next = plans[queueHead];
@@ -1326,16 +1326,16 @@ void Cutter::activatePlans (std::int64_t bar, double beats, double halfSample, c
     }
 }
 
-double Cutter::physicalDistance (double phraseUnits, std::int64_t bar, double beats, const Timing& timing) const
-{
+double Cutter::physicalDistance(double phraseUnits, std::int64_t bar, double beats,
+                                const Timing& timing) const noexcept HBA_NONBLOCKING {
     const auto bars = std::floor (phraseUnits / activePlan.unitsPerBar);
     const auto logicalBeat = (phraseUnits - bars * activePlan.unitsPerBar) * timing.beatsPerBar / activePlan.unitsPerBar;
     const auto physical = *SwingGrid::toPhysical (std::clamp (logicalBeat, 0.0, timing.beatsPerBar), timing.beatsPerBar, swing);
     return static_cast<double> (activePlan.phraseBar + static_cast<std::int64_t> (bars) - bar) * timing.beatsPerBar + physical - beats;
 }
 
-void Cutter::renderSwung (float& left, float& right, std::int64_t bar, double beats, double beatsPerSample, const Timing& timing, std::int64_t renderedExclusiveEnd)
-{
+void Cutter::renderSwung(float& left, float& right, std::int64_t bar, double beats, double beatsPerSample,
+                         const Timing& timing, std::int64_t renderedExclusiveEnd) noexcept HBA_NONBLOCKING {
     // Inverse-map the half-sample lookahead too: the decision follows musical
     // progress, not accumulated samples divided by a later tempo.
     const auto near = *SwingGrid::toLogical (std::clamp (beats + 0.5 * beatsPerSample, 0.0, timing.beatsPerBar), timing.beatsPerBar, swing);
@@ -1354,8 +1354,7 @@ void Cutter::renderSwung (float& left, float& right, std::int64_t bar, double be
     renderSource (renderedExclusiveEnd-1,left,right,false);
 }
 
-void Cutter::selectTransform (std::int64_t frame)
-{
+void Cutter::selectTransform(std::int64_t frame) noexcept HBA_NONBLOCKING {
     const auto index = livePlayer.currentCut();
     if (index >= livePlayer.cuts().size() || livePlayer.cuts()[index].transformDecided)
         return;
@@ -1445,8 +1444,7 @@ void Cutter::selectTransform (std::int64_t frame)
     transforms.reason = parameters.attackAlign || reverse ? TransformReason::applied : TransformReason::eligibleForward;
 }
 
-void Cutter::startEffectsCut()
-{
+void Cutter::startEffectsCut() noexcept HBA_NONBLOCKING {
     // Set up the effects for the cut that plays next, so their state always
     // matches it. Once a block's cuts run out they keep the last cut's settings.
     effectsCut = livePlayer.currentCut();
@@ -1458,8 +1456,7 @@ void Cutter::startEffectsCut()
     }
 }
 
-void Cutter::startImpactCut()
-{
+void Cutter::startImpactCut() noexcept HBA_NONBLOCKING {
     const auto index = livePlayer.currentCut();
     if (index >= livePlayer.cuts().size() || (impactCut && *impactCut == index))
         return;

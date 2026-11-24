@@ -1,0 +1,18 @@
+{
+    "name": "Vinyl Brake Cut",
+    "category": "Glitch",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 15,
+    "fade": 2.5,
+    "fractureProcedure": "TapeCut",
+    "fractureActivity": 0.62,
+    "fractureTapeStartSpeed": 1.0,
+    "fractureTapeEndSpeed": 0.0,
+    "fractureTapeCurve": "Smooth",
+    "fractureTapeCycle": "1 beat",
+    "fractureTapeAlternate": true,
+    "subAnchor": 0.0,
+    "limiter": true
+}

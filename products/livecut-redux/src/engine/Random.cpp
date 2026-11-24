@@ -9,8 +9,7 @@
 namespace livecut::engine
 {
 
-std::size_t pickWeighted (std::span<const double> weights, double unitDraw)
-{
+std::size_t pickWeighted(std::span<const double> weights, double unitDraw) noexcept HBA_NONBLOCKING {
     assert (! weights.empty());
     assert (unitDraw >= 0.0 && unitDraw < 1.0);
 
@@ -30,26 +29,18 @@ std::size_t pickWeighted (std::span<const double> weights, double unitDraw)
     return weights.size() - 1;
 }
 
-Random::Random (std::uint32_t seed) : engine (seed) {}
+Random::Random(std::uint32_t seed) noexcept : engine(seed) {}
 
-void Random::reseed (std::uint32_t seed)
-{
-    engine.seed (seed);
-}
+void Random::reseed(std::uint32_t seed) noexcept HBA_NONBLOCKING { engine.seed(seed); }
 
-double Random::unit()
-{
+double Random::unit() noexcept HBA_NONBLOCKING {
     static_assert (std::mt19937::max() == 0xffffffffu);
     return static_cast<double> (engine()) * 0x1p-32;
 }
 
-double Random::uniform (double a, double b)
-{
-    return a + (b - a) * unit();
-}
+double Random::uniform(double a, double b) noexcept HBA_NONBLOCKING { return a + (b - a) * unit(); }
 
-int Random::integer (int a, int b)
-{
+int Random::integer(int a, int b) noexcept HBA_NONBLOCKING {
     const auto [low, high] = std::minmax (a, b);
     const auto range = static_cast<std::uint64_t> (static_cast<std::int64_t> (high) - low) + 1;
 
@@ -64,13 +55,9 @@ int Random::integer (int a, int b)
     return static_cast<int> (low + static_cast<std::int64_t> (draw % range));
 }
 
-bool Random::chance (double probability)
-{
-    return unit() < probability;
-}
+bool Random::chance(double probability) noexcept HBA_NONBLOCKING { return unit() < probability; }
 
-std::size_t Random::weighted (std::span<const double> weights)
-{
+std::size_t Random::weighted(std::span<const double> weights) noexcept HBA_NONBLOCKING {
     return pickWeighted (weights, unit());
 }
 

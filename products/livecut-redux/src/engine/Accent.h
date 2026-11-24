@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "hba/dsp/nonblocking.h"
 #include <cstdint>
 namespace livecut::engine
 {
 // Independent from the musical RNG: enabling accents cannot change a pattern.
-inline float accentGain (float amount, std::uint32_t seed, std::int64_t phraseBar, std::uint64_t cutOrdinal)
-{
+inline float accentGain(float amount, std::uint32_t seed, std::int64_t phraseBar,
+                        std::uint64_t cutOrdinal) noexcept HBA_NONBLOCKING {
     if (amount <= 0.0f)
         return 1.0f;
     auto value = static_cast<std::uint64_t> (phraseBar) ^ (static_cast<std::uint64_t> (seed) << 32)

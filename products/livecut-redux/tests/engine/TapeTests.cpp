@@ -503,8 +503,7 @@ namespace
 {
 struct Bounds final : Cutter::SourceContext
 {
-    std::optional<Cutter::TransportBounds> sourceBoundsAt (std::int64_t frame) const override
-    {
+    std::optional<Cutter::TransportBounds> sourceBoundsAt(std::int64_t frame) const noexcept HBA_NONBLOCKING override {
         if (frame < 0)
             return std::nullopt;
         return Cutter::TransportBounds { 7, 0, std::nullopt };

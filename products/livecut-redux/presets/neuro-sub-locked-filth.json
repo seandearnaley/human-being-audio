@@ -1,0 +1,21 @@
+{
+    "name": "Sub-Locked Filth",
+    "category": "Neuro",
+    "surface": "Classic",
+    "procedure": "WarpCut",
+    "subdivision": "16",
+    "seed": 14,
+    "fade": 2.5,
+    "crusher": true,
+    "minBits": 6.5,
+    "maxBits": 14.0,
+    "minRate": 4200.0,
+    "maxRate": 18000.0,
+    "impactFilterEnabled": true,
+    "impactFilterType": "High-pass",
+    "impactFilterCutoff": 260.0,
+    "impactFilterQ": 2.1,
+    "impactFilterMix": 0.8,
+    "subAnchor": 140.0,
+    "limiter": true
+}

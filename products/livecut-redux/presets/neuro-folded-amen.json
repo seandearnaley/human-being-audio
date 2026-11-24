@@ -1,0 +1,21 @@
+{
+    "name": "Folded Amen",
+    "category": "Neuro",
+    "surface": "Classic",
+    "procedure": "SQPusher",
+    "subdivision": "16",
+    "seed": 12,
+    "fade": 2.5,
+    "activity": 0.72,
+    "impactDriveEnabled": true,
+    "impactDriveMode": "Wavefold",
+    "impactDriveDb": 15.0,
+    "impactDriveEnvDb": 8.0,
+    "impactDriveRepeatDb": 6.0,
+    "impactDriveMix": 0.68,
+    "impactTransientEnabled": true,
+    "impactTransientAttackDb": 6.0,
+    "impactTransientSustainDb": -4.0,
+    "subAnchor": 125.0,
+    "limiter": true
+}

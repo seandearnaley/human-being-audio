@@ -1,0 +1,21 @@
+{
+    "name": "Transient Snap",
+    "category": "Neuro",
+    "surface": "Classic",
+    "procedure": "SQPusher",
+    "subdivision": "16",
+    "seed": 8,
+    "fade": 2.0,
+    "activity": 0.64,
+    "impactTransientEnabled": true,
+    "impactTransientAttackDb": 9.5,
+    "impactTransientSustainDb": -6.0,
+    "impactTransientTimeMs": 32.0,
+    "impactTransientMix": 0.85,
+    "impactDriveEnabled": true,
+    "impactDriveMode": "Drive",
+    "impactDriveDb": 7.5,
+    "impactDriveMix": 0.5,
+    "subAnchor": 95.0,
+    "limiter": true
+}

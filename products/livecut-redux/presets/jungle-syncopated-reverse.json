@@ -1,0 +1,16 @@
+{
+    "name": "Syncopated Reverse",
+    "category": "Jungle",
+    "surface": "Classic",
+    "procedure": "CutProc11",
+    "subdivision": "8",
+    "seed": 11,
+    "minPhraseBars": 2,
+    "maxPhraseBars": 4,
+    "fade": 3.0,
+    "mode": "Studio",
+    "attackAlign": true,
+    "reverseChance": 0.45,
+    "subAnchor": 90.0,
+    "limiter": true
+}
