@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import studio from "../../studio.json";
 import Image from "next/image";
 import mark from "../../design/studio/mark.svg";
@@ -24,20 +25,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </a>
         <header className="site-header">
           <div className="wrap site-header__bar">
-            <a className="wordmark" href="#top">
+            <Link className="wordmark" href="/">
               <Image src={mark} alt="" className="wordmark__mark" width={24} height={24} unoptimized />
               <span>Human Being <b>Audio</b></span>
-            </a>
+            </Link>
             <nav aria-label="Primary">
               <ul className="nav">
                 <li>
-                  <a href="#plugins">Plugins</a>
+                  <a href="/#plugins">Plugins</a>
                 </li>
                 <li>
-                  <a href="#notes">Releases</a>
+                  <a href="/#notes">Releases</a>
                 </li>
                 <li>
-                  <a href="#install">Install</a>
+                  <a href="/#install">Install</a>
+                </li>
+                <li>
+                  <Link href="/learn">Learn</Link>
                 </li>
                 <li>
                   <a href={studio.repository}>GitHub ↗</a>
@@ -50,6 +54,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <footer className="site-footer">
           <div className="wrap studio-footer">
             <strong>{studio.publisher}</strong>
+            <Link href="/learn">DSP Field Guides</Link>
             <a href={studio.repository}>Studio source ↗</a>
             <a href={studio.repository + "/issues"}>Report a problem ↗</a>
           </div>
