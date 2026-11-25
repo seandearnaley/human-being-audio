@@ -97,6 +97,23 @@ const chapters = [
     ],
   },
   {
+    num: "Chapter 06",
+    slug: "strike-body",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: 24,
+    title: "Phase-Locked Drums: 24-Mode Nonlinear Shells & Series Allpass Dispersion",
+    summary:
+      "See why layered drum samples lose punch to sub-millisecond phase cancellation, excite 24 Bessel & Kirchhoff modal oscillators with six physical mallets, and build a 16-stage flat-magnitude allpass Disperser.",
+    topics: [
+      "40 ms Transient Phase Alignment",
+      "24-Mode Nonlinear Tensioned Shells",
+      "16-Stage Series Allpass Disperser",
+      "Sympathetic Wire Buzz & Hadamard Room",
+    ],
+  },
+  {
     num: "Track 0",
     slug: "foundations",
     href: null,
@@ -151,7 +168,7 @@ export default function LearnHubPage() {
       <section className="wrap" aria-labelledby="curriculum-heading">
         <div style={{ marginBlockStart: "var(--space-6)" }}>
           <p className="fg-eyebrow">Curriculum</p>
-          <h2 id="curriculum-heading">Six Interactive Chapters</h2>
+          <h2 id="curriculum-heading">Seven Interactive Chapters</h2>
         </div>
 
         <div className="fg-grid">

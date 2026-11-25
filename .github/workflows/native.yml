@@ -196,6 +196,11 @@ jobs:
     if: contains(fromJSON(needs.plan.outputs.jobs), 'torus-glide')
     uses: ./.github/workflows/torus-glide.yml
 
+  strike-body:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'strike-body')
+    uses: ./.github/workflows/strike-body.yml
+
   website:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'website')
@@ -209,7 +214,7 @@ jobs:
   required:
     name: Studio PR checks
     if: always()
-    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, cutline, torus-glide, website, factory]
+    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, cutline, torus-glide, strike-body, website, factory]
     runs-on: ubuntu-26.04
     steps:
       - name: Require success from every selected job

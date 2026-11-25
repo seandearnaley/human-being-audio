@@ -1,22 +1,5 @@
-# Self-contained studio product metadata for Strike Body v1 test build
-# (matches cmake/StudioProduct.cmake without modifying studio.json yet).
-set(root "${PROJECT_SOURCE_DIR}/../..")
-set(slug "strike-body")
-set(HBA_publisher "Human Being Audio")
-set(HBA_website "https://humanbeingaudio.com")
-set(HBA_repository "https://github.com/seandearnaley/human-being-audio")
-set(HBA_name "Strike Body")
-set(HBA_bundle "com.humanbeingmusic.strikebody")
-set(HBA_manufacturerCode "Hbmu")
-set(HBA_pluginCode "Stbd")
-set(HBA_license "AGPL-3.0-or-later")
-
-configure_file("${root}/modules/studio-ui/Product.h.in" "studio/Product.h" @ONLY)
-juce_add_binary_data(hba_studio_art HEADER_NAME HbaStudioArt.h NAMESPACE HbaStudioArt
-    SOURCES "${root}/design/studio/mark.png")
-add_library(hba_studio_ui INTERFACE)
-target_link_libraries(hba_studio_ui INTERFACE hba_studio_art)
-target_include_directories(hba_studio_ui INTERFACE "${root}/modules/studio-ui" "${CMAKE_CURRENT_BINARY_DIR}")
+include("${PROJECT_SOURCE_DIR}/../../cmake/StudioProduct.cmake")
+hba_product(strike-body)
 
 juce_add_plugin(StrikeBody
     PRODUCT_NAME "${HBA_name}"

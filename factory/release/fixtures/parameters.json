@@ -18,5 +18,9 @@
   "torus-glide": {
     "scale_gravity": 0.74,
     "stereo_space": 0.62
+  },
+  "strike-body": {
+    "tension": 0.78,
+    "disperser": 0.64
   }
 }
