@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="334" viewBox="0 0 2100 334">
+  <g transform="translate(64, 256)" fill="none" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">
+    <!-- s (ember orange strike) -->
+    <path d="M124,-124 Q100,-146 58,-144 Q12,-142 12,-108 Q12,-74 68,-66 Q128,-58 128,-26 Q128,4 68,2 Q26,0 4,-20" stroke="#ff7b47"/>
+    <!-- t -->
+    <path d="M230,-218 V-48 Q230,0 278,0 H298" stroke="#e6ebf0"/>
+    <path d="M188,-142 H294" stroke="#e6ebf0"/>
+    <!-- r -->
+    <path d="M366,0 V-142 M366,-92 Q388,-142 444,-142" stroke="#e6ebf0"/>
+    <!-- i -->
+    <path d="M512,-136 V0" stroke="#e6ebf0"/>
+    <circle cx="512" cy="-210" r="18" fill="#ff7b47" stroke="none"/>
+    <!-- k -->
+    <path d="M598,-222 V0 M696,-142 L604,-68 L704,0" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M776,-72 H914 A68,68 0 1 0 892,-18" stroke="#e6ebf0"/>
+    <!-- impact node dot -->
+    <circle cx="1012" cy="-72" r="20" fill="#48c8f5" stroke="none"/>
+    <!-- b (cyan fundamental body) -->
+    <path d="M1108,-222 V0" stroke="#48c8f5"/>
+    <circle cx="1176" cy="-72" r="68" stroke="#48c8f5"/>
+    <!-- o -->
+    <circle cx="1372" cy="-72" r="68" stroke="#e6ebf0"/>
+    <!-- d -->
+    <circle cx="1566" cy="-72" r="68" stroke="#e6ebf0"/>
+    <path d="M1634,-222 V0" stroke="#e6ebf0"/>
+    <!-- y -->
+    <path d="M1720,-142 L1788,-4 L1856,-142 M1788,-4 L1750,62" stroke="#e6ebf0"/>
+    <!-- concentric ring flourish -->
+    <circle cx="1956" cy="-78" r="56" stroke="#ff7b47" stroke-width="22"/>
+    <circle cx="1956" cy="-78" r="24" stroke="#48c8f5" stroke-width="20"/>
+  </g>
+</svg>
