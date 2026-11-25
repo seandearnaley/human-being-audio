@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 import release
+import verify_product
 
 
 class ReleaseRecordTests(unittest.TestCase):
@@ -38,6 +39,20 @@ class ProductNotesTests(unittest.TestCase):
             self.assertIn(item["version"], text)
             self.assertIn(f"/tree/{sha}/products/{slug}", text)
             self.assertIn("SHA256SUMS", text)
+
+
+class ProductIdentityTests(unittest.TestCase):
+    def test_derived_vst3_class_ids_match_historical_reference_bundles(self):
+        expected = {
+            "livecut-redux": ("ABCDEF019182FAEB5364726E4C766374", "ABCDEF011234ABCD5364726E4C766374"),
+            "tract-form": ("ABCDEF019182FAEB48626D755472666D", "ABCDEF011234ABCD48626D755472666D"),
+            "pole-field": ("ABCDEF019182FAEB48626D75506C6664", "ABCDEF011234ABCD48626D75506C6664"),
+            "cutline": ("ABCDEF019182FAEB48626D7543746C6E", "ABCDEF011234ABCD48626D7543746C6E"),
+            "torus-glide": ("ABCDEF019182FAEB48626D755472676C", "ABCDEF011234ABCD48626D755472676C"),
+            "strike-body": ("ABCDEF019182FAEB48626D7553746264", "ABCDEF011234ABCD48626D7553746264"),
+        }
+        for slug, pair in expected.items():
+            self.assertEqual(verify_product.class_ids(slug), pair)
 
 
 if __name__ == "__main__":

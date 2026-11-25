@@ -22,15 +22,11 @@ cmake_dependent_option(LIVECUT_BUILD_PLUGIN "Build the interface and the plugin 
 option(LIVECUT_BUILD_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(LIVECUT_COPY_PLUGIN_AFTER_BUILD "Install the plugins into the user's plug-in folders after building" OFF)
 
-find_program(LIVECUT_CCACHE ccache HINTS /opt/homebrew/bin /usr/local/bin)
-if(LIVECUT_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
-    set(CMAKE_C_COMPILER_LAUNCHER "${LIVECUT_CCACHE}")
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${LIVECUT_CCACHE}")
-endif()
-
 include("${PROJECT_SOURCE_DIR}/../../cmake/CPM.cmake")
 include("${PROJECT_SOURCE_DIR}/../../cmake/StudioHelpers.cmake")
-CPMAddPackage(NAME nlohmann_json GITHUB_REPOSITORY nlohmann/json VERSION 3.12.0 SYSTEM YES)
+include("${PROJECT_SOURCE_DIR}/../../cmake/StudioDependencies.cmake")
+hba_enable_ccache()
+hba_add_nlohmann_json()
 
 # The cutting engine is plain C++ with no JUCE dependency, so it can be tested in isolation and under RTSan.
 add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/dsp" "${PROJECT_BINARY_DIR}/studio-dsp")
@@ -75,8 +71,8 @@ else()
 endif()
 
 if(LIVECUT_BUILD_PLUGIN)
-    CPMAddPackage(NAME visage GITHUB_REPOSITORY VitalAudio/visage GIT_TAG v1.0.0 SYSTEM YES)
-    CPMAddPackage(NAME JUCE GITHUB_REPOSITORY juce-framework/JUCE GIT_TAG 9.0.5 SYSTEM YES)
+    hba_add_visage()
+    hba_add_juce()
     add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/visage-ui" "${PROJECT_BINARY_DIR}/studio-visage-ui")
     add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/plugin-host" "${PROJECT_BINARY_DIR}/studio-plugin-host")
     add_subdirectory(ui)
@@ -173,7 +169,7 @@ endif()
 
 if(LIVECUT_BUILD_TESTS)
     enable_testing()
-    CPMAddPackage(NAME Catch2 GITHUB_REPOSITORY catchorg/Catch2 VERSION 3.16.1 SYSTEM YES)
+    hba_add_catch2()
     list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
     include(Catch)
 
@@ -253,8 +249,15 @@ if(LIVECUT_BUILD_TESTS)
             Catch2::Catch2WithMain)
 
     if(HBA_RTSAN)
-        hba_realtime_suite(LivecutEngineTests "[cutter],[effects],[impact],[frequency],[resonator],[fracture]")
+        hba_realtime_suite(LivecutEngineTests
+            "[cutter],[effects],[impact],[frequency],[resonator],[fracture],[player],[pad],[padgate],[loops],[rush],[tape],[bounce],[warpcut],[sqpusher],[cutproc11],[history],[onset],[swinggrid],[delaytimeline],[attackcache],[accent],[hold],[route],[recut]")
     else()
         catch_discover_tests(LivecutEngineTests DISCOVERY_MODE PRE_TEST)
+    endif()
+
+    if(LIVECUT_BUILD_PLUGIN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME livecut-editor-renders
+            COMMAND /usr/bin/python3 "${PROJECT_SOURCE_DIR}/../../factory/release/standalone-linux.py"
+                    "$<TARGET_FILE:Livecut_Standalone>")
     endif()
 endif()

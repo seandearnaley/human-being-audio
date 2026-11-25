@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(STUDIO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Engine-only build for all 5 studio products (zero JUCE / Visage / Catch2 overhead)
+# Engine-only build for all 6 studio products (zero JUCE / Visage / Catch2 overhead)
 set(LIVECUT_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(LIVECUT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TF_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)

@@ -2,7 +2,7 @@
 
 ## Repository Structure
 - `studio.json`: canonical catalog of studio products, bundle IDs, plugin codes, and release metadata.
-- `cmake/`: shared build infrastructure (`CPM.cmake`, `StudioHelpers.cmake`, `StudioProduct.cmake`, `native-presets.json`, `windows-release.ps1`, `ubuntu-26.04-packages.txt`).
+- `cmake/`: shared build infrastructure (`CPM.cmake`, `StudioDependencies.cmake`, `StudioHelpers.cmake`, `StudioProduct.cmake`, `native-presets.json`, `windows-release.ps1`, `ubuntu-26.04-packages.txt`).
 - `modules/`: shared studio C++ libraries consumed by products:
   - `modules/dsp` (`hba_dsp`): header-only real-time DSP primitives (`adaa.h`, `control.h`, `crossover.h`, `curve.h`, `denormals.h`, `gain.h`, `lane_math.h`, `limiter.h`, `oversampling.h`, `svf.h`, plus `third_party/hiir`). All audio-path functions are zero-allocation and `[[clang::nonblocking]]` compatible.
   - `modules/core` (`hba_core`): shared `nlohmann::ordered_json` preset & curve serialization helpers (`hba/core/preset_json.h`).
@@ -14,7 +14,8 @@
   - `pole-field` — 14-pole Z-plane morphing filterbank (JUCE 9 + Visage 1.0)
   - `cutline` — Expressive phrase grammar, microtiming & MPE/CC MIDI articulator (JUCE 9 + Visage 1.0)
   - `torus-glide` — Bar-locked Shepard-Risset & polyphonic chord-bend pitch-manifold synth (JUCE 9 + Visage 1.0)
-  - `livecut-redux` — Breakbeat & spectral live slicer (JUCE)
+  - `strike-body` — Phase-locked neuro snare, kick & nonlinear modal percussion synthesizer (JUCE 9 + Visage 1.0)
+  - `livecut-redux` — Breakbeat & spectral live slicer (JUCE 9 + Visage 1.0)
 - `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), and CI/quality tooling (`factory/quality/`).
 - `web/`: Next.js + React website (`https://humanbeingaudio.com`).
 
@@ -43,6 +44,14 @@ ctest --preset engine
 # Format ONLY changed C++ lines (matches CI exactly — never full-file format untouched files):
 git-clang-format --binary clang-format origin/main -- products modules research \
   ':(exclude,glob)**/third_party/**' ':(exclude,glob)**/libs/**'
+
+# Standalone shared modules unit tests (hba_dsp + hba_core):
+cmake -S modules -B modules/build -G Ninja -DCPM_SOURCE_CACHE="$HOME/.cache/CPM"
+cmake --build modules/build
+ctest --test-dir modules/build --output-on-failure
+
+# Generate root compile_commands.json for clangd from whichever dev builds are configured:
+python3 factory/quality/native.py editor --available
 
 # Factory & quality tests:
 python3 -m unittest discover -s factory/quality

@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: studio-checks-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   plan:
@@ -18,6 +18,7 @@ jobs:
     outputs:
       jobs: ${{ steps.plan.outputs.jobs }}
       products: ${{ steps.plan.outputs.products }}
+      macos: ${{ steps.plan.outputs.macos }}
       windows: ${{ steps.plan.outputs.windows }}
       base: ${{ steps.plan.outputs.base }}
     steps:
@@ -45,8 +46,47 @@ jobs:
         env:
           BASE: ${{ needs.plan.outputs.base }}
         run: |
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "Skipping diff-only clang-format check: base commit '$BASE' is empty or unreachable."
+            exit 0
+          fi
           git-clang-format-22 --binary clang-format-22 --diff "$BASE" HEAD -- products modules research \
             ':(exclude,glob)**/third_party/**' ':(exclude,glob)**/libs/**'
+
+  modules:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'modules')
+    name: Shared C++ modules
+    runs-on: ubuntu-26.04
+    env:
+      CC: clang-22
+      CXX: clang++-22
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPRESS: 'true'
+      CCACHE_MAXSIZE: 250M
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-modules-${{ github.sha }}
+          restore-keys: ccache-modules-
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential ca-certificates ccache clang-22 cmake git ninja-build
+      - run: cmake -S modules -B modules/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build modules/build
+      - run: ctest --test-dir modules/build --output-on-failure
 
   ubuntu:
     needs: plan
@@ -67,7 +107,7 @@ jobs:
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_NOHASHDIR: 'true'
       CCACHE_COMPRESS: 'true'
-      CCACHE_MAXSIZE: 1G
+      CCACHE_MAXSIZE: 500M
     defaults:
       run:
         working-directory: products/${{ matrix.product }}
@@ -78,10 +118,8 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-ubuntu-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
-          restore-keys: |
-            cpm-ubuntu-${{ matrix.product }}-
-            cpm-ubuntu-
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -126,10 +164,8 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-rtsan-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
-          restore-keys: |
-            cpm-rtsan-${{ matrix.product }}-
-            cpm-ubuntu-
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -140,7 +176,7 @@ jobs:
         working-directory: .
         run: |
           sudo apt-get update -qq
-          xargs -a cmake/ubuntu-26.04-packages.txt sudo apt-get install -y --no-install-recommends libclang-rt-22-dev
+          sudo apt-get install -y --no-install-recommends build-essential ca-certificates ccache clang-22 cmake git libclang-rt-22-dev ninja-build
       - run: cmake --workflow --preset rtsan
         env:
           CTEST_PARALLEL_LEVEL: 4
@@ -157,49 +193,53 @@ jobs:
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      HBA_TOOLS_DIR: ${{ github.workspace }}/.tools
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPRESS: 'true'
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@v7
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-windows-${{ matrix.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', matrix.product), 'cmake/CPM.cmake') }}
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        with:
+          path: C:\Program Files\LLVM
+          key: llvm-win64-23.1.6
+      - uses: actions/cache@v5
+        with:
+          path: .tools
+          key: ccache-win64-4.14.3
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-windows-${{ matrix.product }}-${{ github.sha }}
           restore-keys: |
-            cpm-windows-${{ matrix.product }}-
-            cpm-windows-
+            ccache-windows-${{ matrix.product }}-
       - shell: pwsh
         env:
           PRODUCT: ${{ matrix.product }}
         run: ./cmake/windows-release.ps1 -Product $env:PRODUCT
 
+  macos:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'macos')
+    strategy:
+      fail-fast: false
+      matrix:
+        product: ${{ fromJSON(needs.plan.outputs.macos) }}
+    uses: ./.github/workflows/macos-product.yml
+    with:
+      product: ${{ matrix.product }}
+
   livecut:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'livecut')
     uses: ./.github/workflows/livecut.yml
-
-  tract-form:
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'tract-form')
-    uses: ./.github/workflows/tract-form.yml
-
-  pole-field:
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'pole-field')
-    uses: ./.github/workflows/pole-field.yml
-
-  cutline:
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'cutline')
-    uses: ./.github/workflows/cutline.yml
-
-  torus-glide:
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'torus-glide')
-    uses: ./.github/workflows/torus-glide.yml
-
-  strike-body:
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'strike-body')
-    uses: ./.github/workflows/strike-body.yml
 
   website:
     needs: plan
@@ -214,7 +254,7 @@ jobs:
   required:
     name: Studio PR checks
     if: always()
-    needs: [plan, format, ubuntu, realtime, windows, livecut, tract-form, pole-field, cutline, torus-glide, strike-body, website, factory]
+    needs: [plan, format, modules, ubuntu, realtime, windows, macos, livecut, website, factory]
     runs-on: ubuntu-26.04
     steps:
       - name: Require success from every selected job

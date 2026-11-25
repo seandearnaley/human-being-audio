@@ -21,6 +21,12 @@ env:
   PRODUCT: ${{ inputs.product }}
   CMAKE_BUILD_PARALLEL_LEVEL: 4
   CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  HBA_TOOLS_DIR: ${{ github.workspace }}/.tools
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_NOHASHDIR: 'true'
+  CCACHE_COMPRESS: 'true'
+  CCACHE_MAXSIZE: 500M
 
 jobs:
   prepare:
@@ -60,11 +66,22 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-release-${{ runner.os }}-${{ inputs.product }}-${{ hashFiles(format('products/{0}/CMakeLists.txt', inputs.product), 'cmake/CPM.cmake') }}
-          restore-keys: |
-            cpm-release-${{ runner.os }}-${{ inputs.product }}-
-            cpm-release-${{ runner.os }}-
-      - run: python factory/release/release.py env "$PRODUCT"
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        if: runner.os == 'Windows'
+        with:
+          path: C:\Program Files\LLVM
+          key: llvm-win64-23.1.6
+      - uses: actions/cache@v5
+        if: runner.os == 'Windows'
+        with:
+          path: .tools
+          key: ccache-win64-4.14.3
+      - name: Export release environment
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" factory/release/release.py env "$PRODUCT"
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |

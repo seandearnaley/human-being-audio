@@ -2,5 +2,9 @@
 /.cache/clangd/
 /.ccache/
 /.cpm-cache/
+/.tools/
+/.vst3validator/
+/.pluginval/
 /factory/showcase/build/
+/modules/build/
 __pycache__/

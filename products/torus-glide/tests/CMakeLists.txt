@@ -8,8 +8,11 @@ add_executable(tg_engine_tests
     engine/EngineTests.cpp)
 hba_build_for_host_only(tg_engine_tests)
 target_link_libraries(tg_engine_tests PRIVATE tg_engine Catch2::Catch2WithMain tg_warnings)
-catch_discover_tests(tg_engine_tests DISCOVERY_MODE PRE_TEST)
-hba_realtime_suite(tg_engine_tests "[realtime]")
+if(HBA_RTSAN)
+    hba_realtime_suite(tg_engine_tests "[engine]")
+else()
+    catch_discover_tests(tg_engine_tests DISCOVERY_MODE PRE_TEST)
+endif()
 
 if(TG_BUILD_PLUGIN)
     add_executable(tg_plugin_tests

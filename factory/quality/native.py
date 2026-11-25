@@ -27,24 +27,22 @@ def plan_checks(products, changes):
     paths = set(changes or [])
     full = changes is None or ".github/workflows/native.yml" in paths or any(p.startswith("factory/quality/") for p in paths)
     native = affected(products, changes)
-    extra = {
-        "livecut-redux": "livecut",
-        "tract-form": "tract-form",
-        "pole-field": "pole-field",
-        "cutline": "cutline",
-        "torus-glide": "torus-glide",
-        "strike-body": "strike-body",
-    }
+    macos = [p for p in native if p != "livecut-redux"]
+    if ".github/workflows/macos-product.yml" in paths:
+        macos = [p for p in products if p != "livecut-redux"]
     windows = [p for p in native if p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []
     if not native and any(p.startswith("research/") and Path(p).suffix in
             TRANSLATIONS | {".h", ".hh", ".hpp", ".hxx", ".inl"} for p in paths):
         jobs.append("format")
+    if full or any(p.startswith(("modules/", "cmake/")) for p in paths):
+        jobs.append("modules")
     if windows:
         jobs.append("windows")
-    for name, workflow in extra.items():
-        if name in native or f".github/workflows/{workflow}.yml" in paths:
-            jobs.append(workflow)
+    if macos:
+        jobs.append("macos")
+    if "livecut-redux" in native or ".github/workflows/livecut.yml" in paths:
+        jobs.append("livecut")
     if full or "studio.json" in paths or any(p.startswith(("web/", "design/studio/")) or
             "/press/screenshots/" in p or p in {".github/workflows/website.yml", "products/livecut-redux/docs/editor.png"} for p in paths):
         jobs.append("website")
@@ -52,7 +50,7 @@ def plan_checks(products, changes):
             (p.startswith("products/") and len(Path(p).parts) == 3 and p.endswith("/CMakeLists.txt")) or
             p in {".github/workflows/factory.yml", ".github/workflows/release.yml"} for p in paths):
         jobs.append("factory")
-    return {"products": native, "windows": windows, "jobs": jobs}
+    return {"products": native, "macos": macos, "windows": windows, "jobs": jobs}
 
 
 def lint_inputs(product, sources, changes):
@@ -66,8 +64,19 @@ def lint_inputs(product, sources, changes):
     return sources.intersection(relevant)
 
 
+def commit_exists(ref, cwd=ROOT):
+    if not ref or set(ref) == {"0"}:
+        return False
+    return subprocess.run(
+        ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
+        cwd=cwd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
 def changed_files(base):
-    if not base or set(base) == {"0"}:
+    if not commit_exists(base):
         return None
     output = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", base, "HEAD"], cwd=ROOT)
     return [os.fsdecode(p) for p in output.split(b"\0") if p]
@@ -86,15 +95,23 @@ def studio_commands(root, product, build):
             yield relative.as_posix(), absolute, command
 
 
-def editor_commands(root, products):
+def editor_commands(root, products, skip_missing=False):
     commands = {}
+    indexed = []
     for product in products:
         build = root / "products" / product / "build/dev"
+        db = build / "compile_commands.json"
+        if skip_missing and not db.exists():
+            continue
+        found = False
         for path, _, command in studio_commands(root, product, build):
             commands.setdefault(path, command)
+            found = True
+        if found:
+            indexed.append(product)
     if not commands:
         raise ValueError("No studio source files in the selected compilation databases")
-    return list(commands.values())
+    return list(commands.values()), indexed
 
 
 def lint(product, build, changes, runner, tidy):
@@ -122,6 +139,7 @@ def main():
     check.add_argument("--runner", required=True)
     check.add_argument("--tidy", required=True)
     editor = actions.add_parser("editor", help="index configured dev builds for clangd")
+    editor.add_argument("--available", action="store_true", help="skip products without a configured build/dev directory")
     editor.add_argument("products", nargs="*")
     args = parser.parse_args()
     products = list(json.loads((ROOT / "studio.json").read_text())["products"])
@@ -135,13 +153,15 @@ def main():
         if set(selected) - set(products):
             parser.error("unknown studio product")
         try:
-            commands = editor_commands(ROOT, selected)
+            commands, indexed = editor_commands(ROOT, selected, skip_missing=args.available)
         except FileNotFoundError as e:
-            parser.exit(1, f"Missing {e.filename}. Configure that product with cmake --preset dev.\n")
+            parser.exit(1, f"Missing {e.filename}. Configure that product with cmake --preset dev (or pass --available).\n")
+        except ValueError as e:
+            parser.exit(1, f"{e}. Configure at least one product with cmake --preset dev.\n")
         with tempfile.NamedTemporaryFile(mode="w", dir=ROOT, delete=False) as output:
             json.dump(commands, output)
         os.replace(output.name, ROOT / "compile_commands.json")
-        print(f"Indexed {len(commands)} compile commands for {', '.join(selected)}.")
+        print(f"Indexed {len(commands)} compile commands for {', '.join(indexed)}.")
 
 
 if __name__ == "__main__":

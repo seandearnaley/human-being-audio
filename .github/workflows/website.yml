@@ -18,10 +18,25 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm test
+      - run: npm run typecheck
       - run: npm run build
         env:
           STUDIO_RELEASES_TOKEN: ${{ github.token }}
-      - run: npx playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "ver=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-shell-${{ steps.pw.outputs.ver }}
+      - name: Install Chromium headless shell
+        run: |
+          if [[ "${{ steps.pw-cache.outputs.cache-hit }}" == "true" ]]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps --only-shell chromium
+          fi
       - run: npm run test:e2e
         env:
           STUDIO_RELEASES_TOKEN: ${{ github.token }}
