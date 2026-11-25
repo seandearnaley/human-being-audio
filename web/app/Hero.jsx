@@ -2,7 +2,16 @@
 import { useEffect } from "react";
 export default function Hero() {
   useEffect(() => {
-    void import("./sculpture.js");
+    let teardown = null;
+    let cancelled = false;
+    import("./sculpture.js").then((mod) => {
+      if (cancelled) return;
+      teardown = mod.mountSculpture?.() ?? null;
+    });
+    return () => {
+      cancelled = true;
+      teardown?.();
+    };
   }, []);
   return (
     <section className="hero wrap" aria-labelledby="hero-title">
@@ -30,7 +39,7 @@ export default function Hero() {
         <span className="grab__hint">drag to twist · tap to hit</span>
       </div>
 
-      <aside className="hero__dock dock" aria-labelledby="dock-title">
+      <aside className="hero__dock dock" aria-labelledby="dock-title" style={{ "--hue": 43 }}>
         <div className="dock__head">
           <h2 className="dock__title" id="dock-title">
             Play with the sculpture

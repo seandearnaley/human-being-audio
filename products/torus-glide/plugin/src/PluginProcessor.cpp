@@ -31,6 +31,7 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
     monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
+    generatedMidi_.ensureSize(4096);
     standalonePpq_ = 0.0;
     prepareEngine();
 }
@@ -48,19 +49,29 @@ void PluginProcessor::prepareEngine() {
 void PluginProcessor::parameterChanged(const juce::String& id, float value) {
     resampler.invalidate();
     if (id == kQualityId) {
+        pendingPrepare_.store(true, std::memory_order_release);
         if (juce::MessageManager::getInstance()->isThisTheMessageThread())
             handleAsyncUpdate();
         else
             triggerAsyncUpdate();
     } else if (id == kVoicingPackId && !restoringState_.load(std::memory_order_relaxed)) {
-        matrix.loadPack(static_cast<int>(std::lround(value)));
+        pendingPack_.store(static_cast<int>(std::lround(value)), std::memory_order_release);
+        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+            handleAsyncUpdate();
+        else
+            triggerAsyncUpdate();
     }
 }
 
 void PluginProcessor::handleAsyncUpdate() {
-    suspendProcessing(true);
-    prepareEngine();
-    suspendProcessing(false);
+    if (pendingPrepare_.exchange(false, std::memory_order_acq_rel)) {
+        suspendProcessing(true);
+        prepareEngine();
+        suspendProcessing(false);
+    }
+    const int pack = pendingPack_.exchange(-1, std::memory_order_acq_rel);
+    if (pack >= 0)
+        matrix.loadPack(pack);
 }
 
 bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -172,9 +183,11 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     lastBpm_.store(transportStart.bpm, std::memory_order_relaxed);
     const double beatsPerSample = (transportStart.bpm / 60.0) / sampleRate_;
 
-    juce::MidiBuffer generatedMidi;
+    generatedMidi_.clear();
     int cursor = 0;
     for (const auto metadata : midi) {
+        if (metadata.numBytes > 3)
+            continue;
         const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
         if (eventSample > cursor) {
             const int chunk = eventSample - cursor;
@@ -185,7 +198,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             for (int e = 0; e < outMidi_.count; ++e) {
                 const auto& ev = outMidi_.events[static_cast<std::size_t>(e)];
                 if (ev.size > 0 && ev.size <= 3)
-                    generatedMidi.addEvent(ev.data, ev.size, std::clamp(cursor + ev.sampleOffset, 0, numSamples - 1));
+                    generatedMidi_.addEvent(ev.data, ev.size, std::clamp(cursor + ev.sampleOffset, 0, numSamples - 1));
             }
             cursor = eventSample;
         }
@@ -201,7 +214,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         for (int e = 0; e < outMidi_.count; ++e) {
             const auto& ev = outMidi_.events[static_cast<std::size_t>(e)];
             if (ev.size > 0 && ev.size <= 3)
-                generatedMidi.addEvent(ev.data, ev.size, std::clamp(cursor + ev.sampleOffset, 0, numSamples - 1));
+                generatedMidi_.addEvent(ev.data, ev.size, std::clamp(cursor + ev.sampleOffset, 0, numSamples - 1));
         }
     }
 
@@ -210,7 +223,9 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             left[i] = 0.5f * (left[i] + right[i]);
     }
 
-    midi.swapWith(generatedMidi);
+    midi.clear();
+    if (!generatedMidi_.isEmpty())
+        midi.addEvents(generatedMidi_, 0, numSamples, 0);
     telemetry.publish(engine_.telemetry());
 }
 

@@ -308,11 +308,13 @@ void LivecutAudioProcessor::tryApplyMode ()
                 applyPending = false;
                 return;
             }
-            const auto observation = observedTransport.load (std::memory_order_acquire);
-            if (observation != AudioObservation::stopped)
-            {
-                publishedModeState = observation == AudioObservation::playing ? ModeState::pendingPlaying : ModeState::pendingObservation;
-                return;
+            if (wrapperType != wrapperType_Standalone) {
+                const auto observation = observedTransport.load(std::memory_order_acquire);
+                if (observation != AudioObservation::stopped) {
+                    publishedModeState = observation == AudioObservation::playing ? ModeState::pendingPlaying
+                                                                                  : ModeState::pendingObservation;
+                    return;
+                }
             }
             generation = configurationGeneration;
             rate = processingSampleRate;
@@ -360,11 +362,13 @@ void LivecutAudioProcessor::tryApplyMode ()
             publishedModeState = ModeState::pendingHostChange;
             return; // stale prebuild freed after this guard
         }
-        const auto observation = observedTransport.load (std::memory_order_acquire);
-        if (observation != AudioObservation::stopped)
-        {
-            publishedModeState = observation == AudioObservation::playing ? ModeState::pendingPlaying : ModeState::pendingObservation;
-            return;
+        if (wrapperType != wrapperType_Standalone) {
+            const auto observation = observedTransport.load(std::memory_order_acquire);
+            if (observation != AudioObservation::stopped) {
+                publishedModeState = observation == AudioObservation::playing ? ModeState::pendingPlaying
+                                                                              : ModeState::pendingObservation;
+                return;
+            }
         }
         suspendProcessing (true);
         if (stream->spectral)
@@ -374,6 +378,7 @@ void LivecutAudioProcessor::tryApplyMode ()
         publishStopHandle ();
         publishSpectralConfiguration ();
         haveDelayedDisplay = false;
+        lastCutCountBin = 0;
         declaredLatency = stream->latency;
         publishTransformDisplay ();
         ++configurationGeneration;
@@ -387,7 +392,7 @@ void LivecutAudioProcessor::tryApplyMode ()
         padGain = requested.surface == livecut::Surface::pad ? 0.0f : 1.0f;
         const auto effective = effectiveSettings (requested);
         wetHold.request (effective.hold);
-        mixer.prepare (rate, effective.wet, effective.outputTrimDb);
+        mixer.prepare(rate, effective.wet, effective.outputTrimDb, effective.subAnchorHz, effective.limiter);
         spectralMix.reset (rate, 0.002);
         spectralMix.setCurrentAndTargetValue (effective.spectralMix);
         processingRunning = false;
@@ -468,8 +473,8 @@ void LivecutAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     process (buffer, false);
 }
 
-void LivecutAudioProcessor::processBlockBypassed (juce::AudioBuffer<float> &buffer, juce::MidiBuffer &)
-{
+void LivecutAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    handleMidiInput(midi);
     // Keep Live's original host bypass contract. Studio always advances its
     // physical/analysis/render clocks, selecting unity delayed raw at the end.
     if (isSuspended () || stream == nullptr)
@@ -520,7 +525,7 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         buffer.clear ();
         return;
     }
-    if (frames == 0)
+    if (frames == 0 || buffer.getNumChannels() < 1)
         return;
     livecut::RenderContext input;
     input.settings = settingsReader.read ();
@@ -580,10 +585,17 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
         }
     } callback (resources.spectral.get (), isNonRealtime ()); // snapshot explicit host mode once
     bool produced = false;
+    float* ch0 = buffer.getWritePointer(0);
+    float* ch1 = buffer.getNumChannels() >= 2 ? buffer.getWritePointer(1) : nullptr;
     for (int i = 0; i < frames; ++i)
     {
-        auto &left = buffer.getWritePointer (0)[i];
-        auto &right = buffer.getWritePointer (1)[i];
+        auto& left = ch0[i];
+        float monoRight = left;
+        auto& right = ch1 != nullptr ? ch1[i] : monoRight;
+        if (!std::isfinite(left))
+            left = 0.0f;
+        if (!std::isfinite(right))
+            right = 0.0f;
         const auto physical = resources.inputFrame;
         if (!resources.cutter.ingestInputFrame (physical, {left, right}) || !resources.detector.process (physical, left, right))
         {
@@ -803,7 +815,7 @@ void LivecutAudioProcessor::process (juce::AudioBuffer<float> &buffer, bool bypa
     float peakL = 0.0f;
     float peakR = 0.0f;
     const float* outL = buffer.getReadPointer(0);
-    const float* outR = buffer.getReadPointer(1);
+    const float* outR = buffer.getNumChannels() >= 2 ? buffer.getReadPointer(1) : outL;
     for (int i = 0; i < frames; ++i) {
         peakL = std::max(peakL, std::abs(outL[i]));
         peakR = std::max(peakR, std::abs(outR[i]));
@@ -1163,7 +1175,9 @@ void LivecutAudioProcessor::rollSeed() {
     pushUndoSnapshot();
     if (auto* p = dynamic_cast<juce::AudioParameterInt*>(parameters.getParameter(livecut::ids::seed))) {
         const int cur = p->get();
-        int next = 1 + static_cast<int>(hba::dsp::laneHash(static_cast<std::uint32_t>(cur) * 2654435761U + 17U) % 16U);
+        const std::uint32_t mixed =
+            (static_cast<std::uint32_t>(cur) * 2654435761U) ^ (++seedRollCounter * 2246822519U + 17U);
+        int next = 1 + static_cast<int>(hba::dsp::laneHash(mixed) % 16U);
         if (next == cur)
             next = (cur % 16) + 1;
         p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(next)));
@@ -1327,7 +1341,10 @@ juce::String LivecutAudioProcessor::transformStatusText () const
 juce::String LivecutAudioProcessor::spectralStatusText () const
 {
     using Availability = livecut::spectral::Availability;
-    if (display.spectralFault.load () != livecut::spectral::Fault::none)
+    const auto fault = display.spectralFault.load();
+    if (fault == livecut::spectral::Fault::deadline)
+        return "Spectral deadline missed: passing dry audio. Stop the host and Apply to reset.";
+    if (fault != livecut::spectral::Fault::none)
         return "Spectral error: output gated. Stop the host and Apply to replace the prepared stream.";
     const auto settings = settingsReader.read ();
     if (settings.requestedSpectral != activeSpectral ())

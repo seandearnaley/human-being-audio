@@ -31,6 +31,7 @@ class Presets {
     void load(int index);
     void step(int delta);
     bool save(const juce::String& name);
+    bool saveToFile(const juce::File& file);
 
     static juce::File userDirectory();
 

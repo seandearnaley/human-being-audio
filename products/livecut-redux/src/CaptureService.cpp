@@ -65,16 +65,36 @@ bool CaptureService::requestSave (const juce::File& target)
     if (working.exchange (true, std::memory_order_acq_rel))
         return false;
     auto phrase = captured();
-    if (phrase == nullptr)
-    {
-        finish (Operation::empty);
+    if (phrase != nullptr) {
+        operation.store(Operation::saving, std::memory_order_release);
+        worker.addJob([this, phrase, target] {
+            const auto result = writeWav(*phrase, target);
+            finish(result.wasOk() ? Operation::saved : Operation::error, result.getErrorMessage());
+        });
+        return true;
+    }
+    auto lease = std::make_shared<PhraseCapture::Lease>(recorder.acquireLatest());
+    if (!*lease) {
+        finish(recorder.hasLatest() ? Operation::busy : Operation::empty);
         return false;
     }
     operation.store (Operation::saving, std::memory_order_release);
-    worker.addJob ([this, phrase, target]
-    {
-        const auto result = writeWav (*phrase, target);
-        finish (result.wasOk() ? Operation::saved : Operation::error, result.getErrorMessage());
+    worker.addJob([this, lease, target] {
+        try {
+            CapturedPhrase latest;
+            latest.sampleRate = lease->sampleRate();
+            latest.spectralWarmup = lease->spectralWarmup();
+            for (std::size_t ch = 0; ch < 2; ++ch) {
+                const auto samples = lease->channel(ch);
+                latest.channels[ch].assign(samples.begin(), samples.end());
+            }
+            *lease = {};
+            const auto result = writeWav(latest, target);
+            finish(result.wasOk() ? Operation::saved : Operation::error, result.getErrorMessage());
+        } catch (const std::exception& error) {
+            *lease = {};
+            finish(Operation::error, "Save failed: " + juce::String(error.what()));
+        }
     });
     return true;
 }
@@ -97,6 +117,16 @@ juce::File CaptureService::prepareDragWav(const juce::String& label) {
     auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("LivecutReduxDrag");
     if (!dir.createDirectory())
         return {};
+
+    // Prune older drag-export temp files (retain the 8 most recent).
+    auto existing = dir.findChildFiles(juce::File::findFiles, false, "Livecut-*.wav");
+    if (existing.size() > 8) {
+        std::sort(existing.begin(), existing.end(), [](const juce::File& a, const juce::File& b) {
+            return a.getLastModificationTime() > b.getLastModificationTime();
+        });
+        for (int i = 8; i < existing.size(); ++i)
+            existing[i].deleteFile();
+    }
 
     juce::String safe = juce::File::createLegalFileName(label.trim());
     if (safe.isEmpty())

@@ -28,6 +28,8 @@ class Bouncer final : private juce::Thread {
     mutable juce::CriticalSection lock_;
     OneShotRequest request_{};
     juce::File target_{};
+    std::atomic<std::uint64_t> generation_{0};
+    std::atomic<std::uint64_t> activeGen_{0};
     std::atomic<ui::BounceState> state_{ui::BounceState::idle};
 };
 

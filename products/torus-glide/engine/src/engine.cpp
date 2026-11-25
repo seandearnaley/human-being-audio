@@ -133,6 +133,7 @@ void Engine::reset() noexcept HBA_NONBLOCKING {
     dcL_.reset();
     dcR_.reset();
     limiter_.reset();
+    silentTailSamples_ = 0;
 
     mpeConfigured_ = false;
     mpeThrottleCounter_ = 0;
@@ -157,6 +158,7 @@ void Engine::noteOn(int note, float velocity, bool allowKeySwitch) noexcept HBA_
     currentNote_ = n;
     velocity_ = std::clamp(velocity, 0.05f, 1.0f);
     gateOpen_ = true;
+    silentTailSamples_ = 0;
     if (wasClosed)
         retrigPpqOffset_ = lastTransportPpq_;
 }
@@ -592,11 +594,17 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
             }
         }
 
-        // Skip heavy synth math when completely silent
+        // Drain chorus + oversampler + limiter lookahead buffers before going completely silent
+        const int tailDrainLimit = latencySamples() + static_cast<int>(0.035 * sr);
         if (envLevel_ < 1e-6 && !gateOpen_) {
-            outL[i] = 0.0f;
-            outR[i] = 0.0f;
-            continue;
+            if (silentTailSamples_ >= tailDrainLimit) {
+                outL[i] = 0.0f;
+                outR[i] = 0.0f;
+                continue;
+            }
+            ++silentTailSamples_;
+        } else {
+            silentTailSamples_ = 0;
         }
 
         const double formantRatio = std::clamp(curFilterHz / 220.0, 1.5, 14.0);
@@ -892,11 +900,10 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
         finalL = dcL_.process(finalL);
         finalR = dcR_.process(finalR);
 
-        if (useLimiter) {
-            limiter_.process(finalL, finalR, 0.944, 1.0); // -0.5 dBTP ceiling
-        } else {
+        if (!useLimiter)
             hba::dsp::softClipLinked(finalL, finalR, 0.88, 1.0);
-        }
+        // Always run limiter lookahead delay line (amount=0 when bypassed) so PDC latency stays constant!
+        limiter_.process(finalL, finalR, 0.944, useLimiter ? 1.0 : 0.0); // -0.5 dBTP ceiling
 
         outL[i] = static_cast<float>(finalL);
         outR[i] = static_cast<float>(finalR);

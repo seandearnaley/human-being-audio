@@ -63,6 +63,7 @@ class PluginModel final : public lc::ui::Model {
     juce::Component* dragSource_ = nullptr;
     std::unordered_map<std::string, juce::RangedAudioParameter*> params_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
+    std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
     lc::ui::VisualState visuals_;
 };
 

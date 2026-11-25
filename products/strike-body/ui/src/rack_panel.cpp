@@ -317,11 +317,11 @@ class RackPanel final : public Panel, public Live {
             canvas.roundedRectangle(mx + mW - gw, grY, gw, px(5.0f), px(2.5f));
         }
 
-        // Subtle dB tick labels
-        drawLabel(canvas, context_, "-36", mx, grY + px(7.0f), px(28.0f), px(10.0f), colour::textFaint,
-                  visage::Font::kLeft, 7.8f, Weight::regular);
-        drawLabel(canvas, context_, "-12", mx + mW * 0.58f, grY + px(7.0f), px(28.0f), px(10.0f), colour::textFaint,
-                  visage::Font::kCenter, 7.8f, Weight::regular);
+        // Subtle dB tick labels positioned accurately along the -48..0 dB scale (-36 at 25%, -12 at 75%)
+        drawLabel(canvas, context_, "-36", mx + mW * 0.25f - px(14.0f), grY + px(7.0f), px(28.0f), px(10.0f),
+                  colour::textFaint, visage::Font::kCenter, 7.8f, Weight::regular);
+        drawLabel(canvas, context_, "-12", mx + mW * 0.75f - px(14.0f), grY + px(7.0f), px(28.0f), px(10.0f),
+                  colour::textFaint, visage::Font::kCenter, 7.8f, Weight::regular);
         drawLabel(canvas, context_, "0 dB", mx + mW - px(28.0f), grY + px(7.0f), px(28.0f), px(10.0f),
                   colour::textFaint, visage::Font::kRight, 7.8f, Weight::regular);
     }

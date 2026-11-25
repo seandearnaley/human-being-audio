@@ -398,8 +398,8 @@ void ActionButton::mouseDrag(const visage::MouseEvent& e) {
     }
 }
 
-void ActionButton::mouseUp(const visage::MouseEvent&) {
-    const bool fire = pressed_ && !draggedOut_;
+void ActionButton::mouseUp(const visage::MouseEvent& e) {
+    const bool fire = pressed_ && !draggedOut_ && localBounds().contains(e.position);
     pressed_ = false;
     draggedOut_ = false;
     redraw();

@@ -32,8 +32,10 @@ Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, 
     : state_(state), curves_(curves), matrix_(matrix) {
     scanPresets();
     if (!presets_.empty())
-        load(0);
+        applyPreset(presets_[0], 0, false);
 }
+
+Presets::~Presets() { *alive_ = false; }
 
 void Presets::scanPresets() {
     presets_.clear();
@@ -83,17 +85,31 @@ std::vector<ui::PresetEntry> Presets::entries() const {
     return out;
 }
 
+void Presets::syncIndexFromName() {
+    for (std::size_t i = 0; i < presets_.size(); ++i) {
+        if (presets_[i].name == currentName_) {
+            currentIndex_ = static_cast<int>(i);
+            return;
+        }
+    }
+}
+
 void Presets::setCurrentName(std::string name) {
     currentName_ = std::move(name);
+    syncIndexFromName();
     state_.state.setProperty(kPresetProp, juce::String(currentName_), nullptr);
 }
 
-void Presets::applyPreset(const PresetData& data, int index) {
+void Presets::applyPreset(const PresetData& data, int index, bool notifyHost) {
     for (const auto& spec : paramSpecs()) {
         if (spec.id == ParamId::quality || spec.id == ParamId::bypass)
             continue;
         if (auto* p = state_.getParameter(std::string(spec.key))) {
-            p->setValueNotifyingHost(p->convertTo0to1(data.params.real(spec.id)));
+            const float norm = p->convertTo0to1(data.params.real(spec.id));
+            if (notifyHost)
+                p->setValueNotifyingHost(norm);
+            else
+                p->setValue(norm);
         }
     }
     curves_.setAll(data.curves);
@@ -125,8 +141,11 @@ void Presets::saveUserPresetAsync() {
         dir.getChildFile(juce::File::createLegalFileName(currentName_.empty() ? "Custom Torus" : currentName_) +
                          ".json"),
         "*.json");
+    const auto alive = alive_;
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this](const juce::FileChooser& fc) {
+                          [this, alive](const juce::FileChooser& fc) {
+                              if (!*alive)
+                                  return;
                               const auto file = fc.getResult();
                               if (file == juce::File{})
                                   return;
@@ -148,6 +167,9 @@ void Presets::saveUserPresetAsync() {
 void Presets::reloadFromState() {
     if (state_.state.hasProperty(kPresetProp))
         currentName_ = state_.state.getProperty(kPresetProp).toString().toStdString();
+    else
+        currentName_.clear();
+    syncIndexFromName();
 }
 
 } // namespace tg

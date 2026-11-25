@@ -89,7 +89,7 @@ class Engine {
     };
 
     struct DelayBuf {
-        static constexpr int kSize = 1024;
+        static constexpr int kSize = 2048; // > 10 ms alignment headroom up to 192 kHz
         static constexpr int kMask = kSize - 1;
         std::array<double, kSize> buf{};
         int wp = 0;
@@ -181,7 +181,7 @@ class Engine {
 
     // Tight zero-alloc 4-line Hadamard Stereo Early-Reflection Micro-Room (8-35 ms)
     struct MicroRoom {
-        static constexpr int kLineSize = 4096; // > 42 ms even at 96 kHz
+        static constexpr int kLineSize = 8192; // > 42 ms even at 192 kHz
         static constexpr int kLineMask = kLineSize - 1;
         std::array<std::array<double, kLineSize>, 4> lines{};
         std::array<int, 4> wp{};

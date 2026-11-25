@@ -67,9 +67,13 @@ concept Adaa2Shaper = Adaa1Shaper<S> && requires(double u) {
 // C^2-smooth headroom guard: exact identity for |y| <= knee, matching value,
 // unity slope, and zero curvature at |y| == knee, asymptoting to +/-ceiling.
 inline double softGuard(double y, double knee = 2.5, double ceiling = 4.0) noexcept HBA_DSP_NONBLOCKING {
+    if (!std::isfinite(y))
+        return 0.0;
     const double a = std::abs(y);
     if (a <= knee) return y;
     const double head = ceiling - knee;
+    if (head <= 1.0e-12)
+        return y < 0.0 ? -ceiling : ceiling;
     const double g = knee + head * std::tanh((a - knee) / head);
     return y < 0.0 ? -g : g;
 }

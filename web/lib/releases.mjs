@@ -10,21 +10,26 @@ const suffix = {
 };
 
 async function readJson(url) {
+  const parsed = new URL(url);
+  const isApi = parsed.origin === "https://api.github.com";
   const headers = { "User-Agent": "human-being-audio-catalogue" };
-  if (new URL(url).origin === "https://api.github.com" && process.env.STUDIO_RELEASES_TOKEN)
+  if (isApi && process.env.STUDIO_RELEASES_TOKEN)
     headers.Authorization = "Bearer " + process.env.STUDIO_RELEASES_TOKEN;
   const result = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: isApi ? 60 : 86400 },
+    signal: AbortSignal.timeout(8000),
     headers,
   });
   if (!result.ok)
-    throw new Error(new URL(url).hostname + " release request returned " + result.status);
+    throw new Error(parsed.hostname + " release request returned " + result.status);
   return result.json();
 }
 function assetFor(row, name) {
-  const asset = row.assets.find((value) => value.name === name);
+  const assets = Array.isArray(row?.assets) ? row.assets : [];
+  const asset = assets.find((value) => value?.name === name);
   if (
     !asset ||
+    typeof asset.browser_download_url !== "string" ||
     decodeURI(asset.browser_download_url).replaceAll("%2F", "/") !==
       prefix + "download/" + row.tag_name + "/" + name
   ) {
@@ -37,6 +42,7 @@ function assetFor(row, name) {
 async function publishedRelease({ row, slug, version }, read) {
   const record = await read(assetFor(row, "release.json").browser_download_url);
   if (
+    !record ||
     record.product !== slug ||
     record.version !== version ||
     !/^[a-f0-9]{40}$/.test(record.source) ||
@@ -48,8 +54,9 @@ async function publishedRelease({ row, slug, version }, read) {
   const downloads = Object.entries(suffix).map(([os, ext]) => {
     const file = stem + ext;
     const asset = assetFor(row, file);
-    const info = record.downloads[os];
+    const info = record.downloads?.[os];
     if (
+      !info ||
       file !== info.file ||
       info.bytes <= 0 ||
       asset.size !== info.bytes ||
@@ -69,17 +76,18 @@ async function publishedRelease({ row, slug, version }, read) {
   return {
     product: slug,
     version,
-    date: row.published_at.slice(0, 10),
+    date: typeof row.published_at === "string" ? row.published_at.slice(0, 10) : "",
     url: prefix + "tag/" + row.tag_name,
     downloads,
   };
 }
 export async function readCatalog(read = readJson) {
   const latest = new Map();
-  for (let page = 1; ; page++) {
+  for (let page = 1; page <= 20; page++) {
     const rows = await read(api + "/releases?per_page=100&page=" + page);
+    if (!Array.isArray(rows)) break;
     for (const row of rows) {
-      const match = /^([\w-]+)\/v(\d+\.\d+\.\d+)$/.exec(row.tag_name);
+      const match = /^([\w-]+)\/v(\d+\.\d+\.\d+)$/.exec(row?.tag_name ?? "");
       if (
         !match ||
         !Object.hasOwn(studio.products, match[1]) ||
@@ -97,7 +105,9 @@ export async function readCatalog(read = readJson) {
     }
     if (rows.length < 100) break;
   }
-  return Promise.all(
-    [...latest.values()].map((entry) => publishedRelease(entry, read)),
+  const order = Object.keys(studio.products);
+  const sorted = [...latest.values()].sort(
+    (a, b) => order.indexOf(a.slug) - order.indexOf(b.slug),
   );
+  return Promise.all(sorted.map((entry) => publishedRelease(entry, read)));
 }

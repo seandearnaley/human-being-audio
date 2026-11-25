@@ -119,6 +119,8 @@ const ParamSpec* findParam(std::string_view key) {
 }
 
 float clampValue(const ParamSpec& spec, float real) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(real))
+        return spec.def;
     const float clamped = std::clamp(real, spec.low, spec.high);
     if (spec.kind == ParamKind::continuous)
         return clamped;

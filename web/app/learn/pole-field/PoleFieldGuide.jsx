@@ -484,7 +484,9 @@ export default function PoleFieldGuide() {
     [adaaDrive, adaaFreq, adaaShaper, adaaOs]
   );
 
-  // Initialize AudioWorklet on first user Play click
+  const audioInitPromiseRef = useRef(null);
+
+  // Initialize AudioWorklet on first user Play click (serialized to avoid double-init race)
   const ensureAudioEngine = useCallback(async () => {
     if (workletRef.current && audioCtxRef.current) {
       if (audioCtxRef.current.state === "suspended") {
@@ -492,29 +494,52 @@ export default function PoleFieldGuide() {
       }
       return workletRef.current;
     }
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) {
-      setAudioStatus("Web Audio unavailable");
-      return null;
+    if (audioInitPromiseRef.current) {
+      return audioInitPromiseRef.current;
     }
-    const ctx = new Ctx({ sampleRate: 48000 });
-    audioCtxRef.current = ctx;
-    if (ctx.audioWorklet) {
+    const init = (async () => {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) {
+        setAudioStatus("Web Audio unavailable");
+        return null;
+      }
+      let ctx;
+      try {
+        ctx = new Ctx({ sampleRate: 48000 });
+      } catch {
+        ctx = new Ctx();
+      }
+      if (!ctx.audioWorklet) {
+        ctx.close().catch(() => {});
+        setAudioStatus("AudioWorklet unsupported");
+        return null;
+      }
       const blob = new Blob([POLE_FIELD_WORKLET_CODE], { type: "application/javascript" });
       const url = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(url);
-      URL.revokeObjectURL(url);
+      try {
+        await ctx.audioWorklet.addModule(url);
+      } catch (err) {
+        ctx.close().catch(() => {});
+        throw err;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
       const node = new AudioWorkletNode(ctx, "pole-field-bench", {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2],
       });
       node.connect(ctx.destination);
+      audioCtxRef.current = ctx;
       workletRef.current = node;
       return node;
+    })();
+    audioInitPromiseRef.current = init;
+    try {
+      return await init;
+    } finally {
+      audioInitPromiseRef.current = null;
     }
-    setAudioStatus("AudioWorklet unsupported");
-    return null;
   }, []);
 
   const stopAllAudio = useCallback(() => {
@@ -522,6 +547,9 @@ export default function PoleFieldGuide() {
     setAudioStatus("Idle");
     if (workletRef.current) {
       workletRef.current.port.postMessage({ type: "state", playing: false });
+    }
+    if (audioCtxRef.current?.state === "running") {
+      audioCtxRef.current.suspend().catch(() => {});
     }
   }, []);
 
@@ -603,6 +631,7 @@ export default function PoleFieldGuide() {
         adaaDrive,
         adaaFreq,
         adaaShaper,
+        adaaOs,
       });
     } else if (activeAudioLab === "lab5") {
       node.port.postMessage({
@@ -633,6 +662,7 @@ export default function PoleFieldGuide() {
     adaaDrive,
     adaaFreq,
     adaaShaper,
+    adaaOs,
     lab5Lattice,
   ]);
 
@@ -856,8 +886,12 @@ export default function PoleFieldGuide() {
     }
     if (!padDraggingRef.current) return;
     const rect = pad.getBoundingClientRect();
-    const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    const scaleX = pad.width / Math.max(1, rect.width);
+    const scaleY = pad.height / Math.max(1, rect.height);
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
+    const nx = Math.max(0, Math.min(1, (cx - 14) / Math.max(1, pad.width - 28)));
+    const ny = Math.max(0, Math.min(1, (cy - 44) / Math.max(1, pad.height - 64)));
     setMorphX(Number(nx.toFixed(3)));
     setMorphY(Number(ny.toFixed(3)));
   }, []);
@@ -948,20 +982,23 @@ export default function PoleFieldGuide() {
 
   const handleAudioUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+    let ctx = null;
     try {
       const buf = await file.arrayBuffer();
       const Ctx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new Ctx();
+      ctx = new Ctx();
       const decoded = await ctx.decodeAudioData(buf);
       const ch0 = decoded.getChannelData(0);
       const corner = runBurgLpcImprint(ch0, decoded.sampleRate);
       setImprintKind("upload");
       setImprintLabel(`Imprinted: ${file.name} (${decoded.sampleRate} Hz)`);
       setImprintCorner(corner);
-      ctx.close().catch(() => {});
     } catch {
       setImprintLabel("Could not decode audio file — try WAV, MP3, or FLAC.");
+    } finally {
+      ctx?.close().catch(() => {});
     }
   }, []);
 
@@ -1938,7 +1975,7 @@ export default function PoleFieldGuide() {
                 <p>
                   Everything you just played with runs straight inside{" "}
                   <strong>Pole Field</strong> as a zero-allocation{" "}
-                  <code>[[clang::nonblocking]]</code> C++20 VST3, AU, and Standalone instrument with
+                  <code>[[clang::nonblocking]]</code> C++20 VST3, AU, and Standalone morphing filterbank with
                   a 60fps Visage GPU interface, 12 morph cubes, 42 presets, audio-rate FM, and 4
                   drawable modulation lanes.
                 </p>

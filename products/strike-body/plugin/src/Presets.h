@@ -15,6 +15,7 @@ namespace sb {
 class Presets {
   public:
     explicit Presets(juce::AudioProcessorValueTreeState& state);
+    ~Presets();
 
     std::vector<ui::PresetEntry> entries() const;
     std::string currentName() const { return currentName_; }
@@ -30,13 +31,15 @@ class Presets {
 
   private:
     void scanPresets();
-    void applyPreset(const PresetData& data, int index);
+    void applyPreset(const PresetData& data, int index, bool notifyHost = true);
+    void syncIndexFromName();
 
     juce::AudioProcessorValueTreeState& state_;
     std::vector<PresetData> presets_;
     int currentIndex_ = 0;
     std::string currentName_;
     std::unique_ptr<juce::FileChooser> chooser_;
+    std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
 };
 
 } // namespace sb

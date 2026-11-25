@@ -7,7 +7,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <memory>
 
 namespace sb {
 
@@ -36,20 +38,20 @@ std::vector<float> renderOneShot(const OneShotRequest& req) {
     const int totalFrames = static_cast<int>(std::llround(maxSec * sr));
 
     constexpr int kBlock = 256;
-    Engine engine;
-    engine.prepare(sr, kBlock, req.oversampling);
+    auto engine = std::make_unique<Engine>();
+    engine->prepare(sr, kBlock, req.oversampling);
     Params p = req.params;
     p.set(ParamId::humanize, 0.0f);
     // Prime cached params and trigger directly (invariant to Kit Map vs Chromatic mode!)
-    engine.process(p, nullptr, nullptr, 0);
-    engine.trigger(req.articulation, req.velocity, req.pitchRatio);
+    engine->process(p, nullptr, nullptr, 0);
+    engine->trigger(req.articulation, req.velocity, req.pitchRatio);
 
     std::vector<float> raw(static_cast<std::size_t>(totalFrames) * 2u, 0.0f);
     std::vector<float> bufL(kBlock), bufR(kBlock);
     int done = 0;
     while (done < totalFrames) {
         const int n = std::min(kBlock, totalFrames - done);
-        engine.process(p, bufL.data(), bufR.data(), n);
+        engine->process(p, bufL.data(), bufR.data(), n);
         for (int i = 0; i < n; ++i) {
             raw[static_cast<std::size_t>(done + i) * 2u] = bufL[static_cast<std::size_t>(i)];
             raw[static_cast<std::size_t>(done + i) * 2u + 1u] = bufR[static_cast<std::size_t>(i)];
@@ -58,7 +60,7 @@ std::vector<float> renderOneShot(const OneShotRequest& req) {
     }
 
     // Strip exact leading latency silence so every bounced one-shot hits SAMPLE-0 grid-locked!
-    const int latFrames = std::clamp(engine.latencySamples(), 0, totalFrames / 4);
+    const int latFrames = std::clamp(engine->latencySamples(), 0, totalFrames / 4);
     float globalPeak = 1e-6f;
     for (float s : raw)
         globalPeak = std::max(globalPeak, std::abs(s));
@@ -122,23 +124,30 @@ std::vector<float> renderOneShot(const OneShotRequest& req) {
 }
 
 bool writeWavFloat(const std::string& path, const std::vector<float>& interleavedStereo, int sampleRate) {
-    std::ofstream f(path, std::ios::binary);
+    const std::filesystem::path fsPath(std::u8string_view(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::ofstream f(fsPath, std::ios::binary);
     if (!f)
         return false;
+    const std::uint32_t sampleFrames = static_cast<std::uint32_t>(interleavedStereo.size() / 2u);
     const std::uint32_t dataBytes = static_cast<std::uint32_t>(interleavedStereo.size() * sizeof(float));
-    const std::uint32_t riffSize = 36u + dataBytes;
+    // Spec-compliant IEEE float WAV: 18-byte fmt chunk (cbSize=0) + mandatory 4-byte fact chunk.
+    const std::uint32_t riffSize = 4u + (8u + 18u) + (8u + 4u) + (8u + dataBytes);
 
     f.write("RIFF", 4);
     writeLe32(f, riffSize);
     f.write("WAVE", 4);
     f.write("fmt ", 4);
-    writeLe32(f, 16u);
+    writeLe32(f, 18u);
     writeLe16(f, 3u); // IEEE float
     writeLe16(f, 2u); // Stereo
     writeLe32(f, static_cast<std::uint32_t>(sampleRate));
     writeLe32(f, static_cast<std::uint32_t>(sampleRate * 2 * 4));
     writeLe16(f, 8u);
     writeLe16(f, 32u);
+    writeLe16(f, 0u); // cbSize = 0
+    f.write("fact", 4);
+    writeLe32(f, 4u);
+    writeLe32(f, sampleFrames);
     f.write("data", 4);
     writeLe32(f, dataBytes);
     f.write(reinterpret_cast<const char*>(interleavedStereo.data()), static_cast<std::streamsize>(dataBytes));

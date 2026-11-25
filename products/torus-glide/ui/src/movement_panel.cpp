@@ -111,11 +111,11 @@ class LaneCard final : public visage::Frame, public Live {
         const hba::dsp::Curve curve = gesture_.active() ? working_ : context_.model.curve(lane_);
         std::array<float, 128> samples{};
         for (std::size_t i = 0; i < samples.size(); ++i) {
-            const double p = static_cast<double>(i) / static_cast<double>(samples.size() - 1);
+            const double p = std::min(1.0 - 1.0e-6, static_cast<double>(i) / static_cast<double>(samples.size() - 1));
             samples[i] = hba::dsp::evaluate(curve, p);
         }
-        hba::ui::drawCurve(canvas, context_.scale, samples, area.x, area.y + context_.px(4.0f), area.width,
-                           area.height - context_.px(8.0f), accent_, -1.0f, 1.0f, 0.16f, -1.0f, 1.8f);
+        hba::ui::drawCurve(canvas, context_.scale, samples, area.x, area.y, area.width, area.height, accent_, -1.0f,
+                           1.0f, 0.16f, -1.0f, 1.8f);
 
         // Draw editable breakpoint handles (double-click adds/removes; drag segment bends tension!)
         for (int i = 0; i < curve.count; ++i) {

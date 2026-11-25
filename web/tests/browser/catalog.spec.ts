@@ -133,7 +133,7 @@ test("all showcase decks decode, switch tracks, and play exclusively on request"
   await expect(poleDeck).toHaveAttribute("data-playing", "false");
 });
 
-test("the sculpture responds to keyboard controls", async ({ page }) => {
+test("the sculpture responds to keyboard controls and survives SPA round-trip navigation", async ({ page }) => {
   await page.goto("/");
   const slider = page.getByRole("slider", { name: "Chaos" });
   await expect(slider).toHaveAttribute("aria-valuetext", "15 percent");
@@ -145,6 +145,18 @@ test("the sculpture responds to keyboard controls", async ({ page }) => {
     "aria-pressed",
     "true",
   );
+
+  // Navigate away to /learn and back via client-side routing; Hero dock must remount cleanly.
+  await page.locator(".site-header").getByRole("link", { name: "Learn" }).click();
+  await expect(page).toHaveURL(/\/learn$/);
+  await page.locator(".site-header .wordmark").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator("[data-backend]")).not.toHaveText("3D: loading…");
+  const remountedSlider = page.getByRole("slider", { name: "Chaos" });
+  await expect(remountedSlider).toHaveAttribute("aria-valuetext", "15 percent");
+  await remountedSlider.focus();
+  await remountedSlider.press("ArrowRight");
+  await expect(remountedSlider).toHaveAttribute("aria-valuetext", "16 percent");
 });
 test("catalogue and navigation work without JavaScript", async ({
   browser,

@@ -1164,6 +1164,7 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
     this.adaaDrive = 5.0;
     this.adaaFreq = 2100;
     this.adaaShaper = "buchla";
+    this.adaaOs = 1;
     this.phases = [0, 0, 0, 0, 0];
     this.noiseSeed = 2463534242;
     this.tick = 0;
@@ -1177,6 +1178,7 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
     // Simple 2-pole LR4-style sub crossover state
     this.subLp1 = 0; this.subLp2 = 0;
     this.dcX = 0; this.dcY = 0;
+    this.dcXR = 0; this.dcYR = 0;
     this.adaaPrevX = 0; this.adaaPrevF1 = 0;
 
     this.port.onmessage = (e) => {
@@ -1195,6 +1197,7 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
         if (typeof msg.adaaDrive === "number") this.adaaDrive = msg.adaaDrive;
         if (typeof msg.adaaFreq === "number") this.adaaFreq = msg.adaaFreq;
         if (msg.adaaShaper) this.adaaShaper = msg.adaaShaper;
+        if (typeof msg.adaaOs === "number") this.adaaOs = msg.adaaOs === 2 ? 2 : 1;
         if (Array.isArray(msg.stages)) this.updateCoefs(msg.stages);
       }
     };
@@ -1378,6 +1381,34 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
     return out;
   }
 
+  shaperEval(u) {
+    if (this.adaaShaper === "buchla") return this.buchlaEval(u);
+    if (this.adaaShaper === "clip") return Math.max(-1.0, Math.min(1.0, u));
+    return Math.tanh(u);
+  }
+
+  shaperAd1(u) {
+    if (this.adaaShaper === "buchla") return this.buchlaAd1(u);
+    if (this.adaaShaper === "clip") {
+      const a = Math.abs(u);
+      return a <= 1.0 ? 0.5 * u * u : a - 0.5;
+    }
+    const a = Math.abs(u);
+    return a + Math.log1p(Math.exp(-2 * a)) - Math.LN2;
+  }
+
+  stepAdaaSample(x0) {
+    if (!this.adaaEnabled) return this.shaperEval(x0);
+    const f1_0 = this.shaperAd1(x0);
+    const d = x0 - this.adaaPrevX;
+    const y = Math.abs(d) > 1e-4
+      ? (f1_0 - this.adaaPrevF1) / d
+      : this.shaperEval(0.5 * (x0 + this.adaaPrevX));
+    this.adaaPrevX = x0;
+    this.adaaPrevF1 = f1_0;
+    return y;
+  }
+
   process(_inputs, outputs) {
     const outL = outputs[0][0];
     const outR = outputs[0][1] || outL;
@@ -1391,22 +1422,18 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < outL.length; i++) {
       if (this.mode === "adaa") {
-        // High-frequency sweep sine to hear aliasing foldback clearly!
-        this.phases[4] = (this.phases[4] + this.adaaFreq / sampleRate) % 1;
-        const x0 = this.adaaDrive * Math.sin(2 * Math.PI * this.phases[4]);
-        let y;
-        if (!this.adaaEnabled) {
-          y = this.adaaShaper === "buchla" ? this.buchlaEval(x0) : Math.tanh(x0);
+        // High-frequency sweep sine to hear aliasing foldback clearly (supports 1x and 2x OS)!
+        const inc = this.adaaFreq / sampleRate;
+        let y = 0;
+        if (this.adaaOs === 2) {
+          this.phases[4] = (this.phases[4] + 0.5 * inc) % 1;
+          const y0 = this.stepAdaaSample(this.adaaDrive * Math.sin(2 * Math.PI * this.phases[4]));
+          this.phases[4] = (this.phases[4] + 0.5 * inc) % 1;
+          const y1 = this.stepAdaaSample(this.adaaDrive * Math.sin(2 * Math.PI * this.phases[4]));
+          y = 0.5 * (y0 + y1);
         } else {
-          const f1_0 = this.adaaShaper === "buchla"
-            ? this.buchlaAd1(x0)
-            : Math.abs(x0) + Math.log1p(Math.exp(-2 * Math.abs(x0))) - Math.LN2;
-          const d = x0 - this.adaaPrevX;
-          y = Math.abs(d) > 1e-4
-            ? (f1_0 - this.adaaPrevF1) / d
-            : (this.adaaShaper === "buchla" ? this.buchlaEval(0.5 * (x0 + this.adaaPrevX)) : Math.tanh(0.5 * (x0 + this.adaaPrevX)));
-          this.adaaPrevX = x0;
-          this.adaaPrevF1 = f1_0;
+          this.phases[4] = (this.phases[4] + inc) % 1;
+          y = this.stepAdaaSample(this.adaaDrive * Math.sin(2 * Math.PI * this.phases[4]));
         }
         const s = Math.tanh(y * 0.45) * 0.28;
         outL[i] = s;
@@ -1431,12 +1458,15 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
         yR += sub * 1.1;
       }
 
-      // Gentle DC block & safety ceiling
-      const dcOut = yL - this.dcX + 0.996 * this.dcY;
+      // Gentle stereo DC block & safety ceiling
+      const dcOutL = yL - this.dcX + 0.996 * this.dcY;
       this.dcX = yL;
-      this.dcY = dcOut;
-      outL[i] = Math.tanh(dcOut * 0.52) * 0.65;
-      if (outR !== outL) outR[i] = Math.tanh(yR * 0.52) * 0.65;
+      this.dcY = dcOutL;
+      const dcOutR = yR - this.dcXR + 0.996 * this.dcYR;
+      this.dcXR = yR;
+      this.dcYR = dcOutR;
+      outL[i] = Math.tanh(dcOutL * 0.52) * 0.65;
+      if (outR !== outL) outR[i] = Math.tanh(dcOutR * 0.52) * 0.65;
     }
     return true;
   }

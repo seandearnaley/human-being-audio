@@ -71,6 +71,8 @@ class AuditionSynth {
 
     void noteOn(int channel, int note, int velocity, bool useKit, bool isDrumMode = false) noexcept CL_NONBLOCKING {
         const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
+        if (useKit && !drumMode_)
+            allNotesOff();
         drumMode_ = useKit;
         if (useKit) {
             int row = 0;
@@ -149,11 +151,10 @@ class AuditionSynth {
     }
 
     void noteOff(int channel, int note) noexcept CL_NONBLOCKING {
-        if (drumMode_)
-            return;
         const int ch = std::clamp(channel, 1, 16);
+        const int clampedNote = std::clamp(note, 12, 120);
         for (auto& v : voices_) {
-            if (v.gate && v.note == note && v.channel == ch)
+            if (v.gate && v.note == clampedNote && v.channel == ch)
                 v.gate = false;
         }
     }
@@ -209,6 +210,8 @@ class AuditionSynth {
 
         const bool useKit = drumMode_ || (tone == AuditionTone::kit);
         if (useKit) {
+            if (tone == AuditionTone::kit)
+                allNotesOff();
             double kl = 0.0, kr = 0.0;
             renderKitSample(kl, kr);
             outL = static_cast<float>(std::tanh(kl * g * 0.90));

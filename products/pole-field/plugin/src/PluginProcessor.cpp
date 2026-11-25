@@ -128,7 +128,12 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const Transport blockStart = readTransport();
     const double quartersPerSample = blockStart.bpm / 60.0 / sampleRate_;
-    const int maxChunk = std::max(1, static_cast<int>(std::min(monoScratchR_.size(), preInMono_.size())));
+    const int maxChunk = static_cast<int>(std::min(monoScratchR_.size(), preInMono_.size()));
+    if (maxChunk <= 0) {
+        buffer.clear();
+        midi.clear();
+        return;
+    }
 
     const auto render = [&](int from, int to) {
         if (to <= from)

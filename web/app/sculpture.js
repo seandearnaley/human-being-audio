@@ -1,8 +1,21 @@
 // Client-side artwork. The catalogue and all downloads are server-rendered.
+export function mountSculpture() {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const ac = new AbortController();
+const { signal } = ac;
+let disposed = false;
+let stageCleanup = null;
+const cleanups = [];
+
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const cards = $$('.plugin[data-plugin]');
+const root = document.documentElement;
+const dock = $('.hero__dock');
+const pad = $('[data-vowel-pad]');
+const formPicker = $('#form-picker');
+if (!cards.length || !dock || !pad || !formPicker) return () => {};
+
 const PLUGINS = cards.map(card => ({
   id: card.dataset.plugin, name: card.querySelector('h3').textContent, form: card.dataset.form,
   hue: Number(card.dataset.hue), bpm: Number(card.dataset.bpm), statusLabel: card.dataset.kind
@@ -22,10 +35,10 @@ const stage = {
   wake: () => {},        // replaced by the renderer once it's running
 };
 
-const root = document.documentElement;
-const dock = $('.hero__dock');
+$('#stage')?.style.setProperty('--stage-hue', stage.hue);
+dock.style.setProperty('--hue', stage.hue);
 
-$('#form-picker').addEventListener('change', (e) => { stage.form = e.target.value; syncWindowLabel(); stage.wake(); });
+formPicker.addEventListener('change', (e) => { stage.form = e.target.value; syncWindowLabel(); stage.wake(); }, { signal });
 
 /* ---- Vowel space: the five-vowel F1/F2 chart. F1 (height) runs down, F2 (front→back) runs across. ---- */
 const VOWELS = [
@@ -33,8 +46,8 @@ const VOWELS = [
   { v: 'o', f1: 450, f2: 900 },  { v: 'u', f1: 310, f2: 800 },
 ];
 const F2_FRONT = 2400, F2_BACK = 700, F1_CLOSE = 250, F1_OPEN = 800;
-const pad = $('[data-vowel-pad]');
 const padX = (x) => 8 + x * 84, padY = (y) => 9 + y * 58;                 // 0–1 → % of the pad (matches the CSS)
+for (const existing of $$('.vowel__v', pad)) existing.remove();
 for (const V of VOWELS) {
   V.x = (F2_FRONT - V.f2) / (F2_FRONT - F2_BACK);
   V.y = (V.f1 - F1_CLOSE) / (F1_OPEN - F1_CLOSE);
@@ -42,6 +55,7 @@ for (const V of VOWELS) {
   V.el.style.cssText = `--vx:${V.x.toFixed(3)};--vy:${V.y.toFixed(3)}`;
   pad.querySelector('.vowel__puck').before(V.el);
 }
+cleanups.push(() => { for (const V of VOWELS) V.el?.remove(); });
 $('[data-arc]').setAttribute('points', VOWELS.map((V) => `${padX(V.x).toFixed(1)},${padY(V.y).toFixed(1)}`).join(' '));
 
 const LOG_LO = Math.log(80), LOG_HI = Math.log(5000);
@@ -105,7 +119,7 @@ function setMacro(name, v) {
   stage.wake();
 }
 $$('[data-macro]').forEach((input) => {
-  input.addEventListener('input', () => setMacro(input.dataset.macro, input.valueAsNumber / 100));
+  input.addEventListener('input', () => setMacro(input.dataset.macro, input.valueAsNumber / 100), { signal });
   setMacro(input.dataset.macro, input.valueAsNumber / 100);
 });
 
@@ -123,10 +137,10 @@ pad.addEventListener('pointerdown', (e) => {
   };
   move(e);
   const stop = () => { pad.removeEventListener('pointermove', move); pad.removeEventListener('pointerup', stop); pad.removeEventListener('pointercancel', stop); };
-  pad.addEventListener('pointermove', move);
-  pad.addEventListener('pointerup', stop);
-  pad.addEventListener('pointercancel', stop);
-});
+  pad.addEventListener('pointermove', move, { signal });
+  pad.addEventListener('pointerup', stop, { signal });
+  pad.addEventListener('pointercancel', stop, { signal });
+}, { signal });
 
 function syncWindowLabel() {
   const p = byId[stage.pluginId];
@@ -151,26 +165,27 @@ syncWindowLabel();
 // Hover / focus a plugin → its tinted form; otherwise whichever card crosses the centre line.
 let centreId = null, hoverId = null;
 for (const card of cards) {
-  card.addEventListener('pointerenter', () => { hoverId = card.dataset.plugin; showPlugin(hoverId); });
-  card.addEventListener('pointerleave', () => { hoverId = null; if (centreId) showPlugin(centreId); });
-  card.addEventListener('focusin', () => showPlugin(card.dataset.plugin));
+  card.addEventListener('pointerenter', () => { hoverId = card.dataset.plugin; showPlugin(hoverId); }, { signal });
+  card.addEventListener('pointerleave', () => { hoverId = null; if (centreId) showPlugin(centreId); }, { signal });
+  card.addEventListener('focusin', () => showPlugin(card.dataset.plugin), { signal });
 }
 const centreIO = new IntersectionObserver((entries) => {
   for (const e of entries) if (e.isIntersecting) { centreId = e.target.dataset.plugin; if (!hoverId) showPlugin(centreId); }
 }, { rootMargin: '-48% 0px -48% 0px' });
 cards.forEach((c) => centreIO.observe(c));
+cleanups.push(() => centreIO.disconnect());
 
-$('[data-hit]').addEventListener('click', () => { stage.hit = 1; stage.wake(); });
+$('[data-hit]').addEventListener('click', () => { stage.hit = 1; stage.wake(); }, { signal });
 const freezeBtn = $('[data-freeze]');
 const syncFreeze = () => freezeBtn.setAttribute('aria-pressed', String(stage.frozen));
-freezeBtn.addEventListener('click', () => { stage.frozen = !stage.frozen; syncFreeze(); stage.wake(); });
+freezeBtn.addEventListener('click', () => { stage.frozen = !stage.frozen; syncFreeze(); stage.wake(); }, { signal });
 syncFreeze();
 
 // Live response to the OS reduce-motion switch (without overriding explicit user toggles).
 reducedMotion.addEventListener('change', () => {
   stage.frozen = reducedMotion.matches; syncFreeze();
   stage.wake();
-});
+}, { signal });
 
 /* ==========================================================================
    10. THE 3D STAGE — Three.js r187, WebGPURenderer (auto WebGL 2 fallback), TSL
@@ -181,20 +196,26 @@ reducedMotion.addEventListener('change', () => {
 const backendEl = $('[data-backend]');
 const enableScene = $('[data-enable-scene]');
 async function enableStage() {
+  if (disposed) return;
   enableScene.hidden = true;
   try { await startStage(); }
   catch (err) {
+    if (disposed) return;
     root.dataset.stage = 'fallback';
     backendEl.textContent = '3D unavailable';
     console.warn('[stage]', err);
   }
 }
 async function hasHardwareGraphics() {
-  const adapter = await navigator.gpu?.requestAdapter();
-  if (adapter) {
-    const info = adapter.info;
-    return !info?.isFallbackAdapter && !/swiftshader|llvmpipe|software/i.test(
-      [info?.architecture, info?.description, info?.device].join(' '));
+  try {
+    const adapter = await navigator.gpu?.requestAdapter();
+    if (adapter) {
+      const info = adapter.info;
+      return !/swiftshader|llvmpipe|software/i.test(
+        [info?.architecture, info?.description, info?.device].join(' '));
+    }
+  } catch {
+    // Fall through to WebGL2 probe
   }
   const probe = document.createElement('canvas').getContext('webgl2', {failIfMajorPerformanceCaveat:true});
   if (!probe) return false;
@@ -203,8 +224,9 @@ async function hasHardwareGraphics() {
   probe.getExtension('WEBGL_lose_context')?.loseContext();
   return !/swiftshader|llvmpipe|software/i.test(name);
 }
-enableScene.addEventListener('click', enableStage, {once:true});
-hasHardwareGraphics().then(hardware => {
+enableScene.addEventListener('click', enableStage, { once: true, signal });
+hasHardwareGraphics().catch(() => false).then(hardware => {
+  if (disposed) return;
   if (hardware) return enableStage();
   root.dataset.stage = 'fallback';
   backendEl.textContent = '3D paused · software graphics';
@@ -224,10 +246,12 @@ async function startStage() {
 
   const canvas = $('#stage-canvas');
   const host = $('#stage');
+  if (disposed || !canvas || !host) return;
   // ?webgl forces the WebGL 2 backend — handy for checking the fallback path.
   const forceWebGL = new URLSearchParams(location.search).has('webgl');
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, alpha: true, forceWebGL });
   await renderer.init();
+  if (disposed) { renderer.dispose(); return; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.NeutralToneMapping;
@@ -238,7 +262,11 @@ async function startStage() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const roomEnv = new RoomEnvironment();
+  const envTarget = pmrem.fromScene(roomEnv, 0.04);
+  scene.environment = envTarget.texture;
+  roomEnv.dispose();
+  pmrem.dispose();
   const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(3, 4, 5); scene.add(key);
   const rim = new THREE.DirectionalLight(0xffffff, 1.3); rim.position.set(-4, 1.5, -3); scene.add(rim);
 
@@ -250,8 +278,8 @@ async function startStage() {
   const U = {
     time: uniform(0),            // seconds of motion (stops while frozen)
     bars: uniform(0),            // musical time in bars at the active plugin's tempo (no jumps when tempo changes)
-    slice: uniform(0.5), formant: uniform(0.5), open: uniform(0.6), chaos: uniform(0.15),
-    twist: uniform(0), squash: uniform(0), hit: uniform(0), swell: uniform(0), seed: uniform(0),
+    slice: uniform(stage.macros.slice), formant: uniform(stage.macros.formant), open: uniform(stage.macros.open), chaos: uniform(stage.macros.chaos),
+    twist: uniform(0), squash: uniform(0), hit: uniform(0), swell: uniform(0), seed: uniform(stage.seed),
   };
   const spectrum = Fn(([t]) => vec3(0.5).add(vec3(0.5).mul(cos(TWO_PI.mul(vec3(t).add(vec3(0.0, 0.33, 0.67)))))));
   const fresnel = Fn(() => pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 3));
@@ -661,11 +689,11 @@ async function startStage() {
     host.style.setProperty('--stage-light', dark.matches ? '24%' : '30%');
     stage.wake();
   };
-  dark.addEventListener('change', applyTheme);
+  dark.addEventListener('change', applyTheme, { signal });
 
   /* ---- sizing ---- */
   let W = 1, H = 1;
-  new ResizeObserver(([entry]) => {
+  const stageRO = new ResizeObserver(([entry]) => {
     const box = entry.contentBoxSize?.[0];
     W = Math.max(1, Math.round(box ? box.inlineSize : host.clientWidth));
     H = Math.max(1, Math.round(box ? box.blockSize : host.clientHeight));
@@ -673,7 +701,8 @@ async function startStage() {
     camera.aspect = W / H;
     camera.updateProjectionMatrix();
     stage.wake();
-  }).observe(host);
+  });
+  stageRO.observe(host);
 
   /* ---- input: pointer parallax, drag-to-twist with spring return, tap-to-hit ---- */
   const pointer = { x: 0, y: 0, sx: 0, sy: 0 };
@@ -681,7 +710,7 @@ async function startStage() {
     pointer.x = e.clientX / innerWidth * 2 - 1;
     pointer.y = e.clientY / innerHeight * 2 - 1;
     if (!stage.frozen) stage.wake();
-  }, { passive: true });
+  }, { passive: true, signal });
 
   const spring = { twist: 0, tv: 0, squash: 0, sv: 0, tTarget: 0, sTarget: 0, dragging: false };
   for (const zone of $$('[data-grab]')) {
@@ -690,7 +719,7 @@ async function startStage() {
       start = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
       spring.dragging = true;
       stage.wake();
-    });
+    }, { signal });
     zone.addEventListener('pointermove', (e) => {
       if (!start || e.pointerId !== start.id) return;
       const dx = e.clientX - start.x, dy = e.clientY - start.y;
@@ -698,7 +727,7 @@ async function startStage() {
       spring.tTarget = Math.max(-2.6, Math.min(2.6, dx / 140));
       spring.sTarget = e.pointerType === 'touch' ? 0 : Math.max(-0.35, Math.min(0.35, -dy / 600));
       stage.wake();
-    });
+    }, { signal });
     const end = (e) => {
       if (!start || e.pointerId !== start.id) return;
       const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
@@ -706,8 +735,8 @@ async function startStage() {
       start = null; spring.dragging = false; spring.tTarget = 0; spring.sTarget = 0;
       stage.wake();
     };
-    zone.addEventListener('pointerup', end);
-    zone.addEventListener('pointercancel', end);
+    zone.addEventListener('pointerup', end, { signal });
+    zone.addEventListener('pointercancel', end, { signal });
   }
 
   /* ---- scroll choreography: each section has a "shot"; the camera blends between them ---- */
@@ -747,7 +776,7 @@ async function startStage() {
     const dist = (SCULPT * H) / (size * 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * lerp(a.zoom, b.zoom, t);
     return { dist, az: lerp(a.az, b.az, t), elv: lerp(a.elv, b.elv, t), x: lerp(pa.x, pb.x, t), y: lerp(pa.y, pb.y, t) };
   };
-  addEventListener('scroll', () => stage.wake(), { passive: true });
+  addEventListener('scroll', () => stage.wake(), { passive: true, signal });
 
   /** OKLCH → linear sRGB (Björn Ottosson's OKLab matrices), gamut-clipped. Same
       colour space as the CSS tokens, so the sculpture and the UI agree on a hue. */
@@ -863,16 +892,44 @@ async function startStage() {
   let cvRelevant = true, onScreen = true;
   const updateVisibility = () => { visibleStage = cvRelevant && onScreen; visibleStage ? stage.wake() : setRunning(false); };
   if ('contentVisibility' in root.style) {
-    host.addEventListener('contentvisibilityautostatechange', (e) => { cvRelevant = !e.skipped; updateVisibility(); });
+    host.addEventListener('contentvisibilityautostatechange', (e) => { cvRelevant = !e.skipped; updateVisibility(); }, { signal });
   }
-  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; updateVisibility(); }).observe(host);
-  document.addEventListener('visibilitychange', () => (document.hidden ? setRunning(false) : stage.wake()));
+  const stageIO = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; updateVisibility(); });
+  stageIO.observe(host);
+  document.addEventListener('visibilitychange', () => (document.hidden ? setRunning(false) : stage.wake()), { signal });
+
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    setRunning(false);
+    root.dataset.stage = 'fallback';
+    backendEl.textContent = '3D paused · context lost';
+  }, { signal });
+
+  stageCleanup = () => {
+    setRunning(false);
+    stageRO.disconnect();
+    stageIO.disconnect();
+    scene.traverse((obj) => {
+      obj.geometry?.dispose?.();
+      if (Array.isArray(obj.material)) obj.material.forEach((m) => m?.dispose?.());
+      else obj.material?.dispose?.();
+    });
+    envTarget.dispose();
+    renderer.dispose();
+  };
 
   // Compile every preset's pipelines up front so switching never stutters.
-  for (const P of Object.values(forms)) P.group.visible = true;
-  await renderer.compileAsync(scene, camera);
-  applyTheme();
-  stage.wake();
+  try {
+    for (const P of Object.values(forms)) P.group.visible = true;
+    await renderer.compileAsync(scene, camera);
+    if (disposed) { stageCleanup(); stageCleanup = null; return; }
+    applyTheme();
+    stage.wake();
+  } catch (err) {
+    stageCleanup?.();
+    stageCleanup = null;
+    throw err;
+  }
 }
 /* ==========================================================================
    11. HOBERMAN CURSOR — a little expanding-linkage sphere that trails the pointer
@@ -880,7 +937,7 @@ async function startStage() {
    is hidden from assistive tech. Mouse/pen only, off under reduced motion and
    forced colours, and it sleeps (no rAF) whenever it has nothing left to settle.
    ========================================================================== */
-startHoberman();
+cleanups.push(startHoberman());
 
 function startHoberman() {
   const fine = matchMedia('(hover: hover) and (pointer: fine)');
@@ -891,8 +948,19 @@ function startHoberman() {
     if (want && !toy) toy = createHoberman();
     else if (!want && toy) { toy.destroy(); toy = null; }
   };
-  [fine, forced, reducedMotion].forEach((mq) => mq.addEventListener('change', sync));
+  [fine, forced, reducedMotion].forEach((mq) => mq.addEventListener('change', sync, { signal }));
   sync();
+  return () => { toy?.destroy(); toy = null; };
+}
+
+return function cleanupSculpture() {
+  disposed = true;
+  ac.abort();
+  stageCleanup?.();
+  stageCleanup = null;
+  for (const fn of cleanups) fn();
+  delete root.dataset.stage;
+};
 }
 
 function createHoberman() {
@@ -921,7 +989,7 @@ function createHoberman() {
   });
 
   const CLICKABLE = 'a[href], button:not(:disabled), summary, label, [role="button"], input[type="range"], select';
-  const HIDE_OVER = 'input[type="search"], input[type="text"], textarea, [data-vowel-pad], dialog';
+  const HIDE_OVER = 'input[type="search"], input[type="text"], textarea, [data-vowel-pad], .fg-canvas-box--interactive, dialog';
   const dark = matchMedia('(prefers-color-scheme: dark)');
   const s = {
     x: innerWidth / 2, y: innerHeight / 2, vx: 0, vy: 0, px: innerWidth / 2, py: innerHeight / 2,
@@ -982,9 +1050,8 @@ function createHoberman() {
       RT = Math.min(48, Math.max(22, Math.min(r.width, r.height) * 0.62 + 6));
       openT = 1;
     } else if (s.mode === 'grab') { RT = 56; openT = 0.85; }
-    const modal = document.querySelector('dialog:modal');
     // Over a control it stays a little translucent, so the control's own label always reads first.
-    const alphaT = s.seen && s.mode !== 'hidden' && !modal ? (s.mode === 'over' ? 0.7 : 1) : 0;
+    const alphaT = s.seen && s.mode !== 'hidden' ? (s.mode === 'over' ? 0.7 : 1) : 0;
 
     // Springs: a little overshoot so the opening reads as mechanical, not a fade.
     s.vx += ((tx - s.x) * 210 - s.vx * 24) * dt; s.x += s.vx * dt;

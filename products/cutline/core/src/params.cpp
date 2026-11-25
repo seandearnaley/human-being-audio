@@ -16,6 +16,8 @@ std::optional<ParamId> findParam(std::string_view key) {
 }
 
 float clampToRange(const ParamSpec& spec, float real) {
+    if (!std::isfinite(real))
+        return spec.def;
     if (spec.kind == ParamKind::toggle)
         return real >= 0.5f ? 1.0f : 0.0f;
     if (spec.kind == ParamKind::choice)

@@ -4,4 +4,7 @@ export default {
   turbopack: { root },
   outputFileTracingRoot: root,
   poweredByHeader: false,
+  images: {
+    formats: ["image/avif", "image/webp"],
+  },
 };

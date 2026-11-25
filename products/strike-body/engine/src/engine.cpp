@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "sb/engine.h"
 
+#include <memory>
+
 #include <hba/dsp/denormals.h>
 #include <hba/dsp/gain.h>
 
@@ -688,53 +690,57 @@ void Engine::process(const Params& params, float* outL, float* outR, int numSamp
             const double nR = nextNoise(v.rngR);
 
             double clickSig = 0.0;
-            if (v.clickEnv > 1e-5 && clickAmt > 0.005) {
-                const double burst = (v.ageSamples < 5.0 ? 1.0 : nL * 0.90) * v.clickEnv;
-                double cv1 = 0.0, cv2 = 0.0;
-                v.clickBp.tick(clickCoefs, burst, cv1, cv2);
-                const double cBp = clickCoefs.k * cv1;
-                clickSig = (cBp * 1.15 + burst * 0.42) * clickAmt * prof.clickGain * 1.05;
+            if (v.clickEnv > 1e-5) {
+                if (clickAmt > 0.005) {
+                    const double burst = (v.ageSamples < 5.0 ? 1.0 : nL * 0.90) * v.clickEnv;
+                    double cv1 = 0.0, cv2 = 0.0;
+                    v.clickBp.tick(clickCoefs, burst, cv1, cv2);
+                    const double cBp = clickCoefs.k * cv1;
+                    clickSig = (cBp * 1.15 + burst * 0.42) * clickAmt * prof.clickGain * 1.05;
+                }
                 v.clickEnv *= clickDecayCoef;
             }
 
             double wireL = 0.0, wireR = 0.0;
-            if (v.wireEnv > 1e-5 && wireLevel > 0.005) {
-                double srcL = nL;
-                double srcR = nL * (1.0 - wireWidth) + nR * wireWidth;
+            if (v.wireEnv > 1e-5) {
+                if (wireLevel > 0.005) {
+                    double srcL = nL;
+                    double srcR = nL * (1.0 - wireWidth) + nR * wireWidth;
 
-                if (wireColor == WireColor::crushedMetal) {
-                    v.crushPhase += crushInc;
-                    if (v.crushPhase >= 1.0) {
-                        v.crushPhase -= 1.0;
-                        v.crushHoldL = srcL;
-                        v.crushHoldR = srcR;
+                    if (wireColor == WireColor::crushedMetal) {
+                        v.crushPhase += crushInc;
+                        if (v.crushPhase >= 1.0) {
+                            v.crushPhase -= 1.0;
+                            v.crushHoldL = srcL;
+                            v.crushHoldR = srcR;
+                        }
+                        srcL = v.crushHoldL;
+                        srcR = v.crushHoldR;
                     }
-                    srcL = v.crushHoldL;
-                    srcR = v.crushHoldR;
+
+                    double wv1L = 0.0, wv2L = 0.0, wv1R = 0.0, wv2R = 0.0;
+                    v.wireBpL.tick(wireBpCoefs, srcL, wv1L, wv2L);
+                    v.wireBpR.tick(wireBpCoefs, srcR, wv1R, wv2R);
+                    const double bpL = wireBpCoefs.k * wv1L;
+                    const double bpR = wireBpCoefs.k * wv1R;
+                    const double hpL = v.wireHpL.highpass(wireHpCoefs, srcL);
+                    const double hpR = v.wireHpR.highpass(wireHpCoefs, srcR);
+
+                    const double texL =
+                        wireColor == WireColor::airSizzle ? (hpL * 0.85 + bpL * 0.45) : (bpL * 0.95 + hpL * 0.62);
+                    const double texR =
+                        wireColor == WireColor::airSizzle ? (hpR * 0.85 + bpR * 0.45) : (bpR * 0.95 + hpR * 0.62);
+
+                    // Sympathetic snare-wire rattle coupled to vibrating drumhead + body!
+                    const double headDrive =
+                        std::clamp(std::abs(sL + sR) * 1.15 + std::abs(bodySample) * 0.65, 0.0, 1.5);
+                    const double buzzMod = (1.0 - 0.52 * wireBuzz) + 0.92 * wireBuzz * headDrive;
+
+                    const double duckGain = 1.0 - wireDuck * v.duckEnv;
+                    const double envW = v.wireEnv * duckGain * buzzMod * wireLevel * prof.wireGain * 1.18;
+                    wireL = texL * envW;
+                    wireR = texR * envW;
                 }
-
-                double wv1L = 0.0, wv2L = 0.0, wv1R = 0.0, wv2R = 0.0;
-                v.wireBpL.tick(wireBpCoefs, srcL, wv1L, wv2L);
-                v.wireBpR.tick(wireBpCoefs, srcR, wv1R, wv2R);
-                const double bpL = wireBpCoefs.k * wv1L;
-                const double bpR = wireBpCoefs.k * wv1R;
-                const double hpL = v.wireHpL.highpass(wireHpCoefs, srcL);
-                const double hpR = v.wireHpR.highpass(wireHpCoefs, srcR);
-
-                const double texL =
-                    wireColor == WireColor::airSizzle ? (hpL * 0.85 + bpL * 0.45) : (bpL * 0.95 + hpL * 0.62);
-                const double texR =
-                    wireColor == WireColor::airSizzle ? (hpR * 0.85 + bpR * 0.45) : (bpR * 0.95 + hpR * 0.62);
-
-                // Sympathetic snare-wire rattle coupled to vibrating drumhead + body!
-                const double headDrive = std::clamp(std::abs(sL + sR) * 1.15 + std::abs(bodySample) * 0.65, 0.0, 1.5);
-                const double buzzMod = (1.0 - 0.52 * wireBuzz) + 0.92 * wireBuzz * headDrive;
-
-                const double duckGain = 1.0 - wireDuck * v.duckEnv;
-                const double envW = v.wireEnv * duckGain * buzzMod * wireLevel * prof.wireGain * 1.18;
-                wireL = texL * envW;
-                wireR = texR * envW;
-
                 v.wireEnv *= voiceWireDecays[static_cast<std::size_t>(vi)];
                 v.duckEnv *= duckDecayCoef;
             }
@@ -976,15 +982,15 @@ AlignResult solveAutoAlign(const Params& baseParams, double sampleRate) {
         lp.set(ParamId::limiter, 0.0f);
         lp.set(ParamId::outputDb, 0.0f);
 
-        Engine eng;
-        eng.prepare(sr, winSamples, 2);
-        const int lat = eng.latencySamples();
+        auto eng = std::make_unique<Engine>();
+        eng->prepare(sr, winSamples, 2);
+        const int lat = eng->latencySamples();
         const int total = winSamples + lat;
         std::vector<float> tmpL(static_cast<std::size_t>(total));
         std::vector<float> tmpR(static_cast<std::size_t>(total));
-        eng.process(lp, nullptr, nullptr, 0);
-        eng.trigger(Articulation::main, 1.0f, 1.0f);
-        eng.process(lp, tmpL.data(), tmpR.data(), total);
+        eng->process(lp, nullptr, nullptr, 0);
+        eng->trigger(Articulation::main, 1.0f, 1.0f);
+        eng->process(lp, tmpL.data(), tmpR.data(), total);
 
         std::vector<double> lo(static_cast<std::size_t>(winSamples));
         double lpState = 0.0;

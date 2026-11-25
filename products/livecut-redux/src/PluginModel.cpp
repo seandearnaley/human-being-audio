@@ -71,7 +71,7 @@ PluginModel::PluginModel(LivecutAudioProcessor& processor) : processor_(processo
     refreshVisuals();
 }
 
-PluginModel::~PluginModel() = default;
+PluginModel::~PluginModel() { *alive_ = false; }
 
 juce::RangedAudioParameter* PluginModel::findParam(std::string_view id) const {
     const auto it = params_.find(std::string(id));
@@ -158,11 +158,13 @@ std::string PluginModel::presetName() const { return processor_.getPresets().cur
 void PluginModel::loadPreset(int index) {
     processor_.pushUndoSnapshot();
     processor_.getPresets().load(index);
+    processor_.applyRequestedMode();
 }
 
 void PluginModel::stepPreset(int delta) {
     processor_.pushUndoSnapshot();
     processor_.getPresets().step(delta);
+    processor_.applyRequestedMode();
 }
 
 void PluginModel::savePreset() {
@@ -170,12 +172,15 @@ void PluginModel::savePreset() {
     dir.createDirectory();
     const auto suggested = dir.getChildFile(juce::String(presetName()) + ".json");
     fileChooser_ = std::make_unique<juce::FileChooser>("Save Livecut Redux Preset", suggested, "*.json");
+    const auto alive = alive_;
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this](const juce::FileChooser& chooser) {
+                              [this, alive](const juce::FileChooser& chooser) {
+                                  if (!*alive)
+                                      return;
                                   const auto file = chooser.getResult();
                                   if (file != juce::File{})
-                                      processor_.getPresets().save(file.getFileNameWithoutExtension());
+                                      processor_.getPresets().saveToFile(file);
                               });
 }
 
@@ -197,9 +202,12 @@ void PluginModel::saveCapture() {
     const auto dir = juce::File::getSpecialLocation(juce::File::userDesktopDirectory);
     const auto suggested = dir.getChildFile("Livecut-Phrase.wav");
     fileChooser_ = std::make_unique<juce::FileChooser>("Save Captured Phrase", suggested, "*.wav");
+    const auto alive = alive_;
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this](const juce::FileChooser& chooser) {
+                              [this, alive](const juce::FileChooser& chooser) {
+                                  if (!*alive)
+                                      return;
                                   const auto file = chooser.getResult();
                                   if (file != juce::File{})
                                       processor_.getCaptureService().requestSave(file);

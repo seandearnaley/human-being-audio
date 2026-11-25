@@ -11,8 +11,8 @@ std::optional<PresetData> parsePresetJson(std::string_view json) {
         return std::nullopt;
 
     PresetData data;
-    data.name = root.value("name", std::string{});
-    data.category = root.value("category", std::string{"Snare"});
+    data.name = hba::core::jsonStringOr(root, "name", {});
+    data.category = hba::core::jsonStringOr(root, "category", "Snare");
 
     const auto& paramsObj = root.contains("params") && root["params"].is_object() ? root["params"] : root;
     for (const auto& [key, val] : paramsObj.items()) {

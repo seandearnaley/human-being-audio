@@ -178,12 +178,13 @@ class Engine {
     hba::dsp::SvfState filterL_, filterR_;
     hba::dsp::SvfState filter2L_, filter2R_;
 
-    // Fixed-capacity upper-band Stereo Ensemble / Dimension chorus (zero heap allocation!)
-    static constexpr int kSpaceBufMask = 4095;
+    // Fixed-capacity upper-band Stereo Ensemble / Dimension chorus (zero heap allocation, supports up to 192 kHz!)
+    static constexpr int kSpaceBufMask = 8191;
     static constexpr int kSpaceBufSize = kSpaceBufMask + 1;
     std::array<double, kSpaceBufSize> spaceBufL_{};
     std::array<double, kSpaceBufSize> spaceBufR_{};
     int spaceWritePos_ = 0;
+    int silentTailSamples_ = 0;
     double spaceLfo1_ = 0.0;
     double spaceLfo2_ = 0.33;
     double spaceLfo3_ = 0.67;

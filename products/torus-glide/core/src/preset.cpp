@@ -26,7 +26,7 @@ std::optional<SceneMatrix> readMatrixJsonValue(const hba::core::Json& value) {
     if (scenes.size() != static_cast<std::size_t>(kSceneCount))
         return std::nullopt;
     SceneMatrix m;
-    m.isCustom = value.value("custom", true);
+    m.isCustom = hba::core::jsonBoolOr(value, "custom", true);
     for (std::size_t s = 0; s < static_cast<std::size_t>(kSceneCount); ++s) {
         if (!scenes[s].is_array() || scenes[s].size() != static_cast<std::size_t>(kVoiceCount))
             return std::nullopt;
@@ -46,8 +46,8 @@ std::optional<PresetData> parsePresetJson(std::string_view json) {
         return std::nullopt;
 
     PresetData data;
-    data.name = root.value("name", std::string{});
-    data.category = root.value("category", std::string{"General"});
+    data.name = hba::core::jsonStringOr(root, "name", {});
+    data.category = hba::core::jsonStringOr(root, "category", "General");
 
     const auto& paramsObj = root.contains("params") && root["params"].is_object() ? root["params"] : root;
     for (const auto& [key, val] : paramsObj.items()) {

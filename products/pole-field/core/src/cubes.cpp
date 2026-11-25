@@ -1344,6 +1344,8 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
     const std::size_t winLen = std::min(targetWin, monoSamples.size());
     const std::size_t hop = std::max<std::size_t>(1, winLen / 4);
 
+    const auto safeSample = [](float s) { return std::isfinite(s) ? static_cast<double>(s) : 0.0; };
+
     // Pick highest sustained tonal energy frame (penalising sharp transient clicks via crest factor).
     std::size_t bestStart = 0;
     double bestScore = 0.0;
@@ -1352,13 +1354,13 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
     for (std::size_t start = 0; start + winLen <= monoSamples.size(); start += hop) {
         double mean = 0.0;
         for (std::size_t i = 0; i < winLen; ++i)
-            mean += static_cast<double>(monoSamples[start + i]);
+            mean += safeSample(monoSamples[start + i]);
         mean /= static_cast<double>(winLen);
 
         double energy = 0.0;
         double peak = 0.0;
         for (std::size_t i = 0; i < winLen; ++i) {
-            const double v = static_cast<double>(monoSamples[start + i]) - mean;
+            const double v = safeSample(monoSamples[start + i]) - mean;
             energy += v * v;
             peak = std::max(peak, std::abs(v));
         }
@@ -1386,7 +1388,7 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
     // Remove DC offset and anti-alias filter before decimation (with short pre-roll if available).
     double frameMean = 0.0;
     for (std::size_t i = 0; i < winLen; ++i)
-        frameMean += static_cast<double>(monoSamples[bestStart + i]);
+        frameMean += safeSample(monoSamples[bestStart + i]);
     frameMean /= static_cast<double>(winLen);
 
     const std::size_t n = winLen / static_cast<std::size_t>(decim);
@@ -1398,12 +1400,12 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
         const auto aaCoefs = hba::dsp::butterworth(0.42 * effFs, sampleRate);
         const std::size_t preRoll = std::min<std::size_t>(bestStart, static_cast<std::size_t>(decim) * 16);
         for (std::size_t i = 0; i < preRoll; ++i)
-            (void)aaLp.process(aaCoefs, static_cast<double>(monoSamples[bestStart - preRoll + i]) - frameMean);
+            (void)aaLp.process(aaCoefs, safeSample(monoSamples[bestStart - preRoll + i]) - frameMean);
         for (std::size_t i = 0; i < n; ++i) {
             double sample = 0.0;
             for (int d = 0; d < decim; ++d) {
                 const double raw =
-                    static_cast<double>(
+                    safeSample(
                         monoSamples[bestStart + i * static_cast<std::size_t>(decim) + static_cast<std::size_t>(d)]) -
                     frameMean;
                 sample = aaLp.process(aaCoefs, raw);
@@ -1412,7 +1414,7 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
         }
     } else {
         for (std::size_t i = 0; i < n; ++i)
-            decimated[i] = static_cast<double>(monoSamples[bestStart + i]) - frameMean;
+            decimated[i] = safeSample(monoSamples[bestStart + i]) - frameMean;
     }
 
     // Gentle pre-emphasis + Hann window.
@@ -1492,11 +1494,11 @@ CornerSpec imprintFromAudio(std::span<const float> monoSamples, double sampleRat
     std::vector<Extracted> poles;
     poles.reserve(kNumStages);
     for (const C& r : roots) {
-        if (r.imag() <= 1.0e-3)
+        if (!std::isfinite(r.real()) || !std::isfinite(r.imag()) || r.imag() <= 1.0e-3)
             continue;
         const double radius = std::clamp(std::abs(r), 0.25, 0.992);
         const double theta = std::arg(r);
-        if (theta < 0.012 || theta > kPi * 0.95)
+        if (!std::isfinite(theta) || theta < 0.012 || theta > kPi * 0.95)
             continue;
         const double hz = std::clamp(theta * effFs / (2.0 * kPi), 55.0, 14000.0);
         const double bw = std::max(18.0, -std::log(radius) * effFs / kPi);
