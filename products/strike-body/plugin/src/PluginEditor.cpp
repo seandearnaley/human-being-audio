@@ -54,7 +54,7 @@ void PluginEditor::AboutPage::paint(juce::Graphics& g) {
     g.drawFittedText(
         "Three phase-locked synthesis layers — Fundamental Pitch-Drop Body, 24-Mode Nonlinear Tensioned Modal Shell, "
         "and Transient-Ducked Wire & Click — aligned with a live 40 ms Transient Microscope, Auto Phase-Align solver, "
-        "8-stage Micro-Disperser, HIIR oversampled ADAA2 clipping, and one-click key-tagged WAV bounce.",
+        "16-stage Disperser, HIIR oversampled ADAA2 clipping, and one-click key-tagged WAV bounce.",
         body.removeFromTop(96).withWidth(juce::jmin(540.0f, body.getWidth())).toNearestInt(),
         juce::Justification::topLeft, 5);
 }

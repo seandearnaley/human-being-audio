@@ -566,6 +566,57 @@ async function startStage() {
     };
   });
 
+  /* ---- Membrane: tensioned Chladni drumhead with standing-wave Bessel ripples (Strike Body) ---- */
+  defineForm('membrane', ({ group, solid, wireOpacity, accent }) => {
+    const amber = vec3(1.0, 0.42, 0.16);
+    const cyan = vec3(0.11, 0.91, 1.0);
+    const headGeo = new THREE.CylinderGeometry(1.18, 1.18, 0.12, 96, 1, false);
+    const chladni = Fn(() => {
+      const r = TSL.length(positionGeometry.xz);
+      const a = atan(positionGeometry.z, positionGeometry.x);
+      const kr = mix(float(5.5), float(13.5), U.formant);
+      const m = floor(mix(float(2.0), float(6.0), U.slice));
+      const wave = cos(r.mul(kr).sub(U.time.mul(1.8))).mul(cos(a.mul(m).add(U.time.mul(0.35))));
+      const shock = sin(r.mul(14.0).sub(U.hit.mul(10.0))).mul(U.hit).mul(0.28);
+      const rimFade = smoothstep(float(1.18), float(0.15), r);
+      const disp = wave.mul(mix(float(0.05), float(0.19), U.open)).add(shock).mul(rimFade);
+      return disp;
+    })();
+    const pos = deform(positionLocal.add(vec3(0, chladni, 0)));
+    const { mask, edge } = crystal(solid, vec3(2.4));
+    const mat = glassMaterial({ color: 0x1a1e2e, metalness: 0.86, roughness: 0.12 });
+    mat.positionNode = pos;
+    mat.opacityNode = mask; mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(220, 840);
+    mat.emissiveNode = amber.mul(abs(chladni).mul(4.5)).add(accent.mul(edge.mul(3.2))).add(cyan.mul(U.hit.mul(0.9)));
+    const head = new THREE.Mesh(headGeo, mat);
+    const headWire = new THREE.Mesh(headGeo, wireMaterial(amber, wireOpacity));
+    headWire.material.positionNode = pos;
+    group.add(head, headWire);
+
+    const ringDefs = [
+      { r: 1.24, tube: 0.032, col: amber },
+      { r: 0.80, tube: 0.018, col: vec3(1.0, 0.74, 0.18) },
+      { r: 0.38, tube: 0.020, col: cyan },
+    ];
+    for (let idx = 0; idx < ringDefs.length; idx++) {
+      const rd = ringDefs[idx];
+      const rg = new THREE.TorusGeometry(rd.r, rd.tube, 14, 128);
+      const rm = new THREE.MeshStandardNodeMaterial({ color: 0x0a0d14, roughness: 0.3, metalness: 0.3 });
+      const rMask = crystal(solid, vec3(4.0 + idx * 1.7));
+      rm.emissiveNode = rd.col.mul(float(1.3).add(U.hit.mul(1.2)));
+      rm.opacityNode = rMask.mask; rm.alphaTest = 0.5;
+      const ringMesh = new THREE.Mesh(rg, rm);
+      ringMesh.rotation.x = Math.PI * 0.5;
+      ringMesh.position.y = 0.08 + idx * 0.03;
+      group.add(ringMesh);
+    }
+    group.rotation.x = 0.52;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.12;
+    };
+  });
+
   /* ---- floor rings: a faint polar grid (the gallery plinth) ---- */
   const gridColor = uniform(new THREE.Color());
   {

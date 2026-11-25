@@ -33,6 +33,7 @@ def plan_checks(products, changes):
         "pole-field": "pole-field",
         "cutline": "cutline",
         "torus-glide": "torus-glide",
+        "strike-body": "strike-body",
     }
     windows = [p for p in native if p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []

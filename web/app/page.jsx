@@ -6,6 +6,7 @@ import tractImage from "../../products/tract-form/press/screenshots/tract-form-i
 import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
 import cutlineImage from "../../products/cutline/press/screenshots/cutline-interface.png";
 import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-glide-interface.png";
+import strikeBodyImage from "../../products/strike-body/press/screenshots/strike-body-interface.png";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
 import ShowcasePlayer from "./ShowcasePlayer";
@@ -132,6 +133,30 @@ const products = {
       ],
     ],
     credits: "Includes 28 factory presets, two drawable movement lanes, Undo/Redo and A/B compare.",
+  },
+  "strike-body": {
+    kind: "Percussion synth",
+    hue: 24,
+    bpm: 172,
+    form: "membrane",
+    image: strikeBodyImage,
+    alt: "Strike Body’s 40 ms Transient Microscope, glowing interactive Chladni modal drumhead, six performance macro dials, Quick-Start Archetypes, Mutate pad, and four-column percussion rack",
+    body: "Synthesize phase-locked neuro snares, kicks, claps, metallic anvils and chromatic toms from three coupled layers: a pitch-whip Fundamental Body, a 24-mode nonlinear tensioned Modal Shell, and transient-ducked Wire & Click.",
+    features: [
+      [
+        "40 ms Microscope & Grid-Locked Auto-Align",
+        "Inspect latency-compensated Body, Shell, Wire and Sum waveforms live over the first 40 ms. Drag across the scope to scrub alignment and start phase, or hit Auto-Align to maximize constructive transient summation at 0.00 ms grid drift.",
+      ],
+      [
+        "24-Mode Nonlinear Shell & 6 Mallet Exciters",
+        "Tap or drag the Chladni drumhead across six physical geometries (Snare Shell, Kirchhoff Plate, Drumhead, Metallic Bar, Hollow Pipe, Glass Bell) and six mallets (Wood Stick, Hard Felt, Metal Hammer, Rim Flam, Skin Thump, Laser Snap).",
+      ],
+      [
+        "16-Stage Series Disperser, Macros & Drag .wav",
+        "Shape transients with a flat-magnitude 16-stage series allpass Disperser, Tone Scoop, stereo Studio Room, HIIR oversampled ADAA2 clipping, six automatable macros, Smart Mutate and sample-0 key-tagged one-shot .wav drag.",
+      ],
+    ],
+    credits: "Includes 24 factory presets, six Quick-Start Archetypes, Mutate, Undo/Redo and A/B compare.",
   },
 };
 const platforms = {
@@ -342,7 +367,7 @@ export default async function Page() {
                 Close your host and open the signed, notarized PKG. It installs
                 the Audio Unit (Audio Unit Music Effect for Livecut Redux, Audio
                 Unit MIDI FX for Cutline) and VST3 in the system Audio Plug-Ins
-                folder and the standalone in Applications. All four plugins
+                folder and the standalone in Applications. All six plugins
                 require macOS 12 or later and contain universal Apple Silicon
                 and Intel binaries.
                 <p>

@@ -22,12 +22,15 @@ set(CL_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(CL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TG_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(TG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SB_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
+set(SB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${STUDIO_ROOT}/products/livecut-redux" livecut EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/tract-form" tract EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/pole-field" pole EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/cutline" cutline EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/torus-glide" torus EXCLUDE_FROM_ALL)
+add_subdirectory("${STUDIO_ROOT}/products/strike-body" strikebody EXCLUDE_FROM_ALL)
 
 add_executable(studio-showcase render_showcase.cpp)
 target_link_libraries(studio-showcase PRIVATE
@@ -36,6 +39,7 @@ target_link_libraries(studio-showcase PRIVATE
     pf_engine
     cl_engine
     tg_engine
+    sb_engine
     hba_dsp
     nlohmann_json::nlohmann_json
 )

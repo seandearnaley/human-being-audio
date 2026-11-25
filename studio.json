@@ -42,6 +42,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Trgl",
       "license": "AGPL-3.0-or-later"
+    },
+    "strike-body": {
+      "name": "Strike Body",
+      "artifacts": "plugin/StrikeBody_artefacts/Release",
+      "bundle": "com.humanbeingmusic.strikebody",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Stbd",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

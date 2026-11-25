@@ -16,4 +16,10 @@ if(SB_BUILD_TESTS)
         target_link_libraries(sb_plugin_tests PRIVATE StrikeBody Catch2::Catch2WithMain sb_warnings)
         catch_discover_tests(sb_plugin_tests DISCOVERY_MODE PRE_TEST)
     endif()
+
+    if(SB_BUILD_PLUGIN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME strike-body-editor-renders
+            COMMAND /usr/bin/python3 "${PROJECT_SOURCE_DIR}/../../factory/release/standalone-linux.py"
+                    "$<TARGET_FILE:StrikeBody_Standalone>")
+    endif()
 endif()
