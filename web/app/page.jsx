@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import studio from "../../studio.json";
 import livecutImage from "../../products/livecut-redux/docs/editor.png";
 import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
@@ -7,6 +8,7 @@ import cutlineImage from "../../products/cutline/press/screenshots/cutline-inter
 import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-glide-interface.png";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
+import ShowcasePlayer from "./ShowcasePlayer";
 
 export const revalidate = 60;
 const products = {
@@ -161,25 +163,7 @@ function Product({ slug, release, unavailable }) {
           sizes="(max-width: 800px) 93vw, 550px"
           className="studio-interface"
         />
-        <figure className="studio-audio">
-          <figcaption>
-            {slug === "livecut-redux"
-              ? "Hear Rush on a drum loop"
-              : slug === "pole-field"
-                ? "Hear Neuro Chew on a bassline"
-                : slug === "cutline"
-                  ? "Hear Neuro Whip at 172 BPM"
-                  : slug === "torus-glide"
-                    ? "Hear Mobius Neuro Notch Bass at 172 BPM"
-                    : "Hear Tract Form on MIDI note 29"}
-          </figcaption>
-          <audio
-            controls
-            preload="none"
-            aria-label={product.name + " audio example"}
-            src={"/audio/" + slug + ".flac"}
-          />
-        </figure>
+        <ShowcasePlayer slug={slug} productName={product.name} hue={detail.hue} />
         <p className="studio-facts">{detail.credits}</p>
         <p className="mono studio-facts">
           {product.license} · VST3 · Audio Unit on Mac · Standalone
@@ -232,9 +216,14 @@ function Product({ slug, release, unavailable }) {
               : "A packaged studio release has yet to be published."}
           </p>
         )}
-        <a href={studio.repository + "/tree/main/products/" + slug}>
-          Source and build instructions ↗
-        </a>
+        <div className="studio-actions" style={{ gap: "0.75rem 1.25rem", alignItems: "center" }}>
+          <a href={studio.repository + "/tree/main/products/" + slug}>
+            Source and build instructions ↗
+          </a>
+          {slug === "pole-field" && (
+            <Link href="/learn/pole-field">Interactive DSP Field Guide →</Link>
+          )}
+        </div>
       </div>
     </article>
   );

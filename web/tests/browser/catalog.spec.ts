@@ -87,19 +87,49 @@ test("browse the studio products, inspect images and open install notes", async 
   }
   expect(errors).toEqual([]);
 });
-test("all examples decode and play only on request", async ({ page }) => {
+test("all showcase decks decode, switch tracks, and play exclusively on request", async ({
+  page,
+}) => {
   await page.goto("/");
+  const decks = page.locator("figure[data-showcase]");
+  await expect(decks).toHaveCount(5);
+  await expect(page.locator(".showcase__track")).toHaveCount(30);
+
   const examples = page.locator("audio");
   await expect(examples).toHaveCount(5);
   for (const example of await examples.all()) {
+    await expect(example).toHaveAttribute("preload", "none");
     expect(await example.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
     const duration = await example.evaluate(async (el: HTMLAudioElement) => {
       await el.play();
       el.pause();
       return el.duration;
     });
-    expect(duration).toBeCloseTo(3, 2);
+    expect(duration).toBeGreaterThan(4.5);
+    expect(duration).toBeLessThan(15);
   }
+
+  // Switch track inside Tract Form and verify src + active title + exclusive playback
+  const tractDeck = page.locator('figure[data-showcase="tract-form"]');
+  const poleDeck = page.locator('figure[data-showcase="pole-field"]');
+  await tractDeck.locator(".showcase__track").nth(1).click();
+  await expect(tractDeck.locator(".showcase__title")).toHaveText("Acid Snap Sequence");
+  await expect(tractDeck.locator("audio")).toHaveAttribute(
+    "src",
+    "/audio/tract-form/02-acid-snap-sequence.mp3",
+  );
+  await expect(tractDeck).toHaveAttribute("data-playing", "true");
+
+  // Starting Pole Field automatically pauses Tract Form
+  await poleDeck.locator(".showcase__play").click();
+  await expect(poleDeck).toHaveAttribute("data-playing", "true");
+  await expect(tractDeck).toHaveAttribute("data-playing", "false");
+
+  // Pause Pole Field via its toggling Pause button (no aria-pressed on label-toggling play/pause)
+  const polePlayBtn = poleDeck.locator(".showcase__play");
+  await expect(polePlayBtn).not.toHaveAttribute("aria-pressed");
+  await polePlayBtn.click();
+  await expect(poleDeck).toHaveAttribute("data-playing", "false");
 });
 
 test("the sculpture responds to keyboard controls", async ({ page }) => {
@@ -123,6 +153,8 @@ test("catalogue and navigation work without JavaScript", async ({
   const page = await context.newPage();
   await page.goto(baseURL!);
   await expect(page.locator("article[data-plugin]")).toHaveCount(5);
+  await expect(page.locator("audio[controls]")).toHaveCount(5);
+  await expect(page.locator("audio[controls]").first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Source and build instructions" }),
   ).toHaveCount(5);

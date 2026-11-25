@@ -2,4 +2,5 @@
 /.cache/clangd/
 /.ccache/
 /.cpm-cache/
+/factory/showcase/build/
 __pycache__/

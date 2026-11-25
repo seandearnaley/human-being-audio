@@ -13,14 +13,19 @@
   - `tract-form` — Sub-locked neuro bass synthesizer (JUCE 9 + Visage 1.0)
   - `pole-field` — 14-pole Z-plane morphing filterbank (JUCE 9 + Visage 1.0)
   - `cutline` — Expressive phrase grammar, microtiming & MPE/CC MIDI articulator (JUCE 9 + Visage 1.0)
+  - `torus-glide` — Bar-locked Shepard-Risset & polyphonic chord-bend pitch-manifold synth (JUCE 9 + Visage 1.0)
   - `livecut-redux` — Breakbeat & spectral live slicer (JUCE)
 - `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), and CI/quality tooling (`factory/quality/`).
-- `web/`: Astro + React website (`https://humanbeingaudio.com`).
+- `web/`: Next.js + React website (`https://humanbeingaudio.com`).
 
 ## Real-Time Audio Safety & Compiler Rules
 - Every engine `process()` path MUST be zero-allocation, lock-free, syscall-free, and pass Clang `-Wfunction-effects -Werror=function-effects` (`[[clang::nonblocking]]`) plus RealtimeSanitizer (`cmake --workflow --preset rtsan`).
 - Studio targets compile with `-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror`.
 - Processor owns Undo/Redo & A/B `hba::studio::History` so history persists across closing/reopening the editor.
+
+## Listening & Audio Spot-Checks
+- The `read_file` tool supports native audio understanding on `.wav` (`audio/wav`) and `.mp3` (`audio/mpeg`) files (`.flac` is not supported — convert to a temporary `.wav` in the scratch folder with `ffmpeg` if checking a `.flac` demo).
+- When designing or significantly tuning DSP, voicing filters/saturators, crafting presets, or updating web audio demos, feel free to render a short `.wav` via the product's CLI renderer (e.g. `tg-render`) and listen with `read_file` to catch harshness, clicks, mud, or musical balance issues alongside quantitative DSP checks. Use pragmatically where ears help — skip for routine refactors or non-audio work.
 
 ## Common Developer Commands
 ```bash
