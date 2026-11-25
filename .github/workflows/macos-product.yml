@@ -19,15 +19,14 @@ env:
   CCACHE_COMPRESS: 'true'
   CCACHE_MAXSIZE: 500M
 
-defaults:
-  run:
-    working-directory: products/${{ inputs.product }}
-
 jobs:
   engine:
     name: ${{ inputs.product }} · macOS engine
     runs-on: macos-26
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: products/${{ inputs.product }}
     steps:
       - uses: actions/checkout@v7
       - run: brew install ninja ccache
@@ -49,6 +48,9 @@ jobs:
     name: ${{ inputs.product }} · macOS plugin
     runs-on: macos-26
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: products/${{ inputs.product }}
     steps:
       - uses: actions/checkout@v7
       - run: brew install ninja ccache
