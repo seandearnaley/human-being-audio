@@ -1,0 +1,365 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#pragma once
+
+#include "sb/modal_models.h"
+#include "sb/params.h"
+
+#include <hba/dsp/adaa.h>
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
+#include <hba/dsp/limiter.h>
+#include <hba/dsp/nonblocking.h>
+#include <hba/dsp/oversampling.h>
+#include <hba/dsp/svf.h>
+
+#include <array>
+#include <cstdint>
+
+namespace sb {
+
+inline constexpr int kMaxVoices = 4;
+inline constexpr int kDisperserPairs = 8; // 8 matched pairs = 16 flat-magnitude 1st-order allpass stages!
+
+struct TelemetrySnapshot {
+    // 40 ms Latency-Compensated Transient Microscope curves (256 samples across 0..40 ms)
+    std::array<float, kScopeSamples> bodyWave{};
+    std::array<float, kScopeSamples> shellWave{};
+    std::array<float, kScopeSamples> wireWave{};
+    std::array<float, kScopeSamples> sumWave{};
+    float scopePeak = 1.0f;
+
+    // Live 24-mode instantaneous amplitudes & normalized ratios for Chladni-ring visualizer
+    std::array<float, kModeCount> modeEnergy{};
+    std::array<float, kModeCount> modeRadial{};
+    std::array<int, kModeCount> modeAngular{};
+
+    float peakL = 0.0f;
+    float peakR = 0.0f;
+    float peakDb = -60.0f;
+    float crestDb = 0.0f;
+    float phaseLockPct = 100.0f; // 0..100% constructive transient summation lock
+    float gainReductionDb = 0.0f;
+    float lastFundamentalHz = 185.0f;
+    float lastVelocity = 1.0f;
+    int lastArticulation = 0;
+    std::uint32_t triggerCount = 0;
+    bool active = false;
+};
+
+struct AlignResult {
+    float bodyPhaseDeg = 90.0f;
+    float shellOffsetMs = 0.0f;
+    bool shellInvert = false;
+    float wireOffsetMs = 0.0f;
+    bool wireInvert = false;
+    float beforeLockPct = 0.0f;
+    float afterLockPct = 0.0f;
+};
+
+class Engine {
+  public:
+    Engine() = default;
+
+    // Allocates / prepares buffers. Call off the audio thread.
+    void prepare(double sampleRate, int maxBlockSize, int oversamplingFactor = 4);
+    void reset() noexcept HBA_NONBLOCKING;
+    int latencySamples() const noexcept HBA_NONBLOCKING;
+
+    // Trigger via explicit articulation (from UI pads or tests) or MIDI note.
+    void trigger(Articulation art, float velocity = 1.0f, float pitchRatio = 1.0f) noexcept HBA_NONBLOCKING;
+    void noteOn(int midiNote, float velocity, const Params& params) noexcept HBA_NONBLOCKING;
+    void noteOff(int midiNote) noexcept HBA_NONBLOCKING;
+    void allNotesOff() noexcept HBA_NONBLOCKING;
+
+    void process(const Params& params, float* outL, float* outR, int numSamples) noexcept HBA_NONBLOCKING;
+
+    const TelemetrySnapshot& telemetry() const noexcept HBA_NONBLOCKING { return telemetry_; }
+
+  private:
+    struct ModeOsc {
+        double re = 0.0;
+        double im = 0.0;
+        double baseFreqHz = 200.0;
+        double cosW = 1.0;
+        double sinW = 0.0;
+        double decayCoef = 0.999;
+        double gainL = 0.0;
+        double gainR = 0.0;
+        double excWeight = 0.0;
+    };
+
+    struct DelayBuf {
+        static constexpr int kSize = 1024;
+        static constexpr int kMask = kSize - 1;
+        std::array<double, kSize> buf{};
+        int wp = 0;
+
+        void reset() noexcept HBA_NONBLOCKING {
+            buf.fill(0.0);
+            wp = 0;
+        }
+        void push(double x) noexcept HBA_NONBLOCKING {
+            buf[static_cast<std::size_t>(wp)] = x;
+            wp = (wp + 1) & kMask;
+        }
+        double readFrac(double delaySamples) const noexcept HBA_NONBLOCKING {
+            const double d = std::clamp(delaySamples, 0.0, static_cast<double>(kSize - 4));
+            const int dInt = static_cast<int>(d);
+            const double frac = d - static_cast<double>(dInt);
+            const int i0 = (wp - 1 - dInt) & kMask;
+            const int i1 = (i0 - 1) & kMask;
+            return buf[static_cast<std::size_t>(i0)] * (1.0 - frac) + buf[static_cast<std::size_t>(i1)] * frac;
+        }
+        double readInt(int delaySamples) const noexcept HBA_NONBLOCKING {
+            const int d = std::clamp(delaySamples, 0, kSize - 2);
+            return buf[static_cast<std::size_t>((wp - 1 - d) & kMask)];
+        }
+    };
+
+    // Matched 1st-order allpass pair: H(z) = [(-c + z^-1)/(1 - c z^-1)]^2
+    // Exact |H(e^jw)| == 1.000 at ALL frequencies, +1 at DC and +1 at Nyquist!
+    struct AllpassPair {
+        double z1 = 0.0;
+        double z2 = 0.0;
+        double c = 0.0;
+
+        void reset() noexcept HBA_NONBLOCKING { z1 = z2 = 0.0; }
+        void setFreq(double hz, double sr) noexcept HBA_NONBLOCKING {
+            const double f = std::clamp(hz, 30.0, 0.46 * sr);
+            const double t = std::tan(hba::dsp::kPi * f / sr);
+            c = std::clamp((1.0 - t) / (1.0 + t), -0.985, 0.995);
+        }
+        double process(double x) noexcept HBA_NONBLOCKING {
+            const double y1 = -c * x + z1;
+            z1 = x + c * y1;
+            const double y2 = -c * y1 + z2;
+            z2 = y1 + c * y2;
+            return y2;
+        }
+    };
+
+    // Lightweight zero-alloc biquad for Tone Scoop (380 Hz bell + 6.2 kHz shelf)
+    struct Biquad {
+        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
+        double z1 = 0.0, z2 = 0.0;
+
+        void reset() noexcept HBA_NONBLOCKING { z1 = z2 = 0.0; }
+        void setPeak(double hz, double q, double gainDb, double sr) noexcept HBA_NONBLOCKING {
+            const double A = std::pow(10.0, gainDb / 40.0);
+            const double w0 = hba::dsp::kTwoPi * std::clamp(hz, 40.0, 0.44 * sr) / sr;
+            const double cosW = std::cos(w0);
+            const double alpha = std::sin(w0) / (2.0 * std::max(0.25, q));
+            const double invA0 = 1.0 / (1.0 + alpha / A);
+            b0 = (1.0 + alpha * A) * invA0;
+            b1 = (-2.0 * cosW) * invA0;
+            b2 = (1.0 - alpha * A) * invA0;
+            a1 = b1;
+            a2 = (1.0 - alpha / A) * invA0;
+        }
+        void setHighShelf(double hz, double slope, double gainDb, double sr) noexcept HBA_NONBLOCKING {
+            const double A = std::pow(10.0, gainDb / 40.0);
+            const double w0 = hba::dsp::kTwoPi * std::clamp(hz, 200.0, 0.44 * sr) / sr;
+            const double cosW = std::cos(w0);
+            const double sinW = std::sin(w0);
+            const double alpha =
+                0.5 * sinW * std::sqrt(std::max(0.01, (A + 1.0 / A) * (1.0 / std::max(0.2, slope) - 1.0) + 2.0));
+            const double twoSqrtA = 2.0 * std::sqrt(A) * alpha;
+            const double invA0 = 1.0 / ((A + 1.0) - (A - 1.0) * cosW + twoSqrtA);
+            b0 = A * ((A + 1.0) + (A - 1.0) * cosW + twoSqrtA) * invA0;
+            b1 = -2.0 * A * ((A - 1.0) + (A + 1.0) * cosW) * invA0;
+            b2 = A * ((A + 1.0) + (A - 1.0) * cosW - twoSqrtA) * invA0;
+            a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cosW) * invA0;
+            a2 = ((A + 1.0) - (A - 1.0) * cosW - twoSqrtA) * invA0;
+        }
+        double process(double x) noexcept HBA_NONBLOCKING {
+            const double y = b0 * x + z1;
+            z1 = b1 * x - a1 * y + z2;
+            z2 = b2 * x - a2 * y;
+            return y;
+        }
+    };
+
+    // Tight zero-alloc 4-line Hadamard Stereo Early-Reflection Micro-Room (8-35 ms)
+    struct MicroRoom {
+        static constexpr int kLineSize = 4096; // > 42 ms even at 96 kHz
+        static constexpr int kLineMask = kLineSize - 1;
+        std::array<std::array<double, kLineSize>, 4> lines{};
+        std::array<int, 4> wp{};
+        std::array<int, 4> lens{397, 659, 1013, 1531};
+        std::array<double, 4> lpState{};
+        double hpZ1L = 0.0, hpX1L = 0.0;
+        double hpZ1R = 0.0, hpX1R = 0.0;
+        double hpCoef = 0.97;
+        double lpCoef = 0.35;
+
+        void prepare(double sr) noexcept HBA_NONBLOCKING {
+            const double s = sr / 48000.0;
+            lens[0] = std::clamp(static_cast<int>(std::lround(397.0 * s)), 64, kLineSize - 8);   // ~8.3 ms
+            lens[1] = std::clamp(static_cast<int>(std::lround(659.0 * s)), 96, kLineSize - 8);   // ~13.7 ms
+            lens[2] = std::clamp(static_cast<int>(std::lround(1013.0 * s)), 128, kLineSize - 8); // ~21.1 ms
+            lens[3] = std::clamp(static_cast<int>(std::lround(1531.0 * s)), 160, kLineSize - 8); // ~31.9 ms
+            hpCoef = std::exp(-hba::dsp::kTwoPi * 220.0 / sr);
+            lpCoef = std::clamp(1.0 - std::exp(-hba::dsp::kTwoPi * 7200.0 / sr), 0.05, 0.95);
+            reset();
+        }
+        void reset() noexcept HBA_NONBLOCKING {
+            for (auto& ln : lines)
+                ln.fill(0.0);
+            wp.fill(0);
+            lpState.fill(0.0);
+            hpZ1L = hpX1L = hpZ1R = hpX1R = 0.0;
+        }
+        void process(double inL, double inR, double amt, double fb, double& outL,
+                     double& outR) noexcept HBA_NONBLOCKING {
+            // High-pass input at 220 Hz so sub-bass stays pure, dry, and phase-locked!
+            const double hiL = hpCoef * (hpZ1L + inL - hpX1L);
+            hpX1L = inL;
+            hpZ1L = hiL;
+            const double hiR = hpCoef * (hpZ1R + inR - hpX1R);
+            hpX1R = inR;
+            hpZ1R = hiR;
+
+            std::array<double, 4> d{};
+            for (int k = 0; k < 4; ++k) {
+                const auto ki = static_cast<std::size_t>(k);
+                const int rp = (wp[ki] - lens[ki]) & kLineMask;
+                const double raw = lines[ki][static_cast<std::size_t>(rp)];
+                lpState[ki] += lpCoef * (raw - lpState[ki]);
+                d[ki] = lpState[ki];
+            }
+
+            // Orthogonal 4x4 Hadamard diffusion matrix (energy-preserving)
+            const double h0 = 0.5 * (d[0] + d[1] + d[2] + d[3]);
+            const double h1 = 0.5 * (d[0] - d[1] + d[2] - d[3]);
+            const double h2 = 0.5 * (d[0] + d[1] - d[2] - d[3]);
+            const double h3 = 0.5 * (d[0] - d[1] - d[2] + d[3]);
+
+            const double injL = hiL * 0.52;
+            const double injR = hiR * 0.52;
+            const std::array<double, 4> next{injL + fb * h0, injR + fb * h1, injL + fb * h2, injR + fb * h3};
+            for (int k = 0; k < 4; ++k) {
+                const auto ki = static_cast<std::size_t>(k);
+                lines[ki][static_cast<std::size_t>(wp[ki])] = next[ki];
+                wp[ki] = (wp[ki] + 1) & kLineMask;
+            }
+
+            const double wetL = (d[0] + 0.72 * d[2] - 0.35 * d[1]) * amt * 0.58;
+            const double wetR = (d[1] + 0.72 * d[3] - 0.35 * d[0]) * amt * 0.58;
+            outL = inL + wetL;
+            outR = inR + wetR;
+        }
+    };
+
+    struct Voice {
+        bool active = false;
+        int midiNote = -1;
+        Articulation art = Articulation::main;
+        double velocity = 1.0;
+        double pitchRatio = 1.0;
+        double ageSamples = 0.0;
+        double fadeOutGain = 1.0;
+        double bodyFadeGain = 1.0;
+        bool stealing = false;
+        bool bodyStealing = false;
+
+        // Layer 1: Fundamental Body
+        double bodyPhase = 0.0;
+        double fmPhase = 0.0;
+        double bodyEnv = 0.0;
+        double pitchEnv = 0.0;
+
+        // Layer 2: 24-Mode Nonlinear Tensioned Modal Shell
+        std::array<ModeOsc, kModeCount> modes{};
+        double shellEnergy = 0.0;
+        double malletChirpPhase = 0.0;
+        MalletType malletType = MalletType::woodStick;
+
+        // Layer 3: Transient-Ducked Wire & Click
+        std::uint32_t rngL = 0x12345678u;
+        std::uint32_t rngR = 0x9e3779b9u;
+        double wireEnv = 0.0;
+        double clickEnv = 0.0;
+        double duckEnv = 0.0;
+        double crushHoldL = 0.0;
+        double crushHoldR = 0.0;
+        double crushPhase = 0.0;
+        hba::dsp::SvfState wireBpL{}, wireBpR{}, wireHpL{}, wireHpR{}, clickBp{}, malletLp{};
+
+        // Per-voice deterministic variation offsets (0 when humanize == 0)
+        double humPitchMult = 1.0;
+        double humDecayMult = 1.0;
+        double humStrikeOff = 0.0;
+    };
+
+    void startVoice(Voice& v, Articulation art, double vel, double pitchRatio, int midiNote,
+                    const Params& params) noexcept HBA_NONBLOCKING;
+    double nextNoise(std::uint32_t& state) noexcept HBA_NONBLOCKING;
+
+    double sampleRate_ = 48000.0;
+    int maxBlock_ = 512;
+    int oversamplingFactor_ = 4;
+    std::uint32_t triggerSeq_ = 0;
+
+    std::array<Voice, kMaxVoices> voices_{};
+    bool havePendingParams_ = false;
+    Params cachedParams_ = Params::defaults();
+
+    // Alignment micro-delays (stereo L/R for Body, Shell, Wire) + smoothers
+    DelayBuf delBodyL_{}, delBodyR_{};
+    DelayBuf delShellL_{}, delShellR_{};
+    DelayBuf delWireL_{}, delWireR_{};
+    hba::dsp::Smoother bodyDelSmooth_{};
+    hba::dsp::Smoother shellDelSmooth_{};
+    hba::dsp::Smoother wireDelSmooth_{};
+
+    // Latency-matching scope delay lines so BODY/SHELL/WIRE align sample-for-sample with SUM!
+    DelayBuf scopeLatBody_{}, scopeLatShell_{}, scopeLatWire_{};
+
+    // 16-stage (8 matched pairs) 100% Series Flat-Magnitude Allpass Disperser (L/R)
+    std::array<AllpassPair, kDisperserPairs> dispL_{};
+    std::array<AllpassPair, kDisperserPairs> dispR_{};
+
+    // Tone Scoop (380 Hz bell + 6.2 kHz shelf) & Stereo Micro-Room
+    Biquad scoopBellL_{}, scoopBellR_{};
+    Biquad scoopShelfL_{}, scoopShelfR_{};
+    MicroRoom room_{};
+
+    // Shared Studio Oversampler + ADAA2 + Sub-Mono LR4 + DC + Limiter
+    hba::dsp::Oversampler oversamplerL_{};
+    hba::dsp::Oversampler oversamplerR_{};
+    hba::dsp::MultiShaperAdaa2 shaperL_{};
+    hba::dsp::MultiShaperAdaa2 shaperR_{};
+    hba::dsp::Lr4Split subSplitL_{};
+    hba::dsp::Lr4Split subSplitR_{};
+    hba::dsp::DcBlocker dcL_{};
+    hba::dsp::DcBlocker dcR_{};
+    hba::dsp::Limiter limiter_{};
+
+    hba::dsp::Smoother outGainSmooth_{};
+    hba::dsp::Smoother driveSmooth_{};
+
+    // 40 ms Transient Microscope capture state
+    bool capturingScope_ = false;
+    int scopeCaptureSample_ = 0;
+    int scopeTotalSamples_ = 1920; // 40 ms at 48 kHz
+    double scopeRmsSum_ = 0.0;
+    double scopePeakAbs_ = 0.0;
+    double lockBandBodySq_ = 0.0;
+    double lockBandOtherSq_ = 0.0;
+    double lockBandSumSq_ = 0.0;
+    double lockLpBody_ = 0.0;
+    double lockLpOther_ = 0.0;
+    int lockWindowSamples_ = 672; // 14 ms transient lock window
+    std::array<float, kScopeSamples> capBody_{};
+    std::array<float, kScopeSamples> capShell_{};
+    std::array<float, kScopeSamples> capWire_{};
+    std::array<float, kScopeSamples> capSum_{};
+
+    TelemetrySnapshot telemetry_{};
+};
+
+// Offline Auto Phase-Align solver: searches bodyPhase (22.5 deg steps) x grid-locked [0..+3.2 ms] shell/wire offsets
+// x polarity to maximize 0-14 ms low/mid constructive transient summation without delaying Body off the DAW grid!
+AlignResult solveAutoAlign(const Params& baseParams, double sampleRate = 48000.0);
+
+} // namespace sb
