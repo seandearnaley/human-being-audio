@@ -436,7 +436,7 @@ void Engine::process(const Params& params, float* outL, float* outR, int numSamp
     // Micro-offset alignment (+/- 5 ms, smoothed so automation never clicks!)
     const double shellOffMs = std::clamp(static_cast<double>(params.real(ParamId::shellOffsetMs)), -5.0, 5.0);
     const double wireOffMs = std::clamp(static_cast<double>(params.real(ParamId::wireOffsetMs)), -5.0, 5.0);
-    const double minOffMs = std::min({0.0, shellOffMs, wireOffMs});
+    const double minOffMs = std::min(0.0, std::min(shellOffMs, wireOffMs));
     const double targetBodyDel = (0.0 - minOffMs) * 0.001 * sr;
     const double targetShellDel = (shellOffMs - minOffMs) * 0.001 * sr;
     const double targetWireDel = (wireOffMs - minOffMs) * 0.001 * sr;
