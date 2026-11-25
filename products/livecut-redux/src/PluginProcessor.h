@@ -192,6 +192,7 @@ class LivecutAudioProcessor final : public juce::AudioProcessor, private livecut
     std::atomic<float> midiYOverride{-1.0f};
     std::size_t lastWaveformBin = livecut::DisplayState::waveformBins;
     std::size_t lastCutCountBin = 0;
+    std::uint32_t seedRollCounter = 0;
     std::atomic<bool> publishedSpectral{false};
     std::atomic<livecut::ProcessingMode> publishedMode{livecut::ProcessingMode::live};
     std::atomic<ModeState> publishedModeState{ModeState::unprepared};

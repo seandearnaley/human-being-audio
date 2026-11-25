@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace sb {
 
@@ -28,22 +29,23 @@ PluginProcessor::~PluginProcessor() {
 
 void PluginProcessor::seedPreviewTelemetry() {
     const Params params = values_.snapshot();
-    const double sr = sampleRate_ > 8000.0 ? sampleRate_ : 48000.0;
-    Engine preview;
-    preview.prepare(sr, 256, 2);
+    const double curSr = sampleRate_.load(std::memory_order_relaxed);
+    const double sr = curSr > 8000.0 ? curSr : 48000.0;
+    auto preview = std::make_unique<Engine>();
+    preview->prepare(sr, 256, 2);
     std::array<float, 256> l{};
     std::array<float, 256> r{};
-    preview.process(params, l.data(), r.data(), 0);
-    preview.trigger(Articulation::main, 1.0f, 1.0f);
+    preview->process(params, l.data(), r.data(), 0);
+    preview->trigger(Articulation::main, 1.0f, 1.0f);
     // Render 45 ms silently off the audio thread so the 40 ms Transient Microscope is alive on open.
     const int blocks = std::max(1, static_cast<int>(std::ceil(0.045 * sr / 256.0)));
     for (int b = 0; b < blocks; ++b)
-        preview.process(params, l.data(), r.data(), 256);
-    telemetry.publish(preview.telemetry());
+        preview->process(params, l.data(), r.data(), 256);
+    telemetry.publish(preview->telemetry());
 }
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-    sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
+    sampleRate_.store(sampleRate > 8000.0 ? sampleRate : 48000.0, std::memory_order_relaxed);
     blockSize_ = std::max(1, samplesPerBlock);
     monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
     prepareEngine();
@@ -52,7 +54,7 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 void PluginProcessor::prepareEngine() {
     const auto qualityIdx = static_cast<std::size_t>(
         std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
-    engine_.prepare(sampleRate_, blockSize_, kQualityFactors[qualityIdx]);
+    engine_.prepare(sampleRate_.load(std::memory_order_relaxed), blockSize_, kQualityFactors[qualityIdx]);
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -137,9 +139,11 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         audRead_.store(r, std::memory_order_release);
     }
 
-    // Sample-accurate incoming MIDI processing.
+    // Sample-accurate incoming MIDI processing (skip SysEx to prevent audio-thread heap allocations).
     int cursor = 0;
     for (const auto metadata : midi) {
+        if (metadata.numBytes > 3)
+            continue;
         const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
         if (eventSample > cursor) {
             engine_.process(params, left + cursor, right + cursor, eventSample - cursor);

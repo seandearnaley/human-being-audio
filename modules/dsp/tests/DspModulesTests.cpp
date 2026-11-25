@@ -205,11 +205,29 @@ TEST_CASE("hba::dsp::Oversampler and MultiShaperAdaa2 preserve unity passband an
         run(ShaperModel::sine, ShaperModel::fold, static_cast<double>(i) / 100.0, 1, true);
     CHECK(maxJump < 0.06);
 
-    // ScopedFlushDenormals compiles and executes cleanly.
+    // ScopedFlushDenormals flushes subnormals to zero while in scope.
     {
         ScopedFlushDenormals flush;
         const volatile double tiny = 1e-320;
-        CHECK(std::isfinite(static_cast<double>(tiny)));
+        const volatile double one = 1.0;
+        CHECK((tiny * one) == 0.0);
+    }
+
+    // Limiter, SvfCoefs, softClip, and softGuard defend against unprepared/edge inputs.
+    {
+        Limiter unprepared;
+        double l = 0.5, r = -0.5;
+        unprepared.process(l, r, 1.0, 1.0);
+        CHECK(std::isfinite(l));
+        CHECK(std::isfinite(r));
+
+        const auto svfZeroSr = SvfCoefs::make(1000.0, 0.0, 0.0);
+        CHECK(std::isfinite(svfZeroSr.a1));
+        CHECK(std::isfinite(svfZeroSr.a2));
+        CHECK(std::isfinite(svfZeroSr.a3));
+
+        CHECK(std::isfinite(softClip(2.0, 1.0, 1.0)));
+        CHECK(std::isfinite(softGuard(5.0, 4.0, 4.0)));
     }
 }
 

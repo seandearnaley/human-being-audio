@@ -7,7 +7,7 @@ export async function GET() {
     console.error(error);
     return Response.json(
       { error: "Studio release data is unavailable" },
-      { status: 502 },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

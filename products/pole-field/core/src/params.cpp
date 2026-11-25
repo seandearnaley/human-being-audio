@@ -13,6 +13,8 @@ std::optional<ParamId> findParam(std::string_view key) {
 }
 
 float clampToRange(const ParamSpec& spec, float real) {
+    if (!std::isfinite(real))
+        return spec.def;
     const float clamped = std::clamp(real, spec.min, spec.max);
     return spec.kind == ParamKind::continuous ? clamped : std::round(clamped);
 }

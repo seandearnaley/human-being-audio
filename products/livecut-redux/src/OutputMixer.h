@@ -67,6 +67,13 @@ public:
             const auto anchoredR = static_cast<float>(drySubMono + wetHiR);
             left += anchor * (anchoredL - left);
             right += anchor * (anchoredR - right);
+            anchorWasActive = true;
+        } else if (anchorWasActive) {
+            for (auto& s : drySplit)
+                s.reset();
+            for (auto& s : wetSplit)
+                s.reset();
+            anchorWasActive = false;
         }
 
         if (juce::exactlyEqual (wet, 0.0f))
@@ -106,6 +113,7 @@ public:
     float cachedSubHz = -1.0f;
     float lastGrDb = 0.0f;
     bool limiterEnabled = true;
+    bool anchorWasActive = false;
     hba::dsp::SvfCoefs subCoefs{};
     hba::dsp::Lr4Split drySplit[2]{};
     hba::dsp::Lr4Split wetSplit[2]{};

@@ -168,7 +168,7 @@ export default function LearnHubPage() {
       <section className="wrap" aria-labelledby="curriculum-heading">
         <div style={{ marginBlockStart: "var(--space-6)" }}>
           <p className="fg-eyebrow">Curriculum</p>
-          <h2 id="curriculum-heading">Seven Interactive Chapters</h2>
+          <h2 id="curriculum-heading">Studio Field Guide Curriculum</h2>
         </div>
 
         <div className="fg-grid">

@@ -173,6 +173,7 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
     }
     processor_.curves.setAll(snapshot.curves);
     processor_.matrix.set(snapshot.matrix);
+    processor_.resampler.invalidate();
     if (!snapshot.presetName.empty())
         processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;

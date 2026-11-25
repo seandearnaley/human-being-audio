@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <memory>
 
 namespace tg {
 
@@ -61,33 +63,35 @@ std::vector<float> renderOfflineLoop(const RenderRequest& request) {
         std::max(256, static_cast<int>(std::llround(4.0 * secondsPerBeat * sr))); // 1 bar pre-warm
 
     constexpr int kBlock = 256;
-    Engine engine;
-    engine.prepare(sr, kBlock, request.oversampling);
-    engine.setLaneCurves(request.curves);
-    engine.setSceneMatrix(request.matrix);
-    engine.noteOn(std::clamp(request.note, 12, 96), 0.95f);
+    auto engine = std::make_unique<Engine>();
+    engine->prepare(sr, kBlock, request.oversampling);
+    engine->setLaneCurves(request.curves);
+    engine->setSceneMatrix(request.matrix);
+    engine->noteOn(std::clamp(request.note, 12, 96), 0.95f);
 
+    const int latency = std::max(0, engine->latencySamples());
     std::vector<float> bufL(kBlock, 0.0f);
     std::vector<float> bufR(kBlock, 0.0f);
 
-    // Pre-warm from ppq = -4.0 up to 0.0 so bar 1.1 starts in exact steady-state phase & envelope!
+    // Pre-warm from ppq = -4.0 up to 0.0 + latency pre-roll so recorded sample 0 lands on exact bar 1.1!
+    const int totalWarmup = warmupSamples + latency;
     int done = 0;
-    while (done < warmupSamples) {
-        const int n = std::min(kBlock, warmupSamples - done);
+    while (done < totalWarmup) {
+        const int n = std::min(kBlock, totalWarmup - done);
         const double ppq = -4.0 + (static_cast<double>(done) / sr) / secondsPerBeat;
         Transport t{bpm, ppq, true};
-        engine.process(request.params, t, bufL.data(), bufR.data(), n, nullptr);
+        engine->process(request.params, t, bufL.data(), bufR.data(), n, nullptr);
         done += n;
     }
 
-    // Record exact bar-locked loop [0 .. loopBeats)
+    // Record exact bar-locked loop [0 .. loopBeats) (shifted forward by latency so delayed output is aligned)
     std::vector<float> interleaved(static_cast<std::size_t>(loopSamples) * 2u, 0.0f);
     done = 0;
     while (done < loopSamples) {
         const int n = std::min(kBlock, loopSamples - done);
-        const double ppq = (static_cast<double>(done) / sr) / secondsPerBeat;
+        const double ppq = (static_cast<double>(done + latency) / sr) / secondsPerBeat;
         Transport t{bpm, ppq, true};
-        engine.process(request.params, t, bufL.data(), bufR.data(), n, nullptr);
+        engine->process(request.params, t, bufL.data(), bufR.data(), n, nullptr);
         for (int i = 0; i < n; ++i) {
             const auto idx = static_cast<std::size_t>(done + i) * 2u;
             interleaved[idx] = bufL[static_cast<std::size_t>(i)];
@@ -99,23 +103,30 @@ std::vector<float> renderOfflineLoop(const RenderRequest& request) {
 }
 
 bool writeWavFloat(const std::string& path, const std::vector<float>& interleavedStereo, int sampleRate) {
-    std::ofstream f(path, std::ios::binary);
+    const std::filesystem::path fsPath(std::u8string_view(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::ofstream f(fsPath, std::ios::binary);
     if (!f)
         return false;
+    const std::uint32_t sampleFrames = static_cast<std::uint32_t>(interleavedStereo.size() / 2u);
     const std::uint32_t dataBytes = static_cast<std::uint32_t>(interleavedStereo.size() * sizeof(float));
-    const std::uint32_t riffSize = 36u + dataBytes;
+    // Spec-compliant IEEE float WAV: 18-byte fmt chunk (cbSize=0) + mandatory 4-byte fact chunk.
+    const std::uint32_t riffSize = 4u + (8u + 18u) + (8u + 4u) + (8u + dataBytes);
 
     f.write("RIFF", 4);
     writeLe32(f, riffSize);
     f.write("WAVE", 4);
     f.write("fmt ", 4);
-    writeLe32(f, 16u);
+    writeLe32(f, 18u);
     writeLe16(f, 3u); // IEEE float
     writeLe16(f, 2u); // Stereo
     writeLe32(f, static_cast<std::uint32_t>(sampleRate));
     writeLe32(f, static_cast<std::uint32_t>(sampleRate * 2 * 4));
     writeLe16(f, 8u);
     writeLe16(f, 32u);
+    writeLe16(f, 0u); // cbSize = 0
+    f.write("fact", 4);
+    writeLe32(f, 4u);
+    writeLe32(f, sampleFrames);
     f.write("data", 4);
     writeLe32(f, dataBytes);
     f.write(reinterpret_cast<const char*>(interleavedStereo.data()), static_cast<std::streamsize>(dataBytes));
@@ -146,6 +157,8 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
     const bool morphAuto = params.flag(ParamId::morphAuto);
     const double baseMorph = std::clamp(static_cast<double>(params.real(ParamId::morph)) * 0.01, 0.0, 1.0);
     const SpiralChord spiralChord = spiralChordForStack(params.choice(ParamId::spiralStack));
+    const auto spiralDir = static_cast<SpiralDir>(std::clamp(params.choice(ParamId::spiralDir), 0, 2));
+    const double phaseOffset = std::clamp(static_cast<double>(params.real(ParamId::phaseOffset)) * 0.01, 0.0, 1.0);
     const int ratioIdx =
         std::clamp(params.choice(ParamId::spiralRatio), 0, static_cast<int>(kSpiralRatioSemitones.size()) - 1);
     const double ratioSemi = kSpiralRatioSemitones[static_cast<std::size_t>(ratioIdx)];
@@ -180,12 +193,18 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
         const double morph01 = morphAuto ? std::clamp(0.5 * (l1Val + 1.0) * lane1Depth + baseMorph, 0.0, 1.0)
                                          : std::clamp(baseMorph + 0.5 * l1Val * lane1Depth, 0.0, 1.0);
         if (mode == Mode::spiral) {
-            const double fracBar = beats / loopBeats;
+            const double cycleCount = (beats / loopBeats) + phaseOffset;
+            const double barPhase = hba::dsp::frac(cycleCount);
+            double spiralPos = cycleCount;
+            if (spiralDir == SpiralDir::fall)
+                spiralPos = -cycleCount;
+            else if (spiralDir == SpiralDir::pendulum)
+                spiralPos = 0.5 - 0.5 * std::cos(hba::dsp::kTwoPi * barPhase);
             for (int v = 0; v < kVoiceCount; ++v) {
                 const int ci = std::min(v, spiralChord.count - 1);
                 p[static_cast<std::size_t>(v)] = static_cast<double>(rootNote) +
                                                  spiralChord.intervals[static_cast<std::size_t>(ci)] +
-                                                 fracBar * ratioSemi;
+                                                 spiralPos * ratioSemi;
             }
         } else {
             const auto eval = evaluateMorphPitches(matrix, static_cast<double>(rootNote), rootPc, scaleIdx,

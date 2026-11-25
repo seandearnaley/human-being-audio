@@ -17,6 +17,7 @@ namespace tg {
 class Presets {
   public:
     Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, MatrixStore& matrix);
+    ~Presets();
 
     std::vector<ui::PresetEntry> entries() const;
     std::string currentName() const { return currentName_; }
@@ -32,7 +33,8 @@ class Presets {
 
   private:
     void scanPresets();
-    void applyPreset(const PresetData& data, int index);
+    void applyPreset(const PresetData& data, int index, bool notifyHost = true);
+    void syncIndexFromName();
 
     juce::AudioProcessorValueTreeState& state_;
     CurveStore& curves_;
@@ -41,6 +43,7 @@ class Presets {
     int currentIndex_ = 0;
     std::string currentName_;
     std::unique_ptr<juce::FileChooser> chooser_;
+    std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
 };
 
 } // namespace tg

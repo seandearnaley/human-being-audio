@@ -16,9 +16,13 @@ namespace hba::dsp {
 inline constexpr double kSoftClipKnee = 0.8;
 
 inline double softClip(double x, double knee = kSoftClipKnee, double bound = 1.0) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(x))
+        return 0.0;
     const double a = std::abs(x);
     if (a <= knee) return x;
     const double range = bound - knee;
+    if (range <= 1.0e-12)
+        return x < 0.0 ? -bound : bound;
     const double y = knee + range * std::tanh((a - knee) / range);
     return x < 0.0 ? -y : y;
 }
@@ -76,7 +80,7 @@ public:
         pos_ = pos_ + 1 == kWidth ? 0 : pos_ + 1;
         const std::size_t w = static_cast<std::size_t>(pos_);
         float peak = 0.0f;
-        const double in[2] = { left, right };
+        const double in[2] = {std::isfinite(left) ? left : 0.0, std::isfinite(right) ? right : 0.0};
         for (std::size_t c = 0; c < 2; ++c) {
             auto& h = history_[c];
             h[w] = h[w + kWidth] = static_cast<float>(in[c]);
@@ -112,6 +116,10 @@ public:
         index_ = 0;
     }
     double process(double x) noexcept HBA_NONBLOCKING {
+        if (values_.empty() || indices_.empty())
+            return std::isfinite(x) ? x : 1.0;
+        if (!std::isfinite(x))
+            x = 1.0;
         const int capacity = window_ + 1;
         while (count_ > 0) {
             const int back = tail_ == 0 ? capacity - 1 : tail_ - 1;
@@ -146,12 +154,13 @@ public:
     static constexpr std::size_t kMaxDelayed = 4;
 
     void prepare(double sampleRate, double releaseSeconds = kReleaseSeconds) {
-        lookahead_ = std::max(1, static_cast<int>(std::lround(kLookaheadSeconds * sampleRate)));
+        const double sr = std::max(sampleRate, 1.0);
+        lookahead_ = std::max(1, static_cast<int>(std::lround(kLookaheadSeconds * sr)));
         delay_ = lookahead_ - 1 + TruePeakDetector::kDelay;
         for (auto& d : delays_) d.prepare(delay_);
         hold_.prepare(lookahead_);
         box_.assign(static_cast<std::size_t>(lookahead_), 1.0);
-        releaseCoef_ = onePoleCoef(releaseSeconds, 1.0 / sampleRate);
+        releaseCoef_ = onePoleCoef(std::max(releaseSeconds, 1.0e-6), 1.0 / sr);
         reset();
     }
     void reset() noexcept HBA_NONBLOCKING {
@@ -173,7 +182,14 @@ public:
     void process(double& left, double& right, std::array<double, N>& delayed, double ceiling,
                  double amount) noexcept HBA_NONBLOCKING {
         static_assert(N <= kMaxDelayed);
-        const double target = ceiling * marginGain_;
+        if (box_.empty())
+            return;
+        if (!std::isfinite(left))
+            left = 0.0;
+        if (!std::isfinite(right))
+            right = 0.0;
+        const double safeCeiling = std::isfinite(ceiling) ? std::max(1.0e-6, ceiling) : 1.0;
+        const double target = safeCeiling * marginGain_;
         const double peak = detector_.process(left, right);
         const double required = peak > target ? target / peak : 1.0;
         const double covering = std::min(required, previousRequired_);
@@ -182,8 +198,6 @@ public:
         const double held = hold_.process(covering);
         released_ = held < released_ ? held : released_ + releaseCoef_ * (held - released_);
 
-        if (box_.empty())
-            return;
         boxSum_ += released_ - box_[static_cast<std::size_t>(boxPos_)];
         box_[static_cast<std::size_t>(boxPos_)] = released_;
         boxPos_ = boxPos_ + 1 == lookahead_ ? 0 : boxPos_ + 1;
@@ -208,19 +222,19 @@ public:
     }
 
 private:
-    double marginGain_ = std::pow(10.0, -kMarginDb / 20.0);
-    TruePeakDetector detector_;
-    MovingMinimum hold_;
-    std::array<DelayLine<double>, 2 + kMaxDelayed> delays_ {};
-    std::vector<double> box_;
-    double boxSum_ = 1.0;
-    int boxPos_ = 0;
-    int lookahead_ = 1;
-    int delay_ = 0;
-    double releaseCoef_ = 1.0;
-    double released_ = 1.0;
-    double previousRequired_ = 1.0;
-    double gain_ = 1.0;
+  double marginGain_ = dbToGain(-kMarginDb);
+  TruePeakDetector detector_;
+  MovingMinimum hold_;
+  std::array<DelayLine<double>, 2 + kMaxDelayed> delays_{};
+  std::vector<double> box_;
+  double boxSum_ = 1.0;
+  int boxPos_ = 0;
+  int lookahead_ = 1;
+  int delay_ = 0;
+  double releaseCoef_ = 1.0;
+  double released_ = 1.0;
+  double previousRequired_ = 1.0;
+  double gain_ = 1.0;
 };
 
 }  // namespace hba::dsp

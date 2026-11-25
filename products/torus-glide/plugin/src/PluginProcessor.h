@@ -94,12 +94,15 @@ class PluginProcessor final : public juce::AudioProcessor,
     LaneCurves audioCurves_ = defaultLaneCurves();
     SceneMatrix audioMatrix_ = matrixForPack(0);
     OutMidiBuffer outMidi_{};
+    juce::MidiBuffer generatedMidi_{};
     std::vector<float> monoScratchR_;
 
     std::atomic<int> lastNote_{41};
     std::atomic<double> lastBpm_{172.0};
     std::atomic<bool> auditionWanted_{false};
     std::atomic<bool> clearKeySwitchRequested_{false};
+    std::atomic<bool> pendingPrepare_{false};
+    std::atomic<int> pendingPack_{-1};
     bool auditionPlaying_ = false;
     int auditionNote_ = 41;
     std::atomic<bool> restoringState_{false};

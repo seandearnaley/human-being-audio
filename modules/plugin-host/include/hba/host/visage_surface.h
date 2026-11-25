@@ -8,7 +8,6 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <system_error>
 #include <windows.h>
 #endif
 
@@ -26,17 +25,27 @@ struct VisageSurface : juce::XEmbedComponent {
 };
 #elif JUCE_WINDOWS
 struct VisageSurface : juce::HWNDComponent {
+    ~VisageSurface() override {
+        if (owned_ != nullptr) {
+            setHWND(nullptr);
+            DestroyWindow(owned_);
+            owned_ = nullptr;
+        }
+    }
     void* nativeHandle(juce::ComponentPeer* peer) {
         if (getHWND() == nullptr && peer != nullptr) {
             auto window = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 0,
                                           0, static_cast<HWND>(peer->getNativeHandle()), nullptr, nullptr, nullptr);
             if (window == nullptr)
-                throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
-                                        "Create editor window");
+                return nullptr;
+            owned_ = window;
             setHWND(window);
         }
         return getHWND();
     }
+
+  private:
+    HWND owned_ = nullptr;
 };
 #endif
 

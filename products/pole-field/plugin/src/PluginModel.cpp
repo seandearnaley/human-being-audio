@@ -68,7 +68,8 @@ bool PluginModel::imprintFileToSlot(const juce::File& file, int slot) {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
-    if (reader == nullptr || reader->lengthInSamples <= 0)
+    if (reader == nullptr || reader->lengthInSamples <= 0 || reader->numChannels == 0 || reader->numChannels > 16 ||
+        reader->sampleRate < 8000.0 || reader->sampleRate > 768000.0)
         return false;
 
     // Read up to 4 seconds for Burg LPC analysis so even huge files imprint instantaneously.
@@ -93,10 +94,10 @@ bool PluginModel::imprintFileToSlot(const juce::File& file, int slot) {
 
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
-    std::string shortName = file.getFileNameWithoutExtension().toStdString();
-    if (shortName.size() > 16)
-        shortName = shortName.substr(0, 15) + "\u2026";
-    processor_.imprint.setSlot(slot, corner, std::move(shortName));
+    juce::String baseName = file.getFileNameWithoutExtension();
+    if (baseName.length() > 16)
+        baseName = baseName.substring(0, 15) + juce::String::charToString(0x2026);
+    processor_.imprint.setSlot(slot, corner, baseName.toStdString());
 
     // Switch immediately to Imprint Cube so the imprint is heard right away, keeping the undo step atomic.
     applyingSnapshot_ = true;

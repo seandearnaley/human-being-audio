@@ -182,7 +182,8 @@ public:
         move(b.g, b.lastG, g);
         move(b.k, b.lastK, k);
         move(b.m, b.lastM, m);
-        refresh(b);
+        if (active(b) || band < activeCount_)
+            b.coefs = SvfCoefs::fromGK(b.g.value, b.k.value);
     }
     void setSpecial(int activeCount, double depth, double res, double combDelaySamples,
                     int steps) noexcept TF_NONBLOCKING {
@@ -201,12 +202,15 @@ public:
         depth_.next();
         res_.next();
         combDelay_.next();
-        for (auto& b : bands_) {
-            if (!active(b)) continue;
+        for (int i = 0; i < kSculptMaxBands; ++i) {
+            auto& b = bands_[static_cast<std::size_t>(i)];
+            const bool needCoefs = active(b) || i < activeCount_;
+            if (!needCoefs)
+                continue;
             b.g.next();
             b.k.next();
             b.m.next();
-            refresh(b);
+            b.coefs = SvfCoefs::fromGK(b.g.value, b.k.value);
         }
     }
     bool active(int band) const noexcept TF_NONBLOCKING { return active(bands_[static_cast<std::size_t>(band)]); }

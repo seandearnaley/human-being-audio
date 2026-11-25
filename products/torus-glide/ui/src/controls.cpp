@@ -130,7 +130,9 @@ void Knob::paint(visage::Canvas& canvas) {
     const float cx = w * 0.5f;
     const float cy = availH * 0.5f + context_.px(1.0f);
     const float thickness = context_.px(active() ? 3.4f : 2.8f);
-    const float startRad = -0.75f * kPi; // 135 deg from top -> bottom-left
+    // Visage arc convention: 0 = 3 o'clock, -pi/2 = 12 o'clock (top), clockwise positive.
+    const float topRad = -0.50f * kPi;
+    const float startRad = -1.25f * kPi;
     const float sweepMax = 1.50f * kPi;
 
     const float pos = normalised();
@@ -141,20 +143,33 @@ void Knob::paint(visage::Canvas& canvas) {
     canvas.setColor(active() ? colour::raised : colour::withAlpha(colour::raised, 0.7f));
     canvas.circle(x + thickness, y + thickness, std::max(2.0f, diam - 2.0f * thickness));
 
-    // Background track arc
+    // Background track arc (7:30 -> 12:00 -> 4:30, gap at 6 o'clock)
     canvas.setColor(colour::track);
-    canvas.arc(x, y, diam, thickness, 0.0f, sweepMax * 0.5f, true);
+    canvas.arc(x, y, diam, thickness, topRad, sweepMax * 0.5f, true);
 
-    // Value arc
-    const float sweep = std::max(0.03f, pos * sweepMax);
-    const float midAngle = startRad + sweep * 0.5f;
+    // Value arc (symmetric bipolar radiates from 12 o'clock; unipolar sweeps from 7:30)
+    float midAngle = startRad;
+    float halfSweep = 0.02f;
+    const bool isSymmetricBipolar =
+        (spec().low < 0.0f && spec().high > 0.0f && std::abs(spec().low + spec().high) < 0.01f);
+    if (isSymmetricBipolar) {
+        const float zeroNorm = toNormalised(spec(), 0.0f);
+        const float a0 = startRad + zeroNorm * sweepMax;
+        const float a1 = startRad + pos * sweepMax;
+        midAngle = (a0 + a1) * 0.5f;
+        halfSweep = std::max(0.025f, std::abs(a1 - a0) * 0.5f);
+    } else {
+        const float sweep = std::max(0.03f, pos * sweepMax);
+        midAngle = startRad + sweep * 0.5f;
+        halfSweep = sweep * 0.5f;
+    }
     canvas.setColor(accent_);
-    canvas.arc(x, y, diam, thickness, midAngle, sweep * 0.5f, true);
+    canvas.arc(x, y, diam, thickness, midAngle, halfSweep, true);
 
     // Optional live modulated indicator dot
     if (modProvider_) {
         drawnMod_ = std::clamp(modProvider_(), 0.0f, 1.0f);
-        const float modAng = startRad + drawnMod_ * sweepMax - kPi * 0.5f;
+        const float modAng = startRad + drawnMod_ * sweepMax;
         const float rad = diam * 0.5f - thickness * 0.5f;
         const float dx = cx + std::cos(modAng) * rad;
         const float dy = cy + std::sin(modAng) * rad;
@@ -313,8 +328,8 @@ void ActionButton::mouseDrag(const visage::MouseEvent& e) {
     }
 }
 
-void ActionButton::mouseUp(const visage::MouseEvent&) {
-    const bool fire = pressed_ && !draggedOut_;
+void ActionButton::mouseUp(const visage::MouseEvent& e) {
+    const bool fire = pressed_ && !draggedOut_ && localBounds().contains(e.position);
     pressed_ = false;
     draggedOut_ = false;
     redraw();

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,6 +18,24 @@ namespace hba::core {
 using Json = nlohmann::ordered_json;
 
 inline constexpr std::array<std::string_view, 3> kSegmentNames{"line", "smooth", "hold"};
+
+inline std::string jsonStringOr(const Json& obj, std::string_view key, std::string fallback = {}) {
+    if (!obj.is_object())
+        return fallback;
+    const auto it = obj.find(std::string(key));
+    if (it != obj.end() && it->is_string())
+        return it->get<std::string>();
+    return fallback;
+}
+
+inline bool jsonBoolOr(const Json& obj, std::string_view key, bool fallback = false) {
+    if (!obj.is_object())
+        return fallback;
+    const auto it = obj.find(std::string(key));
+    if (it != obj.end() && it->is_boolean())
+        return it->get<bool>();
+    return fallback;
+}
 
 inline std::string curveKey(int lane) { return "lane" + std::to_string(lane + 1) + "Curve"; }
 
@@ -52,10 +71,11 @@ inline std::optional<hba::dsp::Curve> readCurveJson(const Json& value) {
 
 inline Json writeCurveJson(const hba::dsp::Curve& curve) {
     Json points = Json::array();
-    for (int i = 0; i < curve.count; ++i) {
+    const int n = std::clamp(curve.count, 0, hba::dsp::kMaxCurvePoints);
+    for (int i = 0; i < n; ++i) {
         const auto& point = curve.points[static_cast<std::size_t>(i)];
-        points.push_back(Json::array(
-            {point.x, point.y, point.tension, std::string(kSegmentNames[static_cast<std::size_t>(point.segment)])}));
+        const auto segIdx = std::min<std::size_t>(static_cast<std::size_t>(point.segment), kSegmentNames.size() - 1u);
+        points.push_back(Json::array({point.x, point.y, point.tension, std::string(kSegmentNames[segIdx])}));
     }
     return points;
 }
@@ -79,23 +99,32 @@ inline std::optional<float> readParamJson(const ParamSpecT& spec, const Json& va
             return std::nullopt;
         return static_cast<float>(found - spec.choices.begin());
     }
-    if (value.is_number())
-        return clampFn(spec, value.get<float>());
+    if (value.is_number()) {
+        const float num = value.get<float>();
+        if (!std::isfinite(num))
+            return std::nullopt;
+        return clampFn(spec, num);
+    }
     return std::nullopt;
 }
 
 template <typename ParamSpecT, typename ClampFn>
 inline Json writeParamJson(const ParamSpecT& spec, float real, ClampFn&& clampFn) {
     using Kind = decltype(spec.kind);
+    const float safe = std::isfinite(real) ? clampFn(spec, real) : spec.def;
     switch (spec.kind) {
     case Kind::toggle:
-        return real >= 0.5f;
-    case Kind::choice:
-        return std::string(spec.choices[static_cast<std::size_t>(clampFn(spec, real))]);
+        return safe >= 0.5f;
+    case Kind::choice: {
+        if (spec.choices.empty())
+            return std::string{};
+        const int idx = std::clamp(static_cast<int>(std::lround(safe)), 0, static_cast<int>(spec.choices.size()) - 1);
+        return std::string(spec.choices[static_cast<std::size_t>(idx)]);
+    }
     case Kind::continuous:
         break;
     }
-    return real;
+    return safe;
 }
 
 } // namespace hba::core

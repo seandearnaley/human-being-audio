@@ -185,7 +185,7 @@ function Product({ slug, release, unavailable }) {
         <Image
           src={detail.image}
           alt={detail.alt}
-          sizes="(max-width: 800px) 93vw, 550px"
+          sizes="(max-width: 800px) 93vw, (max-width: 1152px) 92vw, 760px"
           className="studio-interface"
         />
         <ShowcasePlayer slug={slug} productName={product.name} hue={detail.hue} />
@@ -264,14 +264,14 @@ export default async function Page() {
     unavailable = true;
   }
   return (
-    <>
+    <main id="main">
       <div className="stage-scope">
         <div className="stage" id="stage" aria-hidden="true">
           <div className="stage__light" />
           <div className="fallback-orb" />
           <canvas id="stage-canvas" />
         </div>
-        <main id="main">
+        <div className="stage-content">
           <Hero />
           <section
             className="section catalog"
@@ -353,7 +353,7 @@ export default async function Page() {
               />
             </div>
           </section>
-        </main>
+        </div>
       </div>
       <section className="section install" id="install">
         <div className="wrap">
@@ -365,11 +365,11 @@ export default async function Page() {
               <summary>macOS</summary>
               <div className="faq__body">
                 Close your host and open the signed, notarized PKG. It installs
-                the Audio Unit (Audio Unit Music Effect for Livecut Redux, Audio
-                Unit MIDI FX for Cutline) and VST3 in the system Audio Plug-Ins
-                folder and the standalone in Applications. All six plugins
-                require macOS 12 or later and contain universal Apple Silicon
-                and Intel binaries.
+                the Audio Unit (Audio Unit Music Effect for Livecut Redux and
+                Pole Field, Audio Unit MIDI FX for Cutline) and VST3 in the
+                system Audio Plug-Ins folder and the standalone in Applications.
+                All six plugins require macOS 12 or later and contain universal
+                Apple Silicon and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for
@@ -411,6 +411,6 @@ export default async function Page() {
           </div>
         </div>
       </section>
-    </>
+    </main>
   );
 }

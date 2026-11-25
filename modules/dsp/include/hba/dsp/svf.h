@@ -25,11 +25,14 @@ struct SvfCoefs {
         return c;
     }
     static double prewarp(double hz, double sampleRate) noexcept HBA_NONBLOCKING {
-        const double f = std::clamp(hz, 1e-3, 0.49 * sampleRate);
-        return std::tan(kPi * f / sampleRate);
+        const double sr = std::max(sampleRate, 1.0);
+        const double safeHz = std::isfinite(hz) ? hz : 1e-3;
+        const double f = std::clamp(safeHz, 1e-3, 0.49 * sr);
+        return std::tan(kPi * f / sr);
     }
     static SvfCoefs make(double hz, double q, double sampleRate) noexcept HBA_NONBLOCKING {
-        return fromGK(prewarp(hz, sampleRate), 1.0 / q);
+        const double safeQ = (std::isfinite(q) && q > 1e-6) ? q : 1e-6;
+        return fromGK(prewarp(hz, sampleRate), 1.0 / safeQ);
     }
 };
 

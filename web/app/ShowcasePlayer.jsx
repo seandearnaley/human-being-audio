@@ -46,7 +46,6 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
   const currentTimeRef = useRef(0);
   const durationRef = useRef(tracks[0]?.duration ?? 0);
   const reducedMotionRef = useRef(false);
-  const pendingPlayRef = useRef(false);
 
   const headingId = useId();
   const activeTrack = tracks[activeIndex] ?? tracks[0];
@@ -416,31 +415,51 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     (index, shouldPlay) => {
       const bounded = ((index % tracks.length) + tracks.length) % tracks.length;
       const audio = audioRef.current;
+      const nextTrack = tracks[bounded];
       if (bounded === activeIndex) {
         if (shouldPlay) togglePlay();
         return;
       }
-      pendingPlayRef.current = Boolean(shouldPlay);
       setActiveIndex(bounded);
       setCurrentTime(0);
-      setDuration(tracks[bounded]?.duration ?? 0);
-      if (audio) {
-        audio.currentTime = 0;
-        if (!shouldPlay) audio.pause();
+      setDuration(nextTrack?.duration ?? 0);
+      if (audio && nextTrack) {
+        audio.pause();
+        audio.setAttribute("src", nextTrack.src);
+        audio.load();
+        if (shouldPlay) {
+          // Call play synchronously inside user gesture so iOS Safari preserves activation.
+          startPlayback();
+        }
       }
     },
-    [activeIndex, togglePlay, tracks],
+    [activeIndex, startPlayback, togglePlay, tracks],
   );
 
-  // Trigger playback cleanly after activeIndex swaps src
+  // Release AudioContext & MediaSession handlers on unmount
   useEffect(() => {
-    if (!pendingPlayRef.current) return;
-    pendingPlayRef.current = false;
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.load();
-    startPlayback();
-  }, [activeIndex, startPlayback]);
+    return () => {
+      if (audioRef.current) audioRef.current.pause();
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+        analyserRef.current = null;
+        sourceNodeRef.current = null;
+      }
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+        try {
+          if (navigator.mediaSession.metadata?.album === productName) {
+            navigator.mediaSession.metadata = null;
+            for (const action of ["play", "pause", "previoustrack", "nexttrack"]) {
+              navigator.mediaSession.setActionHandler(action, null);
+            }
+          }
+        } catch {
+          // Ignore unsupported MediaSession cleanup
+        }
+      }
+    };
+  }, [productName]);
 
   // Wire Media Session metadata & hardware media keys when active
   const syncMediaSession = useCallback(() => {
@@ -483,6 +502,9 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
       setIsLoading(false);
       energyRef.current = 0;
       if (rootRef.current) rootRef.current.style.setProperty("--energy", "0");
+      if (audioCtxRef.current?.state === "running") {
+        audioCtxRef.current.suspend().catch(() => {});
+      }
       stopLoop();
       drawFrame();
     };
@@ -496,6 +518,12 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     };
     const onWaiting = () => setIsLoading(true);
     const onCanPlay = () => setIsLoading(false);
+    const onError = () => {
+      playingRef.current = false;
+      setIsLoading(false);
+      setIsPlaying(false);
+      stopLoop();
+    };
     const onEnded = () => {
       if (autoAdvance && tracks.length > 1) {
         selectTrack(activeIndex + 1, true);
@@ -511,6 +539,7 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("waiting", onWaiting);
     audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onError);
     audio.addEventListener("ended", onEnded);
     return () => {
       audio.removeEventListener("play", onPlay);
@@ -519,6 +548,7 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onError);
       audio.removeEventListener("ended", onEnded);
     };
   }, [activeIndex, autoAdvance, drawFrame, selectTrack, slug, startLoop, stopLoop, syncMediaSession, tracks.length]);
@@ -533,8 +563,9 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
 
   const handlePointerMove = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) return;
-    const u = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const usable = rect.width - 20;
+    if (usable <= 0) return;
+    const u = Math.max(0, Math.min(1, (event.clientX - rect.left - 10) / usable));
     setHoverProgress(u);
   };
 
@@ -561,14 +592,16 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
         </span>
       </figcaption>
 
-      {/* Native <audio controls> stays visible without JS; hidden visually once custom deck hydrates */}
+      {/* Native <audio controls> stays visible without JS; hidden visually once custom deck hydrates.
+          Keep initial src fixed in JSX so React does not re-set the src attribute on track switch
+          and abort the synchronous user-gesture play() initiated in selectTrack(). */}
       <div className="showcase__native">
         <audio
           ref={audioRef}
           controls
           preload="none"
           aria-label={`${productName} audio example`}
-          src={activeTrack.src}
+          src={tracks[0]?.src}
         />
       </div>
 
@@ -638,9 +671,10 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
             <button
               type="button"
               className="showcase__auto"
+              aria-label="Auto-advance clips"
               aria-pressed={autoAdvance ? "true" : "false"}
               onClick={() => setAutoAdvance((v) => !v)}
-              title={autoAdvance ? "Auto-advance on" : "Repeat single clip"}
+              title={autoAdvance ? "Auto-advance to next clip" : "Stop after current clip"}
             >
               {autoAdvance ? "Auto" : "1×"}
             </button>

@@ -75,7 +75,7 @@ class PluginProcessor final : public juce::AudioProcessor,
 
     ParameterValues values_;
     Engine engine_;
-    double sampleRate_ = 48000.0;
+    std::atomic<double> sampleRate_{48000.0};
     int blockSize_ = 512;
 
     std::vector<float> monoScratchR_;

@@ -184,6 +184,18 @@ bool Presets::save(const juce::String& name) {
     if (!dir.createDirectory())
         return false;
     const auto file = dir.getChildFile(juce::File::createLegalFileName(trimmed) + ".json");
+    return saveToFile(file);
+}
+
+bool Presets::saveToFile(const juce::File& target) {
+    if (target == juce::File{})
+        return false;
+    const auto trimmed = target.getFileNameWithoutExtension().trim();
+    if (trimmed.isEmpty())
+        return false;
+    const auto file = target.hasFileExtension(".json") ? target : target.withFileExtension(".json");
+    if (!file.getParentDirectory().createDirectory())
+        return false;
     if (!file.replaceWithText(toJuce(serialiseStateJson(state_, trimmed.toStdString()))))
         return false;
     scan();

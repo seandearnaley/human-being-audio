@@ -11,7 +11,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeParameterLayout() {
         const juce::String name{std::string(s.name)};
 
         if (s.kind == ParamKind::toggle) {
-            layout.add(std::make_unique<juce::AudioParameterBool>(pid, name, s.def >= 0.5f));
+            auto attrs = juce::AudioParameterBoolAttributes().withAutomatable(s.automatable);
+            layout.add(std::make_unique<juce::AudioParameterBool>(pid, name, s.def >= 0.5f, attrs));
         } else if (s.kind == ParamKind::choice) {
             juce::StringArray items;
             for (const auto& c : s.choices)

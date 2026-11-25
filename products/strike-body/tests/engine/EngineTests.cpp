@@ -216,3 +216,35 @@ TEST_CASE("Strike Body engine process loop is realtime-safe", "[engine][realtime
     REQUIRE(std::isfinite(l[0]));
     REQUIRE(std::isfinite(r[0]));
 }
+
+TEST_CASE("Muted wire layer decays silently without hanging zombie voices or bursting on unmute", "[engine]") {
+    sb::Engine eng;
+    eng.prepare(48000.0, 256, 2);
+    sb::Params muted = sb::Params::defaults();
+    muted.set(sb::ParamId::wireMute, 1.0f);
+    muted.set(sb::ParamId::bodyDecay, 50.0f);
+    muted.set(sb::ParamId::shellDecay, 60.0f);
+    muted.set(sb::ParamId::wireDecay, 60.0f);
+    muted.set(sb::ParamId::roomAmt, 0.0f);
+
+    std::array<float, 256> l{};
+    std::array<float, 256> r{};
+    eng.process(muted, l.data(), r.data(), 0);
+    eng.trigger(sb::Articulation::main, 1.0f, 1.0f);
+    // Run 1.5 seconds (282 blocks) so all layers finish decaying cleanly.
+    for (int b = 0; b < 282; ++b)
+        eng.process(muted, l.data(), r.data(), 256);
+
+    // Unmute wire now: no stale noise/click burst should occur!
+    sb::Params unmuted = muted;
+    unmuted.set(sb::ParamId::wireMute, 0.0f);
+    float burstPeak = 0.0f;
+    for (int b = 0; b < 8; ++b) {
+        eng.process(unmuted, l.data(), r.data(), 256);
+        for (float s : l)
+            burstPeak = std::max(burstPeak, std::abs(s));
+        for (float s : r)
+            burstPeak = std::max(burstPeak, std::abs(s));
+    }
+    REQUIRE(burstPeak < 1e-4f);
+}

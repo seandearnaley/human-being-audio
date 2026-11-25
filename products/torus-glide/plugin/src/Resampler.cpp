@@ -34,11 +34,14 @@ void Resampler::start(const RenderRequest& request, const juce::String& presetNa
         request_.oversampling = 8;
         target_ = directory().getChildFile(name);
     }
+    const std::uint64_t gen = generation_.fetch_add(1, std::memory_order_acq_rel) + 1u;
+    activeGen_.store(gen, std::memory_order_release);
     state_.store(ui::ResampleState::rendering, std::memory_order_release);
     startThread();
 }
 
 void Resampler::invalidate() noexcept {
+    generation_.fetch_add(1, std::memory_order_acq_rel);
     ui::ResampleState expected = ui::ResampleState::ready;
     state_.compare_exchange_strong(expected, ui::ResampleState::idle, std::memory_order_acq_rel);
 }
@@ -51,6 +54,7 @@ juce::File Resampler::file() const {
 }
 
 void Resampler::run() {
+    const std::uint64_t myGen = activeGen_.load(std::memory_order_acquire);
     RenderRequest req;
     juce::File target;
     {
@@ -59,9 +63,14 @@ void Resampler::run() {
         target = target_;
     }
     const auto audio = renderOfflineLoop(req);
+    if (generation_.load(std::memory_order_acquire) != myGen) {
+        state_.store(ui::ResampleState::idle, std::memory_order_release);
+        return;
+    }
     const bool ok = target.getParentDirectory().createDirectory() &&
                     writeWavFloat(target.getFullPathName().toStdString(), audio, juce::roundToInt(req.sampleRate));
-    state_.store(ok ? ui::ResampleState::ready : ui::ResampleState::idle, std::memory_order_release);
+    const bool stillCurrent = generation_.load(std::memory_order_acquire) == myGen;
+    state_.store((ok && stillCurrent) ? ui::ResampleState::ready : ui::ResampleState::idle, std::memory_order_release);
 }
 
 } // namespace tg
