@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NEURO Shatter</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "NEURO Shatter", "backdrop": false,
+  "params": [
+    { "name": "hue", "type": "number", "default": 150, "min": 0, "max": 360 },
+    { "name": "shatter", "type": "number", "default": 1, "min": 0, "max": 2 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+  const c = document.getElementById('c'), g = c.getContext('2d');
+  const tx = document.createElement('canvas'), t = tx.getContext('2d');
+  const N = 26;
+  let offs = new Array(N).fill(0), vy = new Array(N).fill(0);
+  let prevSnare = 0, hits = 0, built = '';
+  function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+  let fs = 100, bandH = 100;
+  function build(f) {
+    const hue = f.params.hue;
+    const key = f.width + 'x' + f.height + ':' + hue;
+    if (key === built) return;
+    built = key;
+    const font = "900 100px Impact, Haettenschweiler, 'Arial Black', 'Helvetica Neue', sans-serif";
+    t.font = font;
+    const w100 = t.measureText('NEURO').width;
+    fs = Math.min(f.width * 0.92 / w100 * 100, f.height * 0.7);
+    bandH = Math.ceil(fs * 1.1);
+    tx.width = f.width; tx.height = bandH;
+    t.font = font.replace('100px', fs + 'px');
+    t.textAlign = 'center'; t.textBaseline = 'middle';
+    const gr = t.createLinearGradient(0, 0, 0, bandH);
+    gr.addColorStop(0, `hsl(${hue} 100% 80%)`);
+    gr.addColorStop(0.5, `hsl(${hue} 100% 55%)`);
+    gr.addColorStop(1, `hsl(${(hue + 60) % 360} 100% 40%)`);
+    t.fillStyle = gr;
+    t.lineWidth = fs * 0.02; t.strokeStyle = '#fff';
+    t.fillText('NEURO', f.width / 2, bandH / 2 + fs * 0.04);
+    t.strokeText('NEURO', f.width / 2, bandH / 2 + fs * 0.04);
+  }
+  addEventListener('frame', ({ detail: f }) => {
+    if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; built = ''; }
+    build(f);
+    const W = c.width, H = c.height;
+    if (f.snare > prevSnare + 0.3) {
+      hits++;
+      const r = rng(f.seed * 7919 + hits * 104729);
+      for (let i = 0; i < N; i++) {
+        const v = r() * 2 - 1;
+        offs[i] = Math.abs(v) < 0.2 ? v * 2 : v;
+        vy[i] = (r() * 2 - 1);
+      }
+    }
+    prevSnare = f.snare;
+    g.clearRect(0, 0, W, H);
+    const amt = Math.pow(f.snare, 1.5) * f.params.shatter;
+    const top = (H - bandH) / 2;
+    const sc = 1 + f.kick * 0.04;
+    g.save();
+    g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-W / 2, -H / 2);
+    const sh = bandH / N;
+    const hue = f.params.hue;
+    // chromatic ghosts while shattered
+    const passes = amt > 0.02 ? [[-1, `hsl(${(hue + 150) % 360} 100% 60%)`], [1, `hsl(${(hue + 210) % 360} 100% 60%)`], [0, null]] : [[0, null]];
+    for (const [ch, col] of passes) {
+      g.globalAlpha = ch ? 0.55 * Math.min(1, amt * 1.5) : 1;
+      g.globalCompositeOperation = ch ? 'lighter' : 'source-over';
+      for (let i = 0; i < N; i++) {
+        const sy = Math.floor(i * sh), sh2 = Math.ceil(sh) + 1;
+        const dx = offs[i] * amt * W * 0.2 + ch * amt * W * 0.02;
+        const dy = vy[i] * amt * sh * 1.2;
+        g.drawImage(tx, 0, sy, W, sh2, dx, top + sy + dy, W, sh2);
+      }
+    }
+    g.restore();
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    // hat scan lines
+    if (f.hat > 0.03) {
+      const r = rng(f.seed * 31 + f.n * 977);
+      const cnt = Math.floor(3 + f.hat * 22);
+      const th = Math.max(1, Math.round(H / 540));
+      for (let i = 0; i < cnt; i++) {
+        const y = Math.floor(r() * H);
+        const x0 = r() * W * 0.4, len = W * (0.4 + r() * 0.6);
+        g.fillStyle = `hsl(${hue} 100% ${70 + r() * 25}% / ${(0.15 + 0.6 * f.hat) * (0.5 + r() * 0.5)})`;
+        g.fillRect(x0, y, len, th);
+      }
+      g.fillStyle = `hsl(${hue} 100% 70% / ${0.06 * f.hat})`;
+      for (let y = top % 6; y < H; y += 6) g.fillRect(0, y, W, 1);
+    }
+  });
+</script>

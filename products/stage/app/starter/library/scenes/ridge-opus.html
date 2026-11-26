@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wireframe Sunset</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Wireframe Sunset", "backdrop": true,
+  "params": [
+    { "name": "jump", "type": "number", "default": 0.8, "min": 0, "max": 2 },
+    { "name": "speed", "type": "number", "default": 1, "min": 0, "max": 4 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c'), g = c.getContext('2d');
+let tbl = null, seedUsed = null;
+function mk(seed) {
+  let s = (seed >>> 0) || 1;
+  const r = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  const t = new Float32Array(256);
+  for (let i = 0; i < 256; i++) t[i] = r();
+  return t;
+}
+function noise(x) {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+  const a = tbl[i & 255], b = tbl[(i + 1) & 255];
+  return a + (b - a) * u;
+}
+function ridge(x, k) {
+  return noise(x + k * 37) * 0.6 + noise(x * 2.3 + k * 11) * 0.3 + noise(x * 5.1 + k * 5) * 0.1;
+}
+addEventListener('frame', ({ detail: f }) => {
+  if (seedUsed !== f.seed) { tbl = mk(f.seed); seedUsed = f.seed; }
+  if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; }
+  const W = c.width, H = c.height, m = Math.min(W, H);
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  const hz = H * 0.62;
+  const sn = f.snare, kk = f.kick;
+  const intro = Math.min(1, f.age / 2);
+
+  // sun
+  const sx = W / 2, sy = hz, R = m * (0.26 + sn * 0.03);
+  const glow = g.createRadialGradient(sx, sy, R * 0.5, sx, sy, R * (2.2 + sn * 1.5));
+  glow.addColorStop(0, `rgba(255,120,20,${0.25 + sn * 0.55})`);
+  glow.addColorStop(1, 'rgba(255,60,0,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, hz);
+  g.save();
+  g.beginPath(); g.rect(0, 0, W, hz); g.clip();
+  const grad = g.createLinearGradient(0, sy - R, 0, sy);
+  const L = 55 + sn * 40;
+  grad.addColorStop(0, `hsl(42 100% ${Math.min(97, L + 10)}%)`);
+  grad.addColorStop(1, `hsl(${18 + sn * 20} 100% ${L - 5}%)`);
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(sx, sy, R, 0, Math.PI * 2); g.fill();
+  // stripe cuts
+  g.fillStyle = '#000';
+  for (let i = 0; i < 7; i++) {
+    const p = ((i + f.beat * 0.25) % 7) / 7;
+    const y = sy - R * 0.55 * (1 - p);
+    const h = R * 0.012 + p * R * 0.06 * (1 - sn * 0.7);
+    g.fillRect(sx - R, y, 2 * R, h);
+  }
+  g.restore();
+
+  // ridges
+  const layers = 6;
+  const scroll = f.beat * 0.15 * f.params.speed;
+  const jump = 1 + kk * f.params.jump;
+  g.lineJoin = 'round';
+  for (let k = layers - 1; k >= 0; k--) {
+    const depth = k / (layers - 1);          // 0 front .. 1 back
+    const base = hz + (1 - depth) * H * 0.04 + 2;
+    const amp = H * (0.12 + 0.18 * depth) * jump * intro;
+    const freq = 3 + (1 - depth) * 3;
+    const off = scroll * (1.5 - depth);
+    const N = 70;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const ctr = 1 - Math.abs(u - 0.5) * 0.9;
+      const hgt = Math.pow(ridge(u * freq + off, k), 1.6) * amp * (0.5 + 0.7 * (1 - ctr * 0.6));
+      pts.push([u * W, base - hgt]);
+    }
+    // fill black to occlude
+    g.fillStyle = '#000';
+    g.beginPath(); g.moveTo(0, H);
+    pts.forEach(p => g.lineTo(p[0], p[1]));
+    g.lineTo(W, H); g.closePath(); g.fill();
+    const a = (0.35 + 0.65 * (1 - depth)) * (0.8 + kk * 0.2);
+    const lw = Math.max(1, m * 0.0025 * (1.4 - depth * 0.7) * (1 + kk * 0.8));
+    g.strokeStyle = `hsla(${22 + depth * 12} 100% ${55 + kk * 20}% / ${a})`;
+    g.lineWidth = lw;
+    g.shadowColor = 'rgba(255,110,20,0.8)'; g.shadowBlur = m * 0.01 * (1 + kk * 2);
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+    g.shadowBlur = 0;
+    // vertical wire struts
+    g.lineWidth = lw * 0.5;
+    g.strokeStyle = `hsla(25 100% 55% / ${a * 0.45})`;
+    g.beginPath();
+    for (let i = 0; i <= N; i += 3) {
+      const p = pts[i];
+      g.moveTo(p[0], p[1]);
+      g.lineTo(sx + (p[0] - sx) * 1.15, base + H * 0.03 * (1 - depth) + 2);
+    }
+    g.stroke();
+  }
+  // ground grid
+  g.strokeStyle = `rgba(255,100,20,${0.35 + kk * 0.3})`;
+  g.lineWidth = Math.max(1, m * 0.0015);
+  g.beginPath();
+  const gTop = hz + H * 0.045;
+  for (let i = 0; i < 12; i++) {
+    const p = ((i + (f.beat * f.params.speed) % 1) / 12);
+    const y = gTop + (H - gTop) * p * p;
+    g.moveTo(0, y); g.lineTo(W, y);
+  }
+  for (let i = -12; i <= 12; i++) {
+    g.moveTo(sx + i * W * 0.02, gTop); g.lineTo(sx + i * W * 0.2, H);
+  }
+  g.stroke();
+});
+</script>

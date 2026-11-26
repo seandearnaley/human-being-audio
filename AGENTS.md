@@ -16,6 +16,7 @@
   - `torus-glide` — Bar-locked Shepard-Risset & polyphonic chord-bend pitch-manifold synth (JUCE 9 + Visage 1.0)
   - `strike-body` — Phase-locked neuro snare, kick & nonlinear modal percussion synthesizer (JUCE 9 + Visage 1.0)
   - `livecut-redux` — Breakbeat & spectral live slicer (JUCE 9 + Visage 1.0)
+  - `stage` — Visuals played by notes: an Electron app (`app/`) and the Stage Link / Stage Sound plugins (`plugin/`, JUCE 9). Unreleased and not in `studio.json`; see `products/stage/README.md`
 - `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), and CI/quality tooling (`factory/quality/`).
 - `web/`: Next.js + React website (`https://humanbeingaudio.com`).
 

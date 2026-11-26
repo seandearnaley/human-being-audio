@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wireframe Moonrise</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Wireframe Moonrise", "backdrop": true,
+  "params": [
+    { "name": "jump", "type": "number", "default": 0.8, "min": 0, "max": 2 },
+    { "name": "speed", "type": "number", "default": 1, "min": 0, "max": 4 },
+    { "name": "stars", "type": "number", "default": 220, "min": 0, "max": 600 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c'), g = c.getContext('2d');
+let tbl = null, stars = null, seedUsed = null;
+function rng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+function mk(seed) {
+  const r = rng(seed);
+  tbl = new Float32Array(256);
+  for (let i = 0; i < 256; i++) tbl[i] = r();
+  const r2 = rng(seed * 7919 + 13);
+  stars = [];
+  for (let i = 0; i < 600; i++) {
+    stars.push({ x: r2(), y: Math.pow(r2(), 1.3), s: 0.4 + Math.pow(r2(), 3) * 1.6,
+      base: 0.15 + r2() * 0.45, w: Math.pow(r2(), 1.5), hue: 200 + r2() * 40, ph: r2() * 8 });
+  }
+}
+function noise(x) {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+  const a = tbl[i & 255], b = tbl[(i + 1) & 255];
+  return a + (b - a) * u;
+}
+function ridge(x, k) {
+  return noise(x + k * 37) * 0.6 + noise(x * 2.3 + k * 11) * 0.3 + noise(x * 5.1 + k * 5) * 0.1;
+}
+addEventListener('frame', ({ detail: f }) => {
+  if (seedUsed !== f.seed) { mk(f.seed); seedUsed = f.seed; }
+  if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; }
+  const W = c.width, H = c.height, m = Math.min(W, H);
+  const hz = H * 0.62;
+  const sn = f.snare, kk = f.kick, hh = f.hat;
+  const intro = Math.min(1, f.age / 2);
+
+  // night sky
+  const sky = g.createLinearGradient(0, 0, 0, hz);
+  sky.addColorStop(0, '#000004'); sky.addColorStop(1, '#040a1c');
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+
+  // stars: twinkle on hats
+  const nS = Math.round(f.params.stars);
+  for (let i = 0; i < nS; i++) {
+    const st = stars[i];
+    const y = st.y * hz * 0.95;
+    const x = st.x * W;
+    // which stars flare shifts with each beat so twinkle varies, but the flare itself is the hat envelope
+    const sel = 0.5 + 0.5 * Math.sin(st.ph + f.beatIndex * 2.1 + f.barIndex * 1.3);
+    const fl = hh * st.w * (0.3 + sel);
+    const a = Math.min(1, st.base + fl * 1.2);
+    const r = Math.max(0.6, m * 0.0012 * st.s * (1 + fl * 1.5));
+    g.fillStyle = `hsla(${st.hue} 80% ${80 + fl * 20}% / ${a})`;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    if (fl > 0.35) {
+      const L = r * (3 + fl * 6);
+      g.strokeStyle = `hsla(${st.hue} 90% 90% / ${Math.min(1, fl) * 0.7})`;
+      g.lineWidth = Math.max(0.5, r * 0.4);
+      g.beginPath(); g.moveTo(x - L, y); g.lineTo(x + L, y); g.moveTo(x, y - L); g.lineTo(x, y + L); g.stroke();
+    }
+  }
+
+  // moon
+  const sx = W / 2, sy = hz - m * 0.05, R = m * (0.2 + sn * 0.02);
+  const glow = g.createRadialGradient(sx, sy, R * 0.6, sx, sy, R * (2.6 + sn * 1.2));
+  glow.addColorStop(0, `rgba(150,190,255,${0.22 + sn * 0.35})`);
+  glow.addColorStop(1, 'rgba(60,90,200,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, hz);
+  g.save();
+  g.beginPath(); g.rect(0, 0, W, hz); g.clip();
+  const mg = g.createRadialGradient(sx - R * 0.3, sy - R * 0.3, R * 0.1, sx, sy, R);
+  mg.addColorStop(0, `hsl(210 70% ${Math.min(97, 90 + sn * 8)}%)`);
+  mg.addColorStop(1, `hsl(215 45% ${72 + sn * 10}%)`);
+  g.fillStyle = mg;
+  g.beginPath(); g.arc(sx, sy, R, 0, Math.PI * 2); g.fill();
+  // craters
+  g.fillStyle = 'rgba(110,140,190,0.16)';
+  [[-0.42,-0.45,0.14],[0.38,-0.62,0.09],[0.5,-0.1,0.16],[-0.6,0.05,0.07],[0.1,-0.75,0.06],[-0.1,-0.3,0.05],[0.68,-0.4,0.05]].forEach(([dx,dy,rr]) => {
+    g.beginPath(); g.arc(sx + dx * R, sy + dy * R, rr * R, 0, Math.PI * 2); g.fill();
+  });
+  g.restore();
+
+  // ridges
+  const layers = 6;
+  const scroll = f.beat * 0.15 * f.params.speed;
+  const jump = 1 + kk * f.params.jump;
+  g.lineJoin = 'round';
+  for (let k = layers - 1; k >= 0; k--) {
+    const depth = k / (layers - 1);
+    const base = hz + (1 - depth) * H * 0.04 + 2;
+    const amp = H * (0.12 + 0.18 * depth) * jump * intro;
+    const freq = 3 + (1 - depth) * 3;
+    const off = scroll * (1.5 - depth);
+    const N = 70;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const ctr = 1 - Math.abs(u - 0.5) * 0.9;
+      const hgt = Math.pow(ridge(u * freq + off, k), 1.6) * amp * (0.5 + 0.7 * (1 - ctr * 0.6));
+      pts.push([u * W, base - hgt]);
+    }
+    g.fillStyle = '#000';
+    g.beginPath(); g.moveTo(0, H);
+    pts.forEach(p => g.lineTo(p[0], p[1]));
+    g.lineTo(W, H); g.closePath(); g.fill();
+    const a = (0.35 + 0.65 * (1 - depth)) * (0.8 + kk * 0.2);
+    const lw = Math.max(1, m * 0.0025 * (1.4 - depth * 0.7) * (1 + kk * 0.8));
+    g.strokeStyle = `hsla(${205 + depth * 20} 90% ${60 + kk * 20}% / ${a})`;
+    g.lineWidth = lw;
+    g.shadowColor = 'rgba(110,160,255,0.8)'; g.shadowBlur = m * 0.01 * (1 + kk * 2);
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+    g.shadowBlur = 0;
+    g.lineWidth = lw * 0.5;
+    g.strokeStyle = `hsla(210 90% 60% / ${a * 0.45})`;
+    g.beginPath();
+    for (let i = 0; i <= N; i += 3) {
+      const p = pts[i];
+      g.moveTo(p[0], p[1]);
+      g.lineTo(sx + (p[0] - sx) * 1.15, base + H * 0.03 * (1 - depth) + 2);
+    }
+    g.stroke();
+  }
+  // ground grid
+  g.strokeStyle = `rgba(90,140,255,${0.3 + kk * 0.3})`;
+  g.lineWidth = Math.max(1, m * 0.0015);
+  g.beginPath();
+  const gTop = hz + H * 0.045;
+  for (let i = 0; i < 12; i++) {
+    const p = ((i + (f.beat * f.params.speed) % 1) / 12);
+    const y = gTop + (H - gTop) * p * p;
+    g.moveTo(0, y); g.lineTo(W, y);
+  }
+  for (let i = -12; i <= 12; i++) {
+    g.moveTo(sx + i * W * 0.02, gTop); g.lineTo(sx + i * W * 0.2, H);
+  }
+  g.stroke();
+});
+</script>

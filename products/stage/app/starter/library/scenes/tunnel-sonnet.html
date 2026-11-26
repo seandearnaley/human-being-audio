@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Square Tunnel</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Square Tunnel", "backdrop": true,
+  "params": [
+    { "name": "hue", "type": "number", "default": 280, "min": 0, "max": 360 },
+    { "name": "speed", "type": "number", "default": 1, "min": 0, "max": 3 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+  const c = document.getElementById('c'), g = c.getContext('2d');
+  let z = 0, punch = 0;
+  const N = 40;
+  addEventListener('frame', ({ detail: f }) => {
+    if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; }
+    const W = c.width, H = c.height, cx = W / 2, cy = H / 2;
+    const sp = f.params.speed;
+    // forward travel: steady cruise locked to tempo, plus a shove on every kick
+    punch += f.kick * f.kick * f.dt * 6;
+    z += f.dt * (f.bpm / 60) * 0.5 * sp + f.kick * f.dt * 4 * sp;
+    const inv = Math.min(1, f.snare * 1.6);
+    const mix = (l) => l + (100 - l - l) * inv;
+    const hue = f.params.hue + f.high * 40 + (inv * 180);
+    const base = Math.floor(z), fr = z - base;
+    const diag = Math.hypot(W, H);
+    const rot = f.bar * Math.PI * 0.5 + Math.sin(f.beat * 0.25) * 0.1;
+    // background
+    g.fillStyle = `hsl(${hue} 60% ${mix(4)}%)`;
+    g.fillRect(0, 0, W, H);
+    for (let i = 0; i <= N; i++) {
+      const d = i + 1 - fr;
+      if (d <= 0.05) continue;
+      const half = diag * 0.5 * 0.9 / d * (1 + f.kick * 0.08);
+      const idx = i + base;
+      const even = (idx & 1) === 0;
+      const fog = Math.max(0, 1 - d / N);
+      const l = even ? 18 + 40 * fog + f.low * 10 : 6 + 14 * fog;
+      const s = 85;
+      g.save();
+      g.translate(cx, cy);
+      g.rotate(rot + idx * 0.0);
+      g.fillStyle = `hsl(${hue + idx * 7} ${s}% ${mix(l)}%)`;
+      g.fillRect(-half, -half, half * 2, half * 2);
+      g.lineWidth = Math.max(1, half * 0.03);
+      g.strokeStyle = `hsl(${hue + 60 + idx * 7} 100% ${mix(55 + 25 * fog)}% / ${0.25 + 0.6 * fog})`;
+      g.strokeRect(-half, -half, half * 2, half * 2);
+      g.restore();
+    }
+    // centre glow
+    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, diag * 0.12);
+    gr.addColorStop(0, `hsl(${hue + 40} 100% ${mix(80)}% / ${0.5 + f.kick * 0.4})`);
+    gr.addColorStop(1, `hsl(${hue + 40} 100% ${mix(80)}% / 0)`);
+    g.fillStyle = gr;
+    g.fillRect(0, 0, W, H);
+  });
+</script>

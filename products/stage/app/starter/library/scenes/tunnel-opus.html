@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Square Tunnel</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Square Tunnel", "backdrop": true,
+  "params": [
+    { "name": "hue", "type": "number", "default": 190, "min": 0, "max": 360 },
+    { "name": "speed", "type": "number", "default": 0.6, "min": 0, "max": 3 },
+    { "name": "push", "type": "number", "default": 6, "min": 0, "max": 20 },
+    { "name": "twist", "type": "number", "default": 0.15, "min": 0, "max": 1 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<canvas id="c"></canvas>
+<script>
+  const c = document.getElementById('c'), g = c.getContext('2d');
+  let travel = 0;
+  const N = 28;
+  addEventListener('frame', ({ detail: f }) => {
+    if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; }
+    const p = f.params, W = c.width, H = c.height, m = Math.min(W, H);
+    // kick shoves the camera forward
+    travel += f.dt * (f.bpm / 60) * (p.speed + p.push * f.kick * f.kick);
+    const inv = f.snare > 0.45;
+    const bg = inv ? `hsl(${p.hue} 30% 92%)` : '#000';
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const cx = W / 2 + Math.sin(f.beat * 0.25 * Math.PI) * m * 0.03;
+    const cy = H / 2 + Math.cos(f.beat * 0.125 * Math.PI) * m * 0.03;
+    const frac = travel - Math.floor(travel);
+    const base = Math.floor(travel);
+    for (let i = N - 1; i >= 0; i--) {
+      const z = i + 1 - frac + 0.05;           // distance from viewer
+      const s = (m * 0.9) / z;                 // half size on screen
+      if (s > Math.max(W, H) * 1.6) continue;
+      const fade = Math.min(1, (N - z) / 6) * Math.min(1, z * 1.2);
+      const idx = base + i;
+      const l = 45 + 20 * (idx % 2) + f.low * 15;
+      const h = p.hue + (idx % 4) * 12 + f.mid * 40;
+      const col = inv ? `hsl(${(h + 180) % 360} 80% ${100 - l - 30}% / ${fade})`
+                      : `hsl(${h} 85% ${l}% / ${fade})`;
+      g.save();
+      g.translate(cx, cy);
+      g.rotate((idx * p.twist * 0.3) + f.beat * 0.05 * Math.PI);
+      g.strokeStyle = col;
+      g.lineWidth = Math.max(1, s * (0.04 + f.kick * 0.05 + f.hat * 0.02));
+      g.strokeRect(-s, -s, 2 * s, 2 * s);
+      g.restore();
+    }
+    // kick flash at centre
+    const r = m * (0.05 + f.kick * 0.12);
+    const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+    grd.addColorStop(0, inv ? `rgba(0,0,0,${0.3 + f.kick * 0.6})` : `hsla(${p.hue},90%,85%,${0.3 + f.kick * 0.6})`);
+    grd.addColorStop(1, inv ? 'rgba(0,0,0,0)' : `hsla(${p.hue},90%,60%,0)`);
+    g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  });
+</script>
