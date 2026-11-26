@@ -18,7 +18,7 @@ This repository is a ground-up port of Remy Muller's original Livecut plugin to
 on macOS, Windows and Ubuntu. Up to 1.0.0-beta.1 it was called
 Livecut; Livecut Redux opens sessions saved with those versions.
 
-![Livecut Redux's editor: eight program tabs above an orange pad of cut strips, with the phrase as a strip of tape across the top](docs/editor.png)
+![Livecut Redux's editor: eight program tabs above an orange pad of cut strips, with the phrase as a strip of tape across the top](press/screenshots/livecut-redux-interface.png)
 
 Press the pad to cut and let go to stop on the next beat or bar; drag to play
 two settings of the program at once. Each of the eight programs has its own
@@ -112,12 +112,6 @@ at strictness level 10 (including Steinberg's VST3 validator) and with `auval`.
 ## Releases
 
 Follow the [studio release guide](../../factory/release/README.md). Select Livecut Redux in the Studio release workflow. GitHub signs the Windows installer, signs and notarizes the Mac package, and publishes all three platforms after installed-package checks.
-
-To inspect the Mac installer locally, use a universal Release build and the version from this product's CMake project:
-
-```sh
-packaging/macos/make-installer.sh build/release/Livecut_artefacts/Release 1.0.3 dist --unsigned
-```
 
 Before it installs, the installer
 removes Livecut 0.1.0 to 1.0.0-beta.1 from `/Library/Audio/Plug-Ins` and

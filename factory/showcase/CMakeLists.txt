@@ -32,7 +32,16 @@ add_subdirectory("${STUDIO_ROOT}/products/cutline" cutline EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/torus-glide" torus EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/strike-body" strikebody EXCLUDE_FROM_ALL)
 
-add_executable(studio-showcase render_showcase.cpp)
+add_executable(studio-showcase
+    showcase_common.h
+    showcase_sources.cpp
+    clips_livecut.cpp
+    clips_tract_form.cpp
+    clips_pole_field.cpp
+    clips_cutline.cpp
+    clips_torus_glide.cpp
+    clips_strike_body.cpp
+    render_showcase.cpp)
 target_link_libraries(studio-showcase PRIVATE
     LivecutEngine
     tf_engine

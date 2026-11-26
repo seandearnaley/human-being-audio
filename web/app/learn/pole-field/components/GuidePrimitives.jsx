@@ -82,7 +82,7 @@ const double e = v1Lin * (1.0 / 3.2);
 const double kAdd = 0.28 * (e * e) / (1.0 + e * e);
 const double a1 = 1.0 / (1.0 + g * (g + c.svf.k + kAdd));`;
 
-export const CPP_POLAR = `// products/pole-field/core/src/cubes.cpp:1207-1237
+export const CPP_POLAR = `// products/pole-field/core/src/lattice_eval.cpp
 for (std::size_t s = 0; s < kNumStages; ++s) {
     // Trilinear morph in log-frequency & log-Q keeps poles strictly inside |z| < 1
     const auto pf = logTrilerp(/* 8 cube corners poleHz */, x, y, z);
@@ -132,7 +132,7 @@ static double ad2(double u) noexcept HBA_DSP_NONBLOCKING {
     return u < 0.0 ? -val : val;
 }`;
 
-export const CPP_BURG = `// products/pole-field/core/src/cubes.cpp:1428-1455 (14th-order Burg's Method LPC)
+export const CPP_BURG = `// products/pole-field/core/src/imprint_lpc.cpp (14th-order Burg's Method LPC)
 constexpr int P = 2 * kNumStages;  // order 14 -> 7 conjugate resonant formants
 for (int m = 1; m <= P; ++m) {
     double num = 0.0, den = 0.0;

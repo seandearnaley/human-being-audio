@@ -10,6 +10,8 @@ add_library(tf_ui STATIC
     src/controls.h
     src/editor.cpp
     src/fake_model.cpp
+    src/graph_curves.cpp
+    src/graph_curves.h
     src/graph_panel.cpp
     src/movement_edit.cpp
     src/movement_edit.h

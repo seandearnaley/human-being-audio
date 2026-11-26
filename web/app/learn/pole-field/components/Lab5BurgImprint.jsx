@@ -224,8 +224,8 @@ export default function Lab5BurgImprint({
 
       {showEngineer && (
         <CodeExcerpt
-          file="products/pole-field/core/src/cubes.cpp"
-          lines="1428-1485"
+          file="products/pole-field/core/src/imprint_lpc.cpp"
+          lines="115-170"
           code={CPP_BURG}
         />
       )}

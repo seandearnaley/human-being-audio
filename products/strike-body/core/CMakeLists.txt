@@ -1,7 +1,9 @@
 add_library(sb_core STATIC
+    include/sb/archetypes.h
     include/sb/modal_models.h
     include/sb/params.h
     include/sb/preset.h
+    src/archetypes.cpp
     src/params.cpp
     src/preset.cpp)
 

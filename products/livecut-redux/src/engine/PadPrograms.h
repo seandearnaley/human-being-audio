@@ -5,6 +5,7 @@
 #include "engine/Cutter.h"
 #include "engine/Fracture.h"
 #include "engine/ImpactEffects.h"
+#include "hba/dsp/nonblocking.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +16,7 @@ namespace livecut::engine
 enum class PadProgram { cut, bounce, glitch, suction, filter, tape, loops, rush };
 inline constexpr std::size_t padProgramCount = 8;
 
-bool isAvailable (PadProgram program);
+bool isAvailable(PadProgram program) noexcept HBA_NONBLOCKING;
 
 struct PadZones
 {
@@ -43,13 +44,13 @@ struct PadCaptions
 };
 
 // What the pad's axes do for a program. Empty for programs not yet built.
-PadCaptions padCaptions (PadProgram program);
+PadCaptions padCaptions(PadProgram program) noexcept HBA_NONBLOCKING;
 
 // Normalized value in [0, 1], with 0.03 hysteresis around the previous zone.
-int padZone (float value, int zones, int previous);
+int padZone(float value, int zones, int previous) noexcept HBA_NONBLOCKING;
 
 // Requires an available program and normalized coordinates in [0, 1].
-PadMapping mapPad (PadProgram program, float x, float y, PadZones previous);
-bool sameDiscreteState (const PadMapping& a, const PadMapping& b);
+PadMapping mapPad(PadProgram program, float x, float y, PadZones previous) noexcept HBA_NONBLOCKING;
+bool sameDiscreteState(const PadMapping& a, const PadMapping& b) noexcept HBA_NONBLOCKING;
 
 } // namespace livecut::engine

@@ -5,7 +5,9 @@ add_library(pf_core STATIC
     include/pf/nonblocking.h
     include/pf/params.h
     include/pf/preset.h
-    src/cubes.cpp
+    src/factory_cubes_data.cpp
+    src/imprint_lpc.cpp
+    src/lattice_eval.cpp
     src/params.cpp
     src/preset.cpp)
 target_include_directories(pf_core PUBLIC include)

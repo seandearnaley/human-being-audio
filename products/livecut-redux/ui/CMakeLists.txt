@@ -24,11 +24,11 @@ target_compile_features(lc_ui PUBLIC cxx_std_20)
 target_link_libraries(lc_ui PUBLIC LivecutEngine hba_visage_ui PRIVATE visage)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(lc_ui PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(lc_ui PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
 elseif(MSVC)
     target_compile_options(lc_ui PRIVATE /W4)
 else()
-    target_compile_options(lc_ui PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(lc_ui PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
 endif()
 
 add_executable(lc-ui-snapshot tools/snapshot.cpp)

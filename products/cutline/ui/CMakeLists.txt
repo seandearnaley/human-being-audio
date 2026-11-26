@@ -15,6 +15,9 @@ add_library(cl_ui STATIC
     src/panel.cpp
     src/panels.h
     src/phrase_panel.cpp
+    src/phrase_stage.h
+    src/phrase_stage_draw.cpp
+    src/phrase_stage_input.cpp
     src/theme.h
     src/top_bar.cpp
     src/top_bar.h)

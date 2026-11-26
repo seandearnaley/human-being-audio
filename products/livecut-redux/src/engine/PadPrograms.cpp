@@ -11,21 +11,16 @@ namespace livecut::engine
 {
 namespace
 {
-double lerp (double a, double b, double t)
-{
-    return a + (b - a) * t;
-}
+double lerp(double a, double b, double t) noexcept HBA_NONBLOCKING { return a + (b - a) * t; }
 } // namespace
 
-bool isAvailable (PadProgram program)
-{
+bool isAvailable(PadProgram program) noexcept HBA_NONBLOCKING {
     // Every program is built; only a value outside the eight isn't one.
     const auto index = static_cast<int> (program);
     return index >= 0 && index < static_cast<int> (padProgramCount);
 }
 
-PadCaptions padCaptions (PadProgram program)
-{
+PadCaptions padCaptions(PadProgram program) noexcept HBA_NONBLOCKING {
     switch (program)
     {
         case PadProgram::cut: return { "Density", "Re-edit" };
@@ -41,27 +36,26 @@ PadCaptions padCaptions (PadProgram program)
     return { "", "" };
 }
 
-int padZone (float value, int zones, int previous)
-{
-    assert (value >= 0.f && value <= 1.f);
-    assert (zones > 0);
+int padZone(float value, int zones, int previous) noexcept HBA_NONBLOCKING {
+    if (zones <= 1)
+        return 0;
+    const auto clamped = std::clamp(static_cast<double>(value), 0.0, 1.0);
 
     if (previous >= 0 && previous < zones)
     {
         const auto lower = static_cast<double> (previous) / zones - 0.03;
         const auto upper = static_cast<double> (previous + 1) / zones + 0.03;
-        if (value >= lower && value <= upper)
+        if (clamped >= lower && clamped <= upper)
             return previous;
     }
 
-    return std::min (static_cast<int> (static_cast<double> (value) * zones), zones - 1);
+    return std::min(static_cast<int>(clamped * zones), zones - 1);
 }
 
-PadMapping mapPad (PadProgram program, float x, float y, PadZones previous)
-{
-    assert (isAvailable (program));
-
+PadMapping mapPad(PadProgram program, float x, float y, PadZones previous) noexcept HBA_NONBLOCKING {
     PadMapping mapping {};
+    if (!isAvailable(program))
+        return mapping;
     mapping.cut.minPhraseBars = 1;
     mapping.cut.maxPhraseBars = 2;
     mapping.zones.y = padZone (y, 1, previous.y);
@@ -205,7 +199,7 @@ PadMapping mapPad (PadProgram program, float x, float y, PadZones previous)
             break;
         }
         default:
-            std::abort(); // A violated precondition must not select a fallback program.
+            return mapping;
     }
 
     const auto captions = padCaptions (program);
@@ -214,8 +208,7 @@ PadMapping mapPad (PadProgram program, float x, float y, PadZones previous)
     return mapping;
 }
 
-bool sameDiscreteState (const PadMapping& a, const PadMapping& b)
-{
+bool sameDiscreteState(const PadMapping& a, const PadMapping& b) noexcept HBA_NONBLOCKING {
     return a.procedure == b.procedure && a.unitsPerBar == b.unitsPerBar
         && a.zones.x == b.zones.x && a.zones.y == b.zones.y;
 }

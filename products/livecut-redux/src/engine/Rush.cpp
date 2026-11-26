@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <utility>
 
 namespace livecut::engine
 {
@@ -104,8 +105,10 @@ void rollLengths(double beats, double curve, bool straight, double shortest, Cut
         else
             add (remainder);
     }
-    if (curve < 0.0)
-        std::reverse (cuts.begin(), cuts.end());
+    if (curve < 0.0) {
+        for (std::size_t i = 0, j = cuts.size(); i + 1 < j; ++i, --j)
+            std::swap(cuts[i], cuts[j - 1]);
+    }
 }
 } // namespace
 

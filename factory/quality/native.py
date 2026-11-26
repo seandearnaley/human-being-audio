@@ -44,7 +44,7 @@ def plan_checks(products, changes):
     if "livecut-redux" in native or ".github/workflows/livecut.yml" in paths:
         jobs.append("livecut")
     if full or "studio.json" in paths or any(p.startswith(("web/", "design/studio/")) or
-            "/press/screenshots/" in p or p in {".github/workflows/website.yml", "products/livecut-redux/docs/editor.png"} for p in paths):
+            "/press/screenshots/" in p or p == ".github/workflows/website.yml" for p in paths):
         jobs.append("website")
     if full or "studio.json" in paths or any(p.startswith(("factory/", "design/studio/")) or "/docs/releases/" in p or
             (p.startswith("products/") and len(Path(p).parts) == 3 and p.endswith("/CMakeLists.txt")) or

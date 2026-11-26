@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include "sb/archetypes.h"
 #include "sb/engine.h"
 #include "sb/params.h"
 
@@ -11,7 +12,7 @@
 namespace sb::ui {
 
 enum class BounceState { idle, rendering, ready };
-enum class Archetype : std::uint8_t { snare = 0, kick = 1, clap = 2, metal = 3, tom = 4, perc = 5 };
+using Archetype = sb::Archetype;
 
 struct PresetEntry {
     std::string name;

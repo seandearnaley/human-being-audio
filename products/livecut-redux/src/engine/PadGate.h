@@ -3,7 +3,9 @@
 #pragma once
 
 #include "engine/PadPrograms.h"
+#include "hba/dsp/nonblocking.h"
 
+#include <cstdint>
 #include <optional>
 
 namespace livecut::engine
@@ -30,31 +32,31 @@ public:
 
     void prepare (double sampleRate);
     // The full reset at preparation: nothing latched, nothing pending, closed.
-    void reset();
+    void reset() noexcept HBA_NONBLOCKING;
     // The transport moved or stopped: closes the gate and drops any release
     // or pending switch, but keeps a latched Hold and the active program, so
     // the next process() reopens at once when Hold is still on.
-    void resync();
+    void resync() noexcept HBA_NONBLOCKING;
     // A switch from Classic over cuts in progress: an armed release at full
     // gain, as if a finger had just lifted, so the cuts carry on to the
     // boundary and fade rather than cutting to the input.
-    void arm();
+    void arm() noexcept HBA_NONBLOCKING;
     // beatsIntoBar must be normalised to [-h, beatsPerBar - h), where h = .5 *
     // beatsPerSample, as returned by Cutter::renderPosition().
-    Step process (const Input&, double beatsIntoBar, double beatsPerBar, double beatsPerSample);
+    Step process(const Input&, double beatsIntoBar, double beatsPerBar, double beatsPerSample) noexcept HBA_NONBLOCKING;
 
-    PadProgram activeProgram() const { return active; }
-    std::optional<PadProgram> pendingProgram() const { return pending; }
+    PadProgram activeProgram() const noexcept HBA_NONBLOCKING { return active; }
+    std::optional<PadProgram> pendingProgram() const noexcept HBA_NONBLOCKING { return pending; }
     // Remains engaged through an armed release and all nonzero fade samples.
-    bool engaged() const { return state != State::closed; }
+    bool engaged() const noexcept HBA_NONBLOCKING { return state != State::closed; }
     // Touched or latched: engaged, and neither releasing nor fading.
-    bool open() const { return state == State::open; }
+    bool open() const noexcept HBA_NONBLOCKING { return state == State::open; }
 
-private:
+  private:
     enum class State { closed, open, armed, fading };
     State state = State::closed;
     bool latch = false;
-    long fadeSamples = 1, fadePosition = 0;
+    std::int64_t fadeSamples = 1, fadePosition = 0;
     PadProgram active = PadProgram::cut;
     std::optional<PadProgram> pending;
 };

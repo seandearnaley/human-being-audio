@@ -2,6 +2,10 @@
 
 #include "engine/ImpactEffects.h"
 
+#include <hba/dsp/adaa.h>
+#include <hba/dsp/gain.h>
+#include <hba/dsp/svf.h>
+
 #include <algorithm>
 #include <bit>
 #include <cassert>
@@ -128,13 +132,7 @@ bool choose(std::uint64_t identity, std::uint64_t tag, bool enabled, float chanc
     return draw < chance;
 }
 
-double gain(double db) noexcept HBA_NONBLOCKING { return std::exp(db * (std::numbers::ln10 / 20.0)); }
-
-// log(cosh(x)) without overflowing at high drive, and with a well-defined F(0).
-double logCosh(double x) noexcept HBA_NONBLOCKING {
-    const auto magnitude = std::abs (x);
-    return magnitude + std::log1p (std::exp (-2.0 * magnitude)) - std::numbers::ln2;
-}
+double gain(double db) noexcept HBA_NONBLOCKING { return hba::dsp::dbToGain(db); }
 
 double cleanState(double x) noexcept HBA_NONBLOCKING { return std::abs(x) < 1.0e-30 ? 0.0 : x; }
 
@@ -431,21 +429,15 @@ void ImpactEffects::processFilter(double& left, double& right, double envelope,
     // before tan() so extreme sweeps remain below Nyquist at every supported rate.
     const auto octaves = p.envelopeOctaves * envelope + p.repeatOctaves * repeatProgress;
     const auto cutoff = std::clamp (p.cutoffHz * std::exp2 (octaves), 30.0, 0.45 * sampleRate);
-    const auto g = std::tan (pi * cutoff / sampleRate);
-    const auto k = 1.0 / p.q;
-    const auto a1 = 1.0 / (1.0 + g * (g + k));
-    const auto a2 = g * a1;
-    const auto a3 = g * a2;
-    const auto channel = [&] (double input, FilterState& s)
-    {
-        // Andrew Simper's trapezoidal SVF (Cytomic, 2013, public domain).
-        const auto v3 = input - s.ic2;
-        const auto v1 = a1 * s.ic1 + a2 * v3;
-        const auto v2 = s.ic2 + a2 * s.ic1 + a3 * v3;
-        s.ic1 = cleanState (2.0 * v1 - s.ic1);
-        s.ic2 = cleanState (2.0 * v2 - s.ic2);
-        const auto output = p.type == ImpactParameters::Filter::Type::lowPass ? v2
-            : p.type == ImpactParameters::Filter::Type::bandPass ? k * v1 : input - k * v1 - v2;
+    const auto coefs = hba::dsp::SvfCoefs::make(cutoff, p.q, sampleRate);
+    const auto channel = [&](double input, FilterState& s) noexcept HBA_NONBLOCKING {
+        double v1 = 0.0, v2 = 0.0;
+        s.tick(coefs, input, v1, v2);
+        s.ic1 = cleanState(s.ic1);
+        s.ic2 = cleanState(s.ic2);
+        const auto output = p.type == ImpactParameters::Filter::Type::lowPass    ? v2
+                            : p.type == ImpactParameters::Filter::Type::bandPass ? coefs.k * v1
+                                                                                 : input - coefs.k * v1 - v2;
         return input + mix * (output - input);
     };
     left = channel (left, filterState[0]);
@@ -494,30 +486,19 @@ void ImpactEffects::processBand(double& left, double& right, double envelope, do
     state.bandLowHz = low;
     state.bandHighHz = high;
 
-    struct Stage { double a1, a2, a3; };
-    const auto k = 1.0 / bandQ; // the low-pass edge's, and a band's high-pass edge's too
-    const auto lowK = sweep ? 1.0 / sweepLowQ : k;
-    const auto stage = [this] (double cutoff, double damping)
-    {
-        const auto g = std::tan (pi * cutoff / sampleRate);
-        const auto a1 = 1.0 / (1.0 + g * (g + damping));
-        return Stage { a1, g * a1, g * (g * a1) };
-    };
-    const auto tick = [] (const Stage& c, double input, FilterState& s)
-    {
-        // The same Simper SVF as the single-stage types.
-        const auto v3 = input - s.ic2;
-        const auto v1 = c.a1 * s.ic1 + c.a2 * v3;
-        const auto v2 = s.ic2 + c.a2 * s.ic1 + c.a3 * v3;
-        s.ic1 = cleanState (2.0 * v1 - s.ic1);
-        s.ic2 = cleanState (2.0 * v2 - s.ic2);
+    const auto lowQ = sweep ? sweepLowQ : bandQ;
+    const auto highPass = hba::dsp::SvfCoefs::make(low, lowQ, sampleRate);
+    const auto lowPass = hba::dsp::SvfCoefs::make(high, bandQ, sampleRate);
+    const auto tick = [](const hba::dsp::SvfCoefs& c, double input, FilterState& s) noexcept HBA_NONBLOCKING {
+        double v1 = 0.0, v2 = 0.0;
+        s.tick(c, input, v1, v2);
+        s.ic1 = cleanState(s.ic1);
+        s.ic2 = cleanState(s.ic2);
         return std::array<double, 2> { v1, v2 };
     };
-    const auto highPass = stage (low, lowK), lowPass = stage (high, k);
-    const auto channel = [&] (double input, FilterState& highState, FilterState& lowState)
-    {
+    const auto channel = [&](double input, FilterState& highState, FilterState& lowState) noexcept HBA_NONBLOCKING {
         const auto [v1, v2] = tick (highPass, input, highState);
-        return tick (lowPass, input - lowK * v1 - v2, lowState)[1];
+        return tick(lowPass, input - highPass.k * v1 - v2, lowState)[1];
     };
     const auto bandLeft = channel (left, filterState[0], bandState[0]);
     const auto bandRight = channel (right, filterState[1], bandState[1]);
@@ -537,8 +518,8 @@ void ImpactEffects::processBand(double& left, double& right, double envelope, do
     const auto* table = sweep ? sweepPowerTableData : bandPowerTable;
     const auto width = std::log2 (std::min (high, makeupHighestHz) / low);
     const auto pink = table != nullptr ? std::exp(0.5 * (table->logOpen - table->interpolate(width, bandQ))) : 1.0;
-    const auto hold = sweep ? std::min ({ sweepMakeupCeiling, pink, sweepPeakCeiling / lowPassPeak (bandQ) })
-                            : std::min (makeupCeiling, pink);
+    const auto hold = sweep ? std::min(sweepMakeupCeiling, std::min(pink, sweepPeakCeiling / lowPassPeak(bandQ)))
+                            : std::min(makeupCeiling, pink);
     state.levelHoldGain = hold;
     if (sweep)
     {
@@ -583,8 +564,8 @@ void ImpactEffects::processDrive(double& left, double& right, double envelope) n
         else
         {
             // First-order ADAA: [F(x[n])-F(x[n-1])]/[x[n]-x[n-1]].
-            // The analytic midpoint limit avoids a nearly zero denominator.
-            const auto primitive = logCosh (x);
+            // Uses hba::dsp::TanhShaper::ad1 (Maclaurin-stabilized log(cosh(x))).
+            const auto primitive = hba::dsp::TanhShaper::ad1(x);
             const auto difference = x - s.previous;
             shaped = ! s.primed || std::abs (difference) < 1.0e-4
                 ? std::tanh (s.primed ? 0.5 * (x + s.previous) : x)

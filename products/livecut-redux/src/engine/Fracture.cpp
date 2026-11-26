@@ -192,7 +192,7 @@ double tapeStopBeats(const FractureParameters::Tape& tape, std::uint32_t seed, s
             break;
         }
     }
-    return std::min ({ static_cast<double> (tape.stopBeats), beatsPerBar, gap / 2.0 });
+    return std::min(static_cast<double>(tape.stopBeats), std::min(beatsPerBar, gap / 2.0));
 }
 
 bool layOutTapeStops(const FractureParameters::Tape& tape, std::uint32_t seed, std::int64_t bar, double fromBeat,

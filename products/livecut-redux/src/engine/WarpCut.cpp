@@ -10,6 +10,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <utility>
 
 namespace livecut::engine
 {
@@ -65,8 +66,10 @@ void WarpCut::chooseBlock(Random& random, const CutParameters& params, const Blo
             cuts[i].units = first * std::pow (accel, static_cast<double> (i));
 
         // A ritard reverses the durations only, so the sweep still starts at the original pitch.
-        if (random.chance (params.ritardChance))
-            std::reverse (cuts.begin(), cuts.end());
+        if (random.chance(params.ritardChance)) {
+            for (std::size_t i = 0, j = cuts.size(); i + 1 < j; ++i, --j)
+                std::swap(cuts[i], cuts[j - 1]);
+        }
     }
 
     sweep (cuts, random, params);
