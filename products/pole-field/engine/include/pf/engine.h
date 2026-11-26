@@ -49,6 +49,9 @@ public:
     int oversamplingFactor() const noexcept PF_NONBLOCKING;
     float gainReductionDb() const noexcept PF_NONBLOCKING;
     double lanePpq() const noexcept PF_NONBLOCKING;
+    double notePpq() const noexcept PF_NONBLOCKING;
+    double freeSeconds() const noexcept PF_NONBLOCKING;
+    double noteSeconds() const noexcept PF_NONBLOCKING;
     std::array<float, kLaneCount> lanePhases() const noexcept PF_NONBLOCKING;
     std::array<float, kLaneCount> laneValues() const noexcept PF_NONBLOCKING;
 

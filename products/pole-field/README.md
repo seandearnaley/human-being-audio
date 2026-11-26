@@ -11,7 +11,7 @@ Seven cascaded second-order pole-zero TPT SVF sections interpolate across 3D mor
 - **Sub lock** splits and phase-aligns a clean mono sub below `Sub split` with continuous `Fit` phase rotation.
 - **MIDI pitch tracking & expression** shifts all 14 poles and zeros smoothly with glide relative to F1, responds to `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch bend, and displays live modulation ghost arcs across the top-bar macros.
 - **Burg LPC WAV Imprint** extracts 7 conjugate pole pairs from any audio file into the Imprint Cube.
-- **Movement & A/B workflow** provides four tempo-locked drawable and follower lanes plus 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare across parameters, curves, and imprints.
+- **Movement & A/B workflow** provides four drawable and follower lanes with five timing modes (`Sync`, `Retrig`, `1-Shot`, `Free` Hz, and `Free R` MIDI-retriggered Hz from `0.05`–`20 Hz` with exact phase-locked `Follow` + `Ratio` scaling), an Envelope Follower shape, plus 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare across parameters, curves, and imprints.
 
 ## Building
 

@@ -438,11 +438,21 @@ template <typename ParamFrameT> class StandardChip final : public ParamFrameT {
   public:
     using ParamFrameT::ParamFrameT;
 
+    void setTextOverride(std::string text) {
+        if (text == textOverride_)
+            return;
+        textOverride_ = std::move(text);
+        this->redraw();
+    }
+
   private:
     void paint(visage::Canvas& canvas) override {
-        drawChip(canvas, this->context_.scale, this->text(), this->width(), this->height(),
+        const std::string label = textOverride_.empty() ? this->text() : textOverride_;
+        drawChip(canvas, this->context_.scale, label, this->width(), this->height(),
                  this->active() ? colour::text : this->accent_);
     }
+
+    std::string textOverride_;
 };
 
 template <typename ContextT> class StudioButton final : public visage::Frame {

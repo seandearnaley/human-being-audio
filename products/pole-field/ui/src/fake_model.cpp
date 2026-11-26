@@ -6,6 +6,9 @@ namespace pf::ui {
 
 FakeModel::FakeModel() {
     visuals_.ppq = 2.6;
+    visuals_.notePpq = 1.1;
+    visuals_.freeSec = 1.65;
+    visuals_.noteSec = 0.72;
     visuals_.peakDbLeft = -4.2f;
     visuals_.peakDbRight = -4.6f;
     visuals_.gainReductionDb = 1.8f;

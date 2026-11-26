@@ -17,6 +17,9 @@ void Analysis::push(const float* preInMono, const float* leftOut, const float* r
 void Analysis::setStatus(const Status& status) noexcept {
     gainReductionDb_.store(status.gainReductionDb, std::memory_order_relaxed);
     ppq_.store(status.ppq, std::memory_order_relaxed);
+    notePpq_.store(status.notePpq, std::memory_order_relaxed);
+    freeSec_.store(status.freeSec, std::memory_order_relaxed);
+    noteSec_.store(status.noteSec, std::memory_order_relaxed);
     osFactor_.store(status.osFactor, std::memory_order_relaxed);
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanePhase_[i].store(status.lanePhase[i], std::memory_order_relaxed);
@@ -58,6 +61,9 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.osFactor = osFactor_.load(std::memory_order_relaxed);
     visuals.gainReductionDb = gainReductionDb_.load(std::memory_order_relaxed);
     visuals.ppq = ppq_.load(std::memory_order_relaxed);
+    visuals.notePpq = notePpq_.load(std::memory_order_relaxed);
+    visuals.freeSec = freeSec_.load(std::memory_order_relaxed);
+    visuals.noteSec = noteSec_.load(std::memory_order_relaxed);
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         visuals.lanePhase[i] = lanePhase_[i].load(std::memory_order_relaxed);
         visuals.laneValue[i] = laneValue_[i].load(std::memory_order_relaxed);

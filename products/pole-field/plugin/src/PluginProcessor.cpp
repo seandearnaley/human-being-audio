@@ -178,6 +178,9 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     Analysis::Status status;
     status.gainReductionDb = engine_.gainReductionDb();
     status.ppq = engine_.lanePpq();
+    status.notePpq = engine_.notePpq();
+    status.freeSec = engine_.freeSeconds();
+    status.noteSec = engine_.noteSeconds();
     status.osFactor = engine_.oversamplingFactor();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();

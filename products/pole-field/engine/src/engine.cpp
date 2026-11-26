@@ -109,9 +109,14 @@ struct Engine::Impl {
     double timbreOffsetTarget = 0.0;
     double aftertouchTarget = 0.0;
     double freePpq = 0.0;
+    std::uint64_t freeSamples = 0;
+    std::uint64_t noteSamples = 0;
 
     // Published telemetry for UI
     double lastPpq = 0.0;
+    double lastNotePpq = 0.0;
+    double lastFreeSec = 0.0;
+    double lastNoteSec = 0.0;
     std::array<float, kLaneCount> lastLanePhase {};
     std::array<float, kLaneCount> lastLaneValue {};
     float lastGrDb = 0.0f;
@@ -224,6 +229,12 @@ struct Engine::Impl {
         timbreOffsetTarget = 0.0;
         aftertouchTarget = 0.0;
         freePpq = 0.0;
+        freeSamples = 0;
+        noteSamples = 0;
+        lastPpq = 0.0;
+        lastNotePpq = 0.0;
+        lastFreeSec = 0.0;
+        lastNoteSec = 0.0;
         lastGrDb = 0.0f;
         sampleIndex = 0;
     }
@@ -235,6 +246,7 @@ struct Engine::Impl {
         else
             noteStack[kMaxHeldNotes - 1] = note;
         activeNote = note;
+        noteSamples = 0;
     }
 
     void noteOff(int note) noexcept PF_NONBLOCKING {
@@ -353,6 +365,11 @@ struct Engine::Impl {
             const double ppq = transport.playing ? transport.ppq + quartersPerSample * n : freePpq;
             if (!transport.playing) freePpq += quartersPerSample;
             else freePpq = ppq;
+            const double freeSec = static_cast<double>(freeSamples) / sampleRate;
+            const double noteSec = static_cast<double>(noteSamples) / sampleRate;
+            const double notePpq = static_cast<double>(noteSamples) * quartersPerSample;
+            ++freeSamples;
+            ++noteSamples;
 
             const double rawInL = static_cast<double>(left[n]);
             const double rawInR = static_cast<double>(right[n]);
@@ -373,7 +390,8 @@ struct Engine::Impl {
             // Evaluate lanes every sample (with live envState feeding any Shape == Env lane).
             std::array<float, kLaneCount> sends {};
             for (int l = 0; l < kLaneCount; ++l)
-                sends[static_cast<std::size_t>(l)] = static_cast<float>(laneSend(params, laneCurves, l, ppq, envState));
+                sends[static_cast<std::size_t>(l)] =
+                    static_cast<float>(laneSend(params, laneCurves, l, ppq, envState, notePpq, freeSec, noteSec));
 
             const double tX = std::clamp(static_cast<double>(laneApply(LaneTarget::morphX, params[ParamId::morphX],
                                                                        laneSum(params, sends, LaneTarget::morphX))) +
@@ -608,10 +626,12 @@ struct Engine::Impl {
 
             if (n == numSamples - 1) {
                 lastPpq = ppq;
+                lastNotePpq = notePpq;
+                lastFreeSec = freeSec;
+                lastNoteSec = noteSec;
                 for (int l = 0; l < kLaneCount; ++l) {
                     const auto li = static_cast<std::size_t>(l);
-                    lastLanePhase[li] = static_cast<float>(
-                        lanePhase(ppq, laneLengthQuarters(params, l), params[laneParam(l, LaneField::phase)]));
+                    lastLanePhase[li] = static_cast<float>(lanePhaseFor(params, l, ppq, notePpq, freeSec, noteSec));
                     lastLaneValue[li] = sends[li];
                 }
                 effective.morphX = static_cast<float>(sX);
@@ -670,6 +690,9 @@ int Engine::latencySamples() const noexcept PF_NONBLOCKING {
 int Engine::oversamplingFactor() const noexcept PF_NONBLOCKING { return impl_->osFactor; }
 float Engine::gainReductionDb() const noexcept PF_NONBLOCKING { return impl_->lastGrDb; }
 double Engine::lanePpq() const noexcept PF_NONBLOCKING { return impl_->lastPpq; }
+double Engine::notePpq() const noexcept PF_NONBLOCKING { return impl_->lastNotePpq; }
+double Engine::freeSeconds() const noexcept PF_NONBLOCKING { return impl_->lastFreeSec; }
+double Engine::noteSeconds() const noexcept PF_NONBLOCKING { return impl_->lastNoteSec; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept PF_NONBLOCKING { return impl_->lastLanePhase; }
 std::array<float, kLaneCount> Engine::laneValues() const noexcept PF_NONBLOCKING { return impl_->lastLaneValue; }
 Engine::EffectiveState Engine::effectiveState() const noexcept PF_NONBLOCKING { return impl_->effective; }

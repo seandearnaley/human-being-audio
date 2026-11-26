@@ -1,4 +1,4 @@
-// Four tempo-locked movement lanes (plus Envelope Follower shape) shared between the engine and interface.
+// Four tempo-locked and free-Hz movement lanes (plus Envelope Follower shape) shared between the engine and interface.
 #pragma once
 
 #include "pf/curve.h"
@@ -7,6 +7,7 @@
 #include <hba/dsp/lane_math.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -14,7 +15,9 @@ namespace pf {
 
 using hba::dsp::kLaneStepsPerCycle;
 using hba::dsp::laneHash;
+using hba::dsp::laneModeIsFree;
 using hba::dsp::lanePhase;
+using hba::dsp::lanePhaseHz;
 using hba::dsp::laneStepValue;
 
 inline double laneShape(LaneShape shape, double phase, int lane) noexcept HBA_NONBLOCKING {
@@ -31,14 +34,26 @@ inline LaneCurves defaultLaneCurves() noexcept {
     return curves;
 }
 
-inline int laneSource(const Params& params, int lane) noexcept {
-    int source = lane;
-    for (int hop = 0; hop < kLaneCount; ++hop) {
-        const int follow = params.choice(laneParam(source, LaneField::follow)) - 1;
-        if (follow < 0 || follow >= kLaneCount || follow == source) return source;
-        source = follow;
+inline std::array<hba::dsp::LaneConfig, kLaneCount> extractLaneConfigs(const Params& params) noexcept {
+    std::array<hba::dsp::LaneConfig, kLaneCount> lanes{};
+    for (int i = 0; i < kLaneCount; ++i) {
+        auto& cfg = lanes[static_cast<std::size_t>(i)];
+        cfg.on = params.on(laneParam(i, LaneField::on));
+        cfg.rateIndex = params.choice(laneParam(i, LaneField::rate));
+        cfg.phaseDeg = static_cast<double>(params[laneParam(i, LaneField::phase)]);
+        cfg.depth = static_cast<double>(params[laneParam(i, LaneField::depth)]);
+        cfg.shape = params.choice(laneParam(i, LaneField::shape));
+        cfg.follow = params.choice(laneParam(i, LaneField::follow));
+        cfg.ratioIndex = params.choice(laneParam(i, LaneField::ratio));
+        cfg.mode = static_cast<LaneMode>(
+            std::clamp(params.choice(laneParam(i, LaneField::mode)), 0, static_cast<int>(LaneMode::freeRetrig)));
+        cfg.hz = static_cast<double>(params[laneParam(i, LaneField::hz)]);
     }
-    return lane;
+    return lanes;
+}
+
+inline int laneSource(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneSource(extractLaneConfigs(params), lane);
 }
 
 inline LaneShape laneEffectiveShape(const Params& params, int lane) noexcept {
@@ -48,32 +63,52 @@ inline LaneShape laneEffectiveShape(const Params& params, int lane) noexcept {
 }
 
 inline double laneLengthQuarters(const Params& params, int lane) noexcept {
-    const int source = laneSource(params, lane);
-    const auto rate = static_cast<std::size_t>(
-        std::clamp(params.choice(laneParam(source, LaneField::rate)), 0, static_cast<int>(kLaneRateQuarters.size()) - 1));
-    if (source == lane) return kLaneRateQuarters[rate];
-    const auto ratio = static_cast<std::size_t>(
-        std::clamp(params.choice(laneParam(lane, LaneField::ratio)), 0, static_cast<int>(kLaneRatios.size()) - 1));
-    return kLaneRateQuarters[rate] / kLaneRatios[ratio];
+    return hba::dsp::resolveLaneLengthQuarters(extractLaneConfigs(params), lane);
+}
+
+inline LaneMode laneModeOf(const Params& params, int lane) noexcept {
+    return static_cast<LaneMode>(
+        std::clamp(params.choice(laneParam(lane, LaneField::mode)), 0, static_cast<int>(LaneMode::freeRetrig)));
+}
+
+inline LaneMode laneEffectiveMode(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneMode(extractLaneConfigs(params), lane);
+}
+
+inline bool laneUsesFreeClock(const Params& params, int lane) noexcept {
+    return laneEffectiveShape(params, lane) != LaneShape::env &&
+           hba::dsp::resolveLaneUsesFreeClock(extractLaneConfigs(params), lane);
+}
+
+inline double laneRateHz(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneRateHz(extractLaneConfigs(params), lane);
+}
+
+inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq = 0.0,
+                           double freeSec = 0.0, double noteSec = 0.0) noexcept {
+    return hba::dsp::resolveLanePhase(extractLaneConfigs(params), lane, {hostPpq, notePpq, freeSec, noteSec});
 }
 
 inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                         double envValue = 0.0) noexcept {
-    const int source = laneSource(params, lane);
+                         double envValue = 0.0, double notePpq = 0.0, double freeSec = 0.0,
+                         double noteSec = 0.0) noexcept {
+    const auto lanes = extractLaneConfigs(params);
+    const int source = hba::dsp::resolveLaneSource(lanes, lane);
     const auto shape = static_cast<LaneShape>(
-        std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::env)));
+        std::clamp(lanes[static_cast<std::size_t>(source)].shape, 0, static_cast<int>(LaneShape::env)));
     if (shape == LaneShape::env)
         return std::clamp(envValue, 0.0, 1.0);
-    const double phase = lanePhase(ppq, laneLengthQuarters(params, lane), params[laneParam(lane, LaneField::phase)]);
-    if (shape == LaneShape::custom) return evaluate(curves[static_cast<std::size_t>(source)], phase);
-    return laneShape(shape, phase, source);
+    return hba::dsp::evaluateLaneOutput(lanes, curves, lane, {ppq, notePpq, freeSec, noteSec});
 }
 
 inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                       double envValue = 0.0) noexcept {
-    if (!params.on(laneParam(lane, LaneField::on))) return 0.0;
-    return laneOutput(params, curves, lane, ppq, envValue) * params[laneParam(lane, LaneField::depth)] *
-           params[ParamId::motion];
+                       double envValue = 0.0, double notePpq = 0.0, double freeSec = 0.0,
+                       double noteSec = 0.0) noexcept {
+    if (!params.on(laneParam(lane, LaneField::on)))
+        return 0.0;
+    return laneOutput(params, curves, lane, ppq, envValue, notePpq, freeSec, noteSec) *
+           static_cast<double>(params[laneParam(lane, LaneField::depth)]) *
+           static_cast<double>(params[ParamId::motion]);
 }
 
 inline LaneTarget laneTargetOf(const Params& params, int lane) noexcept {
