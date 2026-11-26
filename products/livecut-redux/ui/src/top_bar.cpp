@@ -3,6 +3,8 @@
 
 #include "pad_art.h"
 
+#include <hba/ui/top_bar.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -22,36 +24,18 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
       surface_(context, "surface", {"Pad", "Classic"}, colour::accent),
       subAnchor_(context, "subAnchor", "Sub", colour::cyan, true), limiter_(context, "limiter", "LIM", colour::amber) {
     addChild(&wordmark_);
-    wordmark_.onDraw() += [this](visage::Canvas& canvas) {
+    hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout), [this](visage::Canvas& canvas) {
         drawWordmark(canvas, 0.0f, 0.0f, wordmark_.width(), wordmark_.height(), context_.scale,
                      wordmark_.hasKeyboardFocus());
-    };
-    wordmark_.onToggle() = [open = std::move(showAbout)](visage::Button*, bool) {
-        if (open)
-            open();
-    };
-    wordmark_.setAcceptsKeystrokes(true);
-    wordmark_.onKeyPress() = [this](const visage::KeyEvent& key) {
-        if (key.keyCode() != visage::KeyCode::Return && key.keyCode() != visage::KeyCode::Space)
-            return false;
-        wordmark_.notify(false);
-        return true;
-    };
+    });
 
     for (visage::Frame* child : std::initializer_list<visage::Frame*>{&previous_, &presetName_, &next_, &save_, &undo_,
                                                                       &redo_, &ab_, &surface_, &subAnchor_, &limiter_})
         addChild(child);
 
     save_.setAccent(colour::textDim);
-    ab_.setOnRightClick([this] {
-        visage::PopupMenu menu;
-        menu.addOption(1, context_.model.isSlotB() ? "Copy B \u2192 A" : "Copy A \u2192 B");
-        menu.onSelection() = [this](int opt) {
-            if (opt == 1)
-                context_.model.copyAB();
-        };
-        menu.show(&ab_);
-    });
+    ab_.setOnRightClick(
+        [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
 
     context_.live.push_back(this);
     tick();
@@ -60,18 +44,8 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
 TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
 
 void TopBar::showPresetMenu() {
-    visage::PopupMenu menu;
-    const auto presets = context_.model.presets();
-    std::size_t i = 0;
-    while (i < presets.size()) {
-        const std::string& category = presets[i].category;
-        visage::PopupMenu group(category);
-        for (; i < presets.size() && presets[i].category == category; ++i)
-            group.addOption(static_cast<int>(i), presets[i].name);
-        menu.addSubMenu(std::move(group));
-    }
-    menu.onSelection() = [this](int index) { context_.model.loadPreset(index); };
-    menu.show(&presetName_);
+    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &presetName_,
+                                       [this](int i) { context_.model.loadPreset(i); });
 }
 
 void TopBar::tick() {
@@ -80,11 +54,8 @@ void TopBar::tick() {
         shownPreset_ = std::move(current);
         presetName_.setLabel(shownPreset_);
     }
-    undo_.setAccent(context_.model.canUndo() ? colour::textDim : colour::textFaint);
-    redo_.setAccent(context_.model.canRedo() ? colour::textDim : colour::textFaint);
-    const bool isB = context_.model.isSlotB();
-    ab_.setLabel(isB ? "B" : "A");
-    ab_.setAccent(isB ? colour::rose : colour::accent);
+    hba::ui::syncHistoryButtons(undo_, redo_, ab_, context_.model.canUndo(), context_.model.canRedo(),
+                                context_.model.isSlotB(), colour::accent, colour::rose);
 
     // Sync active surface accent colour
     const bool onPad = context_.model.getNormalised("surface") < 0.5f;

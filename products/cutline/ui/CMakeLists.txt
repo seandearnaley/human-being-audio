@@ -5,7 +5,6 @@ add_library(cl_ui STATIC
     include/cl/ui/editor.h
     include/cl/ui/fake_model.h
     include/cl/ui/model.h
-    src/controls.cpp
     src/controls.h
     src/delivery_panel.cpp
     src/editor.cpp

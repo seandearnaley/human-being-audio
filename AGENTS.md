@@ -6,7 +6,7 @@
 - `modules/`: shared studio C++ libraries consumed by products:
   - `modules/dsp` (`hba_dsp`): header-only real-time DSP primitives (`adaa.h`, `allpass.h`, `biquad.h`, `control.h`, `crossover.h`, `curve.h`, `denormals.h`, `gain.h`, `lane_math.h`, `limiter.h`, `oscillator.h`, `oversampling.h`, `pitch.h`, `random.h`, `svf.h`, plus `third_party/hiir`). All audio-path functions are zero-allocation and `[[clang::nonblocking]]` compatible.
   - `modules/core` (`hba_core`): shared serialization, binary export & math primitives (`preset_json.h`, `wav.h`, `smf.h`, `param_math.h`, `note_name.h`).
-  - `modules/visage-ui` (`hba_visage_ui`): single embedded Inter font bundle (`hba::ui::fonts`), studio dark-chrome design tokens & drawing primitives (`hba/ui/theme.h`), and interactive modulation-curve gesture editor (`hba/ui/movement_edit.h`).
+  - `modules/visage-ui` (`hba_visage_ui`): single embedded Inter font bundle (`hba::ui::fonts`), studio dark-chrome design tokens & drawing primitives (`theme.h`), shared Visage window/timer host (`editor_window.h`), parameter controls & stereo output meter (`controls.h`), TopBar wordmark/preset/AB helpers (`top_bar.h`), and interactive modulation-curve gesture editor & 4-lane movement panel (`movement_edit.h`, `movement_panel.h`).
   - `modules/plugin-host` (`hba_plugin_host`): JUCE host bridge helpers — `StateMailbox<T>`, `TelemetryChannel<T>`, `VisageSurface`, `StudioPluginEditor`, `MidiExpressionParser`, `parameters.h` (`makeParameterLayout`, `ParameterSnapshotter`), `CurveStore<N>`, `OfflineWavWorker` / `writeTempMidiFile`, `preset_bank.h`, and `StereoAnalyzerBase`.
   - `modules/studio-ui` (`hba_studio_ui`): `StudioAbout.h` and `StudioHistory.h` (coalesced Undo/Redo + A/B compare).
 - `products/`:

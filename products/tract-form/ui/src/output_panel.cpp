@@ -1,28 +1,19 @@
 #include "panels.h"
 
+#include <hba/ui/controls.h>
+
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace tf::ui {
 
 namespace {
 // Design pixels.
-constexpr float kMeterHeight = 5.0f;
-constexpr float kMeterPitch = 11.0f;  // top of one bar to the top of the next
-constexpr float kReductionHeight = 3.0f;
-constexpr float kReadoutWidth = 54.0f;
 constexpr float kColumnGap = 12.0f;
 constexpr float kDragThreshold = 4.0f;  // design pixels before a press becomes a drag
 constexpr float kButtonHeight = 26.0f;
 constexpr float kGridRowHeight = 20.0f;
 constexpr float kGridRowGap = 3.0f;
-
-constexpr float kMeterFloorDb = -48.0f;
-constexpr float kReductionRangeDb = 12.0f;
-constexpr float kReductionVisibleDb = 0.1f;
-
-float meterPosition(float db) { return std::clamp((db - kMeterFloorDb) / -kMeterFloorDb, 0.0f, 1.0f); }
 
 // The shared Button with drag-out added: once a file is ready, dragging from the
 // button hands it to the host. The button itself ignores the mouse; this frame
@@ -124,7 +115,7 @@ public:
         const float buttonY = height() - pad - px(kButtonHeight);
 
         // 4x2 grid (Amp ADSR on left, Dynamics/Output on right) centred between meters and Resample.
-        const float meterBottom = pad + px(2.0f * kMeterPitch + kReductionHeight);
+        const float meterBottom = pad + px(hba::ui::meter::kTotalDesignHeight);
         const float rowsHeight = 4.0f * rowHeight + 3.0f * rowGap;
         const float firstRow = std::round(meterBottom + 0.5f * (buttonY - meterBottom - rowsHeight));
         const auto rowY = [&](int idx) { return firstRow + static_cast<float>(idx) * (rowHeight + rowGap); };
@@ -145,52 +136,12 @@ public:
     void draw(visage::Canvas& canvas) override {
         drawChrome(canvas);
         const Visuals& visuals = context_.model.visuals();
-        const float ceiling = context_.model.get(ParamId::ceiling);
-
-        const float pad = px(metric::pad);
-        const float barWidth = width() - 2.0f * pad - px(kReadoutWidth);
-        const float barHeight = px(kMeterHeight);
-
-        meter(canvas, pad, pad, barWidth, barHeight, visuals.peakDbLeft, ceiling);
-        meter(canvas, pad, pad + px(kMeterPitch), barWidth, barHeight, visuals.peakDbRight, ceiling);
-
-        const float reduction = std::clamp(visuals.gainReductionDb, 0.0f, kReductionRangeDb);
-        if (reduction > kReductionVisibleDb) {
-            const float thickness = px(kReductionHeight);
-            const float length = barWidth * reduction / kReductionRangeDb;
-            canvas.setColor(colour::alert);
-            canvas.roundedRectangle(pad + barWidth - length, pad + px(2.0f * kMeterPitch), length, thickness,
-                                    0.5f * thickness);
-        }
-
-        const float peak = std::max(visuals.peakDbLeft, visuals.peakDbRight);
-        char text[16];
-        if (peak <= kMeterFloorDb * 2.0f)
-            std::snprintf(text, sizeof text, "-inf dB");
-        else
-            std::snprintf(text, sizeof text, "%.1f dB", static_cast<double>(peak));
-        drawLabel(canvas, context_, text, pad + barWidth, pad, px(kReadoutWidth), px(kMeterPitch + kMeterHeight),
-                  peak > ceiling ? colour::alert : colour::text, visage::Font::kRight, type::label, Weight::regular);
+        hba::ui::drawStereoOutputMeter(canvas, context_.scale, px(metric::pad), width(), visuals.peakDbLeft,
+                                       visuals.peakDbRight, visuals.gainReductionDb,
+                                       context_.model.get(ParamId::ceiling), colour::alert);
     }
 
-private:
-    void meter(visage::Canvas& canvas, float x, float y, float w, float h, float db, float ceiling) {
-        const float radius = 0.5f * h;
-        canvas.setColor(colour::track);
-        canvas.roundedRectangle(x, y, w, h, radius);
-
-        const float level = w * meterPosition(db);
-        if (level <= 0.0f) return;
-        canvas.setColor(colour::withAlpha(colour::text, 0.85f));
-        canvas.roundedRectangle(x, y, level, h, radius);
-
-        const float limit = w * meterPosition(ceiling);
-        if (db > ceiling && level > limit) {
-            canvas.setColor(colour::alert);
-            canvas.rightRoundedRectangle(x + limit, y, level - limit, h, radius);
-        }
-    }
-
+  private:
     Row& attack_;
     Row& decay_;
     Row& sustain_;

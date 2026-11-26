@@ -5,7 +5,6 @@ add_library(pf_ui STATIC
     include/pf/ui/editor.h
     include/pf/ui/fake_model.h
     include/pf/ui/model.h
-    src/controls.cpp
     src/controls.h
     src/editor.cpp
     src/fake_model.cpp

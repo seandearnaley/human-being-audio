@@ -1,5 +1,49 @@
 "use client";
 import { useEffect } from "react";
+import { PRODUCTS, SCULPTURE_FORMS } from "../lib/catalog.mjs";
+
+const FORM_GLYPHS = {
+  monoliths: (
+    <>
+      <rect x="2" y="5" width="3" height="9" />
+      <rect x="6.5" y="2" width="3" height="12" />
+      <rect x="11" y="7" width="3" height="7" />
+    </>
+  ),
+  tube: (
+    <>
+      <ellipse cx="8" cy="8" rx="6.5" ry="4" fill="none" strokeWidth="2" />
+      <circle cx="8" cy="8" r="1.6" />
+    </>
+  ),
+  rings: (
+    <>
+      <polygon points="8,1.5 14,5 14,11 8,14.5 2,11 2,5" fill="none" strokeWidth="1.5" />
+      <polygon points="8,5 11,10 5,10" fill="none" strokeWidth="1.5" />
+    </>
+  ),
+  prisms: (
+    <>
+      <polygon points="8,1 14,8 8,15 2,8" />
+      <line x1="2" y1="8" x2="14" y2="8" stroke="var(--paper)" strokeWidth="1" />
+    </>
+  ),
+  helix: (
+    <>
+      <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(-28 8 8)" />
+      <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(28 8 8)" />
+      <circle cx="8" cy="8" r="1.5" />
+    </>
+  ),
+  membrane: (
+    <>
+      <circle cx="8" cy="8" r="6.4" fill="none" strokeWidth="1.4" />
+      <circle cx="8" cy="8" r="3.6" fill="none" strokeWidth="1.3" />
+      <circle cx="10.2" cy="6.2" r="1.5" />
+    </>
+  ),
+};
+
 export default function Hero() {
   useEffect(() => {
     let teardown = null;
@@ -39,7 +83,7 @@ export default function Hero() {
         <span className="grab__hint">drag to twist · tap to hit</span>
       </div>
 
-      <aside className="hero__dock dock" aria-labelledby="dock-title" style={{ "--hue": 43 }}>
+      <aside className="hero__dock dock" aria-labelledby="dock-title" style={{ "--hue": PRODUCTS[0].hue }}>
         <div className="dock__head">
           <h2 className="dock__title" id="dock-title">
             Play with the sculpture
@@ -52,75 +96,15 @@ export default function Hero() {
 
         <fieldset className="forms" id="form-picker">
           <legend>Form</legend>
-          <label className="chip">
-            <input type="radio" name="form" value="monoliths" defaultChecked />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <rect x="2" y="5" width="3" height="9" />
-              <rect x="6.5" y="2" width="3" height="12" />
-              <rect x="11" y="7" width="3" height="7" />
-            </svg>
-            Monoliths
-          </label>
-          <label className="chip">
-            <input type="radio" name="form" value="tube" />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <ellipse
-                cx="8"
-                cy="8"
-                rx="6.5"
-                ry="4"
-                fill="none"
-                strokeWidth="2"
-              />
-              <circle cx="8" cy="8" r="1.6" />
-            </svg>
-            Tube
-          </label>
-          <label className="chip">
-            <input type="radio" name="form" value="rings" />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <polygon
-                points="8,1.5 14,5 14,11 8,14.5 2,11 2,5"
-                fill="none"
-                strokeWidth="1.5"
-              />
-              <polygon points="8,5 11,10 5,10" fill="none" strokeWidth="1.5" />
-            </svg>
-            Rings
-          </label>
-          <label className="chip">
-            <input type="radio" name="form" value="prisms" />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <polygon points="8,1 14,8 8,15 2,8" />
-              <line
-                x1="2"
-                y1="8"
-                x2="14"
-                y2="8"
-                stroke="var(--paper)"
-                strokeWidth="1"
-              />
-            </svg>
-            Prisms
-          </label>
-          <label className="chip">
-            <input type="radio" name="form" value="helix" />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(-28 8 8)" />
-              <ellipse cx="8" cy="8" rx="6.2" ry="3.2" fill="none" strokeWidth="1.5" transform="rotate(28 8 8)" />
-              <circle cx="8" cy="8" r="1.5" />
-            </svg>
-            Helix
-          </label>
-          <label className="chip">
-            <input type="radio" name="form" value="membrane" />
-            <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="8" cy="8" r="6.4" fill="none" strokeWidth="1.4" />
-              <circle cx="8" cy="8" r="3.6" fill="none" strokeWidth="1.3" />
-              <circle cx="10.2" cy="6.2" r="1.5" />
-            </svg>
-            Membrane
-          </label>
+          {SCULPTURE_FORMS.map((form, index) => (
+            <label className="chip" key={form.id}>
+              <input type="radio" name="form" value={form.id} defaultChecked={index === 0} />
+              <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true">
+                {FORM_GLYPHS[form.id]}
+              </svg>
+              {form.label}
+            </label>
+          ))}
         </fieldset>
 
         <div className="vowel">

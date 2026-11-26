@@ -3,78 +3,32 @@
 #include "panels.h"
 #include "top_bar.h"
 
-#include <visage/app.h>
-
-#include <array>
+#include <hba/ui/editor_window.h>
 
 namespace pf::ui {
 
 namespace {
-struct Rect {
-    float x, y, width, height;
-};
 constexpr float kMargin = metric::margin;
 constexpr float kContentWidth = kDefaultWidth - 2.0f * kMargin;
-constexpr Rect kTopBar { kMargin, 12.0f, kContentWidth, 64.0f };
-constexpr Rect kMainDeck { kMargin, 88.0f, kContentWidth, 432.0f };
+constexpr hba::ui::DesignRect kTopBar{kMargin, 12.0f, kContentWidth, 64.0f};
+constexpr hba::ui::DesignRect kMainDeck{kMargin, 88.0f, kContentWidth, 432.0f};
 constexpr float kOutputWidth = 304.0f;
-constexpr Rect kMovement { kMargin, 532.0f, kContentWidth - kOutputWidth - kMargin, 176.0f };
-constexpr Rect kOutput { kDefaultWidth - kMargin - kOutputWidth, 532.0f, kOutputWidth, 176.0f };
-}
+constexpr hba::ui::DesignRect kMovement{kMargin, 532.0f, kContentWidth - kOutputWidth - kMargin, 176.0f};
+constexpr hba::ui::DesignRect kOutput{kDefaultWidth - kMargin - kOutputWidth, 532.0f, kOutputWidth, 176.0f};
+} // namespace
 
-struct Editor::Impl final : visage::EventTimer {
+struct Editor::Impl final {
     Impl(Model& model, std::function<void()> showAbout)
-        : context(model), topBar(context, std::move(showAbout)), zplane(makeZPlanePanel(context)),
-          movement(makeMovementPanel(context)), output(makeOutputPanel(context)) {
-        window.onDraw() = [this](visage::Canvas& canvas) {
-            canvas.setColor(colour::window);
-            canvas.fill(0, 0, window.width(), window.height());
-        };
-        window.onResize() += [this] { layout(); };
-        window.setAcceptsKeystrokes(true);
-        window.onKeyPress() = [this](const visage::KeyEvent& key) {
-            if (!key.isMainModifier())
-                return false;
-            if (key.keyCode() == visage::KeyCode::Z) {
-                if (key.isShiftDown())
-                    context.model.redo();
-                else
-                    context.model.undo();
-                return true;
-            }
-            if (key.keyCode() == visage::KeyCode::Y) {
-                context.model.redo();
-                return true;
-            }
-            return false;
-        };
-        for (visage::Frame* child : children()) window.addChild(child);
-    }
-
-    std::array<visage::Frame*, 4> children() {
-        return { &topBar, zplane.get(), movement.get(), output.get() };
-    }
-
-    void layout() {
-        context.scale = window.width() / static_cast<float>(kDefaultWidth);
-        const auto place = [this](visage::Frame& frame, const Rect& r) {
-            frame.setBounds(context.px(r.x), context.px(r.y), context.px(r.width), context.px(r.height));
-        };
-        place(topBar, kTopBar);
-        place(*zplane, kMainDeck);
-        place(*movement, kMovement);
-        place(*output, kOutput);
-        window.redrawAll();
-    }
-
-    void timerCallback() override {
-        context.model.refreshVisuals();
-        const auto live = context.live;
-        for (Live* frame : live) frame->tick();
+        : context(model), host(context, static_cast<float>(kDefaultWidth)), topBar(context, std::move(showAbout)),
+          zplane(makeZPlanePanel(context)), movement(makeMovementPanel(context)), output(makeOutputPanel(context)) {
+        host.addPlaced(&topBar, kTopBar);
+        host.addPlaced(zplane.get(), kMainDeck);
+        host.addPlaced(movement.get(), kMovement);
+        host.addPlaced(output.get(), kOutput);
     }
 
     Context context;
-    visage::ApplicationWindow window;
+    hba::ui::StudioEditorWindow<Context> host;
     TopBar topBar;
     std::unique_ptr<Panel> zplane, movement, output;
 };
@@ -83,36 +37,17 @@ Editor::Editor(Model& model, std::function<void()> showAbout)
     : impl_(std::make_unique<Impl>(model, std::move(showAbout))) {}
 
 Editor::~Editor() { detach(); }
-
-void Editor::attach(void* parentView, int width, int height) {
-    impl_->window.setWindowDimensions(static_cast<float>(width), static_cast<float>(height));
-    impl_->window.show(parentView);
-    impl_->startTimer(16);
-}
-
-void Editor::detach() {
-    impl_->stopTimer();
-    if (impl_->window.isShowing()) impl_->window.close();
-}
-
-void Editor::setSize(int width, int height) { impl_->window.setWindowDimensionsFromHost(width, height); }
+void Editor::attach(void* parentView, int width, int height) { impl_->host.attach(parentView, width, height); }
+void Editor::detach() { impl_->host.detach(); }
+void Editor::setSize(int width, int height) { impl_->host.setSize(width, height); }
 
 #if defined(__linux__)
-int Editor::eventFd() const {
-    auto* window = impl_->window.window();
-    return window != nullptr ? window->posixFd() : -1;
-}
-
-void Editor::dispatchEvents() {
-    if (auto* window = impl_->window.window())
-        window->processPluginFdEvents();
-}
+int Editor::eventFd() const { return impl_->host.eventFd(); }
+void Editor::dispatchEvents() { impl_->host.dispatchEvents(); }
 #endif
 
 void Editor::renderToPng(const std::string& path, int width, int height) {
-    impl_->timerCallback();
-    impl_->window.setWindowless(width, height);
-    impl_->window.takeScreenshot().save(path);
+    impl_->host.renderToPng(path, width, height, false);
 }
 
-}
+} // namespace pf::ui
