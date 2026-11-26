@@ -24,7 +24,7 @@
 - Commit messages have no attribution trailer lines.
 - Lane order is fixed: 0 kick, 1 snare, 2 ghost, 3 clap, 4 closed hat, 5 open hat, 6 perc A, 7 perc B.
 
-The code in this plan was compiled with those flags and its test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. The code blocks below match what was committed, including one fix made during execution: Task 4's reader and writer drop fill steps that sit before the fill window, as the spec requires. If a step's code fails to compile as written, stop and report it instead of improvising.
+The code in this plan was compiled with those flags and its test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. The code blocks below match what was committed, including two fixes made during execution: Task 4's reader and writer drop fill steps that sit before the fill window, as the spec requires, and Task 3's `forEachHit` no longer clamps hit times to beat 0. If a step's code fails to compile as written, stop and report it instead of improvising.
 
 ## File Structure
 
@@ -735,7 +735,7 @@ git commit -m "feat(cutline): add resolveBar, the single source of truth for wha
 - Consumes: `Pattern`, `kStepsPerBar`, `kDrumLaneCount` (Task 1); `ResolvedBar`, `ResolvedStep`, `resolveBar` (Task 2).
 - Produces: `kFlamMs` (20.0), `kFlamVelocityDrop` (40), `kFillEveryBars` (`{0, 2, 4, 8, 16}`), `double swingBeat(double beat, double swing)`, `double swungStepBeats(int step, double swing)`, `bool fillScheduled(std::int64_t absBar, int everyBars)`, `struct Hit { double beat; double durBeats; std::int8_t lane; std::int8_t step; std::uint8_t velocity; bool grace; }`, `struct HitTiming { double swing; double gateLen; double beatsPerMs; }`, and `template <typename Fn> void forEachHit(const Pattern&, const ResolvedBar&, double barOriginBeats, const HitTiming&, Fn&&)`.
 
-`forEachHit` calls `fn` in lane order, then step order, with the flam's grace hit before the main hit. Plan 2's engine, MIDI export and truth test all go through it, so they cannot disagree about timing.
+`forEachHit` calls `fn` in lane order, then step order, with the flam's grace hit before the main hit. It does not clamp or sort: a hit may start before its bar's origin or at a negative beat. Plan 2's engine, MIDI export and truth test all go through it, so they cannot disagree about timing.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -840,6 +840,26 @@ TEST_CASE("Swung ratchets stay inside their step", "[engine][hits]") {
     CHECK(hits[0].beat == Approx(0.375));
     CHECK(hits[3].beat < 0.5);
 }
+
+TEST_CASE("Early hits keep their lead at the start of the timeline and before it", "[engine][hits]") {
+    Pattern p{};
+    p.lanes[0].steps[0] = hit(96);
+    p.lanes[0].steps[0].nudge = -12; // 1/8 beat early
+    p.lanes[1].steps[0] = hit(118);
+    p.lanes[1].steps[0].flam = true;
+    const double beatsPerMs = 120.0 / 60000.0;
+
+    for (double origin : {0.0, -4.0}) {
+        const auto hits = hitsOf(p, origin, {0.0, 0.6, beatsPerMs});
+        REQUIRE(hits.size() == 3);
+        CHECK(hits[0].lane == 0);
+        CHECK(hits[0].beat == Approx(origin - 0.125));
+        CHECK(hits[1].grace);
+        CHECK(hits[1].beat == Approx(origin - kFlamMs * beatsPerMs));
+        CHECK(hits[2].beat == origin);
+        CHECK(hits[1].beat < hits[2].beat);
+    }
+}
 ```
 
 In `tests/CMakeLists.txt`, add the file to `cl-engine-tests`, directly after `engine/ResolveTests.cpp`:
@@ -905,7 +925,7 @@ constexpr bool fillScheduled(std::int64_t absBar, int everyBars) noexcept CL_NON
 }
 
 struct Hit {
-    double beat = 0.0;     // absolute start, in pattern beats
+    double beat = 0.0;     // absolute start, in pattern beats; may precede its bar or be negative
     double durBeats = 0.1; // note length
     std::int8_t lane = 0;
     std::int8_t step = 0; // step in bar that produced it
@@ -938,7 +958,7 @@ void forEachHit(const Pattern& pattern, const ResolvedBar& bar, double barOrigin
             const double base = start + static_cast<double>(r.nudge) / 96.0 + offsetBeats;
             if (r.flam) {
                 Hit grace;
-                grace.beat = std::max(0.0, base - kFlamMs * timing.beatsPerMs);
+                grace.beat = base - kFlamMs * timing.beatsPerMs;
                 grace.durBeats = 0.08;
                 grace.lane = static_cast<std::int8_t>(lane);
                 grace.step = static_cast<std::int8_t>(step);
@@ -949,7 +969,7 @@ void forEachHit(const Pattern& pattern, const ResolvedBar& bar, double barOrigin
             }
             for (int i = 0; i < count; ++i) {
                 Hit hit;
-                hit.beat = std::max(0.0, base + static_cast<double>(i) * interval);
+                hit.beat = base + static_cast<double>(i) * interval;
                 hit.durBeats = count > 1 ? std::min(baseDur, interval * 0.78) : baseDur;
                 hit.lane = static_cast<std::int8_t>(lane);
                 hit.step = static_cast<std::int8_t>(step);
@@ -975,7 +995,7 @@ In `engine/CMakeLists.txt`, add the header to the `cl_engine` source list, after
 cmake --build --preset engine --target cl-engine-tests && ./build/engine/tests/cl-engine-tests "[hits]"
 ```
 
-Expected: `All tests passed (` followed by an assertion count, `in 5 test cases)`.
+Expected: `All tests passed (` followed by an assertion count, `in 6 test cases)`.
 
 - [ ] **Step 5: Commit**
 
@@ -2142,7 +2162,7 @@ git commit -m "test(cutline): lint factory patterns for anchor and note budgets"
 cmake --build --preset engine && ctest --preset engine
 ```
 
-Expected: `100% tests passed`. The count is the 2.0 total plus the 22 new test cases.
+Expected: `100% tests passed`. The count is the 2.0 total plus the 23 new test cases.
 
 - [ ] **Step 2: Build and test the plugin and UI**
 
@@ -2196,3 +2216,22 @@ Plan 2 is written once this plan has landed, against the real code. Its tasks, i
 4. UI port: the grid and ribbon draw `resolveBar` output, layer and fill editing, the new macro row, GRID as the opening view.
 5. Plugin glue: telemetry position state, pattern store, factory presets rebuilt from `patterns/`, state versioning.
 6. README, release notes and a full verification pass.
+
+## Carried into Plan 2 from the reviews
+
+The whole-branch review approved this plan's work with one fix (the hit-time clamp, done). It left these for Plan 2, which builds the first callers:
+
+- Build each scene's `DensityMap` on the message thread and publish it with the bank. `rankLayer` is an insertion sort and should not run on the audio thread.
+- `forEachHit` emits lane by lane, not in time order. Collect into a fixed buffer (at most 640 hits per bar) and sort, or filter by block window.
+- MIDI export must handle negative hit times itself (shift the clip or clamp), now that `forEachHit` does not.
+- Derive the `fillNow` lookahead from the largest early shift (nudge 0.25 beat, plus lane offset and flam in beats at the current tempo and rate) instead of a fixed half beat.
+- Clamp `offsetMs` to -20..+20 on the play path; only the JSON reader clamps it today.
+- Pick one rule for steps hidden by a shorter `bars` or `slicerLength`: the writer drops them, memory keeps them.
+- JSON strictness: reject an edit whose `step` is out of range instead of clamping it; treat slicer and pattern edits alike; decide whether an edit may switch on a step that has no character.
+- Guard `resolveBar` against a NaN `density`.
+- Tests to add beside the truth test: `resolveBar` on bar 2 of a multi-bar pattern and with a negative bar, a looped lane crossing a bar line, the full lane-priority order, mute with solo on one lane, mute on fill steps, the ratchet and nudge clamps, the flam velocity floor, long-note lanes, and fill and slicer edits read from JSON.
+- Small hygiene: name the long-note lanes (5 and 7) in `hits.h`, include `<cstddef>` where `std::size_t` is used, and comment the Density epsilon in `resolve.cpp`.
+- `hits.h` is first compiled under `-Werror=function-effects` when `engine.cpp` includes it. A scratch compile from a nonblocking caller passes on Apple clang 21.
+
+For the library spec: lint anchors through `storedStep()`, turn `files == 11` into a floor, and review by ear the patterns whose Core snare is on beat 2 only (Amen, Drill).
+

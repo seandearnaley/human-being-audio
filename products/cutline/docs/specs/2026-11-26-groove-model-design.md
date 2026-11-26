@@ -226,6 +226,9 @@ the tests all use; none of it is random.
 - Lane offset: `offsetMs` converted to beats at the current tempo.
 - Flam: one extra note-on 20 ms before the step, same note, velocity reduced by 40 (minimum 1).
 - Note length: as in 2.0 (open hat and perc B long, others from Gate).
+- Hit times are not clamped. A hit may start before its bar (a flam, a negative nudge or a negative
+  lane offset on the first step of a bar) or before beat 0 during host pre-roll. MIDI export deals with negative
+  times itself.
 
 Removed: the five pocket attractors and negative groove, per-style pocket tables, the
 implicit open-hat choke, automatic flams.
