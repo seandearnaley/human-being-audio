@@ -3,8 +3,6 @@
 
 #include "Parameters.h"
 
-#include <hba/dsp/lane_math.h>
-
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -15,10 +13,6 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
     for (std::size_t i = 0; i < kParams.size(); ++i) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
-    }
-    if (processor_.seedHistory.empty()) {
-        processor_.seedHistory.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
-        processor_.seedCursor = 0;
     }
     refreshVisuals();
 }
@@ -49,17 +43,22 @@ void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->e
 
 void PluginModel::refreshVisuals() {
     processor_.telemetry.read(visuals_);
-    // When host transport is stopped, compile the live preview from current parameter values
-    // and overrides so tweaking Grammar/Gravity/Seed/Overrides updates the piano roll immediately.
     if (!visuals_.playing) {
         Params p;
         for (int i = 0; i < kParamCount; ++i)
             p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
-        const PhraseOverrides ov = processor_.overrides.get();
-        const std::uint32_t sig = phraseSignature(p, 0, visuals_.heldNotes, ov);
-        if (visuals_.plan.signature != sig || visuals_.plan.phraseIndex != 0)
-            compilePhrase(p, 0, visuals_.heldNotes, visuals_.plan, ov);
-        visuals_.bpm = processor_.telemetry.lastBpm();
+        const PatternBank bank = processor_.patterns.get();
+        const int scIdx = std::clamp(p.choice(ParamId::scene), 0, kSceneCount - 1);
+        const double bpm = processor_.telemetry.lastBpm();
+        const std::uint32_t sig = phraseSignature(p, scIdx, visuals_.heldNotes, bank, bpm);
+        if (visuals_.plan.signature != sig || visuals_.plan.activeScene != scIdx)
+            compilePhrase(p, scIdx, 0, visuals_.heldNotes, visuals_.plan, bank, bpm);
+        visuals_.activeScene = scIdx;
+        visuals_.pendingScene = -1;
+        visuals_.activePadProgram = std::clamp(p.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
+        visuals_.pendingPadProgram = -1;
+        visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
+        visuals_.bpm = bpm;
     }
 }
 
@@ -73,62 +72,66 @@ void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     processor_.curves.set(lane, curve);
 }
 
-PhraseOverrides PluginModel::overrides() const { return processor_.overrides.get(); }
-void PluginModel::setOverrides(const PhraseOverrides& overrides) {
+PatternBank PluginModel::patternBank() const { return processor_.patterns.get(); }
+void PluginModel::setPatternBank(const PatternBank& bank) {
     if (!applyingSnapshot_)
         processor_.history.pushCoalesced(captureSnapshot(), 0x2000u,
                                          static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
-    processor_.overrides.set(overrides);
+    processor_.patterns.set(bank);
 }
-void PluginModel::clearOverrides() {
+
+void PluginModel::mutateActiveScene() {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
-    processor_.overrides.clear();
+    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    auto bank = processor_.patterns.get();
+    auto& sc = bank.scenes[static_cast<std::size_t>(scIdx)];
+    if (!sc.customized)
+        sc = effectiveSceneData(bank, scIdx);
+    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 7919U);
+    mutateUnlockedLanes(sc, seed);
+    processor_.patterns.set(bank);
 }
 
-void PluginModel::pushSeedHistory(int seed) {
-    const int clamped = std::clamp(seed, 1, 999);
-    auto& seeds = processor_.seedHistory;
-    auto& cursor = processor_.seedCursor;
-    if (!seeds.empty() && seeds[cursor] == clamped)
-        return;
-    if (cursor + 1 < seeds.size())
-        seeds.resize(cursor + 1);
-    seeds.push_back(clamped);
-    if (seeds.size() > 64)
-        seeds.erase(seeds.begin());
-    cursor = seeds.size() - 1;
+void PluginModel::polymeterActiveScene() {
+    if (!applyingSnapshot_)
+        processor_.history.push(captureSnapshot());
+    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    auto bank = processor_.patterns.get();
+    auto& sc = bank.scenes[static_cast<std::size_t>(scIdx)];
+    if (!sc.customized)
+        sc = effectiveSceneData(bank, scIdx);
+    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 6151U);
+    applyPolymeterToUnlocked(sc, seed);
+    processor_.patterns.set(bank);
 }
 
-void PluginModel::rollSeed() {
-    const int current = std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999);
-    pushSeedHistory(current);
-    const auto ticks = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks());
-    int next =
-        1 + static_cast<int>(hba::dsp::laneHash(static_cast<std::uint32_t>(current) * 2654435761U ^ ticks) % 999U);
-    if (next == current)
-        next = (next % 999) + 1;
-    pushSeedHistory(next);
-    begin(ParamId::seed);
-    set(ParamId::seed, static_cast<float>(next));
-    end(ParamId::seed);
+void PluginModel::cloneActiveSceneToNext() {
+    if (!applyingSnapshot_)
+        processor_.history.push(captureSnapshot());
+    const int cur = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    const int next = (cur + 1) % kSceneCount;
+    auto bank = processor_.patterns.get();
+    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 4999U);
+    cloneSceneSlot(bank, cur, next, true, seed);
+    processor_.patterns.set(bank);
+    begin(ParamId::scene);
+    set(ParamId::scene, static_cast<float>(next));
+    end(ParamId::scene);
 }
 
-bool PluginModel::canStepSeedHistory(int delta) const {
-    if (delta < 0)
-        return processor_.seedCursor > 0;
-    if (delta > 0)
-        return processor_.seedCursor + 1 < processor_.seedHistory.size();
-    return false;
-}
-
-void PluginModel::stepSeedHistory(int delta) {
-    if (!canStepSeedHistory(delta))
-        return;
-    processor_.seedCursor = static_cast<std::size_t>(static_cast<int>(processor_.seedCursor) + (delta < 0 ? -1 : 1));
-    begin(ParamId::seed);
-    set(ParamId::seed, static_cast<float>(processor_.seedHistory[processor_.seedCursor]));
-    end(ParamId::seed);
+void PluginModel::clearActiveScene() {
+    if (!applyingSnapshot_)
+        processor_.history.push(captureSnapshot());
+    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    auto bank = processor_.patterns.get();
+    if (static_cast<int>(get(ParamId::engineMode) + 0.5f) == 1) {
+        bank.slicerLength = 16;
+        bank.slicerSteps = {};
+    } else {
+        clearSceneEdits(bank.scenes[static_cast<std::size_t>(scIdx)]);
+    }
+    processor_.patterns.set(bank);
 }
 
 void PluginModel::dragMidiPhrase() {
@@ -140,9 +143,10 @@ void PluginModel::dragMidiPhrase() {
     ui::Visuals snap{};
     processor_.telemetry.peek(snap);
     const double bpm = processor_.telemetry.lastBpm();
+    const int scIdx = snap.playing ? snap.activeScene : std::clamp(params.choice(ParamId::scene), 0, kSceneCount - 1);
     const auto file =
-        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.overrides.get(), snap.heldNotes,
-                                          bpm, snap.phraseIndex, toJuce(processor_.presets.currentName()));
+        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.get(), snap.heldNotes,
+                                          bpm, scIdx, toJuce(processor_.presets.currentName()));
     if (!file.existsAsFile())
         return;
     juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
@@ -166,14 +170,12 @@ void PluginModel::loadPreset(int index) {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
     processor_.presets.load(index);
-    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::stepPreset(int delta) {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
     processor_.presets.step(delta);
-    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::savePreset() {
@@ -195,7 +197,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
     s.curves = processor_.curves.all();
-    s.overrides = processor_.overrides.get();
+    s.bank = processor_.patterns.get();
     s.presetName = processor_.presets.currentName();
     return s;
 }
@@ -205,7 +207,7 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
     processor_.curves.setAll(snapshot.curves);
-    processor_.overrides.set(snapshot.overrides);
+    processor_.patterns.set(snapshot.bank);
     if (!snapshot.presetName.empty())
         processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;

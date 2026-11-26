@@ -3,7 +3,7 @@ hba_product(cutline)
 
 juce_add_plugin(Cutline
     PRODUCT_NAME "${HBA_name}"
-    DESCRIPTION "Expressive phrase grammar, microtiming and MPE/CC MIDI articulator"
+    DESCRIPTION "Live MIDI breakbeat, polymeter, and rhythmic articulation slicer"
     COMPANY_NAME "${HBA_publisher}"
     COMPANY_WEBSITE "${HBA_website}"
     BUNDLE_ID "${HBA_bundle}"
@@ -29,10 +29,10 @@ target_sources(Cutline PRIVATE
     src/CurveStore.h
     src/MidiExporter.cpp
     src/MidiExporter.h
-    src/OverrideStore.cpp
-    src/OverrideStore.h
     src/Parameters.cpp
     src/Parameters.h
+    src/PatternStore.cpp
+    src/PatternStore.h
     src/PluginEditor.cpp
     src/PluginEditor.h
     src/PluginModel.cpp

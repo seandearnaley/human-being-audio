@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Headless Cutline renderer: exports a preset's 960-PPQ .mid phrase and/or
-// stereo 48 kHz float32 audition audio (used for web catalogue audio examples).
+// Headless Cutline 2.0 renderer: exports a preset's 960-PPQ .mid groove/slice and/or
+// stereo 48 kHz float32 audition audio (supports optional --chord "48,55,58,62" for MIDI Slicer).
 #include "cl/engine.h"
 #include "cl/preset.h"
 #include "cl/smf.h"
@@ -17,8 +17,9 @@ int main(int argc, char** argv) {
     std::string presetPath;
     std::string midiOut;
     std::string pcmOut;
+    std::string chordArg;
     double bpm = 172.0;
-    double seconds = 3.0;
+    double seconds = 5.6;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--preset") == 0 && i + 1 < argc)
@@ -27,6 +28,8 @@ int main(int argc, char** argv) {
             midiOut = argv[++i];
         else if (std::strcmp(argv[i], "--pcm") == 0 && i + 1 < argc)
             pcmOut = argv[++i];
+        else if (std::strcmp(argv[i], "--chord") == 0 && i + 1 < argc)
+            chordArg = argv[++i];
         else if (std::strcmp(argv[i], "--bpm") == 0 && i + 1 < argc)
             bpm = std::atof(argv[++i]);
         else if (std::strcmp(argv[i], "--seconds") == 0 && i + 1 < argc)
@@ -51,9 +54,19 @@ int main(int argc, char** argv) {
         preset = std::move(*parsed);
     }
 
+    cl::HeldNotes held;
+    if (!chordArg.empty()) {
+        std::stringstream ss(chordArg);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            if (!item.empty())
+                held.push(std::atoi(item.c_str()), 108);
+        }
+    }
+
     if (!midiOut.empty()) {
-        cl::HeldNotes held;
-        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm, 0, preset.overrides);
+        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm,
+                                               preset.params.choice(cl::ParamId::scene), preset.bank);
         std::ofstream out(midiOut, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!out) {
@@ -71,7 +84,9 @@ int main(int argc, char** argv) {
         cl::Engine engine;
         engine.prepare(kSr, kBlock);
         engine.setLaneCurves(preset.curves);
-        engine.setOverrides(preset.overrides);
+        engine.setPatternBank(preset.bank);
+        for (int i = 0; i < held.count; ++i)
+            engine.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
 
         cl::Params params = preset.params;
         params[cl::ParamId::audition] = 1.0f;

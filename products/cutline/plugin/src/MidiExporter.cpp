@@ -9,13 +9,14 @@
 
 namespace cl {
 
-juce::File MidiExporter::writeTempFile(const Params& params, const LaneCurves& curves, const PhraseOverrides& overrides,
-                                       const HeldNotes& held, double bpm, std::int64_t phraseIndex,
+juce::File MidiExporter::writeTempFile(const Params& params, const LaneCurves& curves, const PatternBank& bank,
+                                       const HeldNotes& held, double bpm, int sceneIdx,
                                        const juce::String& presetName) {
-    const auto bytes = exportPhraseSmf(params, curves, held, bpm, phraseIndex, overrides);
-    const int seed = std::clamp(params.integer(ParamId::seed), 1, 999);
+    const auto bytes = exportPhraseSmf(params, curves, held, bpm, sceneIdx, bank);
+    const auto sceneChar = static_cast<juce::juce_wchar>('A' + std::clamp(sceneIdx, 0, kSceneCount - 1));
     const auto safeName = juce::File::createLegalFileName(presetName.isEmpty() ? juce::String("Cutline") : presetName);
-    const auto filename = safeName + " " + juce::String(juce::roundToInt(bpm)) + "bpm S" + juce::String(seed) + " " +
+    const auto filename = safeName + " " + juce::String(juce::roundToInt(bpm)) + "bpm Scene-" +
+                          juce::String::charToString(sceneChar) + " " +
                           juce::Time::getCurrentTime().formatted("%H%M%S") + ".mid";
     return hba::host::writeTempMidiFile("Cutline", filename, bytes);
 }

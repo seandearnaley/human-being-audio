@@ -16,7 +16,7 @@ class Telemetry {
     Telemetry() {
         Params defaults;
         HeldNotes held;
-        compilePhrase(defaults, 0, held, snapshot_.plan);
+        compilePhrase(defaults, 0, 0, held, snapshot_.plan);
     }
 
     // Audio thread: never blocks; skips update if UI is mid-copy.
@@ -28,11 +28,19 @@ class Telemetry {
         snapshot_.plan = engine.currentPlan();
         snapshot_.heldNotes = engine.activeHeldNotes();
         snapshot_.phraseIndex = engine.currentPhraseIndex();
+        snapshot_.activeScene = engine.activeScene();
+        snapshot_.pendingScene = engine.pendingScene();
+        snapshot_.activePadProgram = engine.activePadProgram();
+        snapshot_.pendingPadProgram = engine.pendingPadProgram();
+        snapshot_.padEngaged = engine.padEngaged();
+        snapshot_.midiPadMask = engine.midiPadMask();
+        snapshot_.capturedClipCount = engine.capturedClipCount();
         snapshot_.bpm = bpm;
         snapshot_.playheadBeats = engine.playheadPhraseBeats();
         snapshot_.ppq = engine.lanePpq();
         snapshot_.lanePhase = engine.lanePhases();
         snapshot_.laneValue = engine.laneValues();
+        snapshot_.laneFlash = engine.laneHitFlashes();
         snapshot_.activeNotesLow = engine.activeNotesLowMask();
         snapshot_.activeNotesHigh = engine.activeNotesHighMask();
         snapshot_.lastBlockEvents = engine.lastBlockEventCount();

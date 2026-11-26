@@ -1,0 +1,15 @@
+{
+    "name": "IDM Drill Fracture",
+    "category": "Polyrhythm",
+    "style": "Drill",
+    "gravity": 0.12,
+    "ghosts": 0.74,
+    "chop": 0.72,
+    "ratchet": 0.78,
+    "complexity": 0.84,
+    "fills": 0.74,
+    "dynamics": 0.78,
+    "attractor": "Offbeat 16",
+    "fillType": "Drill Chop",
+    "variation": 1
+}

@@ -1,0 +1,17 @@
+{
+    "name": "Slicer: UKG Chord Stabs",
+    "category": "MIDI Slicer",
+    "engineMode": "MIDI Slicer",
+    "slicerStyle": "Stab Chop",
+    "style": "UKG",
+    "gravity": 0.54,
+    "ghosts": 0.3,
+    "chop": 0.16,
+    "ratchet": 0.18,
+    "complexity": 0.6,
+    "dynamics": 0.72,
+    "gateLen": 0.38,
+    "strumMs": 10.0,
+    "slicerLatch": true,
+    "attractor": "MPC Swing"
+}

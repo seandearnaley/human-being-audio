@@ -1,0 +1,15 @@
+{
+    "name": "Neuro 2-Step Razor",
+    "category": "Neuro",
+    "style": "Neuro",
+    "gravity": 0.16,
+    "ghosts": 0.64,
+    "chop": 0.28,
+    "ratchet": 0.36,
+    "complexity": 0.7,
+    "fills": 0.56,
+    "dynamics": 0.76,
+    "attractor": "Backbeat",
+    "fillType": "Snare Roll",
+    "variation": 1
+}
