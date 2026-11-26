@@ -2,10 +2,12 @@ add_library(cl_engine STATIC
     include/cl/engine.h
     include/cl/midi_event.h
     include/cl/phrase.h
+    include/cl/resolve.h
     include/cl/smf.h
     src/audition.h
     src/engine.cpp
     src/phrase.cpp
+    src/resolve.cpp
     src/smf.cpp
     src/styles.cpp
     src/styles.h)
