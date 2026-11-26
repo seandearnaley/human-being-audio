@@ -42,7 +42,7 @@ constexpr bool fillScheduled(std::int64_t absBar, int everyBars) noexcept CL_NON
 }
 
 struct Hit {
-    double beat = 0.0;     // absolute start, in pattern beats
+    double beat = 0.0;     // absolute start, in pattern beats; may precede its bar or be negative
     double durBeats = 0.1; // note length
     std::int8_t lane = 0;
     std::int8_t step = 0; // step in bar that produced it
@@ -75,7 +75,7 @@ void forEachHit(const Pattern& pattern, const ResolvedBar& bar, double barOrigin
             const double base = start + static_cast<double>(r.nudge) / 96.0 + offsetBeats;
             if (r.flam) {
                 Hit grace;
-                grace.beat = std::max(0.0, base - kFlamMs * timing.beatsPerMs);
+                grace.beat = base - kFlamMs * timing.beatsPerMs;
                 grace.durBeats = 0.08;
                 grace.lane = static_cast<std::int8_t>(lane);
                 grace.step = static_cast<std::int8_t>(step);
@@ -86,7 +86,7 @@ void forEachHit(const Pattern& pattern, const ResolvedBar& bar, double barOrigin
             }
             for (int i = 0; i < count; ++i) {
                 Hit hit;
-                hit.beat = std::max(0.0, base + static_cast<double>(i) * interval);
+                hit.beat = base + static_cast<double>(i) * interval;
                 hit.durBeats = count > 1 ? std::min(baseDur, interval * 0.78) : baseDur;
                 hit.lane = static_cast<std::int8_t>(lane);
                 hit.step = static_cast<std::int8_t>(step);

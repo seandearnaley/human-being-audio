@@ -96,3 +96,23 @@ TEST_CASE("Swung ratchets stay inside their step", "[engine][hits]") {
     CHECK(hits[0].beat == Approx(0.375));
     CHECK(hits[3].beat < 0.5);
 }
+
+TEST_CASE("Early hits keep their lead at the start of the timeline and before it", "[engine][hits]") {
+    Pattern p{};
+    p.lanes[0].steps[0] = hit(96);
+    p.lanes[0].steps[0].nudge = -12; // 1/8 beat early
+    p.lanes[1].steps[0] = hit(118);
+    p.lanes[1].steps[0].flam = true;
+    const double beatsPerMs = 120.0 / 60000.0;
+
+    for (double origin : {0.0, -4.0}) {
+        const auto hits = hitsOf(p, origin, {0.0, 0.6, beatsPerMs});
+        REQUIRE(hits.size() == 3);
+        CHECK(hits[0].lane == 0);
+        CHECK(hits[0].beat == Approx(origin - 0.125));
+        CHECK(hits[1].grace);
+        CHECK(hits[1].beat == Approx(origin - kFlamMs * beatsPerMs));
+        CHECK(hits[2].beat == origin);
+        CHECK(hits[1].beat < hits[2].beat);
+    }
+}
