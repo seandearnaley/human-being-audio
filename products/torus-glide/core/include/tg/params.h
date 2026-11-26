@@ -19,6 +19,7 @@ inline constexpr int kLaneCount = 2;
 inline constexpr int kVoiceCount = 5;
 inline constexpr int kSceneCount = 4;
 inline constexpr int kOctaveCount = 7;
+inline constexpr int kPadProgramCount = 6;
 
 enum class ParamKind : std::uint8_t { continuous, choice, toggle };
 
@@ -26,8 +27,17 @@ enum class Mode : std::uint8_t { spiral = 0, copedent = 1, mobius = 2 };
 enum class SpiralDir : std::uint8_t { rise = 0, fall = 1, pendulum = 2 };
 enum class GravityMode : std::uint8_t { scaleWells = 0, justIntonation = 1, hybrid = 2 };
 enum class StaggerOrder : std::uint8_t { innerFirst = 0, lowToHigh = 1, highToLow = 2, outsideIn = 3 };
-enum class TimbreKind : std::uint8_t { reese = 0, sine = 1, formant = 2, wavefold = 3, pulse = 4 };
+enum class TimbreKind : std::uint8_t {
+    reese = 0,
+    sine = 1,
+    formant = 2,
+    wavefold = 3,
+    pulse = 4,
+    glassBell = 5,
+    superOrgan = 6
+};
 enum class FilterMode : std::uint8_t { lp12 = 0, lp24 = 1, bandpass = 2, neuroNotch = 3 };
+enum class PadProgram : std::uint8_t { spiral = 0, mobius = 1, copedent = 2, abyss = 3, risset = 4, voidSpace = 5 };
 enum class LaneTarget : std::uint8_t {
     morph = 0,
     bellCenter = 1,
@@ -97,8 +107,22 @@ enum class ParamId : std::size_t {
     outputDb,
     bypass,
 
+    // Playable 2D Pitch-Manifold Performance Surface
+    padProgram,
+    padX,
+    padY,
+    padTouch,
+    padHold,
+
     count
 };
+
+struct PadCaptions {
+    std::string_view name;
+    std::string_view xLabel;
+    std::string_view yLabel;
+};
+PadCaptions padCaptions(PadProgram program) noexcept HBA_NONBLOCKING;
 
 inline constexpr std::size_t kParamCount = static_cast<std::size_t>(ParamId::count);
 
