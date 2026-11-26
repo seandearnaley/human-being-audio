@@ -121,6 +121,31 @@ class Engine {
 
     double oscSample(TimbreKind kind, double phase, double inc, double formantRatio, double foldAmt,
                      double pw) const noexcept HBA_NONBLOCKING;
+    struct ModeRenderArgs {
+        double sr = 48000.0;
+        double invSr = 1.0 / 48000.0;
+        double rootMidi = 41.0;
+        double curSpiralPos = 0.0;
+        double ratioSemi = 12.0;
+        SpiralChord spiralChord{};
+        double curBellCenter = 320.0;
+        double bellWidth = 0.6;
+        double detuneRatio = 1.0;
+        double width = 0.5;
+        double voicePitchCoef = 0.01;
+        TimbreKind timbre = TimbreKind::reese;
+        double formantRatio = 2.0;
+        double foldAmt = 0.2;
+        double pw = 0.5;
+        const std::array<double, kVoiceCount>* targetVoicePitches = nullptr;
+        bool captureTelemetry = false;
+    };
+    void renderSpiralSample(const ModeRenderArgs& a, double& sumBodyL, double& sumBodyR, double& sumSub,
+                            double& lastEffectiveBellHz) noexcept HBA_NONBLOCKING;
+    void renderCopedentSample(const ModeRenderArgs& a, double& sumBodyL, double& sumBodyR,
+                              double& sumSub) noexcept HBA_NONBLOCKING;
+    void renderMobiusSample(const ModeRenderArgs& a, double& sumBodyL, double& sumBodyR,
+                            double& sumSub) noexcept HBA_NONBLOCKING;
     void emitMpeConfig(OutMidiBuffer& out, int offset, int rangeSt) noexcept HBA_NONBLOCKING;
     void emitMpeAllNotesOff(OutMidiBuffer& out, int offset) noexcept HBA_NONBLOCKING;
     void updateMpeVoices(OutMidiBuffer& out, int offset, const std::array<double, kVoiceCount>& pitches, bool sounding,

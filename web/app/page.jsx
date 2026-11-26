@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import livecutImage from "../../products/livecut-redux/docs/editor.png";
+import livecutImage from "../../products/livecut-redux/press/screenshots/livecut-redux-interface.png";
 import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
 import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
 import cutlineImage from "../../products/cutline/press/screenshots/cutline-interface.png";

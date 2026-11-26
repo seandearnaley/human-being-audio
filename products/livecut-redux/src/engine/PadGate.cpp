@@ -11,34 +11,30 @@ namespace livecut::engine
 void PadGate::prepare (double sampleRate)
 {
     assert (std::isfinite (sampleRate) && sampleRate > 0.0);
-    fadeSamples = std::lround (0.005 * sampleRate);
+    fadeSamples = static_cast<std::int64_t>(std::llround(0.005 * sampleRate));
     assert (fadeSamples > 0);
     reset();
 }
 
-void PadGate::reset()
-{
+void PadGate::reset() noexcept HBA_NONBLOCKING {
     resync();
     latch = false;
 }
 
-void PadGate::resync()
-{
+void PadGate::resync() noexcept HBA_NONBLOCKING {
     state = State::closed;
     fadePosition = 0;
     pending.reset();
 }
 
-void PadGate::arm()
-{
+void PadGate::arm() noexcept HBA_NONBLOCKING {
     state = State::armed;
     fadePosition = 0;
     pending.reset();
 }
 
-PadGate::Step PadGate::process (const Input& input, double beatsIntoBar,
-                               double /*beatsPerBar*/, double beatsPerSample)
-{
+PadGate::Step PadGate::process(const Input& input, double beatsIntoBar, double /*beatsPerBar*/,
+                               double beatsPerSample) noexcept HBA_NONBLOCKING {
     Step step;
     const bool available = isAvailable (input.program);
     latch = input.hold && (latch || (input.touch && available));

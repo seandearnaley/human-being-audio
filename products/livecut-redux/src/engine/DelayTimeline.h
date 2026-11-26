@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "hba/dsp/nonblocking.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -71,8 +73,7 @@ public:
     // Clear timelines, retaining the highest accepted transport ID so stale
     // identities cannot alias after physical reset/reprepare. The owner supplies
     // a newer ID for the next callback. No internal transport ID is generated.
-    bool reset (std::int64_t firstInputFrame = 0) noexcept
-    {
+    bool reset(std::int64_t firstInputFrame = 0) noexcept HBA_NONBLOCKING {
         if (segments.empty() || firstInputFrame < 0)
             return false;
         // Trivial payloads need no destruction; stale slots are inaccessible.
@@ -87,9 +88,8 @@ public:
     // new nonzero IDs strictly increase and start exactly at this callback.
     // The initial epoch may have begun before firstInputFrame. Zero frames are
     // ignored. All rejection paths leave accepted metadata and counters intact.
-    bool append (std::int64_t first, std::int64_t count, std::uint64_t epoch,
-                 std::int64_t epochStart, Context context) noexcept
-    {
+    bool append(std::int64_t first, std::int64_t count, std::uint64_t epoch, std::int64_t epochStart,
+                Context context) noexcept HBA_NONBLOCKING {
         if (segments.empty())
             return false;
         if (count == 0)
@@ -124,8 +124,7 @@ public:
     // cursor is the next frame the renderer will consume. It may advance only
     // through submitted metadata; it is NOT evidence that audio was rendered.
     // Keep the current render-epoch start separately when its marker retires.
-    bool retireBefore (std::int64_t cursor) noexcept
-    {
+    bool retireBefore(std::int64_t cursor) noexcept HBA_NONBLOCKING {
         if (segments.empty() || cursor < retired || cursor > endSubmitted)
             return false;
         while (segmentSize > 0 && segmentAt (0).firstFrame + segmentAt (0).frameCount <= cursor)
@@ -143,8 +142,7 @@ public:
         return true;
     }
 
-    std::optional<Lookup> lookup (std::int64_t frame) const noexcept
-    {
+    std::optional<Lookup> lookup(std::int64_t frame) const noexcept HBA_NONBLOCKING {
         if (frame < retired || frame >= endSubmitted || segmentSize == 0)
             return std::nullopt;
         std::size_t low = 0, high = segmentSize;
@@ -165,8 +163,7 @@ public:
     // Exclusive epoch end is known only once its successor was ingested. This
     // survives context retirement and does not substitute submittedEnd for an
     // unknown future boundary. Frames outside retained metadata are rejected.
-    std::optional<Epoch> sourceEpoch (std::int64_t frame) const noexcept
-    {
+    std::optional<Epoch> sourceEpoch(std::int64_t frame) const noexcept HBA_NONBLOCKING {
         if (segments.empty() || frame < retired || frame >= endSubmitted)
             return std::nullopt;
         std::size_t low = 0, high = boundarySize;
@@ -187,8 +184,7 @@ public:
 
     // After retireBefore, available even when no contexts remain. A later
     // append can supply this epoch's previously unknown next boundary.
-    std::optional<Epoch> currentRenderEpoch() const noexcept
-    {
+    std::optional<Epoch> currentRenderEpoch() const noexcept HBA_NONBLOCKING {
         if (! renderEpoch)
             return std::nullopt;
         const auto end = boundarySize > 0 ? std::optional { boundaryAt (0).start } : std::nullopt;
@@ -196,22 +192,25 @@ public:
     }
 
     // Arithmetic clock conversion only; no metadata/PCM availability claim.
-    std::optional<std::int64_t> renderFrame (std::int64_t input) const noexcept
-    {
+    std::optional<std::int64_t> renderFrame(std::int64_t input) const noexcept HBA_NONBLOCKING {
         if (segments.empty() || input < latency)
             return std::nullopt;
         return input - latency;
     }
-    std::int64_t submittedEnd() const noexcept { return endSubmitted; }
-    std::size_t segmentCount() const noexcept { return segmentSize; }
-    std::size_t boundaryCount() const noexcept { return boundarySize; }
-    std::size_t capacity() const noexcept { return segments.size(); }
+    std::int64_t submittedEnd() const noexcept HBA_NONBLOCKING { return endSubmitted; }
+    std::size_t segmentCount() const noexcept HBA_NONBLOCKING { return segmentSize; }
+    std::size_t boundaryCount() const noexcept HBA_NONBLOCKING { return boundarySize; }
+    std::size_t capacity() const noexcept HBA_NONBLOCKING { return segments.size(); }
 
-private:
+  private:
     struct Boundary { std::uint64_t id; std::int64_t start; };
     static constexpr auto maximumFrame = std::numeric_limits<std::int64_t>::max();
-    const Segment& segmentAt (std::size_t index) const noexcept { return *segments[(segmentHead + index) % capacity()]; }
-    const Boundary& boundaryAt (std::size_t index) const noexcept { return boundaries[(boundaryHead + index) % capacity()]; }
+    const Segment& segmentAt(std::size_t index) const noexcept HBA_NONBLOCKING {
+        return *segments[(segmentHead + index) % capacity()];
+    }
+    const Boundary& boundaryAt(std::size_t index) const noexcept HBA_NONBLOCKING {
+        return boundaries[(boundaryHead + index) % capacity()];
+    }
     std::vector<std::optional<Segment>> segments;
     std::vector<Boundary> boundaries;
     std::optional<Boundary> latestEpoch, renderEpoch;

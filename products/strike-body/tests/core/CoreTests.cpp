@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "sb/archetypes.h"
 #include "sb/modal_models.h"
 #include "sb/params.h"
 #include "sb/preset.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
+#include <random>
 
 TEST_CASE("Strike Body parameter specs round-trip normalization and JSON", "[core]") {
     const auto& specs = sb::paramSpecs();
@@ -50,4 +53,36 @@ TEST_CASE("All 6 physical modal geometries are finite and strictly positive", "[
             REQUIRE(g.radialOrder[static_cast<std::size_t>(k)] <= 1.0);
         }
     }
+}
+
+TEST_CASE("All 6 archetype recipes and parameter mutation stay strictly in bounds", "[core]") {
+    const std::array<sb::Archetype, 6> all{sb::Archetype::snare, sb::Archetype::kick, sb::Archetype::clap,
+                                           sb::Archetype::metal, sb::Archetype::tom,  sb::Archetype::perc};
+    for (sb::Archetype kind : all) {
+        const auto recipe = sb::makeArchetypeRecipe(kind);
+        REQUIRE(!recipe.name.empty());
+        for (const auto& s : sb::paramSpecs()) {
+            const float v = recipe.params.real(s.id);
+            REQUIRE(std::isfinite(v));
+            REQUIRE(v >= s.low);
+            REQUIRE(v <= s.high);
+        }
+    }
+
+    const auto snare = sb::makeArchetypeRecipe(sb::Archetype::snare);
+    std::mt19937 rngA(12345u);
+    std::mt19937 rngB(12345u);
+    const sb::Params mutA = sb::mutateParams(snare.params, rngA);
+    const sb::Params mutB = sb::mutateParams(snare.params, rngB);
+    bool anyChanged = false;
+    for (const auto& s : sb::paramSpecs()) {
+        const float va = mutA.real(s.id);
+        const float vb = mutB.real(s.id);
+        REQUIRE(va == vb); // deterministic for identical RNG seed
+        REQUIRE(va >= s.low);
+        REQUIRE(va <= s.high);
+        if (std::abs(va - snare.params.real(s.id)) > 1e-5f)
+            anyChanged = true;
+    }
+    REQUIRE(anyChanged);
 }

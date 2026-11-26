@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "engine/AudioHistory.h"
+#include "hba/dsp/nonblocking.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -29,28 +30,24 @@ public:
         seamFrames = std::max (1.0, rate * 0.002);
         interrupt();
     }
-    void request (bool on)
-    {
+    void request(bool on) noexcept HBA_NONBLOCKING {
         requested = on;
         updateState();
     }
-    void interrupt()
-    {
+    void interrupt() noexcept HBA_NONBLOCKING {
         recording = ready = held = overflow = false;
         written = length = 0;
         amount = 0.0f;
         phase = 0.0;
         currentState = requested ? State::waiting : State::live;
     }
-    void startPhrase (bool fullStart, double quarterNotes)
-    {
+    void startPhrase(bool fullStart, double quarterNotes) noexcept HBA_NONBLOCKING {
         recording = fullStart && ! frozen();
         written = 0;
         candidateBeats = quarterNotes;
         overflow = false;
     }
-    void completePhrase()
-    {
+    void completePhrase() noexcept HBA_NONBLOCKING {
         if (! recording)
             return;
         recording = false;
@@ -64,8 +61,7 @@ public:
         updateState();
     }
     // Called after phrase completion and before the new bar's first sample.
-    void barStarted()
-    {
+    void barStarted() noexcept HBA_NONBLOCKING {
         if (requested && ! held && ready)
         {
             held = true;
@@ -79,8 +75,7 @@ public:
         }
         updateState();
     }
-    void process (float& left, float& right, double quarterNotesPerSample)
-    {
+    void process(float& left, float& right, double quarterNotesPerSample) noexcept HBA_NONBLOCKING {
         const StereoFrame live { left, right };
         if (recording && ! frozen())
         {
@@ -107,7 +102,7 @@ public:
         const auto next = (second + 1) % length;
         const auto t = static_cast<float>(frame - static_cast<double>(first));
         const auto& audio = slots[static_cast<std::size_t> (latest)];
-        const auto catmull = [t](float p0, float p1, float p2, float p3) noexcept {
+        const auto catmull = [t](float p0, float p1, float p2, float p3) noexcept HBA_NONBLOCKING {
             const float a0 = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
             const float a1 = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
             const float a2 = -0.5f * p0 + 0.5f * p2;
@@ -126,17 +121,16 @@ public:
         right = live.right + amount * (heldRight - live.right);
         phase = std::fmod (phase + quarterNotesPerSample, durationBeats);
     }
-    State state() const { return currentState; }
-    bool hasPhrase() const { return ready; }
-    bool isHeld() const { return held; }
-    double capacitySeconds() const { return static_cast<double> (capacity) / sampleRate; }
-    std::size_t phraseFrames() const { return length; }
-    double phaseBeats() const { return phase; }
+    State state() const noexcept HBA_NONBLOCKING { return currentState; }
+    bool hasPhrase() const noexcept HBA_NONBLOCKING { return ready; }
+    bool isHeld() const noexcept HBA_NONBLOCKING { return held; }
+    double capacitySeconds() const noexcept HBA_NONBLOCKING { return static_cast<double>(capacity) / sampleRate; }
+    std::size_t phraseFrames() const noexcept HBA_NONBLOCKING { return length; }
+    double phaseBeats() const noexcept HBA_NONBLOCKING { return phase; }
 
-private:
-    bool frozen() const { return held || amount > 0.0f; }
-    void updateState()
-    {
+  private:
+    bool frozen() const noexcept HBA_NONBLOCKING { return held || amount > 0.0f; }
+    void updateState() noexcept HBA_NONBLOCKING {
         if (held)
             currentState = requested ? State::held : State::pendingRelease;
         else if (requested)

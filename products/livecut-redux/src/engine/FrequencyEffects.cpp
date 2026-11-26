@@ -50,14 +50,15 @@ double FrequencyEffects::Allpass::process(double input, double coefficient) noex
     return output;
 }
 
-std::array<double, 2> FrequencyEffects::Quadrature::process(
-    double input, const std::array<double, coefficientCount>& coefficients) noexcept HBA_NONBLOCKING {
+std::array<double, 2>
+FrequencyEffects::Quadrature::process(double input,
+                                      const std::array<double, coefficientCount>& coefs) noexcept HBA_NONBLOCKING {
     auto real = input, imag = input;
     for (std::size_t section = 0; section < coefficientCount; ++section)
         if ((section & 1U) == 0)
-            real = sections[section].process (real, coefficients[section]);
+            real = sections[section].process(real, coefs[section]);
         else
-            imag = sections[section].process (imag, coefficients[section]);
+            imag = sections[section].process(imag, coefs[section]);
     const auto previous = delayed;
     delayed = imag;
     return { real, previous };

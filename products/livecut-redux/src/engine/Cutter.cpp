@@ -219,19 +219,18 @@ void Cutter::resetRendering() noexcept HBA_NONBLOCKING {
 std::optional<LivePlayer::Tail> Cutter::rushSound(std::int64_t frame) const noexcept HBA_NONBLOCKING {
     if (! hasActivePlan || ! seamless (activePlan))
         return std::nullopt;
-    const auto& cuts = livePlayer.cuts();
+    const auto& activeCuts = livePlayer.cuts();
     const auto index = livePlayer.currentCut();
-    if (loopsReplay (activePlan) && ! cuts.empty())
-    {
-        if (index >= cuts.size())
-            return loopRunOn ? loopRunOn : livePlayer.tail (cuts.size() - 1, cuts.back().size);
-        if (rushCut < cuts.size() && index != rushCut)
-            return livePlayer.tail (rushCut, cuts[rushCut].size);
+    if (loopsReplay(activePlan) && !activeCuts.empty()) {
+        if (index >= activeCuts.size())
+            return loopRunOn ? loopRunOn : livePlayer.tail(activeCuts.size() - 1, activeCuts.back().size);
+        if (rushCut < activeCuts.size() && index != rushCut)
+            return livePlayer.tail(rushCut, activeCuts[rushCut].size);
         return livePlayer.tail();
     }
-    if (activePlan.rush && cuts.size() >= 2 && rushCut < cuts.size() && index != rushCut)
-        return livePlayer.tail (rushCut, cuts[rushCut].size);
-    if (index < cuts.size())
+    if (activePlan.rush && activeCuts.size() >= 2 && rushCut < activeCuts.size() && index != rushCut)
+        return livePlayer.tail(rushCut, activeCuts[rushCut].size);
+    if (index < activeCuts.size())
         return livePlayer.tail();
     LivePlayer::Tail input;
     input.source = livePlayer.sourceAtFrame (frame);

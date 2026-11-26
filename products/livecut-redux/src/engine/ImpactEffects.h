@@ -3,6 +3,7 @@
 #pragma once
 
 #include "hba/dsp/nonblocking.h"
+#include "hba/dsp/svf.h"
 
 #include <array>
 #include <cstddef>
@@ -138,7 +139,7 @@ public:
         void setTarget(double value, std::uint32_t samples) noexcept HBA_NONBLOCKING;
         double next() noexcept HBA_NONBLOCKING;
     };
-    struct FilterState { double ic1 = 0.0, ic2 = 0.0; };
+    using FilterState = hba::dsp::SvfState;
     struct DriveState
     {
         double previous = 0.0, previousPrimitive = 0.0;

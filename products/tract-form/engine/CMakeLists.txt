@@ -10,6 +10,8 @@ add_library(tf_engine STATIC
     src/squash.h
     src/tract.h
     src/voice.h
+    src/engine_impl.h
+    src/engine_control.cpp
     src/engine.cpp
     src/render.cpp)
 

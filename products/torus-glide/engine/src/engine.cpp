@@ -12,30 +12,6 @@
 namespace tg {
 
 namespace {
-using hba::dsp::midiToHz;
-using hba::dsp::polyBlep;
-
-// Strict zero-boundary Hann^2 log-frequency bell shaped by center & width.
-inline double spiralBellWeight(double u, double octSpan, double centerOct, double widthNorm) noexcept HBA_NONBLOCKING {
-    const double edgeNorm = std::clamp(u / octSpan, 0.0, 1.0);
-    const double boundary = std::sin(hba::dsp::kPi * edgeNorm);
-    const double boundarySq = boundary * boundary;
-    // Gaussian tilt inside the boundary so users can sweep Bell Center & Bell Width dramatically
-    // while keeping strict zero at u = 0 and u = octSpan!
-    const double sigma = 0.65 + std::clamp(widthNorm, 0.15, 1.0) * 2.25;
-    const double dist = (u - centerOct) / sigma;
-    const double tilt = std::exp(-0.5 * dist * dist);
-    return boundarySq * tilt;
-}
-
-// Focused club Sub-Anchor Floor envelope centered around 52 Hz (30..92 Hz).
-inline double subAnchorWeight(double hz) noexcept HBA_NONBLOCKING {
-    if (hz < 18.0 || hz > 180.0)
-        return 0.0;
-    const double logDist = std::log2(hz / 52.0);
-    return std::exp(-0.5 * (logDist / 0.44) * (logDist / 0.44));
-}
-
 inline hba::dsp::ShaperModel shaperFromChoice(int idx) noexcept HBA_NONBLOCKING {
     switch (std::clamp(idx, 0, 4)) {
     case 0:
@@ -133,180 +109,6 @@ void Engine::reset() noexcept HBA_NONBLOCKING {
 
 int Engine::latencySamples() const noexcept HBA_NONBLOCKING {
     return limiter_.latency() + oversamplerL_.latencySamples();
-}
-
-void Engine::noteOn(int note, float velocity, bool allowKeySwitch) noexcept HBA_NONBLOCKING {
-    const int n = std::clamp(note, 0, 127);
-    if (allowKeySwitch && n >= 12 && n <= 15) {
-        // Low-octave C0..D#0 keyswitches glide straight to Scene A, B, C, or D without transposing root!
-        keySwitchScene_ = n - 12;
-        return;
-    }
-    const bool wasClosed = !gateOpen_;
-    keysDown_[static_cast<std::size_t>(n)] = true;
-    currentNote_ = n;
-    velocity_ = std::clamp(velocity, 0.05f, 1.0f);
-    gateOpen_ = true;
-    silentTailSamples_ = 0;
-    if (wasClosed)
-        retrigPpqOffset_ = lastTransportPpq_;
-}
-
-void Engine::noteOff(int note) noexcept HBA_NONBLOCKING {
-    const int n = std::clamp(note, 0, 127);
-    if (n >= 12 && n <= 15 && !keysDown_[static_cast<std::size_t>(n)])
-        return;
-    keysDown_[static_cast<std::size_t>(n)] = false;
-    if (sustainDown_)
-        return;
-
-    // Monophonic last/highest-key fallback so legato playing feels buttery smooth!
-    int fallback = -1;
-    for (int k = 127; k >= 0; --k) {
-        if (keysDown_[static_cast<std::size_t>(k)]) {
-            fallback = k;
-            break;
-        }
-    }
-    if (fallback >= 0) {
-        currentNote_ = fallback;
-    } else {
-        gateOpen_ = false;
-    }
-}
-
-void Engine::sustain(bool down) noexcept HBA_NONBLOCKING {
-    sustainDown_ = down;
-    if (!down) {
-        bool any = false;
-        for (int k = 127; k >= 0; --k) {
-            if (keysDown_[static_cast<std::size_t>(k)]) {
-                currentNote_ = k;
-                any = true;
-                break;
-            }
-        }
-        if (!any)
-            gateOpen_ = false;
-    }
-}
-
-void Engine::allNotesOff() noexcept HBA_NONBLOCKING {
-    keysDown_.fill(false);
-    sustainDown_ = false;
-    gateOpen_ = false;
-}
-
-double Engine::oscSample(TimbreKind kind, double phase, double inc, double formantRatio, double foldAmt,
-                         double pw) const noexcept HBA_NONBLOCKING {
-    switch (kind) {
-    case TimbreKind::reese: {
-        double saw = 2.0 * phase - 1.0;
-        saw -= polyBlep(phase, inc);
-        return saw;
-    }
-    case TimbreKind::sine:
-        return std::sin(hba::dsp::kTwoPi * phase);
-    case TimbreKind::formant: {
-        // Windowed vocal formant harmonic crossfade (zero aliasing below Nyquist!)
-        const double window = 0.5 * (1.0 - std::cos(hba::dsp::kTwoPi * phase));
-        const double maxH = std::max(1.0, std::min(formantRatio, 0.42 / std::max(inc, 1e-6)));
-        const double hLo = std::floor(maxH);
-        const double hHi = hLo + 1.0;
-        const double fracH = maxH - hLo;
-        const double cLo = std::cos(hba::dsp::kTwoPi * hLo * phase);
-        const double cHi = std::cos(hba::dsp::kTwoPi * hHi * phase);
-        return 1.35 * window * (cLo + fracH * (cHi - cLo));
-    }
-    case TimbreKind::wavefold: {
-        // Phase-modulated self-folding harmonic tone
-        const double mod = (0.35 + foldAmt * 1.45) * std::sin(hba::dsp::kTwoPi * 2.0 * phase);
-        return std::sin(hba::dsp::kTwoPi * phase + mod);
-    }
-    case TimbreKind::pulse: {
-        double p = phase < pw ? 1.0 : -1.0;
-        p += polyBlep(phase, inc);
-        p -= polyBlep(hba::dsp::frac(phase + 1.0 - pw), inc);
-        return 0.85 * p;
-    }
-    }
-    return 0.0;
-}
-
-void Engine::emitMpeConfig(OutMidiBuffer& out, int offset, int rangeSt) noexcept HBA_NONBLOCKING {
-    // MPE Lower Zone: Master ch 1 (0), 5 member channels (ch 2..6 -> 1..5).
-    out.push(offset, 0xB0, 101, 0);
-    out.push(offset, 0xB0, 100, 6);
-    out.push(offset, 0xB0, 6, static_cast<std::uint8_t>(kVoiceCount));
-    // Set pitch bend sensitivity RPN 00 00 on member channels 2..6
-    const auto clampedRange = static_cast<std::uint8_t>(std::clamp(rangeSt, 1, 96));
-    for (int v = 0; v < kVoiceCount; ++v) {
-        const auto ch = static_cast<std::uint8_t>(v + 1);
-        out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 101, 0);
-        out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 100, 0);
-        out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 6, clampedRange);
-        out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 38, 0);
-    }
-    mpeConfigured_ = true;
-    lastMpeRangeSt_ = rangeSt;
-}
-
-void Engine::emitMpeAllNotesOff(OutMidiBuffer& out, int offset) noexcept HBA_NONBLOCKING {
-    for (int v = 0; v < kVoiceCount; ++v) {
-        auto& mv = mpeVoices_[static_cast<std::size_t>(v)];
-        if (mv.active) {
-            const auto ch = static_cast<std::uint8_t>(v + 1);
-            out.push(offset, static_cast<std::uint8_t>(0x80 | ch), static_cast<std::uint8_t>(mv.baseNote), 0);
-            mv.active = false;
-        }
-    }
-}
-
-void Engine::updateMpeVoices(OutMidiBuffer& out, int offset, const std::array<double, kVoiceCount>& pitches,
-                             bool sounding, int rangeSt, double filterNorm) noexcept HBA_NONBLOCKING {
-    if (!mpeConfigured_ || lastMpeRangeSt_ != rangeSt)
-        emitMpeConfig(out, offset, rangeSt);
-
-    if (!sounding) {
-        emitMpeAllNotesOff(out, offset);
-        return;
-    }
-
-    const int vel7 = std::clamp(static_cast<int>(std::lround(velocity_ * 127.0f)), 1, 127);
-    const int timbre7 = std::clamp(static_cast<int>(std::lround(filterNorm * 127.0)), 0, 127);
-
-    for (int v = 0; v < kVoiceCount; ++v) {
-        auto& mv = mpeVoices_[static_cast<std::size_t>(v)];
-        const auto ch = static_cast<std::uint8_t>(v + 1);
-        const double targetPitch = std::clamp(pitches[static_cast<std::size_t>(v)], 12.0, 116.0);
-
-        if (!mv.active) {
-            mv.baseNote = std::clamp(static_cast<int>(std::lround(targetPitch)), 12, 116);
-            mv.lastBend14 = 8192;
-            mv.lastTimbre7 = timbre7;
-            // Center pitch bend before Note-On (MPE specification best practice!)
-            out.push(offset, static_cast<std::uint8_t>(0xE0 | ch), 0, 64);
-            out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 74, static_cast<std::uint8_t>(timbre7));
-            out.push(offset, static_cast<std::uint8_t>(0x90 | ch), static_cast<std::uint8_t>(mv.baseNote),
-                     static_cast<std::uint8_t>(vel7));
-            mv.active = true;
-        }
-
-        const double bendSt = std::clamp(targetPitch - static_cast<double>(mv.baseNote), -static_cast<double>(rangeSt),
-                                         static_cast<double>(rangeSt));
-        const double bendNorm = bendSt / std::max(1.0, static_cast<double>(rangeSt));
-        const int bend14 = std::clamp(static_cast<int>(std::lround(8192.0 + bendNorm * 8191.0)), 0, 16383);
-
-        if (std::abs(bend14 - mv.lastBend14) >= 4) {
-            out.push(offset, static_cast<std::uint8_t>(0xE0 | ch), static_cast<std::uint8_t>(bend14 & 0x7F),
-                     static_cast<std::uint8_t>((bend14 >> 7) & 0x7F));
-            mv.lastBend14 = bend14;
-        }
-        if (std::abs(timbre7 - mv.lastTimbre7) >= 2) {
-            out.push(offset, static_cast<std::uint8_t>(0xB0 | ch), 74, static_cast<std::uint8_t>(timbre7));
-            mv.lastTimbre7 = timbre7;
-        }
-    }
 }
 
 void Engine::process(const Params& params, const Transport& transport, float* outL, float* outR, int numSamples,
@@ -439,9 +241,6 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
     double blockRmsSum = 0.0;
     double lastGateEnv = 1.0;
     double lastEffectiveBellHz = targetBellCenter;
-
-    // Precompute stereo pan gains for 5 voices
-    constexpr std::array<double, kVoiceCount> kBasePans{0.0, -0.78, 0.78, -0.42, 0.42};
 
     for (int i = 0; i < numSamples; ++i) {
         const double ppqNow = transport.playing ? (transport.ppq + static_cast<double>(i) * beatsPerSample) : freePpq_;
@@ -604,169 +403,31 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
         double sumBodyR = 0.0;
         double sumSub = 0.0;
 
-        if (mode == Mode::spiral) {
-            // 7-Octave (or custom-ratio) Phase-Coherent Shepard-Risset Spiral!
-            // Anchor F0..C1 floor to played pitch class, AND let played MIDI octave shift Bell Center naturally!
-            const double playedPc = std::fmod(rootMidi, 12.0);
-            const double normPc = playedPc < 0.0 ? playedPc + 12.0 : playedPc;
-            const double baseOctaveMidi = 12.0 + normPc; // ~16..31 Hz floor
-            const double octaveShift = std::clamp((rootMidi - (36.0 + normPc)) / 12.0, -2.0, 2.5);
-            const double effBellHz = std::clamp(curBellCenter * std::pow(2.0, octaveShift * 0.75), 65.0, 4800.0);
-            lastEffectiveBellHz = effBellHz;
-            const double bellCenterU = std::clamp(
-                (12.0 * std::log2(effBellHz / std::max(12.0, midiToHz(baseOctaveMidi)))) / ratioSemi, 0.75, 6.25);
-
-            // Constant-RMS bell power normalization eliminates subtle loudness breathing across octave wraps!
-            std::array<double, kOctaveCount> bellW{};
-            std::array<double, kOctaveCount> partialU{};
-            double bellPow = 0.0;
-            for (int k = 0; k < kOctaveCount; ++k) {
-                const auto ki = static_cast<std::size_t>(k);
-                const double u =
-                    hba::dsp::frac((static_cast<double>(k) + curSpiralPos) / static_cast<double>(kOctaveCount)) *
-                    static_cast<double>(kOctaveCount);
-                partialU[ki] = u;
-                const double b = spiralBellWeight(u, static_cast<double>(kOctaveCount), bellCenterU, bellWidth);
-                bellW[ki] = b;
-                bellPow += b * b;
-            }
-            const double rmsNorm = 1.0 / std::sqrt(std::max(0.35, bellPow));
-
-            const int chordVoices = spiralChord.count;
-            const double chordNorm = 1.0 / std::sqrt(static_cast<double>(chordVoices));
-
-            for (int v = 0; v < chordVoices; ++v) {
-                const auto vi = static_cast<std::size_t>(v);
-                const double chordSemi = spiralChord.intervals[vi];
-                const double pan = (chordVoices == 1) ? 0.0 : (kBasePans[vi] * width);
-                const double panL = std::cos((pan + 1.0) * 0.25 * hba::dsp::kPi);
-                const double panR = std::sin((pan + 1.0) * 0.25 * hba::dsp::kPi);
-
-                for (int k = 0; k < kOctaveCount; ++k) {
-                    const auto ki = static_cast<std::size_t>(k);
-                    const double u = partialU[ki];
-                    const double midi = baseOctaveMidi + u * ratioSemi + chordSemi;
-                    const double hz = std::clamp(midiToHz(midi), 16.0, 0.44 * sr);
-                    const double bell = bellW[ki] * rmsNorm;
-
-                    if (v == 0 && i == numSamples - 1) {
-                        telemetry_.spiralPartialU[ki] = static_cast<float>(u);
-                        telemetry_.spiralPartialGain[ki] = static_cast<float>(bellW[ki]);
-                    }
-
-                    auto& ps = partials_[vi][ki];
-                    const double incA = (hz / detuneRatio) * invSr;
-                    const double incB = (hz * detuneRatio) * invSr;
-                    ps.phaseA = hba::dsp::frac(ps.phaseA + incA);
-                    ps.phaseB = hba::dsp::frac(ps.phaseB + incB);
-
-                    if (bell > 1e-5) {
-                        const double sA = oscSample(timbre, ps.phaseA, incA, formantRatio, foldAmt, pw);
-                        const double sB = oscSample(timbre, ps.phaseB, incB, formantRatio, foldAmt, pw);
-                        const double w = bell * 0.34 * chordNorm;
-                        const double mid = 0.5 * (sA + sB);
-                        const double side = 0.5 * (sA - sB) * width;
-                        sumBodyL += w * (mid * panL + side);
-                        sumBodyR += w * (mid * panR - side);
-                    }
-
-                    // Dedicated pure mono Sub-Anchor fundamental on chord root (v == 0)
-                    if (v == 0) {
-                        const double subW = subAnchorWeight(hz);
-                        ps.phaseSub = hba::dsp::frac(ps.phaseSub + hz * invSr);
-                        if (subW > 1e-5)
-                            sumSub += subW * std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.62;
-                    }
-                }
-            }
-        } else if (mode == Mode::copedent) {
-            // 5-Voice Programmable Polyphonic Chord-Bend Instrument!
-            constexpr double voiceNorm = 0.30;
-            for (int v = 0; v < kVoiceCount; ++v) {
-                const auto vi = static_cast<std::size_t>(v);
-                const double smoothedPitch = voicePitchSmooth_[vi].step(targetVoicePitches[vi], voicePitchCoef);
-                const double hz = std::clamp(midiToHz(smoothedPitch), 20.0, 0.44 * sr);
-
-                auto& ps = partials_[vi][0];
-                const double incA = (hz / detuneRatio) * invSr;
-                const double incB = (hz * detuneRatio) * invSr;
-                ps.phaseA = hba::dsp::frac(ps.phaseA + incA);
-                ps.phaseB = hba::dsp::frac(ps.phaseB + incB);
-
-                const double sA = oscSample(timbre, ps.phaseA, incA, formantRatio, foldAmt, pw);
-                const double sB = oscSample(timbre, ps.phaseB, incB, formantRatio, foldAmt, pw);
-                const double pan = kBasePans[vi] * width;
-                const double panL = std::cos((pan + 1.0) * 0.25 * hba::dsp::kPi);
-                const double panR = std::sin((pan + 1.0) * 0.25 * hba::dsp::kPi);
-                const double mid = 0.5 * (sA + sB);
-                const double side = 0.5 * (sA - sB) * width * 0.65;
-                const double gainV = (v == 0 ? 1.15 : 0.92) * voiceNorm;
-
-                sumBodyL += gainV * (mid * panL + side);
-                sumBodyR += gainV * (mid * panR - side);
-
-                // Mono Sub-Anchor tracks Voice 0 (fundamental bass root)
-                if (v == 0) {
-                    ps.phaseSub = hba::dsp::frac(ps.phaseSub + hz * invSr);
-                    sumSub += std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.55;
-                }
-            }
-        } else {
-            // MÖBIUS HYBRID: 5-Voice Polyphonic Chord Voice-Leading on an Infinite 4-Octave Pitch Torus!
-            constexpr int kMobiusCopies = 4;
-            constexpr double kMobiusSpanSemi = 48.0; // 4 octaves
-            const double floorMidi = std::clamp(rootMidi - 12.0, 20.0, 48.0);
-            const double bellCenterU =
-                std::clamp((12.0 * std::log2(curBellCenter / std::max(16.0, midiToHz(floorMidi)))) / 12.0, 0.7, 3.3);
-            constexpr double voiceNorm = 0.20;
-
-            for (int v = 0; v < kVoiceCount; ++v) {
-                const auto vi = static_cast<std::size_t>(v);
-                const double unwrapped = targetVoicePitches[vi] + static_cast<double>(mobiusCycleOffset_) * 12.0;
-                const double smoothedPitch = voicePitchSmooth_[vi].step(unwrapped, voicePitchCoef);
-                const double pan = kBasePans[vi] * width;
-                const double panL = std::cos((pan + 1.0) * 0.25 * hba::dsp::kPi);
-                const double panR = std::sin((pan + 1.0) * 0.25 * hba::dsp::kPi);
-
-                for (int c = 0; c < kMobiusCopies; ++c) {
-                    const auto ci = static_cast<std::size_t>(c);
-                    const double relSemi = smoothedPitch - floorMidi + static_cast<double>(c) * 12.0;
-                    const double wrappedSemi = hba::dsp::frac(relSemi / kMobiusSpanSemi) * kMobiusSpanSemi;
-                    const double uOct = wrappedSemi / 12.0;
-                    const double midi = floorMidi + wrappedSemi;
-                    const double hz = std::clamp(midiToHz(midi), 20.0, 0.44 * sr);
-                    const double bell =
-                        spiralBellWeight(uOct, static_cast<double>(kMobiusCopies), bellCenterU, bellWidth);
-
-                    if (v == 0 && i == numSamples - 1) {
-                        telemetry_.spiralPartialU[ci] = static_cast<float>(uOct * (7.0 / 4.0));
-                        telemetry_.spiralPartialGain[ci] = static_cast<float>(bell);
-                    }
-
-                    auto& ps = partials_[vi][ci];
-                    const double incA = (hz / detuneRatio) * invSr;
-                    const double incB = (hz * detuneRatio) * invSr;
-                    ps.phaseA = hba::dsp::frac(ps.phaseA + incA);
-                    ps.phaseB = hba::dsp::frac(ps.phaseB + incB);
-
-                    if (bell > 1e-5) {
-                        const double sA = oscSample(timbre, ps.phaseA, incA, formantRatio, foldAmt, pw);
-                        const double sB = oscSample(timbre, ps.phaseB, incB, formantRatio, foldAmt, pw);
-                        const double w = bell * voiceNorm;
-                        const double mid = 0.5 * (sA + sB);
-                        const double side = 0.5 * (sA - sB) * width * 0.55;
-                        sumBodyL += w * (mid * panL + side);
-                        sumBodyR += w * (mid * panR - side);
-                    }
-                    if (v == 0) {
-                        const double subW = subAnchorWeight(hz);
-                        ps.phaseSub = hba::dsp::frac(ps.phaseSub + hz * invSr);
-                        if (subW > 1e-5)
-                            sumSub += subW * std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.48;
-                    }
-                }
-            }
-        }
+        const ModeRenderArgs modeArgs{
+            sr,
+            invSr,
+            rootMidi,
+            curSpiralPos,
+            ratioSemi,
+            spiralChord,
+            curBellCenter,
+            bellWidth,
+            detuneRatio,
+            width,
+            voicePitchCoef,
+            timbre,
+            formantRatio,
+            foldAmt,
+            pw,
+            &targetVoicePitches,
+            i == numSamples - 1,
+        };
+        if (mode == Mode::spiral)
+            renderSpiralSample(modeArgs, sumBodyL, sumBodyR, sumSub, lastEffectiveBellHz);
+        else if (mode == Mode::copedent)
+            renderCopedentSample(modeArgs, sumBodyL, sumBodyR, sumSub);
+        else
+            renderMobiusSample(modeArgs, sumBodyL, sumBodyR, sumSub);
 
         // Split stereo body (> subCutoffHz) from mono Sub-Anchor (< subCutoffHz) cleanly via LR4!
         double bodyL = bodyHpL_.process(subSplitCoefs, sumBodyL);

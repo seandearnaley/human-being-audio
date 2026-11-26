@@ -28,34 +28,28 @@ if ($env:HBA_TOOLS_DIR) {
     $env:PATH = "$ccacheDir;$env:PATH"
 }
 
-$extraArgs = @()
-if ($Product -ne 'livecut-redux') {
-    $llvmBin = "${env:ProgramFiles}\LLVM\bin"
-    $clangExe = Join-Path $llvmBin 'clang++.exe'
-    $hasLlvm = $false
-    if (Test-Path $clangExe) {
-        $ver = (& $clangExe --version 2>$null | Out-String)
-        $hasLlvm = $ver -match '23\.1\.6'
-    }
-    if (!$hasLlvm) {
-        $msi = Join-Path $tempDir 'LLVM-23.1.6-win64.msi'
-        Invoke-WebRequest 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.6/LLVM-23.1.6-win64.msi' -OutFile $msi
-        if ((Get-FileHash $msi).Hash -ne '81f7eb520ca698eb2d5cd8bc4b8f24f7add9ed66ed40a6f722a6e6f060737c00') {
-            throw 'LLVM installer digest does not match the upstream release.'
-        }
-        $install = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
-        if ($install.ExitCode) { exit $install.ExitCode }
-    }
-    $env:CC = 'clang'
-    $env:CXX = 'clang++'
-    # Use upstream LLVM's GNU-style driver with the MSVC SDK and runtime.
-    $env:PATH = "$llvmBin;$env:PATH"
-} elseif ($Preset -eq 'dev') {
-    # Embed debug info (/Z7) so ccache can cache MSVC RelWithDebInfo object files cleanly.
-    $extraArgs += '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded'
+$llvmBin = "${env:ProgramFiles}\LLVM\bin"
+$clangExe = Join-Path $llvmBin 'clang++.exe'
+$hasLlvm = $false
+if (Test-Path $clangExe) {
+    $ver = (& $clangExe --version 2>$null | Out-String)
+    $hasLlvm = $ver -match '23\.1\.6'
 }
+if (!$hasLlvm) {
+    $msi = Join-Path $tempDir 'LLVM-23.1.6-win64.msi'
+    Invoke-WebRequest 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.6/LLVM-23.1.6-win64.msi' -OutFile $msi
+    if ((Get-FileHash $msi).Hash -ne '81f7eb520ca698eb2d5cd8bc4b8f24f7add9ed66ed40a6f722a6e6f060737c00') {
+        throw 'LLVM installer digest does not match the upstream release.'
+    }
+    $install = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+    if ($install.ExitCode) { exit $install.ExitCode }
+}
+$env:CC = 'clang'
+$env:CXX = 'clang++'
+# Use upstream LLVM's GNU-style driver with the MSVC SDK and runtime.
+$env:PATH = "$llvmBin;$env:PATH"
 
-cmake --preset $Preset @extraArgs
+cmake --preset $Preset
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 cmake --build --preset $Preset
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
