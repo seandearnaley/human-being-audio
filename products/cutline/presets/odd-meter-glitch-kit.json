@@ -1,0 +1,15 @@
+{
+    "name": "Odd Meter Glitch Kit",
+    "category": "Polyrhythm",
+    "style": "Drill",
+    "gravity": -0.18,
+    "ghosts": 0.8,
+    "chop": 0.64,
+    "ratchet": 0.7,
+    "complexity": 0.78,
+    "fills": 0.68,
+    "dynamics": 0.82,
+    "attractor": "Offbeat 16",
+    "fillType": "Drill Chop",
+    "variation": 11
+}

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// 960-PPQ Standard MIDI File binary encoder for Drag-to-DAW and headless CLI export.
+// Deterministic 960-PPQ Standard MIDI File (SMF Type 0) exporter for Cutline 2.0.
 #pragma once
 
 #include "cl/lanes.h"
 #include "cl/params.h"
+#include "cl/pattern.h"
 #include "cl/phrase.h"
 
 #include <cstdint>
@@ -11,12 +12,11 @@
 
 namespace cl {
 
-inline constexpr int kSmfPpq = 960;
+inline constexpr std::uint16_t kSmfPpq = 960;
 
-// Renders one complete phrase (notes, microtiming, pitch bends, expression CCs,
-// overrides, and MPE MCM RPN when in MPE mode) as a standards-compliant SMF Type-0 binary.
+// Compiles the active scene's 2/4/8-bar drum or MIDI slicer phrase into an
+// exact 960-PPQ SMF Type 0 byte buffer ready for drag-and-drop into Live 12.
 std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves& curves, const HeldNotes& held,
-                                          double bpm, std::int64_t phraseIndex = 0,
-                                          const PhraseOverrides& overrides = {});
+                                          double bpm = 172.0, int sceneIdx = 0, const PatternBank& bank = {});
 
 } // namespace cl

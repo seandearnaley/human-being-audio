@@ -1,0 +1,15 @@
+{
+    "name": "Berlin Warehouse 4x4",
+    "category": "Club",
+    "style": "Stepper",
+    "gravity": 0.12,
+    "ghosts": 0.34,
+    "chop": 0.08,
+    "ratchet": 0.18,
+    "complexity": 0.52,
+    "fills": 0.26,
+    "dynamics": 0.74,
+    "attractor": "Downbeat",
+    "fillType": "Air Cut",
+    "variation": 3
+}

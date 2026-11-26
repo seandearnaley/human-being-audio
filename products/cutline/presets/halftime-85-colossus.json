@@ -1,0 +1,15 @@
+{
+    "name": "Halftime 85 Colossus",
+    "category": "Neuro",
+    "style": "Halftime",
+    "gravity": 0.36,
+    "ghosts": 0.56,
+    "chop": 0.22,
+    "ratchet": 0.46,
+    "complexity": 0.6,
+    "fills": 0.58,
+    "dynamics": 0.82,
+    "attractor": "MPC Swing",
+    "fillType": "Half Drop",
+    "variation": 1
+}

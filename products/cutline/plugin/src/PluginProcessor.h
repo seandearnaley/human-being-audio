@@ -3,8 +3,8 @@
 
 #include "CurveStore.h"
 #include "MidiExporter.h"
-#include "OverrideStore.h"
 #include "Parameters.h"
+#include "PatternStore.h"
 #include "Presets.h"
 #include "StudioHistory.h"
 #include "Telemetry.h"
@@ -50,7 +50,7 @@ class PluginProcessor final : public juce::AudioProcessor {
     struct HistorySnapshot {
         std::array<float, kParamCount> params{};
         LaneCurves curves = defaultLaneCurves();
-        PhraseOverrides overrides{};
+        PatternBank bank{};
         std::string presetName;
 
         bool operator==(const HistorySnapshot&) const = default;
@@ -58,13 +58,11 @@ class PluginProcessor final : public juce::AudioProcessor {
 
     juce::AudioProcessorValueTreeState state;
     CurveStore curves;
-    OverrideStore overrides;
+    PatternStore patterns;
     Presets presets;
     Telemetry telemetry;
     MidiExporter exporter;
     hba::studio::History<HistorySnapshot> history;
-    std::vector<int> seedHistory;
-    std::size_t seedCursor = 0;
 
   private:
     Transport readTransport(int numSamples);
@@ -72,7 +70,7 @@ class PluginProcessor final : public juce::AudioProcessor {
     ParameterValues values_;
     Engine engine_;
     LaneCurves audioCurves_ = defaultLaneCurves();
-    PhraseOverrides audioOverrides_{};
+    PatternBank audioBank_{};
     MidiEventBuffer outEvents_{};
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;

@@ -55,7 +55,10 @@ std::string formatValue(const ParamSpec& spec, float real) {
             std::snprintf(buf, sizeof(buf), "%.0f%%", static_cast<double>(v * 100.0f));
         return buf;
     case Unit::ms:
-        std::snprintf(buf, sizeof(buf), "%+.1f ms", static_cast<double>(v));
+        if (spec.min < 0.0f)
+            std::snprintf(buf, sizeof(buf), "%+.1f ms", static_cast<double>(v));
+        else
+            std::snprintf(buf, sizeof(buf), "%.0f ms", static_cast<double>(v));
         return buf;
     case Unit::degrees:
         std::snprintf(buf, sizeof(buf), "%.0f\u00b0", static_cast<double>(v));

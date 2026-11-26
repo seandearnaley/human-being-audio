@@ -1,0 +1,15 @@
+{
+    "name": "Soulful Shaker Break",
+    "category": "Breaks",
+    "style": "Think",
+    "gravity": 0.42,
+    "ghosts": 0.84,
+    "chop": 0.1,
+    "ratchet": 0.18,
+    "complexity": 0.54,
+    "fills": 0.3,
+    "dynamics": 0.82,
+    "attractor": "MPC Swing",
+    "fillType": "Air Cut",
+    "variation": 5
+}

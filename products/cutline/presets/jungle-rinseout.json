@@ -1,0 +1,15 @@
+{
+    "name": "Jungle Rinseout",
+    "category": "Breaks",
+    "style": "Amen",
+    "gravity": 0.18,
+    "ghosts": 0.78,
+    "chop": 0.66,
+    "ratchet": 0.56,
+    "complexity": 0.8,
+    "fills": 0.72,
+    "dynamics": 0.76,
+    "attractor": "Backbeat",
+    "fillType": "Drill Chop",
+    "variation": 3
+}
