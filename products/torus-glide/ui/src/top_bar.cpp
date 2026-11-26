@@ -10,40 +10,43 @@
 
 namespace tg::ui {
 
-TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
-    : context_(ctx), modeSpiral_(ctx, "SPIRAL", [this] { setMode(0); }),
-      modeCopedent_(ctx, "COPEDENT", [this] { setMode(1); }), modeMobius_(ctx,
-                                                                          "M\xc3\x96"
-                                                                          "BIUS",
-                                                                          [this] { setMode(2); }),
+namespace {
+float linearToDb(float v) { return v <= 1e-5f ? -100.0f : 20.0f * std::log10(v); }
+} // namespace
+
+TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void(bool)> onViewChanged)
+    : context_(ctx), onViewChanged_(std::move(onViewChanged)),
       prevPreset_(ctx, "\xe2\x80\xb9", [this] { context_.model.stepPreset(-1); }),
       presetName_(ctx, "Sidewinder F Bass 4Bar", [this] { showPresetMenu(); }),
       nextPreset_(ctx, "\xe2\x80\xba", [this] { context_.model.stepPreset(1); }),
       undo_(ctx, "Undo", [this] { context_.model.undo(); }), redo_(ctx, "Redo", [this] { context_.model.redo(); }),
       ab_(ctx, "A", [this] { context_.model.toggleAB(); }), keyChip_(ctx, ParamId::rootKey, colour::spiral, "Key"),
       scaleChip_(ctx, ParamId::scale, colour::copedent),
-      audition_(ctx, "AUDITION", [this] { context_.model.setAudition(!context_.model.isAuditioning()); }),
-      dragWav_(ctx, "Bounce .wav",
-               [this] {
-                   if (context_.model.resampleState() == ResampleState::idle)
-                       context_.model.startResample();
-                   else if (context_.model.resampleState() == ResampleState::ready)
-                       context_.model.startResample();
-               }),
-      dragMid_(ctx, "Drag .mid", [this] { context_.model.dragExportedMidi(); }) {
+      drone_(ctx, "DRONE",
+             [this] {
+                 const bool next = context_.model.get(ParamId::padHold) < 0.5f;
+                 context_.model.begin(ParamId::padHold);
+                 context_.model.set(ParamId::padHold, next ? 1.0f : 0.0f);
+                 context_.model.end(ParamId::padHold);
+             }),
+      dragWav_(ctx, "Bounce .wav", [this] { context_.model.startResample(); }),
+      dragMid_(ctx, "Drag .mid", [this] { context_.model.dragExportedMidi(); }),
+      viewPlay_(ctx, "PLAY", [this] { setStudioView(false); }),
+      viewStudio_(ctx, "STUDIO", [this] { setStudioView(true); }) {
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });
 
-    modeSpiral_.setAccent(colour::spiral);
-    modeCopedent_.setAccent(colour::copedent);
-    modeMobius_.setAccent(colour::mobius);
     prevPreset_.setAccent(colour::textDim);
     presetName_.setAccent(colour::text);
     nextPreset_.setAccent(colour::textDim);
-    audition_.setAccent(colour::mobius);
+    drone_.setAccent(colour::mobius);
     dragWav_.setAccent(colour::spiral);
     dragMid_.setAccent(colour::copedent);
+    viewPlay_.setAccent(colour::spiral);
+    viewStudio_.setAccent(colour::textDim);
+    viewPlay_.setActive(true);
+    viewStudio_.setActive(false);
 
     dragWav_.setOnDragOut([this] {
         if (context_.model.resampleState() == ResampleState::ready)
@@ -55,9 +58,9 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
 
-    for (visage::Frame* child : std::initializer_list<visage::Frame*>{
-             &modeSpiral_, &modeCopedent_, &modeMobius_, &prevPreset_, &presetName_, &nextPreset_, &undo_, &redo_, &ab_,
-             &keyChip_, &scaleChip_, &audition_, &dragWav_, &dragMid_}) {
+    for (visage::Frame* child : std::initializer_list<visage::Frame*>{&prevPreset_, &presetName_, &nextPreset_, &undo_,
+                                                                      &redo_, &ab_, &keyChip_, &scaleChip_, &drone_,
+                                                                      &dragWav_, &dragMid_, &viewPlay_, &viewStudio_}) {
         addChild(child);
     }
 
@@ -67,55 +70,60 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
 
 TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
 
-void TopBar::setMode(int idx) {
-    context_.model.begin(ParamId::mode);
-    context_.model.set(ParamId::mode, static_cast<float>(idx));
-    context_.model.end(ParamId::mode);
-    // When switching into Mobius mode while on a non-Mobius voicing pack, gently select Mobius Dim7 if unmodified
-    if (idx == 2 && !context_.model.sceneMatrix().isCustom) {
-        const int pack = static_cast<int>(std::lround(context_.model.get(ParamId::voicingPack)));
-        if (pack < 6) {
-            context_.model.begin(ParamId::voicingPack);
-            context_.model.set(ParamId::voicingPack, 6.0f);
-            context_.model.end(ParamId::voicingPack);
-        }
-    }
-    tick();
+void TopBar::setStudioView(bool studio) {
+    studioView_ = studio;
+    const int padProg =
+        std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::padProgram))), 0, kPadProgramCount - 1);
+    viewPlay_.setAccent(colour::padAccent(padProg));
+    viewStudio_.setAccent(studio ? colour::copedent : colour::textDim);
+    viewPlay_.setActive(!studio);
+    viewStudio_.setActive(studio);
+    if (onViewChanged_)
+        onViewChanged_(studio);
+    redraw();
 }
 
 void TopBar::tick() {
-    const int modeIdx = std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::mode))), 0, 2);
-    if (modeIdx != shownMode_) {
-        shownMode_ = modeIdx;
-        modeSpiral_.setActive(modeIdx == 0);
-        modeCopedent_.setActive(modeIdx == 1);
-        modeMobius_.setActive(modeIdx == 2);
-    }
-
     auto current = context_.model.presetName();
     if (current != shownPreset_) {
         shownPreset_ = std::move(current);
         presetName_.setLabel(shownPreset_.empty() ? "Init" : shownPreset_);
     }
 
+    const int padProg =
+        std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::padProgram))), 0, kPadProgramCount - 1);
+    const unsigned activeAcc = colour::padAccent(padProg);
+    if (!studioView_)
+        viewPlay_.setAccent(activeAcc);
+    drone_.setAccent(activeAcc);
+
     hba::ui::syncHistoryButtons(undo_, redo_, ab_, context_.model.canUndo(), context_.model.canRedo(),
                                 context_.model.isSlotB(), colour::spiral, colour::copedent);
 
-    const bool aud = context_.model.isAuditioning();
-    audition_.setActive(aud);
-    audition_.setLabel(aud ? "PLAYING" : "AUDITION");
+    const bool droneOn = context_.model.get(ParamId::padHold) >= 0.5f || context_.model.isAuditioning();
+    drone_.setActive(droneOn);
+    drone_.setLabel(droneOn ? "DRONE ON" : "DRONE");
 
     const auto rstate = context_.model.resampleState();
     if (rstate == ResampleState::rendering) {
         dragWav_.setLabel("Bouncing...");
         dragWav_.setActive(false);
     } else if (rstate == ResampleState::ready) {
-        dragWav_.setLabel("Drag .wav");
+        dragWav_.setLabel("Drag .wav \xe2\x86\x97");
         dragWav_.setActive(true);
     } else {
         dragWav_.setLabel("Bounce .wav");
         dragWav_.setActive(false);
     }
+
+    const auto& tel = context_.model.visuals();
+    const float nextL = linearToDb(tel.peakL);
+    const float nextR = linearToDb(tel.peakR);
+    peakDbL_ = std::max(nextL, peakDbL_ - 1.2f);
+    peakDbR_ = std::max(nextR, peakDbR_ - 1.2f);
+    const float nextGr = tel.limiterGain < 0.999f ? -linearToDb(tel.limiterGain) : 0.0f;
+    grDb_ = std::max(nextGr, grDb_ * 0.85f);
+    redraw();
 }
 
 void TopBar::showPresetMenu() {
@@ -125,12 +133,23 @@ void TopBar::showPresetMenu() {
 }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
-    hba::ui::drawBrandWordmark(canvas, wordmark_, brand::torus_glide_logotype_on_dark_svg, 2100.0f / 334.0f, 24.0f,
+    hba::ui::drawBrandWordmark(canvas, wordmark_, brand::torus_glide_logotype_on_dark_svg, 2100.0f / 334.0f, 23.0f,
                                6.0f, context_.scale);
 }
 
 void TopBar::draw(visage::Canvas& canvas) {
     drawPanel(canvas, context_, 0.0f, 0.0f, width(), height(), colour::panel, metric::radius);
+
+    // Compact right-aligned canonical stereo output meter
+    const float px = context_.scale;
+    const float meterW = 112.0f * px;
+    const float meterH = 26.0f * px;
+    const float meterX = width() - meterW - 8.0f * px;
+    const float meterY = (height() - meterH) * 0.5f;
+    canvas.saveState();
+    canvas.setPosition(meterX, meterY);
+    hba::ui::drawStereoOutputMeter(canvas, px, 2.0f * px, meterW, peakDbL_, peakDbR_, grDb_, -0.5f, colour::drive);
+    canvas.restoreState();
 }
 
 void TopBar::resized() {
@@ -138,23 +157,14 @@ void TopBar::resized() {
     const float h = height();
     const float bh = px(30.0f);
     const float y = (h - bh) * 0.5f;
-    const float gap = px(5.0f);
+    const float gap = px(6.0f);
 
-    wordmark_.setBounds(px(4.0f), 0.0f, px(164.0f), h);
-
-    // Mode segmented strip
-    float x = px(176.0f);
-    const float modeW = px(74.0f);
-    modeSpiral_.setBounds(x, y, modeW, bh);
-    x += modeW + px(3.0f);
-    modeCopedent_.setBounds(x, y, modeW + px(8.0f), bh);
-    x += modeW + px(11.0f);
-    modeMobius_.setBounds(x, y, modeW, bh);
-    x += modeW + px(14.0f);
+    wordmark_.setBounds(px(4.0f), 0.0f, px(160.0f), h);
 
     // Preset navigator
+    float x = px(172.0f);
     const float arrW = px(24.0f);
-    const float nameW = px(196.0f);
+    const float nameW = px(188.0f);
     prevPreset_.setBounds(x, y, arrW, bh);
     x += arrW + px(2.0f);
     presetName_.setBounds(x, y, nameW, bh);
@@ -162,30 +172,36 @@ void TopBar::resized() {
     nextPreset_.setBounds(x, y, arrW, bh);
     x += arrW + px(10.0f);
 
-    // Undo / Redo / AB
+    // Undo / Redo / A/B
     undo_.setBounds(x, y, px(44.0f), bh);
     x += px(44.0f) + px(3.0f);
     redo_.setBounds(x, y, px(44.0f), bh);
     x += px(44.0f) + px(3.0f);
     ab_.setBounds(x, y, px(28.0f), bh);
+    x += px(28.0f) + px(12.0f);
 
-    // Right-aligned performance & drag bar
-    float rx = width() - px(10.0f);
-    const float midW = px(76.0f);
-    rx -= midW;
-    dragMid_.setBounds(rx, y, midW, bh);
+    // Musical Key & Scale
+    keyChip_.setBounds(x, y, px(60.0f), bh);
+    x += px(60.0f) + px(4.0f);
+    scaleChip_.setBounds(x, y, px(96.0f), bh);
 
-    rx -= gap + px(88.0f);
-    dragWav_.setBounds(rx, y, px(88.0f), bh);
+    // Right-aligned: DRONE, Bounce .wav, Drag .mid, PLAY | STUDIO, Stereo Meter
+    float rx = width() - px(126.0f); // reserve right 126px for Stereo Output Meter
+    const float studioW = px(64.0f);
+    const float playW = px(58.0f);
+    rx -= studioW;
+    viewStudio_.setBounds(rx, y, studioW, bh);
+    rx -= px(3.0f) + playW;
+    viewPlay_.setBounds(rx, y, playW, bh);
 
-    rx -= gap + px(82.0f);
-    audition_.setBounds(rx, y, px(82.0f), bh);
+    rx -= px(12.0f) + px(78.0f);
+    dragMid_.setBounds(rx, y, px(78.0f), bh);
 
-    rx -= px(10.0f) + px(92.0f);
-    scaleChip_.setBounds(rx, y, px(92.0f), bh);
+    rx -= gap + px(94.0f);
+    dragWav_.setBounds(rx, y, px(94.0f), bh);
 
-    rx -= px(4.0f) + px(62.0f);
-    keyChip_.setBounds(rx, y, px(62.0f), bh);
+    rx -= gap + px(80.0f);
+    drone_.setBounds(rx, y, px(80.0f), bh);
 }
 
 } // namespace tg::ui

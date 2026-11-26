@@ -27,6 +27,17 @@ inline double spiralBellWeight(double u, double octSpan, double centerOct, doubl
     return boundarySq * tilt;
 }
 
+// Smooth C^1 zero-at-boundary guard so Sub-Anchor partials enter/exit wraps at exact 0.0 with zero click,
+// while preserving 100% full club weight across the 38..110 Hz sub band.
+inline double wrapSubBoundaryGuard(double u, double octSpan) noexcept HBA_NONBLOCKING {
+    constexpr double kFadeOct = 0.48;
+    const double lo = std::clamp(u / kFadeOct, 0.0, 1.0);
+    const double hi = std::clamp((octSpan - u) / kFadeOct, 0.0, 1.0);
+    const double sLo = std::sin(0.5 * hba::dsp::kPi * lo);
+    const double sHi = std::sin(0.5 * hba::dsp::kPi * hi);
+    return (sLo * sLo) * (sHi * sHi);
+}
+
 // Focused club Sub-Anchor Floor envelope centered around 52 Hz (30..92 Hz).
 inline double subAnchorWeight(double hz) noexcept HBA_NONBLOCKING {
     if (hz < 18.0 || hz > 180.0)
@@ -34,37 +45,79 @@ inline double subAnchorWeight(double hz) noexcept HBA_NONBLOCKING {
     const double logDist = std::log2(hz / 52.0);
     return std::exp(-0.5 * (logDist / 0.44) * (logDist / 0.44));
 }
+
+inline double nyquistFade(double harmonicInc) noexcept HBA_NONBLOCKING {
+    return std::clamp((0.40 - harmonicInc) / 0.12, 0.0, 1.0);
+}
 } // namespace
 
 double Engine::oscSample(TimbreKind kind, double phase, double inc, double formantRatio, double foldAmt,
                          double pw) const noexcept HBA_NONBLOCKING {
+    const double fund = std::sin(hba::dsp::kTwoPi * phase);
     switch (kind) {
     case TimbreKind::reese: {
+        // Nyquist-aware PolyBLEP saw: crisp full saw in bass/mids, smooth crossfade to sine in high Shepard octaves.
+        const double nyq = std::clamp((0.26 - inc) / 0.18, 0.0, 1.0);
+        if (nyq <= 1e-4)
+            return fund;
         double saw = 2.0 * phase - 1.0;
         saw -= polyBlep(phase, inc);
-        return saw;
+        return nyq * saw + (1.0 - nyq) * fund;
     }
     case TimbreKind::sine:
-        return std::sin(hba::dsp::kTwoPi * phase);
+        return fund;
     case TimbreKind::formant: {
+        // Lush dual-formant vocal choir: warm chest fundamental + 2nd harmonic anchored under a smooth
+        // bandwidth-limited vocal resonance so chords stay velvety and never whistle at high cutoff.
+        const double g2 = nyquistFade(2.0 * inc);
+        const double body = 0.52 * fund + 0.18 * g2 * std::sin(2.0 * hba::dsp::kTwoPi * phase);
         const double window = 0.5 * (1.0 - std::cos(hba::dsp::kTwoPi * phase));
-        const double maxH = std::max(1.0, std::min(formantRatio, 0.42 / std::max(inc, 1e-6)));
+        const double f1 = std::clamp(formantRatio, 1.5, 6.2);
+        const double maxH = std::max(1.0, std::min(f1, 0.34 / std::max(inc, 1e-6)));
         const double hLo = std::floor(maxH);
         const double hHi = hLo + 1.0;
         const double fracH = maxH - hLo;
         const double cLo = std::cos(hba::dsp::kTwoPi * hLo * phase);
         const double cHi = std::cos(hba::dsp::kTwoPi * hHi * phase);
-        return 1.35 * window * (cLo + fracH * (cHi - cLo));
+        const double f1Fade = nyquistFade((maxH + 1.0) * inc);
+        const double vocal = window * (cLo + fracH * (cHi - cLo));
+        return body + 0.58 * f1Fade * vocal;
     }
     case TimbreKind::wavefold: {
-        const double mod = (0.35 + foldAmt * 1.45) * std::sin(hba::dsp::kTwoPi * 2.0 * phase);
+        // Bandwidth-limited West-Coast FM wavefold: full snarl in bass/mids, zero fold-back aliasing in upper octaves.
+        const double nyqFm = std::clamp((0.18 - inc) / 0.14, 0.0, 1.0);
+        const double mod = (0.35 + foldAmt * 1.35) * nyqFm * std::sin(hba::dsp::kTwoPi * 2.0 * phase);
         return std::sin(hba::dsp::kTwoPi * phase + mod);
     }
     case TimbreKind::pulse: {
+        const double nyq = std::clamp((0.24 - inc) / 0.16, 0.0, 1.0);
+        if (nyq <= 1e-4)
+            return 0.85 * fund;
         double p = phase < pw ? 1.0 : -1.0;
         p += polyBlep(phase, inc);
         p -= polyBlep(hba::dsp::frac(phase + 1.0 - pw), inc);
-        return 0.85 * p;
+        return 0.85 * (nyq * p + (1.0 - nyq) * fund);
+    }
+    case TimbreKind::glassBell: {
+        // Crystalline harmonic glass chime with strictly Nyquist-guarded upper partials & subtle FM shimmer.
+        const double g2 = nyquistFade(2.0 * inc);
+        const double g3 = nyquistFade(3.0 * inc);
+        const double g4 = nyquistFade(4.0 * inc);
+        const double fm = 0.42 * foldAmt * g3 * std::sin(3.0 * hba::dsp::kTwoPi * phase);
+        return 0.62 * fund + 0.24 * g2 * std::sin(2.0 * hba::dsp::kTwoPi * phase + fm) +
+               0.14 * g3 * std::sin(3.0 * hba::dsp::kTwoPi * phase) +
+               0.08 * g4 * std::sin(4.0 * hba::dsp::kTwoPi * phase);
+    }
+    case TimbreKind::superOrgan: {
+        // Classic Shepard-Risset tonewheel drawbar stack (8' + 4' + 2-2/3' + 2' + 1-1/3'), zero aliasing.
+        const double g2 = nyquistFade(2.0 * inc);
+        const double g3 = nyquistFade(3.0 * inc);
+        const double g4 = nyquistFade(4.0 * inc);
+        const double g6 = nyquistFade(6.0 * inc);
+        return 0.50 * fund + 0.26 * g2 * std::sin(2.0 * hba::dsp::kTwoPi * phase) +
+               0.15 * g3 * std::sin(3.0 * hba::dsp::kTwoPi * phase) +
+               0.12 * g4 * std::sin(4.0 * hba::dsp::kTwoPi * phase) +
+               0.07 * g6 * std::sin(6.0 * hba::dsp::kTwoPi * phase);
     }
     }
     return 0.0;
@@ -134,7 +187,7 @@ void Engine::renderSpiralSample(const ModeRenderArgs& a, double& sumBodyL, doubl
             }
 
             if (v == 0) {
-                const double subW = subAnchorWeight(hz);
+                const double subW = subAnchorWeight(hz) * wrapSubBoundaryGuard(u, static_cast<double>(kOctaveCount));
                 ps.phaseSub = hba::dsp::frac(ps.phaseSub + hz * a.invSr);
                 if (subW > 1e-5)
                     sumSub += subW * std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.62;
@@ -148,7 +201,8 @@ void Engine::renderCopedentSample(const ModeRenderArgs& a, double& sumBodyL, dou
     constexpr double voiceNorm = 0.30;
     for (int v = 0; v < kVoiceCount; ++v) {
         const auto vi = static_cast<std::size_t>(v);
-        const double smoothedPitch = voicePitchSmooth_[vi].step((*a.targetVoicePitches)[vi], a.voicePitchCoef);
+        const double rampedPitch = voicePitchRamp_[vi].next();
+        const double smoothedPitch = voicePitchSmooth_[vi].step(rampedPitch, a.voicePitchCoef);
         const double hz = std::clamp(midiToHz(smoothedPitch), 20.0, 0.44 * a.sr);
 
         auto& ps = partials_[vi][0];
@@ -187,8 +241,8 @@ void Engine::renderMobiusSample(const ModeRenderArgs& a, double& sumBodyL, doubl
 
     for (int v = 0; v < kVoiceCount; ++v) {
         const auto vi = static_cast<std::size_t>(v);
-        const double unwrapped = (*a.targetVoicePitches)[vi] + static_cast<double>(mobiusCycleOffset_) * 12.0;
-        const double smoothedPitch = voicePitchSmooth_[vi].step(unwrapped, a.voicePitchCoef);
+        const double rampedPitch = voicePitchRamp_[vi].next();
+        const double smoothedPitch = voicePitchSmooth_[vi].step(rampedPitch, a.voicePitchCoef);
         const double pan = kBasePans[vi] * a.width;
         const double panL = std::cos((pan + 1.0) * 0.25 * hba::dsp::kPi);
         const double panR = std::sin((pan + 1.0) * 0.25 * hba::dsp::kPi);
@@ -223,10 +277,12 @@ void Engine::renderMobiusSample(const ModeRenderArgs& a, double& sumBodyL, doubl
                 sumBodyR += w * (mid * panR - side);
             }
             if (v == 0) {
-                const double subW = subAnchorWeight(hz);
+                // Zero-at-boundary sub guard eliminates octave-wrap sub thump in Mobius!
+                const double subW =
+                    subAnchorWeight(hz) * wrapSubBoundaryGuard(uOct, static_cast<double>(kMobiusCopies));
                 ps.phaseSub = hba::dsp::frac(ps.phaseSub + hz * a.invSr);
                 if (subW > 1e-5)
-                    sumSub += subW * std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.48;
+                    sumSub += subW * std::sin(hba::dsp::kTwoPi * ps.phaseSub) * 0.52;
             }
         }
     }

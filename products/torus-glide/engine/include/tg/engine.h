@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace tg {
 
@@ -71,6 +72,13 @@ struct TelemetrySnapshot {
     float rmsLevel = 0.0f;
     float limiterGain = 1.0f;
     float effectiveBellHz = 320.0f;
+    float effectiveFilterHz = 2800.0f;
+    float effectiveSpace = 0.28f;
+    float effectiveDrive = 0.42f;
+    float effectiveSubAnchor = 0.78f;
+    float spiralVel = 1.0f;
+    float padAmount = 0.0f;
+    bool padActive = false;
     int keySwitchScene = -1;
     int heldNoteCount = 0;
     std::array<int, kVoiceCount> heldNotes{};
@@ -178,6 +186,10 @@ class Engine {
     double lastTransportPpq_ = 0.0;
     bool wasPlaying_ = false;
     double prevMorphCycle_ = 0.0;
+    double prevLoopCycles_ = 0.0;
+    bool hasPrevLoopCycles_ = false;
+    double padSpiralOffset_ = 0.0;
+    double padMobiusOffset_ = 0.0;
     int mobiusCycleOffset_ = 0;
 
     hba::dsp::Smoother rootMidiSmooth_;
@@ -188,7 +200,15 @@ class Engine {
     hba::dsp::Smoother subAnchorSmooth_;
     hba::dsp::Smoother bellCenterSmooth_;
     hba::dsp::Smoother outputGainSmooth_;
+    hba::dsp::Smoother padActiveSmooth_;
+    hba::dsp::Smoother padXSmooth_;
+    hba::dsp::Smoother padYSmooth_;
+    hba::dsp::Smoother spiralVelSmooth_;
+    hba::dsp::Smoother detuneSmooth_;
+    hba::dsp::Smoother widthSmooth_;
     std::array<hba::dsp::Smoother, kVoiceCount> voicePitchSmooth_{};
+    std::array<hba::dsp::Ramp, kVoiceCount> voicePitchRamp_{};
+    bool voiceRampPrimed_ = false;
 
     // Fixed-size oscillator partial bank: 5 voices × 7 octave copies
     std::array<std::array<PartialState, kOctaveCount>, kVoiceCount> partials_{};
@@ -203,7 +223,7 @@ class Engine {
     hba::dsp::SvfState filterL_, filterR_;
     hba::dsp::SvfState filter2L_, filter2R_;
 
-    // Fixed-capacity upper-band Stereo Ensemble / Dimension chorus (zero heap allocation, supports up to 192 kHz!)
+    // Upper-band Stereo Ensemble + 4-Tap Hadamard FDN Manifold Reverb (prepared once, zero heap alloc in process!)
     static constexpr int kSpaceBufMask = 8191;
     static constexpr int kSpaceBufSize = kSpaceBufMask + 1;
     std::array<double, kSpaceBufSize> spaceBufL_{};
@@ -213,6 +233,14 @@ class Engine {
     double spaceLfo1_ = 0.0;
     double spaceLfo2_ = 0.33;
     double spaceLfo3_ = 0.67;
+
+    static constexpr int kFdnLines = 4;
+    std::array<std::vector<double>, kFdnLines> fdnBuf_{};
+    std::array<int, kFdnLines> fdnPos_{};
+    std::array<int, kFdnLines> fdnLen_{1427, 1783, 2111, 2557};
+    std::array<double, kFdnLines> fdnLp_{};
+    std::array<double, kFdnLines> fdnHp_{};
+    std::array<double, kFdnLines> fdnLfo_{0.0, 0.25, 0.50, 0.75};
 
     hba::dsp::DcBlocker dcL_, dcR_;
     hba::dsp::Limiter limiter_;

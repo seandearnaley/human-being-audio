@@ -64,7 +64,8 @@ void Presets::setCurrentName(std::string name) {
 
 void Presets::applyPreset(const PresetData& data, int index, bool notifyHost) {
     for (const auto& spec : paramSpecs()) {
-        if (spec.id == ParamId::quality || spec.id == ParamId::bypass)
+        if (spec.id == ParamId::quality || spec.id == ParamId::bypass || spec.id == ParamId::padTouch ||
+            spec.id == ParamId::padHold)
             continue;
         if (auto* p = state_.getParameter(std::string(spec.key))) {
             const float norm = p->convertTo0to1(data.params.real(spec.id));

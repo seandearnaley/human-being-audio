@@ -50,14 +50,25 @@ std::optional<PresetData> parsePresetJson(std::string_view json) {
     data.category = hba::core::jsonStringOr(root, "category", "General");
 
     const auto& paramsObj = root.contains("params") && root["params"].is_object() ? root["params"] : root;
+    bool hasPadProgram = false;
     for (const auto& [key, val] : paramsObj.items()) {
         if (const auto* spec = findParam(key)) {
-            if (const auto parsed = hba::core::readParamJson(*spec, val, clampValue))
+            if (const auto parsed = hba::core::readParamJson(*spec, val, clampValue)) {
                 data.params.set(spec->id, *parsed);
+                if (spec->id == ParamId::padProgram)
+                    hasPadProgram = true;
+            }
         } else if (const int lane = hba::core::laneOfCurveKey(key, kLaneCount); lane >= 0) {
             if (const auto curve = hba::core::readCurveJson(val))
                 data.curves[static_cast<std::size_t>(lane)] = *curve;
         }
+    }
+    if (!hasPadProgram) {
+        const int modeIdx = data.params.choice(ParamId::mode);
+        const float autoPad = modeIdx == 1   ? static_cast<float>(PadProgram::copedent)
+                              : modeIdx == 2 ? static_cast<float>(PadProgram::mobius)
+                                             : static_cast<float>(PadProgram::spiral);
+        data.params.set(ParamId::padProgram, autoPad);
     }
     // Also read top-level curve keys if params were nested.
     for (int lane = 0; lane < kLaneCount; ++lane) {
@@ -89,7 +100,8 @@ std::string serialisePresetJson(const PresetData& preset) {
 
     hba::core::Json params = hba::core::Json::object();
     for (const auto& spec : paramSpecs()) {
-        if (spec.id == ParamId::quality || spec.id == ParamId::bypass)
+        if (spec.id == ParamId::quality || spec.id == ParamId::bypass || spec.id == ParamId::padTouch ||
+            spec.id == ParamId::padHold)
             continue;
         params[std::string(spec.key)] = hba::core::writeParamJson(spec, preset.params.real(spec.id), clampValue);
     }
