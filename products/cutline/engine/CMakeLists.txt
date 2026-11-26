@@ -1,5 +1,6 @@
 add_library(cl_engine STATIC
     include/cl/engine.h
+    include/cl/hits.h
     include/cl/midi_event.h
     include/cl/phrase.h
     include/cl/resolve.h

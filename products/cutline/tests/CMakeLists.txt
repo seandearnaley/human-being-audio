@@ -6,6 +6,7 @@ catch_discover_tests(cl-core-tests DISCOVERY_MODE PRE_TEST)
 add_executable(cl-engine-tests
     engine/EngineTests.cpp
     engine/ResolveTests.cpp
+    engine/HitsTests.cpp
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/CurveTests.cpp")
 hba_build_for_host_only(cl-engine-tests)
