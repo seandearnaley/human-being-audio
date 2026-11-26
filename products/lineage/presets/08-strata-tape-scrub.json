@@ -35,6 +35,7 @@
   "strataDir": "Scrub",
   "strataPitch": 0.0,
   "printBars": "2 bars",
+  "strataFade": 28.0,
   "padProgram": "Strata",
   "padX": 0.5,
   "padY": 0.5,

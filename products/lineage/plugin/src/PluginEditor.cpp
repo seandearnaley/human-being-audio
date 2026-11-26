@@ -34,6 +34,36 @@ hba::host::StudioAboutConfig makeAboutConfig() {
 
 PluginEditor::PluginEditor(PluginProcessor& processor)
     : StudioPluginEditor(processor, ui::kMinWidth, ui::kMinHeight, ui::kDefaultWidth, ui::kDefaultHeight, 0xff090c12u,
-                         makeAboutConfig()) {}
+                         makeAboutConfig()),
+      processor_(processor) {}
+
+bool PluginEditor::isInterestedInFileDrag(const juce::StringArray& files) {
+    for (const auto& path : files) {
+        const auto ext = juce::File(path).getFileExtension().toLowerCase();
+        if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac")
+            return true;
+    }
+    return false;
+}
+
+void PluginEditor::filesDropped(const juce::StringArray& files, int, int) {
+    const double sr = processor_.getSampleRate() > 8000.0 ? processor_.getSampleRate() : 48000.0;
+    for (const auto& path : files) {
+        const juce::File f(path);
+        const auto ext = f.getFileExtension().toLowerCase();
+        if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac") {
+            if (processor_.printStore.loadAudioFile(f, sr)) {
+                if (auto* p = processor_.state.getParameter("genMix")) {
+                    if (p->getValue() < 0.05f) {
+                        p->beginChangeGesture();
+                        p->setValueNotifyingHost(0.85f);
+                        p->endChangeGesture();
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
 
 } // namespace ln

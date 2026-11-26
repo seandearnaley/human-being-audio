@@ -10,6 +10,7 @@ namespace ln {
 
 namespace {
 const juce::String kQualityId{"quality"};
+const juce::String kDroneNoteId{"droneNote"};
 } // namespace
 
 PluginProcessor::PluginProcessor()
@@ -54,9 +55,12 @@ void PluginProcessor::prepareEngine() {
     setLatencySamples(engine_.latencySamples());
 }
 
-void PluginProcessor::parameterChanged(const juce::String& id, float) {
+void PluginProcessor::parameterChanged(const juce::String& id, float value) {
     resampler.invalidate();
-    if (id == kQualityId) {
+    if (id == kDroneNoteId) {
+        const int note = 24 + std::clamp(static_cast<int>(std::lround(value)), 0, 11);
+        lastNote_.store(note, std::memory_order_relaxed);
+    } else if (id == kQualityId) {
         pendingPrepare_.store(true, std::memory_order_release);
         if (auto* mm = juce::MessageManager::getInstanceWithoutCreating()) {
             if (mm->isThisTheMessageThread())

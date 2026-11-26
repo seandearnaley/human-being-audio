@@ -13,12 +13,15 @@ class StrataRibbon final : public Panel {
     explicit StrataRibbon(Context& ctx)
         : Panel(ctx), printBtn_(ctx, "PRINT GEN", [this] { context_.model.triggerPrint(false); }),
           stackBtn_(ctx, "STACK +1", [this] { context_.model.triggerPrint(true); }),
+          stepBackBtn_(ctx, "\xe2\x86\xa9", [this] { context_.model.stepBackPrint(); }),
           loadBtn_(ctx, "LOAD WAV", [this] { context_.model.browseLoadWav(); }) {
         printBtn_.setAccent(colour::strata);
         stackBtn_.setAccent(colour::sculpt);
+        stepBackBtn_.setAccent(colour::textFaint);
         loadBtn_.setAccent(colour::reese);
         addChild(&printBtn_);
         addChild(&stackBtn_);
+        addChild(&stepBackBtn_);
         addChild(&loadBtn_);
     }
 
@@ -33,6 +36,7 @@ class StrataRibbon final : public Panel {
             printBtn_.setActive(gen >= 2);
         }
         stackBtn_.setActive(gen >= 3);
+        stepBackBtn_.setAccent(context_.model.canStepBackPrint() ? colour::sculpt : colour::textFaint);
         redraw();
     }
 
@@ -40,13 +44,16 @@ class StrataRibbon final : public Panel {
         const float h = height();
         const float bh = px(28.0f);
         const float y = (h - bh) * 0.5f;
-        const float gap = px(6.0f);
+        const float gap = px(5.0f);
         float rx = width() - px(10.0f);
-        const float loadW = px(78.0f);
-        const float stackW = px(76.0f);
-        const float printW = px(88.0f);
+        const float loadW = px(76.0f);
+        const float backW = px(28.0f);
+        const float stackW = px(74.0f);
+        const float printW = px(84.0f);
         loadBtn_.setBounds(rx - loadW, y, loadW, bh);
         rx -= loadW + gap;
+        stepBackBtn_.setBounds(rx - backW, y, backW, bh);
+        rx -= backW + gap;
         stackBtn_.setBounds(rx - stackW, y, stackW, bh);
         rx -= stackW + gap;
         printBtn_.setBounds(rx - printW, y, printW, bh);
@@ -100,7 +107,7 @@ class StrataRibbon final : public Panel {
         cx += px(18.0f);
 
         // Center-Right: Living Interactive Gen-2 Strata Mini-Waveform Well!
-        const float rightEdge = width() - px(274.0f);
+        const float rightEdge = width() - px(296.0f);
         const float waveW = std::max(px(120.0f), rightEdge - cx);
         waveBounds_ = {cx, pillY, waveW, pillH};
         drawPanel(canvas, context_, cx, pillY, waveW, pillH, 0xff090c13u, metric::radiusSmall);
@@ -109,7 +116,7 @@ class StrataRibbon final : public Panel {
 
         // Label badge on left inside waveform well
         const std::string genLbl = context_.model.printLabel();
-        const float badgeW = px(104.0f);
+        const float badgeW = px(114.0f);
         drawLabel(canvas, context_, genLbl, cx + px(8.0f), pillY, badgeW, pillH,
                   tel.hasPrint ? colour::strata : colour::textDim, visage::Font::kLeft, 9.6f, Weight::semibold);
 
@@ -177,7 +184,7 @@ class StrataRibbon final : public Panel {
         redraw();
     }
 
-    PillButton printBtn_, stackBtn_, loadBtn_;
+    PillButton printBtn_, stackBtn_, stepBackBtn_, loadBtn_;
     Rect waveBounds_{};
     bool scrubbing_ = false;
 };

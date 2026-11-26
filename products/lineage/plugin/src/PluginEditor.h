@@ -9,9 +9,16 @@
 
 namespace ln {
 
-class PluginEditor final : public hba::host::StudioPluginEditor<PluginProcessor, PluginModel, ui::Editor> {
+class PluginEditor final : public hba::host::StudioPluginEditor<PluginProcessor, PluginModel, ui::Editor>,
+                           public juce::FileDragAndDropTarget {
   public:
     explicit PluginEditor(PluginProcessor& processor);
+
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
+
+  private:
+    PluginProcessor& processor_;
 };
 
 } // namespace ln

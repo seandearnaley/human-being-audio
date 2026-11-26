@@ -40,6 +40,8 @@ class Model {
     virtual int printGeneration() const = 0;
     virtual PrintState printState() const = 0;
     virtual void triggerPrint(bool stackGeneration) = 0;
+    virtual bool canStepBackPrint() const { return false; }
+    virtual void stepBackPrint() {}
     virtual void browseLoadWav() = 0;
     virtual void clearPrint() = 0;
 

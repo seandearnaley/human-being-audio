@@ -101,9 +101,14 @@ TEST_CASE("Lineage live PrintStore Gen-2 bake and Gen-3 stack publish lock-free"
     CHECK(proc.telemetry.read().hasPrint);
     CHECK(proc.telemetry.read().generation == 2);
 
-    // Stack Gen 3
+    // Stack Gen 3, then test non-destructive generation Step-Back!
     proc.triggerPrintSync(true);
     CHECK(proc.printStore.generation() == 3);
+    REQUIRE(proc.printStore.canStepBack());
+
+    REQUIRE(proc.printStore.stepBack());
+    CHECK(proc.printStore.generation() == 2);
+    CHECK_FALSE(proc.printStore.canStepBack());
 }
 
 TEST_CASE("Lineage state round-trip, Undo/Redo and A/B history persist", "[plugin]") {

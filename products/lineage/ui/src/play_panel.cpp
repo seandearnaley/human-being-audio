@@ -46,6 +46,13 @@ PlayPanel::PlayPanel(Context& ctx)
         addChild(child);
     }
 
+    // Live modulation ghosts on the PLAY dock sliders
+    filt1Row_.setModProvider(
+        [this] { return toNormalised(spec(ParamId::filt1Hz), context_.model.visuals().effFilt1Hz); });
+    driveRow_.setModProvider([this] { return toNormalised(spec(ParamId::drive), context_.model.visuals().effDrive); });
+    genMixRow_.setModProvider(
+        [this] { return toNormalised(spec(ParamId::genMix), context_.model.visuals().effGenMix); });
+
     program_ = activeProgram();
     programBefore_ = program_;
     motion_.x = context_.model.get(ParamId::padX);
@@ -257,7 +264,7 @@ void PlayPanel::draw(visage::Canvas& canvas) {
         canvas.roundedRectangle(hx, hy, hintW, hintH, 12.0f * sc);
         canvas.setColor(colour::withAlpha(sheetCol, 0.45f));
         canvas.roundedRectangleBorder(hx, hy, hintW, hintH, 12.0f * sc, 1.0f * sc);
-        drawLabel(canvas, context_, "DRAG PAD TO PLAY  \xc2\xb7  SPACE FOR DRONE", hx, hy, hintW, hintH, colour::text,
+        drawLabel(canvas, context_, "DRAG PAD TO PLAY  \xc2\xb7  PRESS D FOR DRONE", hx, hy, hintW, hintH, colour::text,
                   visage::Font::kCenter, 9.4f, Weight::semibold);
     }
 

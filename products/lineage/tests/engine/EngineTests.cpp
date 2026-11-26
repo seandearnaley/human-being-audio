@@ -166,3 +166,77 @@ TEST_CASE("Mono sub band below subSplit maintains >0.99 correlation even at 100%
     const double corr = dot / std::sqrt(std::max(1e-12, eL * eR));
     CHECK(corr > 0.99);
 }
+
+TEST_CASE("Strata sub-split protection, Hi/Lo band-split crossover, Loop Xfade, and Keytrack behave cleanly",
+          "[engine]") {
+    constexpr double fs = 48000.0;
+    auto p = ln::Params::defaults();
+    p[ln::ParamId::width] = 1.0f;
+    p[ln::ParamId::unison] = 0.9f;
+    p[ln::ParamId::detune] = 35.0f;
+    p[ln::ParamId::printBars] = 0.0f; // 1 bar
+    const auto gen2 = ln::Engine::renderPrint(p, ln::defaultLaneCurves(), fs, 172.0, 29);
+    REQUIRE(gen2.valid());
+    CHECK(gen2.label.find("F1") != std::string::npos);
+
+    // 1) Pitched-down Strata (-12 st) must NEVER break sub-band mono correlation!
+    ln::Engine eng;
+    eng.prepare(fs, 256, 4);
+    eng.publishPrint(gen2);
+    p[ln::ParamId::genMix] = 1.0f;
+    p[ln::ParamId::strataPitch] = -12.0f;
+    p[ln::ParamId::subLevel] = 0.9f;
+    p[ln::ParamId::subSplit] = 110.0f;
+    eng.noteOn(29, 0.95f);
+
+    constexpr int total = 9600;
+    std::vector<float> l(total), r(total);
+    for (int pos = 0; pos < total; pos += 256)
+        eng.process(p, {172.0, 0.0, true}, l.data() + pos, r.data() + pos, std::min(256, total - pos));
+
+    double lp1L = 0.0, lp1R = 0.0, lp2L = 0.0, lp2R = 0.0, dot = 0.0, eL = 0.0, eR = 0.0;
+    const double c = 1.0 - std::exp(-2.0 * 3.141592653589793 * 70.0 / fs);
+    for (int i = 0; i < total; ++i) {
+        lp1L += c * (l[static_cast<std::size_t>(i)] - lp1L);
+        lp1R += c * (r[static_cast<std::size_t>(i)] - lp1R);
+        lp2L += c * (lp1L - lp2L);
+        lp2R += c * (lp1R - lp2R);
+        if (i >= total / 3) {
+            dot += lp2L * lp2R;
+            eL += lp2L * lp2L;
+            eR += lp2R * lp2R;
+        }
+    }
+    CHECK((dot / std::sqrt(std::max(1e-12, eL * eR))) > 0.995);
+
+    // 2) Hi-Strata & Lo-Strata crossover modes + Scrub inertia + Keytrack Off all produce finite distinct audio
+    auto renderMode = [&](ln::StrataBlend blend, ln::StrataDir dir, float fadeMs, bool keytrack) {
+        ln::Engine e;
+        e.prepare(fs, 256, 4);
+        e.publishPrint(gen2);
+        auto pm = p;
+        pm[ln::ParamId::strataPitch] = 12.0f;
+        pm[ln::ParamId::strataBlend] = static_cast<float>(blend);
+        pm[ln::ParamId::strataDir] = static_cast<float>(dir);
+        pm[ln::ParamId::strataFade] = fadeMs;
+        pm[ln::ParamId::strataKeytrack] = keytrack ? 1.0f : 0.0f;
+        e.noteOn(36, 0.95f);
+        std::vector<float> ol(2048), or_(2048);
+        e.process(pm, {172.0, 0.0, true}, ol.data(), or_.data(), 2048);
+        double energy = 0.0;
+        for (std::size_t i = 0; i < ol.size(); ++i) {
+            REQUIRE(std::isfinite(ol[i]));
+            REQUIRE(std::isfinite(or_[i]));
+            energy += ol[i] * ol[i] + or_[i] * or_[i];
+        }
+        CHECK(std::sqrt(energy / (2.0 * static_cast<double>(ol.size()))) > 0.05);
+        return ol;
+    };
+
+    const auto hi = renderMode(ln::StrataBlend::hiStrata, ln::StrataDir::forward, 24.0f, true);
+    const auto lo = renderMode(ln::StrataBlend::loStrata, ln::StrataDir::scrub, 35.0f, false);
+    double diff = 0.0;
+    for (std::size_t i = 0; i < hi.size(); ++i)
+        diff += std::abs(hi[i] - lo[i]);
+    CHECK(diff > 1.0);
+}

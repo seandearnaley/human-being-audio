@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace ln {
 
@@ -38,6 +39,8 @@ class PrintStore final : private juce::Thread {
 
     bool loadAudioFile(const juce::File& file, double targetSampleRate);
     void browseLoadWavAsync(double targetSampleRate);
+    bool canStepBack() const noexcept { return canStepBack_.load(std::memory_order_acquire); }
+    bool stepBack();
     void clear();
 
     void reloadFromState(const Params& params, const LaneCurves& curves, double sampleRate);
@@ -55,7 +58,7 @@ class PrintStore final : private juce::Thread {
     };
 
     void run() override;
-    void commitBuffer(PrintBuffer buf, const juce::String& externalFilePath = {});
+    void commitBuffer(PrintBuffer buf, const juce::String& externalFilePath = {}, bool recordHistory = true);
 
     juce::AudioProcessorValueTreeState& state_;
     std::function<void(const PrintBuffer&)> onPublish_;
@@ -63,6 +66,7 @@ class PrintStore final : private juce::Thread {
 
     mutable juce::CriticalSection lock_;
     PrintBuffer current_;
+    std::vector<PrintBuffer> history_;
     Job pendingJob_;
     bool hasPendingJob_ = false;
     juce::WaitableEvent wakeEvent_;
@@ -70,6 +74,7 @@ class PrintStore final : private juce::Thread {
     std::atomic<std::uint64_t> ticketCounter_{0};
     std::atomic<ui::PrintState> printState_{ui::PrintState::idle};
     std::atomic<int> generation_{0};
+    std::atomic<bool> canStepBack_{false};
 
     std::unique_ptr<juce::FileChooser> chooser_;
     std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};

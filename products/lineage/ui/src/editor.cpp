@@ -30,7 +30,8 @@ struct Editor::Impl final {
           ribbon(makeStrataRibbon(context)), playPad(makePlayPanel(context)), studioStage(makeStudioStage(context)),
           studioDeck(makeStudioDeck(context)), movement(makeMovementPanel(context)) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {
-            if (key.keyCode() == visage::KeyCode::Space && !key.isMainModifier()) {
+            // Use D (leaving Space free for Ableton Live / DAW transport!)
+            if (key.keyCode() == visage::KeyCode::D && !key.isMainModifier()) {
                 const bool next = context.model.get(ParamId::padHold) < 0.5f;
                 context.model.begin(ParamId::padHold);
                 context.model.set(ParamId::padHold, next ? 1.0f : 0.0f);

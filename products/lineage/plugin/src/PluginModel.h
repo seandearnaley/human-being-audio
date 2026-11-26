@@ -35,6 +35,8 @@ class PluginModel final : public ui::Model {
     int printGeneration() const override { return processor_.printStore.generation(); }
     ui::PrintState printState() const override { return processor_.printStore.state(); }
     void triggerPrint(bool stackGeneration) override;
+    bool canStepBackPrint() const override { return processor_.printStore.canStepBack(); }
+    void stepBackPrint() override { processor_.printStore.stepBack(); }
     void browseLoadWav() override;
     void clearPrint() override;
 

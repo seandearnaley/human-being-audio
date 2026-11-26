@@ -56,6 +56,18 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
 
+    drone_.setOnRightClick([this] {
+        visage::PopupMenu menu;
+        for (int i = 0; i < static_cast<int>(choices::droneNote.size()); ++i)
+            menu.addOption(i, "Drone Key: " + std::string(choices::droneNote[static_cast<std::size_t>(i)]));
+        menu.onSelection() = [this](int idx) {
+            context_.model.begin(ParamId::droneNote);
+            context_.model.set(ParamId::droneNote, static_cast<float>(idx));
+            context_.model.end(ParamId::droneNote);
+        };
+        menu.show(&drone_);
+    });
+
     for (visage::Frame* child :
          std::initializer_list<visage::Frame*>{&prevPreset_, &presetName_, &nextPreset_, &undo_, &redo_, &ab_,
                                                &printGen_, &drone_, &bounceWav_, &viewPlay_, &viewStudio_}) {
@@ -112,8 +124,11 @@ void TopBar::tick() {
     }
 
     const bool droneOn = context_.model.get(ParamId::padHold) >= 0.5f;
+    const int droneKeyIdx =
+        std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::droneNote))), 0, 11);
+    const std::string keyName(choices::droneNote[static_cast<std::size_t>(droneKeyIdx)]);
     drone_.setActive(droneOn);
-    drone_.setLabel(droneOn ? "DRONE ON" : "DRONE");
+    drone_.setLabel(droneOn ? ("ON \xc2\xb7 " + keyName) : ("DRONE \xc2\xb7 " + keyName));
 
     const auto estate = context_.model.exportState();
     if (estate == ExportState::rendering) {
@@ -201,8 +216,8 @@ void TopBar::resized() {
     rx -= px(12.0f) + px(96.0f);
     bounceWav_.setBounds(rx, y, px(96.0f), bh);
 
-    rx -= gap + px(82.0f);
-    drone_.setBounds(rx, y, px(82.0f), bh);
+    rx -= gap + px(92.0f);
+    drone_.setBounds(rx, y, px(92.0f), bh);
 
     rx -= gap + px(112.0f);
     printGen_.setBounds(rx, y, px(112.0f), bh);

@@ -111,14 +111,17 @@ class StudioStage final : public Panel {
     explicit StudioStage(Context& ctx)
         : Panel(ctx), printBtn_(ctx, "PRINT GEN", [this] { context_.model.triggerPrint(false); }),
           stackBtn_(ctx, "STACK +1", [this] { context_.model.triggerPrint(true); }),
+          stepBackBtn_(ctx, "\xe2\x86\xa9", [this] { context_.model.stepBackPrint(); }),
           loadBtn_(ctx, "LOAD WAV", [this] { context_.model.browseLoadWav(); }),
           clearBtn_(ctx, "CLEAR", [this] { context_.model.clearPrint(); }) {
         printBtn_.setAccent(colour::strata);
         stackBtn_.setAccent(colour::sculpt);
+        stepBackBtn_.setAccent(colour::textFaint);
         loadBtn_.setAccent(colour::reese);
         clearBtn_.setAccent(colour::textDim);
         addChild(&printBtn_);
         addChild(&stackBtn_);
+        addChild(&stepBackBtn_);
         addChild(&loadBtn_);
         addChild(&clearBtn_);
     }
@@ -134,6 +137,7 @@ class StudioStage final : public Panel {
             printBtn_.setActive(gen >= 2);
         }
         stackBtn_.setActive(gen >= 3);
+        stepBackBtn_.setAccent(context_.model.canStepBackPrint() ? colour::sculpt : colour::textFaint);
         redraw();
     }
 
@@ -151,18 +155,21 @@ class StudioStage final : public Panel {
         // Top-right button strip inside Strata canvas
         const float bh = px(24.0f);
         const float by = strataRect_.y + px(8.0f);
-        const float bgap = px(5.0f);
+        const float bgap = px(4.0f);
         float rx = strataRect_.x + strataRect_.w - px(8.0f);
 
-        const float clearW = px(52.0f);
-        const float loadW = px(68.0f);
+        const float clearW = px(50.0f);
+        const float loadW = px(74.0f);
+        const float backW = px(26.0f);
         const float stackW = px(68.0f);
-        const float printW = px(78.0f);
+        const float printW = px(76.0f);
 
         clearBtn_.setBounds(rx - clearW, by, clearW, bh);
         rx -= clearW + bgap;
         loadBtn_.setBounds(rx - loadW, by, loadW, bh);
         rx -= loadW + bgap;
+        stepBackBtn_.setBounds(rx - backW, by, backW, bh);
+        rx -= backW + bgap;
         stackBtn_.setBounds(rx - stackW, by, stackW, bh);
         rx -= stackW + bgap;
         printBtn_.setBounds(rx - printW, by, printW, bh);
@@ -180,12 +187,21 @@ class StudioStage final : public Panel {
 
         if (specRect_.contains(mx, my)) {
             const Rect plot = spectrumPlotRect();
+            const float subX = plot.x + freqToNorm(context_.model.get(ParamId::subSplit)) * plot.w;
             const float f1x = plot.x + freqToNorm(context_.model.get(ParamId::filt1Hz)) * plot.w;
             const float f1y = plot.y + (1.0f - context_.model.get(ParamId::filt1Res)) * plot.h;
             const float f2x = plot.x + freqToNorm(context_.model.get(ParamId::filt2Hz)) * plot.w;
             const float f2y = plot.y + (1.0f - context_.model.get(ParamId::filt2Res)) * plot.h;
-            const float d1 = (mx - f1x) * (mx - f1x) + (my - f1y) * (my - f1y);
-            const float d2 = (mx - f2x) * (mx - f2x) + (my - f2y) * (my - f2y);
+            const float d1 = std::hypot(mx - f1x, my - f1y);
+            const float d2 = std::hypot(mx - f2x, my - f2y);
+            const float dSub = std::abs(mx - subX);
+
+            if (dSub <= px(12.0f) && dSub < std::min(d1, d2)) {
+                dragMode_ = DragMode::subSplit;
+                context_.model.begin(ParamId::subSplit);
+                applySpectrumDrag(mx, my);
+                return;
+            }
             dragMode_ = (d2 < d1) ? DragMode::filt2 : DragMode::filt1;
             if (dragMode_ == DragMode::filt1) {
                 context_.model.begin(ParamId::filt1Hz);
@@ -213,7 +229,7 @@ class StudioStage final : public Panel {
     }
 
     void mouseDrag(const visage::MouseEvent& e) override {
-        if (dragMode_ == DragMode::filt1 || dragMode_ == DragMode::filt2) {
+        if (dragMode_ == DragMode::filt1 || dragMode_ == DragMode::filt2 || dragMode_ == DragMode::subSplit) {
             applySpectrumDrag(e.position.x, e.position.y);
         } else if (dragMode_ == DragMode::strataPos || dragMode_ == DragMode::strataSpan) {
             applyStrataDrag(e.position.x);
@@ -227,6 +243,8 @@ class StudioStage final : public Panel {
         } else if (dragMode_ == DragMode::filt2) {
             context_.model.end(ParamId::filt2Hz);
             context_.model.end(ParamId::filt2Res);
+        } else if (dragMode_ == DragMode::subSplit) {
+            context_.model.end(ParamId::subSplit);
         } else if (dragMode_ == DragMode::strataPos) {
             context_.model.end(ParamId::strataPos);
         } else if (dragMode_ == DragMode::strataSpan) {
@@ -236,7 +254,7 @@ class StudioStage final : public Panel {
     }
 
   private:
-    enum class DragMode { none, filt1, filt2, strataPos, strataSpan };
+    enum class DragMode { none, filt1, filt2, subSplit, strataPos, strataSpan };
 
     Rect spectrumPlotRect() const {
         const float padX = px(12.0f);
@@ -265,6 +283,8 @@ class StudioStage final : public Panel {
         } else if (dragMode_ == DragMode::filt2) {
             context_.model.set(ParamId::filt2Hz, clampToRange(spec(ParamId::filt2Hz), hz));
             context_.model.set(ParamId::filt2Res, ny);
+        } else if (dragMode_ == DragMode::subSplit) {
+            context_.model.set(ParamId::subSplit, clampToRange(spec(ParamId::subSplit), hz));
         }
         redraw();
     }
@@ -314,15 +334,36 @@ class StudioStage final : public Panel {
                       colour::textFaint, visage::Font::kCenter, 8.6f);
         }
 
-        // Sub-Split clean mono curtain
+        // Sub-Split clean mono curtain (draggable emerald rail!)
         const float subSplitHz = context_.model.get(ParamId::subSplit);
         const float subX = plot.x + freqToNorm(subSplitHz) * plot.w;
-        canvas.setColor(colour::withAlpha(colour::sub, 0.11f));
+        const bool subDrag = (dragMode_ == DragMode::subSplit);
+        canvas.setColor(colour::withAlpha(colour::sub, subDrag ? 0.18f : 0.11f));
         canvas.rectangle(plot.x, plot.y, std::max(0.0f, subX - plot.x), plot.h);
-        canvas.setColor(colour::withAlpha(colour::sub, 0.65f));
-        canvas.rectangle(subX - 0.75f * sc, plot.y, 1.5f * sc, plot.h);
+        canvas.setColor(colour::withAlpha(colour::sub, subDrag ? 0.95f : 0.70f));
+        canvas.rectangle(subX - (subDrag ? 1.25f : 0.75f) * sc, plot.y, (subDrag ? 2.5f : 1.5f) * sc, plot.h);
+        // Subtle tactile thumb notch on the emerald sub rail
+        canvas.roundedRectangle(subX - 3.0f * sc, plot.y + plot.h * 0.5f - 8.0f * sc, 6.0f * sc, 16.0f * sc, 3.0f * sc);
         drawLabel(canvas, context_, "MONO SUB", plot.x + px(4.0f), plot.y + px(4.0f), px(72.0f), px(13.0f),
-                  colour::withAlpha(colour::sub, 0.85f), visage::Font::kLeft, 8.4f, Weight::semibold);
+                  colour::withAlpha(colour::sub, 0.88f), visage::Font::kLeft, 8.4f, Weight::semibold);
+
+        // Optional Strata Band-Split indicator (460 Hz crossover in Hi-Strata / Lo-Strata modes)
+        const int blendIdx = std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::strataBlend))), 0, 2);
+        if (blendIdx != 0 && tel.hasPrint && tel.effGenMix > 0.02f) {
+            const float splitX = plot.x + freqToNorm(460.0f) * plot.w;
+            canvas.setColor(colour::withAlpha(colour::strata, 0.08f * tel.effGenMix));
+            if (blendIdx == 1) {
+                canvas.rectangle(splitX, plot.y, std::max(0.0f, plot.x + plot.w - splitX), plot.h);
+                drawLabel(canvas, context_, "HI-STRATA", splitX + px(5.0f), plot.y + px(4.0f), px(72.0f), px(13.0f),
+                          colour::withAlpha(colour::strata, 0.80f), visage::Font::kLeft, 8.2f, Weight::semibold);
+            } else {
+                canvas.rectangle(subX, plot.y, std::max(0.0f, splitX - subX), plot.h);
+                drawLabel(canvas, context_, "LO-STRATA", subX + px(5.0f), plot.y + px(4.0f), px(72.0f), px(13.0f),
+                          colour::withAlpha(colour::strata, 0.80f), visage::Font::kLeft, 8.2f, Weight::semibold);
+            }
+            canvas.setColor(colour::withAlpha(colour::strata, 0.50f));
+            canvas.rectangle(splitX - 0.5f * sc, plot.y, 1.0f * sc, plot.h);
+        }
 
         // Background live audio oscilloscope
         drawCurve(canvas, context_, tel.scope, plot.x, plot.y + plot.h * 0.18f, plot.w, plot.h * 0.64f,
@@ -452,7 +493,7 @@ class StudioStage final : public Panel {
                   visage::Font::kCenter, 8.8f, Weight::medium);
     }
 
-    PillButton printBtn_, stackBtn_, loadBtn_, clearBtn_;
+    PillButton printBtn_, stackBtn_, stepBackBtn_, loadBtn_, clearBtn_;
     Rect specRect_{};
     Rect strataRect_{};
     DragMode dragMode_ = DragMode::none;

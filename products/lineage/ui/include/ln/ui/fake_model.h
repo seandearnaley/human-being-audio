@@ -25,9 +25,17 @@ class FakeModel final : public Model {
     PrintState printState() const override { return gen_ > 0 ? PrintState::ready : PrintState::idle; }
     void triggerPrint(bool stack) override {
         gen_ = stack ? (gen_ + 1) : 2;
-        label_ = "GEN " + std::to_string(gen_) + " \xc2\xb7 2 bars";
+        label_ = "GEN " + std::to_string(gen_) + " \xc2\xb7 F1 \xc2\xb7 2b";
         visuals_.hasPrint = true;
         visuals_.generation = gen_;
+    }
+    bool canStepBackPrint() const override { return gen_ > 2; }
+    void stepBackPrint() override {
+        if (gen_ > 2) {
+            --gen_;
+            label_ = "GEN " + std::to_string(gen_) + " \xc2\xb7 F1 \xc2\xb7 2b";
+            visuals_.generation = gen_;
+        }
     }
     void browseLoadWav() override {}
     void clearPrint() override {
@@ -50,7 +58,7 @@ class FakeModel final : public Model {
     LaneCurves curves_ = defaultLaneCurves();
     TelemetrySnapshot visuals_{};
     std::array<float, PrintBuffer::kWaveformPoints> peaks_{};
-    std::string label_ = "GEN 2 \xc2\xb7 2 bars";
+    std::string label_ = "GEN 2 \xc2\xb7 F1 \xc2\xb7 2b";
     std::string presetName_ = "Velvet Strata";
     int gen_ = 2;
 };

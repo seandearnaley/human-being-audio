@@ -43,14 +43,22 @@ PrintBuffer PrintStore::copyBuffer() const {
     return current_;
 }
 
-void PrintStore::commitBuffer(PrintBuffer buf, const juce::String& externalFilePath) {
+void PrintStore::commitBuffer(PrintBuffer buf, const juce::String& externalFilePath, bool recordHistory) {
     if (!buf.valid())
         return;
+    bool hasHist = false;
     {
         const juce::ScopedLock sl(lock_);
+        if (recordHistory && current_.valid()) {
+            if (history_.size() >= 4u)
+                history_.erase(history_.begin());
+            history_.push_back(current_);
+        }
         current_ = buf;
+        hasHist = !history_.empty();
     }
     generation_.store(buf.generation, std::memory_order_release);
+    canStepBack_.store(hasHist, std::memory_order_release);
     printState_.store(ui::PrintState::ready, std::memory_order_release);
     if (onPublish_)
         onPublish_(buf);
@@ -203,14 +211,33 @@ void PrintStore::browseLoadWavAsync(double targetSampleRate) {
                           });
 }
 
+bool PrintStore::stepBack() {
+    PrintBuffer prev;
+    bool more = false;
+    {
+        const juce::ScopedLock sl(lock_);
+        if (history_.empty())
+            return false;
+        prev = std::move(history_.back());
+        history_.pop_back();
+        more = !history_.empty();
+    }
+    ticketCounter_.fetch_add(1, std::memory_order_acq_rel);
+    commitBuffer(std::move(prev), {}, false);
+    canStepBack_.store(more, std::memory_order_release);
+    return true;
+}
+
 void PrintStore::clear() {
     ticketCounter_.fetch_add(1, std::memory_order_acq_rel);
     {
         const juce::ScopedLock sl(lock_);
         current_ = PrintBuffer{};
+        history_.clear();
         hasPendingJob_ = false;
     }
     generation_.store(0, std::memory_order_release);
+    canStepBack_.store(false, std::memory_order_release);
     printState_.store(ui::PrintState::idle, std::memory_order_release);
     if (onClear_)
         onClear_();

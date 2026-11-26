@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "ln/engine.h"
 
+#include <hba/core/note_name.h>
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/allpass.h>
 #include <hba/dsp/control.h>
@@ -219,14 +220,21 @@ struct Engine::Impl {
     // Gen-2 Strata playback & Post-sculpt
     double strataCursor = 0.0;
     double strataPingDir = 1.0;
+    double scrubPos = 0.0;
+    bool scrubInit = false;
     std::array<hba::dsp::Adaa1<hba::dsp::TanhShaper>, 2> postShaper{};
     std::array<hba::dsp::SvfState, 2> postTiltLp{};
+    std::array<hba::dsp::Lr4Highpass, 2> strataHp{};
+    std::array<hba::dsp::Lr4Split, 2> g1BandSplit{};
+    std::array<hba::dsp::Lr4Split, 2> g2BandSplit{};
     hba::dsp::Limiter limiter{};
 
     // Note / envelope / expression state
     std::array<int, kMaxHeldNotes> noteStack{};
     int noteCount = 0;
     int activeNote = 29; // F1 default
+    int lastDroneChoice = 5;
+    bool hasReceivedMidi = false;
     bool gate = false;
     bool sustainDown = false;
     double velocityGain = 0.9;
@@ -242,7 +250,7 @@ struct Engine::Impl {
     hba::dsp::Smoother smNoteMidi{}, smBend{}, smFilt1{}, smFilt1Res{}, smDrive{}, smAsym{}, smTone{}, smFilt2{},
         smFilt2Res{}, smDisperse{}, smDensity{}, smWidth{}, smUnison{}, smDetune{}, smSubLevel{}, smSubWarmth{},
         smSubSplit{}, smSubCos{}, smSubSin{}, smGenMix{}, smStrataPos{}, smStrataSpan{}, smStrataPitch{},
-        smPostDrive{}, smPostTone{}, smOutGain{}, smLimit{}, smCeiling{}, smPadX{}, smPadY{};
+        smStrataFade{}, smPostDrive{}, smPostTone{}, smOutGain{}, smLimit{}, smCeiling{}, smPadX{}, smPadY{};
 
     // Clocks & lane state
     LaneCurves laneCurves = defaultLaneCurves();
@@ -253,7 +261,7 @@ struct Engine::Impl {
     int scopeWrite = 0;
 
     // Persistent filter coefficients for exact bit-identical block-size invariance
-    hba::dsp::SvfCoefs cF1{}, cF2L{}, cF2R{}, cSubSplit{}, cBandLo{}, cBandHi{}, cPostTilt{};
+    hba::dsp::SvfCoefs cF1{}, cF2L{}, cF2R{}, cSubSplit{}, cBandLo{}, cBandHi{}, cPostTilt{}, cStrataSplit{};
     std::array<hba::dsp::SvfCoefs, 3> cFormant{};
     std::array<double, 3> formGain{1.0, 0.7, 0.3};
 
@@ -273,6 +281,7 @@ struct Engine::Impl {
         cBandLo = hba::dsp::butterworth(260.0, sampleRate);
         cBandHi = hba::dsp::butterworth(2800.0, sampleRate);
         cPostTilt = hba::dsp::butterworth(900.0, sampleRate);
+        cStrataSplit = hba::dsp::butterworth(460.0, sampleRate);
         reset();
     }
 
@@ -299,6 +308,9 @@ struct Engine::Impl {
             densitySplit[ci].reset();
             postShaper[ci].reset();
             postTiltLp[ci].reset();
+            strataHp[ci].reset();
+            g1BandSplit[ci].reset();
+            g2BandSplit[ci].reset();
         }
         bandEnv = {0.15, 0.15, 0.15};
         limiter.reset();
@@ -311,9 +323,13 @@ struct Engine::Impl {
         subWarmthLpState = 0.0;
         strataCursor = 0.0;
         strataPingDir = 1.0;
+        scrubPos = 0.0;
+        scrubInit = false;
 
         noteCount = 0;
         activeNote = 29;
+        lastDroneChoice = 5;
+        hasReceivedMidi = false;
         gate = false;
         sustainDown = false;
         ampEnv = 0.0;
@@ -346,6 +362,7 @@ struct Engine::Impl {
         smStrataPos.reset();
         smStrataSpan.reset();
         smStrataPitch.reset();
+        smStrataFade.reset();
         smPostDrive.reset();
         smPostTone.reset();
         smOutGain.reset();
@@ -384,6 +401,7 @@ struct Engine::Impl {
     }
 
     void noteOn(int note, float vel) noexcept LN_NONBLOCKING {
+        hasReceivedMidi = true;
         noteOffFromStack(note);
         if (noteCount < kMaxHeldNotes)
             noteStack[static_cast<std::size_t>(noteCount++)] = note;
@@ -455,9 +473,10 @@ struct Engine::Impl {
         pendingSlot.store(-2, std::memory_order_release); // -2 sentinel = clear
     }
 
-    // Evaluates one sample of the Gen-2 printed buffer with key-tracked pitch & seamless loop window.
-    void readStrataSlot(int slotIdx, double pitchRatio, double pos01, double span01, StrataDir dir, float& outL,
-                        float& outR) noexcept LN_NONBLOCKING {
+    // Evaluates one sample of the Gen-2 printed buffer with key-tracked pitch, smooth equal-power
+    // loop crossfades (strataFade), ping-pong wall softening, and tape-head scrub inertia.
+    void readStrataSlot(int slotIdx, double pitchRatio, double pos01, double span01, StrataDir dir, double fadeMs,
+                        float& outL, float& outR) noexcept LN_NONBLOCKING {
         if (slotIdx < 0 || slotIdx >= 3) {
             outL = outR = 0.0f;
             return;
@@ -473,13 +492,24 @@ struct Engine::Impl {
         const double winStart = std::clamp(pos01, 0.0, 1.0) * maxStart;
         const double srScale = slot.sampleRate / sampleRate;
         const double step = std::clamp(pitchRatio * srScale, 0.125, 8.0);
+        const double fadeSamples = std::clamp(fadeMs, 2.0, 80.0) * 0.001 * sampleRate;
 
         double readPos = winStart;
         if (dir == StrataDir::scrub) {
-            // Direct tape scrub mapped smoothly to pos01 across the full print
-            readPos = std::clamp(pos01, 0.0, 0.9999) * (totalLen - 2.0);
+            // Silky tape-head scrub with inertia scaled by Loop Xfade (eliminates zipper jumps)
+            const double targetPos = std::clamp(pos01, 0.0, 0.9999) * (totalLen - 2.0);
+            if (!scrubInit) {
+                scrubPos = targetPos;
+                scrubInit = true;
+            } else {
+                const double scrubSec = std::clamp(fadeMs * 0.001 * 1.4, 0.004, 0.12);
+                const double scrubCoef = hba::dsp::onePoleCoef(scrubSec, 1.0 / sampleRate);
+                scrubPos += scrubCoef * (targetPos - scrubPos);
+            }
+            readPos = std::clamp(scrubPos, 0.0, totalLen - 2.0);
             strataCursor = readPos - winStart;
         } else if (dir == StrataDir::pingPong) {
+            scrubInit = false;
             strataCursor += step * strataPingDir;
             if (strataCursor >= winLen - 2.0) {
                 strataCursor = std::max(0.0, (winLen - 2.0) - (strataCursor - (winLen - 2.0)));
@@ -490,6 +520,7 @@ struct Engine::Impl {
             }
             readPos = winStart + strataCursor;
         } else if (dir == StrataDir::reverse) {
+            scrubInit = false;
             strataCursor -= step;
             while (strataCursor < 0.0)
                 strataCursor += winLen;
@@ -497,6 +528,7 @@ struct Engine::Impl {
                 strataCursor -= winLen;
             readPos = winStart + strataCursor;
         } else {
+            scrubInit = false;
             strataCursor += step;
             while (strataCursor >= winLen)
                 strataCursor -= winLen;
@@ -508,18 +540,37 @@ struct Engine::Impl {
         float sL = hermiteRead(slot.left.data(), slot.length, readPos);
         float sR = hermiteRead(slot.right.data(), slot.length, readPos);
 
-        // Raised-cosine loop-edge crossfade for Forward/Reverse (prevents clicks on tight loops!)
+        // Equal-power loop-edge crossfade for Forward/Reverse (prevents level dips & clicks across 2..80ms!)
         if (dir == StrataDir::forward || dir == StrataDir::reverse) {
-            const double fadeLen = std::min(winLen * 0.15, 0.008 * sampleRate);
+            const double fadeLen = std::min(winLen * 0.44, fadeSamples);
             if (fadeLen > 4.0) {
                 const double local = std::clamp(readPos - winStart, 0.0, winLen);
                 if (local < fadeLen) {
                     const double u = local / fadeLen;
-                    const double gA = 0.5 - 0.5 * std::cos(kPi * u);
-                    const double gB = 1.0 - gA;
+                    const double gA = std::sin(u * (kPi * 0.5));
+                    const double gB = std::cos(u * (kPi * 0.5));
                     const double wrapPos = winStart + std::clamp(winLen - fadeLen + local, 0.0, winLen - 1.0);
                     sL = static_cast<float>(gA * sL + gB * hermiteRead(slot.left.data(), slot.length, wrapPos));
                     sR = static_cast<float>(gA * sR + gB * hermiteRead(slot.right.data(), slot.length, wrapPos));
+                }
+            }
+        } else if (dir == StrataDir::pingPong) {
+            // Subtle mirror softening near turnaround walls for click-free short ping-pong spans
+            const double wallFade = std::min(winLen * 0.12, fadeSamples * 0.35);
+            if (wallFade > 4.0) {
+                const double local = std::clamp(readPos - winStart, 0.0, winLen);
+                if (local < wallFade) {
+                    const double u = local / wallFade;
+                    const double w = 0.5 - 0.5 * std::cos(u * kPi);
+                    const double mirror = winStart + std::clamp(2.0 * wallFade - local, 0.0, winLen - 1.0);
+                    sL = static_cast<float>((0.7 + 0.3 * w) * sL + (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
+                    sR = static_cast<float>((0.7 + 0.3 * w) * sR + (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
+                } else if (local > winLen - wallFade) {
+                    const double u = (winLen - local) / wallFade;
+                    const double w = 0.5 - 0.5 * std::cos(u * kPi);
+                    const double mirror = winStart + std::clamp(winLen - 2.0 * wallFade + (winLen - local), 0.0, winLen - 1.0);
+                    sL = static_cast<float>((0.7 + 0.3 * w) * sL + (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
+                    sR = static_cast<float>((0.7 + 0.3 * w) * sR + (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
                 }
             }
         }
@@ -548,7 +599,17 @@ struct Engine::Impl {
             strataPingDir = 1.0;
         }
 
-        // Pad touch / Drone triggers live note cleanly even without DAW MIDI!
+        // Pad touch / Drone triggers live note cleanly even without DAW MIDI, honoring Drone Key!
+        const int droneChoice = std::clamp(params.choice(ParamId::droneNote), 0, 11);
+        const int desiredDroneMidi = 24 + droneChoice; // C1..B1
+        if (droneChoice != lastDroneChoice) {
+            lastDroneChoice = droneChoice;
+            if (noteCount == 0)
+                activeNote = desiredDroneMidi;
+        } else if (!hasReceivedMidi && noteCount == 0) {
+            activeNote = desiredDroneMidi;
+        }
+
         const bool wantPadNote = params.on(ParamId::padTouch) || params.on(ParamId::padHold);
         if (wantPadNote && !padNoteActive) {
             padNoteActive = true;
@@ -568,6 +629,8 @@ struct Engine::Impl {
         const auto driveType = static_cast<DriveType>(std::clamp(params.choice(ParamId::driveType), 0, 4));
         const auto filt2Mode = static_cast<Filt2Mode>(std::clamp(params.choice(ParamId::filt2Mode), 0, 4));
         const auto strataDir = static_cast<StrataDir>(std::clamp(params.choice(ParamId::strataDir), 0, 3));
+        const auto strataBlend = static_cast<StrataBlend>(std::clamp(params.choice(ParamId::strataBlend), 0, 2));
+        const bool strataKeytrack = params.on(ParamId::strataKeytrack);
         const auto padProg = static_cast<PadProgram>(std::clamp(params.choice(ParamId::padProgram), 0, 4));
         const int octSt = kOctaveSemitones[static_cast<std::size_t>(std::clamp(params.choice(ParamId::octave), 0, 3))];
 
@@ -749,6 +812,7 @@ struct Engine::Impl {
             const double sStrataPos = smStrataPos.step(tStrataPos, controlCoef);
             const double sStrataSpan = smStrataSpan.step(tStrataSpan, controlCoef);
             const double sStrataPitch = smStrataPitch.step(static_cast<double>(params[ParamId::strataPitch]), controlCoef);
+            const double sStrataFade = smStrataFade.step(static_cast<double>(params[ParamId::strataFade]), controlCoef);
             const double sPostDrive = smPostDrive.step(static_cast<double>(params[ParamId::postDrive]), controlCoef);
             const double sPostTone = smPostTone.step(static_cast<double>(params[ParamId::postTone]), controlCoef);
             const double sOutGain = smOutGain.step(targetOutGain, controlCoef);
@@ -1078,16 +1142,17 @@ struct Engine::Impl {
                 g1R = std::tanh((loR * gain[0] + midR * gain[1] + hiR * gain[2]) * 1.08) * 0.96;
             }
 
-            // 3. Gen 2 · Live Non-Destructive Resampled Strata Playback (Key-Tracked!)
+            // 3. Gen 2 · Live Non-Destructive Resampled Strata Playback (Optional Key-Track + Sub-Split Protected!)
             double g2L = 0.0, g2R = 0.0;
             if (hasValidPrint && sGenMix > 1.0e-4) {
                 const auto& slot = printSlots[static_cast<std::size_t>(curSlot)];
-                const double pitchRatio = std::exp2((totalMidi - static_cast<double>(slot.rootMidiNote) + sStrataPitch) / 12.0);
+                const double trackOffset = strataKeytrack ? (totalMidi - static_cast<double>(slot.rootMidiNote)) : 0.0;
+                const double pitchRatio = std::exp2((trackOffset + sStrataPitch) / 12.0);
                 float curL = 0.0f, curR = 0.0f;
-                readStrataSlot(curSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, curL, curR);
+                readStrataSlot(curSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade, curL, curR);
                 if (printXfade < 1.0 && prevSlot >= 0) {
                     float oldL = 0.0f, oldR = 0.0f;
-                    readStrataSlot(prevSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, oldL, oldR);
+                    readStrataSlot(prevSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade, oldL, oldR);
                     const double ang = printXfade * (kPi * 0.5);
                     g2L = std::sin(ang) * static_cast<double>(curL) + std::cos(ang) * static_cast<double>(oldL);
                     g2R = std::sin(ang) * static_cast<double>(curR) + std::cos(ang) * static_cast<double>(oldR);
@@ -1110,11 +1175,33 @@ struct Engine::Impl {
                     g2R = lpR * (1.0 - 0.35 * sPostTone) + hiR * (1.0 + 0.55 * sPostTone);
                 }
             }
+            // Dedicated LR4 Sub-Split high-pass on Strata so pitched-down loops, Post Drive DC,
+            // and full-range external WAVs NEVER fight or phase-cancel the clean mono sub!
+            g2L = strataHp[0].process(cSubSplit, g2L);
+            g2R = strataHp[1].process(cSubSplit, g2R);
 
-            // Equal-power blend between Live Gen 1 and Printed Gen 2 Strata
+            // Gen 1 <-> Gen 2 Crossover / Blend (Full Blend, Hi-Strata >460 Hz, or Lo-Strata <460 Hz)
+            double g1LoL = 0.0, g1HiL = 0.0, g1LoR = 0.0, g1HiR = 0.0;
+            double g2LoL = 0.0, g2HiL = 0.0, g2LoR = 0.0, g2HiR = 0.0;
+            g1BandSplit[0].process(cStrataSplit, g1L, g1LoL, g1HiL);
+            g1BandSplit[1].process(cStrataSplit, g1R, g1LoR, g1HiR);
+            g2BandSplit[0].process(cStrataSplit, g2L, g2LoL, g2HiL);
+            g2BandSplit[1].process(cStrataSplit, g2R, g2LoR, g2HiR);
+
             const double mixAng = sGenMix * (kPi * 0.5);
-            double midTopL = std::cos(mixAng) * g1L + std::sin(mixAng) * g2L;
-            double midTopR = std::cos(mixAng) * g1R + std::sin(mixAng) * g2R;
+            const double cMix = std::cos(mixAng);
+            const double sMix = std::sin(mixAng);
+            double midTopL = 0.0, midTopR = 0.0;
+            if (strataBlend == StrataBlend::hiStrata) {
+                midTopL = g1LoL + (cMix * g1HiL + sMix * g2HiL);
+                midTopR = g1LoR + (cMix * g1HiR + sMix * g2HiR);
+            } else if (strataBlend == StrataBlend::loStrata) {
+                midTopL = (cMix * g1LoL + sMix * g2LoL) + g1HiL;
+                midTopR = (cMix * g1LoR + sMix * g2LoR) + g1HiR;
+            } else {
+                midTopL = cMix * g1L + sMix * g2L;
+                midTopR = cMix * g1R + sMix * g2R;
+            }
 
             // Stereo width strictly above subSplit (sub band stays 100% mono!)
             const double midSig = 0.5 * (midTopL + midTopR);
@@ -1320,7 +1407,8 @@ PrintBuffer Engine::renderPrint(const Params& params, const LaneCurves& curves, 
     out.sampleRate = sr;
     out.rootMidiNote = rootMidiNote;
     out.generation = nextGen;
-    out.label = "GEN " + std::to_string(nextGen) + " \xc2\xb7 " + std::to_string(bars) + (bars == 1 ? " bar" : " bars");
+    out.label = "GEN " + std::to_string(nextGen) + " \xc2\xb7 " + hba::core::midiNoteName(rootMidiNote, false) +
+                " \xc2\xb7 " + std::to_string(bars) + "b";
     out.computePeaks();
     return out;
 }

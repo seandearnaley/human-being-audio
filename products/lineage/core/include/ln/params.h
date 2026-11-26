@@ -55,6 +55,10 @@ enum class ParamId : std::uint8_t {
     strataDir,
     strataPitch,
     printBars,
+    strataBlend,
+    strataFade,
+    strataKeytrack,
+    droneNote,
     padProgram,
     padX,
     padY,
@@ -157,6 +161,7 @@ enum class Filt1Mode : std::uint8_t { lp24, bp12, notch, comb, formant };
 enum class DriveType : std::uint8_t { tube, fold, buchla, sine, clip };
 enum class Filt2Mode : std::uint8_t { notch, dualNotch, lp12, bp12, phaser };
 enum class StrataDir : std::uint8_t { forward, pingPong, reverse, scrub };
+enum class StrataBlend : std::uint8_t { blend, hiStrata, loStrata };
 enum class PadProgram : std::uint8_t { sculpt, reese, strata, disperse, abyss };
 inline constexpr int kPadProgramCount = 5;
 
@@ -172,7 +177,10 @@ inline constexpr std::array<std::string_view, 5> filt1Mode{"LP 24", "BP 12", "No
 inline constexpr std::array<std::string_view, 5> driveType{"Tube", "Fold", "Buchla", "Sine", "Clip"};
 inline constexpr std::array<std::string_view, 5> filt2Mode{"Notch", "Dual Notch", "LP 12", "BP 12", "Phaser"};
 inline constexpr std::array<std::string_view, 4> strataDir{"Forward", "Ping-Pong", "Reverse", "Scrub"};
+inline constexpr std::array<std::string_view, 3> strataBlend{"Blend", "Hi-Strata", "Lo-Strata"};
 inline constexpr std::array<std::string_view, 3> printBars{"1 bar", "2 bars", "4 bars"};
+inline constexpr std::array<std::string_view, 12> droneNote{"C1",  "C#1", "D1",  "D#1", "E1",  "F1",
+                                                            "F#1", "G1",  "G#1", "A1",  "A#1", "B1"};
 inline constexpr std::array<std::string_view, 5> padProgram{"Sculpt", "Reese", "Strata", "Disperse", "Abyss"};
 inline constexpr std::array<std::string_view, 3> quality{"2\u00d7", "4\u00d7", "8\u00d7"};
 
@@ -308,6 +316,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::choice("strataDir", "Strata Dir", choices::strataDir, 1),
     detail::ranged("strataPitch", "Strata Pitch", -24.0f, 24.0f, 0.0f, Unit::semitones),
     detail::choice("printBars", "Print Bars", choices::printBars, 1, false),
+    detail::choice("strataBlend", "Strata Blend", choices::strataBlend, 0),
+    detail::ranged("strataFade", "Loop Xfade", 2.0f, 80.0f, 14.0f, Unit::ms, 1.8f),
+    detail::toggle("strataKeytrack", "Keytrack", true, false),
+    detail::choice("droneNote", "Drone Key", choices::droneNote, 5, false),
     detail::choice("padProgram", "Pad World", choices::padProgram, 0, false),
     detail::amount("padX", "Pad X", 0.50f),
     detail::amount("padY", "Pad Y", 0.50f),

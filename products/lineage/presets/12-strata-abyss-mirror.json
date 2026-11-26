@@ -35,6 +35,8 @@
   "strataDir": "Ping-Pong",
   "strataPitch": -12.0,
   "printBars": "2 bars",
+  "strataBlend": "Lo-Strata",
+  "strataFade": 26.0,
   "padProgram": "Abyss",
   "padX": 0.5,
   "padY": 0.5,
