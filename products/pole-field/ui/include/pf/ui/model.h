@@ -29,6 +29,9 @@ struct Visuals {
     std::array<float, kLaneCount> lanePhase {};
     std::array<float, kLaneCount> laneValue {};
     double ppq = 0.0;
+    double notePpq = 0.0;
+    double freeSec = 0.0;
+    double noteSec = 0.0;
     double sampleRate = 48000.0;
     int osFactor = 4;
 

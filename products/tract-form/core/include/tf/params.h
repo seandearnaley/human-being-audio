@@ -2,6 +2,8 @@
 // interface's labels all derive from it, so a parameter is defined exactly once.
 #pragma once
 
+#include <hba/dsp/lane_math.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -162,9 +164,7 @@ inline constexpr std::array<std::string_view, 5> foldType { "Fold", "Sine", "Tub
 inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> sculptMode{"Bell", "Phaser", "Comb"};
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
-inline constexpr std::array<std::string_view, 12> laneRate {
-    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
-};
+inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 // "Custom" plays the lane's drawn curve.
 inline constexpr std::array<std::string_view, 7> laneShape {
     "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps", "Custom"
@@ -172,27 +172,25 @@ inline constexpr std::array<std::string_view, 7> laneShape {
 inline constexpr std::array<std::string_view, 11> laneTarget{"Phase",  "Morph",  "Drive", "Beat",  "Coupling", "Reach",
                                                              "Weight", "Sculpt", "Fit",   "Width", "Shift"};
 // A lane plays its own shape, or follows another lane's shape at a ratio of its rate.
-inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
-inline constexpr std::array<std::string_view, 7> laneRatio { "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74" };
-inline constexpr std::array<std::string_view, 5> laneMode{"Sync", "Retrig", "1-Shot", "Free", "Free R"};
+inline constexpr auto& laneFollow = hba::dsp::kLaneFollowLabels;
+inline constexpr auto& laneRatio = hba::dsp::kLaneRatioLabels;
+inline constexpr auto& laneMode = hba::dsp::kLaneModeLabels;
 }
 
 // Feedback delay per choice, in cycles of the note.
 inline constexpr std::array<double, 5> kFbCycles { 0.25, 0.5, 1.0, 2.0, 4.0 };
 // Quarter notes per roll for each Beat lock division.
 inline constexpr std::array<double, 9> kBeatLockQuarters { 32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
-inline constexpr std::array<double, 12> kLaneRateQuarters {
-    32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
-};
+using hba::dsp::kLaneRateQuarters;
 inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
 // How many times faster than its leader a following lane runs.
-inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
+using hba::dsp::kLaneRatios;
 
 enum class TractPos : std::uint8_t { pre, post };
 enum class SculptMode : std::uint8_t { bell, phaser, comb };
 enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
-enum class LaneMode : std::uint8_t { sync, retrig, oneShot, freeRun, freeRetrig };
+using LaneMode = hba::dsp::LaneMode;
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def, bool automatable = true) {

@@ -89,3 +89,45 @@ TEST_CASE("hba::dsp::lane_math is deterministic and bounded", "[dsp][curve]") {
     CHECK(laneWaveform(LaneWaveform::square, 0.25, 0) == Approx(1.0));
     CHECK(laneWaveform(LaneWaveform::square, 0.75, 0) == Approx(-1.0));
 }
+
+TEST_CASE("hba::dsp shared lane router handles follow chains, loops, Free Hz inheritance, and all 5 modes",
+          "[dsp][curve]") {
+    std::array<LaneConfig, 4> lanes{};
+    std::array<Curve, 4> curves{};
+    curves.fill(curves::sine());
+
+    // Lane 0: Free 0.5 Hz, RampUp. Lane 1 follows Lane 0 at x2 (1.0 Hz) with default Sync mode -> inherits Free!
+    lanes[0] = {true, 3, 0.0, 1.0, static_cast<int>(LaneWaveform::rampUp), 0, 3, LaneMode::freeRun, 0.5};
+    lanes[1] = {true, 5, 90.0, 0.5, static_cast<int>(LaneWaveform::square), 1, 4, LaneMode::sync, 0.2};
+    // Lane 2 follows Lane 3 and Lane 3 follows Lane 2 -> cycle guard falls back to self.
+    lanes[2] = {true, 4, 0.0, 1.0, static_cast<int>(LaneWaveform::sine), 4, 3, LaneMode::oneShot, 0.5};
+    lanes[3] = {true, 4, 0.0, 1.0, static_cast<int>(LaneWaveform::sine), 3, 3, LaneMode::retrig, 0.5};
+
+    CHECK(resolveLaneSource(lanes, 0) == 0);
+    CHECK(resolveLaneSource(lanes, 1) == 0);
+    CHECK(resolveLaneSource(lanes, 2) == 2);
+    CHECK(resolveLaneSource(lanes, 3) == 3);
+
+    CHECK(resolveLaneUsesFreeClock(lanes, 0));
+    CHECK(resolveLaneUsesFreeClock(lanes, 1));
+    CHECK_FALSE(resolveLaneUsesFreeClock(lanes, 2));
+    CHECK(resolveLaneRateHz(lanes, 0) == Approx(0.5));
+    CHECK(resolveLaneRateHz(lanes, 1) == Approx(1.0));
+
+    // At freeSec = 0.5: lane 0 phase = 0.25 (rampUp -> -0.5); lane 1 phase = (0.5*1.0 + 0.25) = 0.75 (rampUp -> +0.5).
+    const LaneClock clk{10.0, 3.0, 0.5, 0.25};
+    CHECK(resolveLanePhase(lanes, 0, clk) == Approx(0.25));
+    CHECK(resolveLanePhase(lanes, 1, clk) == Approx(0.75));
+    CHECK(evaluateLaneOutput(lanes, curves, 0, clk) == Approx(-0.5));
+    CHECK(evaluateLaneSend(lanes, curves, 1, clk, 0.8) == Approx(0.5 * 0.5 * 0.8));
+
+    // One-shot clamps at end of cycle without wrapping.
+    CHECK(resolveLanePhase(lanes, 2, clk) == Approx(1.0 - 1.0e-6));
+    // Retrig uses notePpq (3.0 / 2.0 = 1.5 -> 0.5).
+    CHECK(resolveLanePhase(lanes, 3, clk) == Approx(0.5));
+
+    // Free R leader: follower inherits freeRetrig and tracks noteSec.
+    lanes[0].mode = LaneMode::freeRetrig;
+    CHECK(resolveLaneMode(lanes, 1) == LaneMode::freeRetrig);
+    CHECK(resolveLanePhase(lanes, 1, clk) == Approx(0.5));
+}

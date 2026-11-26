@@ -186,3 +186,38 @@ TEST_CASE("Multi-corner 4-slot Imprint JSON round-trips cleanly", "[core]") {
     REQUIRE(loaded->imprint.active);
     REQUIRE(loaded->imprint.slotCorner(2).stages[0].poleHz == Catch::Approx(pf::cubeAt(3).corners[1].stages[0].poleHz));
 }
+
+TEST_CASE("Free Hz lane formatting, follower clock inheritance, and Env exclusion", "[core]") {
+    CHECK(pf::formatValue(pf::spec(pf::ParamId::subSplit), 110.0f) == "110 Hz");
+    CHECK(pf::formatValue(pf::spec(pf::ParamId::lane1Hz), 0.50f) == "0.50 Hz");
+    CHECK(pf::formatValue(pf::spec(pf::ParamId::lane1Hz), 12.5f) == "12.5 Hz");
+
+    auto p = pf::Params::defaults();
+    p[pf::ParamId::lane1Mode] = static_cast<float>(pf::LaneMode::freeRun);
+    p[pf::ParamId::lane1Hz] = 1.25f;
+    p[pf::ParamId::lane2Follow] = 1.0f; // Follow Lane 1
+    p[pf::ParamId::lane2Ratio] = 4.0f;  // x2
+    p[pf::ParamId::lane2Mode] = static_cast<float>(pf::LaneMode::sync);
+
+    CHECK(pf::laneUsesFreeClock(p, 0));
+    CHECK(pf::laneUsesFreeClock(p, 1));
+    CHECK(pf::laneEffectiveMode(p, 1) == pf::LaneMode::freeRun);
+    CHECK(pf::laneRateHz(p, 0) == Catch::Approx(1.25).margin(1e-6));
+    CHECK(pf::laneRateHz(p, 1) == Catch::Approx(2.50).margin(1e-6));
+
+    // Env-shaped lanes stay driven by the Envelope Follower even if mode is Free.
+    p[pf::ParamId::lane3Shape] = static_cast<float>(pf::LaneShape::env);
+    p[pf::ParamId::lane3Mode] = static_cast<float>(pf::LaneMode::freeRun);
+    CHECK_FALSE(pf::laneUsesFreeClock(p, 2));
+
+    // Preset JSON round-trips lane mode and Free Hz values.
+    pf::Preset preset;
+    preset.name = "FreeHzRoundtrip";
+    preset.category = "Neuro";
+    preset.params = p;
+    std::string err;
+    const auto reloaded = pf::parsePreset(pf::serialisePreset(preset), &err);
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->params.choice(pf::ParamId::lane1Mode) == static_cast<int>(pf::LaneMode::freeRun));
+    CHECK(reloaded->params[pf::ParamId::lane1Hz] == Catch::Approx(1.25f).margin(1e-4f));
+}

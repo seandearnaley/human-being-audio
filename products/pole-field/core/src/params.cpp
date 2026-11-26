@@ -48,7 +48,8 @@ std::string formatValue(const ParamSpec& spec, float real) {
         case Unit::semitones: return print("%+.1f st", real);
         case Unit::degrees:   return print("%.0f°", real);
         case Unit::dB:        return print(isSigned ? "%+.1f dB" : "%.1f dB", real);
-        case Unit::hz:        return print("%.0f Hz", real);
+        case Unit::hz:
+            return print(real < 10.0f ? "%.2f Hz" : (real < 30.0f ? "%.1f Hz" : "%.0f Hz"), real);
         case Unit::none:      break;
     }
     return print("%.2f", real);

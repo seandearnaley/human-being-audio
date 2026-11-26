@@ -690,7 +690,10 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
             place(*controls.phase, c.phase, this->px(w.phaseW), chip);
             if constexpr (Traits::kHasEnvLane) {
                 place(*controls.envAtk, c.rate, this->px(w.rateW), chip);
-                place(*controls.envRel, c.phase, this->px(w.phaseW), chip);
+                if constexpr (Traits::kHasModeChip)
+                    place(*controls.envRel, c.mode, this->px(w.modeW), chip);
+                else
+                    place(*controls.envRel, c.phase, this->px(w.phaseW), chip);
             }
             place(*controls.shape, c.shape, this->px(w.shapeW), chip);
             place(*controls.depth, c.depth, this->px(w.depthW), chip);
@@ -740,8 +743,16 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                 controls.envAtk->setAccent(on ? Traits::envAccent() : colour::textFaint);
                 controls.envRel->setAccent(on ? Traits::envAccent() : colour::textFaint);
             }
-            if constexpr (Traits::kHasModeChip)
+            if constexpr (Traits::kHasModeChip) {
+                controls.mode->setVisible(!envMode);
                 controls.mode->setAccent(Traits::modeAccent(params, lane, on, dim));
+                if constexpr (detail::hasFreeHz<Traits>()) {
+                    if (follows && freeMode)
+                        controls.mode->setTextOverride(Traits::isFreeRetrig(params, lane) ? "Free R" : "Free");
+                    else
+                        controls.mode->setTextOverride({});
+                }
+            }
             for (Chip* chip : {controls.rate, controls.ratio, controls.phase, controls.shape, controls.depth})
                 chip->setAccent(dim);
             if constexpr (detail::hasFreeHz<Traits>()) {

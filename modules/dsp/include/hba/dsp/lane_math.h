@@ -1,16 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Deterministic tempo-locked modulation lane math shared across studio engines.
+// Canonical modulation lane routing, clock domains (Sync, Retrig, 1-Shot, Free Hz,
+// Free Retrig), and deterministic waveforms shared across studio engines.
 #pragma once
 
+#include <hba/dsp/curve.h>
 #include <hba/dsp/nonblocking.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace hba::dsp {
 
 inline constexpr int kLaneStepsPerCycle = 8;
+
+inline constexpr std::array<std::string_view, 12> kLaneRateLabels{
+    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32",
+};
+inline constexpr std::array<double, 12> kLaneRateQuarters{
+    32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125,
+};
+inline constexpr std::array<std::string_view, 5> kLaneFollowLabels{"Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4"};
+inline constexpr std::array<std::string_view, 7> kLaneRatioLabels{
+    "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74",
+};
+inline constexpr std::array<double, 7> kLaneRatios{0.25, 1.0 / 3.0, 0.5, 1.0, 2.0, 3.0, 4.0};
+inline constexpr std::array<std::string_view, 5> kLaneModeLabels{"Sync", "Retrig", "1-Shot", "Free", "Free R"};
+
+inline constexpr float kLaneMinHz = 0.05f;
+inline constexpr float kLaneMaxHz = 20.0f;
+inline constexpr float kLaneDefaultHz = 0.5f;
 
 enum class LaneWaveform : std::uint8_t {
     sine = 0,
@@ -20,6 +42,33 @@ enum class LaneWaveform : std::uint8_t {
     square = 4,
     steps = 5,
     custom = 6,
+};
+
+enum class LaneMode : std::uint8_t {
+    sync = 0,
+    retrig = 1,
+    oneShot = 2,
+    freeRun = 3,
+    freeRetrig = 4,
+};
+
+struct LaneClock {
+    double hostPpq = 0.0;
+    double notePpq = 0.0;
+    double freeSec = 0.0;
+    double noteSec = 0.0;
+};
+
+struct LaneConfig {
+    bool on = false;
+    int rateIndex = 0;
+    double phaseDeg = 0.0;
+    double depth = 0.0;
+    int shape = 0;
+    int follow = 0;     // 0 = Own, 1..N = follow lane (follow - 1)
+    int ratioIndex = 3; // index into kLaneRatios (3 = x1)
+    LaneMode mode = LaneMode::sync;
+    double hz = static_cast<double>(kLaneDefaultHz);
 };
 
 // Integer hash (Chris Wellons' lowbias32): fixed, so deterministic patterns never drift.
@@ -76,6 +125,113 @@ inline double laneWaveform(LaneWaveform shape, double phase, int lane) noexcept 
         break;
     }
     return 0.0;
+}
+
+constexpr bool laneModeIsFree(LaneMode mode) noexcept HBA_NONBLOCKING {
+    return mode == LaneMode::freeRun || mode == LaneMode::freeRetrig;
+}
+
+// Cycle-safe follow-chain resolution: returns `lane` itself or the ultimate leader it follows.
+template <std::size_t N>
+inline int resolveLaneSource(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return 0;
+    int source = lane;
+    for (std::size_t hop = 0; hop < N; ++hop) {
+        const int follow = lanes[static_cast<std::size_t>(source)].follow - 1;
+        if (follow < 0 || follow >= static_cast<int>(N) || follow == source)
+            return source;
+        source = follow;
+    }
+    return lane;
+}
+
+// Effective timing mode for `lane`: followers automatically inherit a Free / Free R
+// leader's Hz clock domain so linked lanes stay phase-locked and ratio-accurate across BPMs.
+template <std::size_t N>
+inline LaneMode resolveLaneMode(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    const int source = resolveLaneSource(lanes, lane);
+    const LaneMode own = lanes[static_cast<std::size_t>(lane)].mode;
+    if (source == lane)
+        return own;
+    const LaneMode leader = lanes[static_cast<std::size_t>(source)].mode;
+    if (laneModeIsFree(leader))
+        return (own == LaneMode::freeRetrig || own == LaneMode::retrig) ? LaneMode::freeRetrig : leader;
+    return own;
+}
+
+template <std::size_t N>
+inline bool resolveLaneUsesFreeClock(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    return laneModeIsFree(resolveLaneMode(lanes, lane));
+}
+
+// Cycle length in quarter notes for tempo-synced modes (leader rate divided by follower ratio).
+template <std::size_t N>
+inline double resolveLaneLengthQuarters(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    const int source = resolveLaneSource(lanes, lane);
+    const auto rate = static_cast<std::size_t>(std::clamp(lanes[static_cast<std::size_t>(source)].rateIndex, 0,
+                                                          static_cast<int>(kLaneRateQuarters.size()) - 1));
+    if (source == lane)
+        return kLaneRateQuarters[rate];
+    const auto ratio = static_cast<std::size_t>(
+        std::clamp(lanes[static_cast<std::size_t>(lane)].ratioIndex, 0, static_cast<int>(kLaneRatios.size()) - 1));
+    return kLaneRateQuarters[rate] / kLaneRatios[ratio];
+}
+
+// Cycle frequency in Hz for free-running modes (leader Hz multiplied by follower ratio).
+template <std::size_t N>
+inline double resolveLaneRateHz(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    const int source = resolveLaneSource(lanes, lane);
+    const double baseHz = std::clamp(lanes[static_cast<std::size_t>(source)].hz, static_cast<double>(kLaneMinHz),
+                                     static_cast<double>(kLaneMaxHz));
+    if (source == lane)
+        return baseHz;
+    const auto ratio = static_cast<std::size_t>(
+        std::clamp(lanes[static_cast<std::size_t>(lane)].ratioIndex, 0, static_cast<int>(kLaneRatios.size()) - 1));
+    return baseHz * kLaneRatios[ratio];
+}
+
+// Resolved phase in [0, 1) across all 5 studio lane modes.
+template <std::size_t N>
+inline double resolveLanePhase(const std::array<LaneConfig, N>& lanes, int lane,
+                               const LaneClock& clock) noexcept HBA_NONBLOCKING {
+    const double phaseDeg = lanes[static_cast<std::size_t>(lane)].phaseDeg;
+    const LaneMode mode = resolveLaneMode(lanes, lane);
+    if (laneModeIsFree(mode)) {
+        const double clockSec = (mode == LaneMode::freeRetrig) ? std::max(0.0, clock.noteSec) : clock.freeSec;
+        return lanePhaseHz(clockSec, resolveLaneRateHz(lanes, lane), phaseDeg);
+    }
+    const double length = resolveLaneLengthQuarters(lanes, lane);
+    if (mode == LaneMode::oneShot) {
+        const double offset = std::clamp(phaseDeg / 360.0, 0.0, 0.999999);
+        const double progress = std::max(0.0, clock.notePpq) / std::max(length, 1.0e-6);
+        return std::clamp(offset + progress, 0.0, 1.0 - 1.0e-6);
+    }
+    const double clockPpq = (mode == LaneMode::retrig) ? std::max(0.0, clock.notePpq) : clock.hostPpq;
+    return lanePhase(clockPpq, length, phaseDeg);
+}
+
+// Built-in or drawn-curve waveform value in [-1, 1] at `clock`.
+template <std::size_t N>
+inline double evaluateLaneOutput(const std::array<LaneConfig, N>& lanes, const std::array<Curve, N>& curves, int lane,
+                                 const LaneClock& clock) noexcept HBA_NONBLOCKING {
+    const int source = resolveLaneSource(lanes, lane);
+    const double phase = resolveLanePhase(lanes, lane, clock);
+    const auto shape = static_cast<LaneWaveform>(
+        std::clamp(lanes[static_cast<std::size_t>(source)].shape, 0, static_cast<int>(LaneWaveform::custom)));
+    if (shape == LaneWaveform::custom)
+        return evaluate(curves[static_cast<std::size_t>(source)], phase);
+    return laneWaveform(shape, phase, source);
+}
+
+// Lane send in [-1, 1] (scaled by depth and global motion, or 0 when lane is off).
+template <std::size_t N>
+inline double evaluateLaneSend(const std::array<LaneConfig, N>& lanes, const std::array<Curve, N>& curves, int lane,
+                               const LaneClock& clock, double motion) noexcept HBA_NONBLOCKING {
+    const auto& cfg = lanes[static_cast<std::size_t>(lane)];
+    if (!cfg.on)
+        return 0.0;
+    return evaluateLaneOutput(lanes, curves, lane, clock) * cfg.depth * motion;
 }
 
 } // namespace hba::dsp
