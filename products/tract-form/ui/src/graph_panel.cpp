@@ -381,14 +381,13 @@ class DragPad final : public visage::Frame {
 class GraphPanel final : public Panel {
 public:
     explicit GraphPanel(Context& context) : Panel(context) {
-        // Master: F1 audition pill + 5 compact rows
+        // Master: F1 audition pill + 4 standard rows (Glide lives in the studio Voice footer bar)
         const Box masterTitle = nodeTitle(kMaster);
         place<AuditionPill>({masterTitle.right() - kAuditionWidth, masterTitle.midY() - 8.0f, kAuditionWidth, 16.0f});
-        place<Row>(compactRow(kMaster, 0), ParamId::oscShape, colour::master, "Shape", true);
-        place<Row>(compactRow(kMaster, 1), ParamId::punchAmt, colour::master, "Punch", true);
-        place<Row>(compactRow(kMaster, 2), ParamId::glide, colour::master, "Glide", true);
-        place<Row>(compactRow(kMaster, 3), ParamId::phaseReset, colour::master, "Phase reset");
-        place<Row>(compactRow(kMaster, 4), ParamId::beatLock, colour::master, "Beat lock");
+        place<Row>(nodeRow(kMaster, 0), ParamId::oscShape, colour::master, "Shape", true);
+        place<Row>(nodeRow(kMaster, 1), ParamId::punchAmt, colour::master, "Punch", true);
+        place<Row>(nodeRow(kMaster, 2), ParamId::phaseReset, colour::master, "Phase reset");
+        place<Row>(nodeRow(kMaster, 3), ParamId::beatLock, colour::master, "Beat lock");
 
         // Reese A and B
         addVoice(kReeseA, ParamId::aDetune, ParamId::aRatio, ParamId::aPhase, ParamId::aPm);
@@ -647,7 +646,7 @@ private:
 
     void drawMaster(visage::Canvas& canvas, const Visuals& visuals) {
         title(canvas, nodeTitle(kMaster), "Master", colour::master);
-        const Box vis = compactVisual(kMaster, kMaster.w - 2.0f * kInset);
+        const Box vis = nodeVisual(kMaster, kMaster.w - 2.0f * kInset);
         const Box waveBox{vis.x, vis.y, vis.w, vis.h - 14.0f};
         curve(canvas, subPeriod(get(ParamId::subWarmth)), waveBox, colour::master, -1.2f, 1.2f, 0.12f);
 

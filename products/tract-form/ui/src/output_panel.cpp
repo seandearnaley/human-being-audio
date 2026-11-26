@@ -98,7 +98,6 @@ public:
         squash_(add<Row>(context, ParamId::squash, colour::growl, "Squash", true)),
         limit_(add<Row>(context, ParamId::limit, colour::text, "Limit")),
         ceiling_(add<Row>(context, ParamId::ceiling, colour::text, "Ceiling")),
-        quality_(add<Row>(context, ParamId::quality, colour::text, "Quality")),
         resample_(add<ResampleButton>(context)) {}
 
   void tick() override {
@@ -114,21 +113,21 @@ public:
         const float rowGap = px(kGridRowGap);
         const float buttonY = height() - pad - px(kButtonHeight);
 
-        // 4x2 grid (Amp ADSR on left, Dynamics/Output on right) centred between meters and Resample.
+        // Amp ADSR (4 rows on left) paired with Dynamics/Output (3 rows evenly aligned on right; OS lives in VoiceBar).
         const float meterBottom = pad + px(hba::ui::meter::kTotalDesignHeight);
         const float rowsHeight = 4.0f * rowHeight + 3.0f * rowGap;
         const float firstRow = std::round(meterBottom + 0.5f * (buttonY - meterBottom - rowsHeight));
         const auto rowY = [&](int idx) { return firstRow + static_cast<float>(idx) * (rowHeight + rowGap); };
+        const float rightStep = (rowsHeight - rowHeight) * 0.5f;
 
         attack_.setBounds(pad, rowY(0), columnWidth, rowHeight);
         decay_.setBounds(pad, rowY(1), columnWidth, rowHeight);
         sustain_.setBounds(pad, rowY(2), columnWidth, rowHeight);
         release_.setBounds(pad, rowY(3), columnWidth, rowHeight);
 
-        squash_.setBounds(right, rowY(0), columnWidth, rowHeight);
-        limit_.setBounds(right, rowY(1), columnWidth, rowHeight);
-        ceiling_.setBounds(right, rowY(2), columnWidth, rowHeight);
-        quality_.setBounds(right, rowY(3), columnWidth, rowHeight);
+        squash_.setBounds(right, firstRow, columnWidth, rowHeight);
+        limit_.setBounds(right, std::round(firstRow + rightStep), columnWidth, rowHeight);
+        ceiling_.setBounds(right, firstRow + rowsHeight - rowHeight, columnWidth, rowHeight);
 
         resample_.setBounds(pad, buttonY, width() - 2.0f * pad, px(kButtonHeight));
     }
@@ -149,7 +148,6 @@ public:
     Row& squash_;
     Row& limit_;
     Row& ceiling_;
-    Row& quality_;
     ResampleButton& resample_;
 };
 }

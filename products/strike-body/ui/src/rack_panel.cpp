@@ -65,17 +65,14 @@ class RackPanel final : public Panel, public Live {
           rWireOffset_(ctx, ParamId::wireOffsetMs, colour::wire, "Align ms"),
           rWireInvert_(ctx, ParamId::wireInvert, colour::wireAlt, "\xc3\x98", Row::Style::badge),
 
-          // Column 4: Punch & Master (Neon Gold / Mint) — 3 Hero Knobs + Dual Chips + Fader + Badges + Meters
+          // Column 4: Punch & Master (Neon Gold / Mint) — 3 Hero Knobs + Shaper + Disperser Hz + Limiter + Meter Well
+          // (Mode, Key, Sub Mono & OS live in the persistent studio Voice footer bar.)
           kDisperser_(ctx, ParamId::disperserAmt, colour::punch, "Disperser"),
           kDrive_(ctx, ParamId::drive, colour::punch, "ADAA Drive"),
           kOutputDb_(ctx, ParamId::outputDb, colour::locked, "Output"),
-          rDriveModel_(ctx, ParamId::driveModel, colour::punch, "", Row::Style::chip),
-          rChokeMode_(ctx, ParamId::chokeMode, colour::punch, "", Row::Style::chip),
+          rDriveModel_(ctx, ParamId::driveModel, colour::punch, "Shaper", Row::Style::chip),
           rDispHz_(ctx, ParamId::disperserHz, colour::punch, "Disperser Hz"),
-          rKeyTrack_(ctx, ParamId::keyTrack, colour::body, "", Row::Style::chip),
-          rQuality_(ctx, ParamId::quality, colour::wireAlt, "", Row::Style::chip),
-          rSubMono_(ctx, ParamId::subMono, colour::locked, "SUB MONO", Row::Style::badge),
-          rLimiter_(ctx, ParamId::limiter, colour::locked, "LIMITER", Row::Style::badge) {
+          rLimiter_(ctx, ParamId::limiter, colour::locked, "TRUE-PEAK LIMITER", Row::Style::badge) {
         for (auto* mb : {&mBody_, &mShell_, &mWire_})
             mb->setAccent(colour::warn);
         sBody_.setAccent(colour::body);
@@ -90,8 +87,7 @@ class RackPanel final : public Panel, public Live {
             &rShellDamp_,  &rShellSpread_, &rShellOffset_, &rShellInvert_, &kClickAmt_,     &kWireDuck_,
             &kWireLevel_,  &rWireColor_,   &rHumanize_,    &rClickTone_,   &rWireBuzz_,     &rWireDuckMs_,
             &rWireTone_,   &rWireDecay_,   &rWireWidth_,   &rWireOffset_,  &rWireInvert_,   &kDisperser_,
-            &kDrive_,      &kOutputDb_,    &rDriveModel_,  &rChokeMode_,   &rDispHz_,       &rKeyTrack_,
-            &rQuality_,    &rSubMono_,     &rLimiter_,
+            &kDrive_,      &kOutputDb_,    &rDriveModel_,  &rDispHz_,      &rLimiter_,
         };
         for (auto* f : all)
             addChild(f);
@@ -221,17 +217,11 @@ class RackPanel final : public Panel, public Live {
         {
             const float cx = 3.0f * (colW + gap) + pad;
             float y = y0;
-            const float halfW = (innerW - subGap) * 0.5f;
-            rDriveModel_.setBounds(cx, y, halfW, px(26.0f));
-            rChokeMode_.setBounds(cx + halfW + subGap, y, halfW, px(26.0f));
-            y += px(26.0f) + px(6.5f);
-            rDispHz_.setBounds(cx, y, innerW, px(27.0f));
-            y += px(27.0f) + px(6.5f);
-            rKeyTrack_.setBounds(cx, y, halfW, px(26.0f));
-            rQuality_.setBounds(cx + halfW + subGap, y, halfW, px(26.0f));
-            y += px(26.0f) + px(6.5f);
-            rSubMono_.setBounds(cx, y, halfW, px(27.0f));
-            rLimiter_.setBounds(cx + halfW + subGap, y, halfW, px(27.0f));
+            rDriveModel_.setBounds(cx, y, innerW, px(27.0f));
+            y += px(27.0f) + px(9.0f);
+            rDispHz_.setBounds(cx, y, innerW, px(28.0f));
+            y += px(28.0f) + px(9.0f);
+            rLimiter_.setBounds(cx, y, innerW, px(28.0f));
         }
     }
 
@@ -263,7 +253,7 @@ class RackPanel final : public Panel, public Live {
         const float pad = px(10.0f);
         const float c4x = 3.0f * (colW + gap) + pad;
         const float wellW = colW - 2.0f * pad;
-        const float wellH = px(70.0f);
+        const float wellH = px(120.0f);
         const float wellY = height() - wellH - px(10.0f);
 
         canvas.setBrush(visage::Brush::vertical(colour::wellTop, colour::wellBot));
@@ -271,24 +261,24 @@ class RackPanel final : public Panel, public Live {
         canvas.setColor(colour::wellEdge);
         canvas.roundedRectangleBorder(c4x, wellY, wellW, wellH, px(6.0f), px(1.0f));
 
-        const float mx = c4x + px(9.0f);
-        const float mW = wellW - px(18.0f);
-        const float mY = wellY + px(7.0f);
+        const float mx = c4x + px(10.0f);
+        const float mW = wellW - px(20.0f);
+        const float mY = wellY + px(11.0f);
 
         auto dbNorm = [](float lin) {
             const float db = static_cast<float>(hba::dsp::gainToDb(std::max(1e-4, static_cast<double>(lin))));
             return std::clamp((db + 48.0f) / 48.0f, 0.0f, 1.0f);
         };
 
-        drawLabel(canvas, context_, "OUTPUT L / R", mx, mY, px(84.0f), px(12.0f), 0xffb8c7e0, visage::Font::kLeft, 8.6f,
+        drawLabel(canvas, context_, "OUTPUT L / R", mx, mY, px(90.0f), px(13.0f), 0xffb8c7e0, visage::Font::kLeft, 9.0f,
                   Weight::semibold);
         char grLbl[32]{};
         std::snprintf(grLbl, sizeof(grLbl), "GR -%.1f dB", static_cast<double>(grSmooth_));
-        drawLabel(canvas, context_, grLbl, mx + mW - px(80.0f), mY, px(80.0f), px(12.0f),
-                  grSmooth_ > 2.5f ? colour::warn : colour::locked, visage::Font::kRight, 8.8f, Weight::semibold);
+        drawLabel(canvas, context_, grLbl, mx + mW - px(86.0f), mY, px(86.0f), px(13.0f),
+                  grSmooth_ > 2.5f ? colour::warn : colour::locked, visage::Font::kRight, 9.0f, Weight::semibold);
 
-        const float barY = mY + px(16.0f);
-        const float barH = px(7.0f);
+        const float barY = mY + px(21.0f);
+        const float barH = px(10.0f);
         auto drawPeakBar = [&](float yPos, float peakVal) {
             canvas.setColor(0xff141c2e);
             canvas.roundedRectangle(mx, yPos, mW, barH, barH * 0.5f);
@@ -302,28 +292,32 @@ class RackPanel final : public Panel, public Live {
             }
         };
         drawPeakBar(barY, peakSmoothL_);
-        drawPeakBar(barY + px(11.0f), peakSmoothR_);
+        drawPeakBar(barY + px(15.0f), peakSmoothR_);
 
         // Limiter Gain Reduction bar
-        const float grY = barY + px(23.0f);
+        drawLabel(canvas, context_, "GAIN REDUCTION", mx, barY + px(34.0f), px(110.0f), px(11.0f), colour::textDim,
+                  visage::Font::kLeft, 8.2f, Weight::semibold);
+        const float grY = barY + px(49.0f);
         canvas.setColor(0xff141c2e);
-        canvas.roundedRectangle(mx, grY, mW, px(5.0f), px(2.5f));
+        canvas.roundedRectangle(mx, grY, mW, px(7.0f), px(3.5f));
         const float grNorm = std::clamp(grSmooth_ / 12.0f, 0.0f, 1.0f);
         if (grNorm > 0.01f) {
             const float gw = mW * grNorm;
             canvas.setColor(colour::withAlpha(colour::smack, 0.45f));
-            canvas.roundedRectangleShadow(mx + mW - gw, grY, gw, px(5.0f), px(2.5f), px(6.0f));
+            canvas.roundedRectangleShadow(mx + mW - gw, grY, gw, px(7.0f), px(3.5f), px(6.0f));
             canvas.setBrush(visage::Brush::horizontal(colour::punch, colour::smack));
-            canvas.roundedRectangle(mx + mW - gw, grY, gw, px(5.0f), px(2.5f));
+            canvas.roundedRectangle(mx + mW - gw, grY, gw, px(7.0f), px(3.5f));
         }
 
-        // Subtle dB tick labels positioned accurately along the -48..0 dB scale (-36 at 25%, -12 at 75%)
-        drawLabel(canvas, context_, "-36", mx + mW * 0.25f - px(14.0f), grY + px(7.0f), px(28.0f), px(10.0f),
-                  colour::textFaint, visage::Font::kCenter, 7.8f, Weight::regular);
-        drawLabel(canvas, context_, "-12", mx + mW * 0.75f - px(14.0f), grY + px(7.0f), px(28.0f), px(10.0f),
-                  colour::textFaint, visage::Font::kCenter, 7.8f, Weight::regular);
-        drawLabel(canvas, context_, "0 dB", mx + mW - px(28.0f), grY + px(7.0f), px(28.0f), px(10.0f),
-                  colour::textFaint, visage::Font::kRight, 7.8f, Weight::regular);
+        // Subtle dB tick labels positioned accurately along the -48..0 dB scale (-36 at 25%, -24 at 50%, -12 at 75%)
+        drawLabel(canvas, context_, "-36", mx + mW * 0.25f - px(14.0f), grY + px(12.0f), px(28.0f), px(11.0f),
+                  colour::textFaint, visage::Font::kCenter, 8.2f, Weight::regular);
+        drawLabel(canvas, context_, "-24", mx + mW * 0.50f - px(14.0f), grY + px(12.0f), px(28.0f), px(11.0f),
+                  colour::textFaint, visage::Font::kCenter, 8.2f, Weight::regular);
+        drawLabel(canvas, context_, "-12", mx + mW * 0.75f - px(14.0f), grY + px(12.0f), px(28.0f), px(11.0f),
+                  colour::textFaint, visage::Font::kCenter, 8.2f, Weight::regular);
+        drawLabel(canvas, context_, "0 dB", mx + mW - px(28.0f), grY + px(12.0f), px(28.0f), px(11.0f),
+                  colour::textFaint, visage::Font::kRight, 8.2f, Weight::regular);
     }
 
   private:
@@ -362,7 +356,7 @@ class RackPanel final : public Panel, public Live {
 
     // Col 4
     Knob kDisperser_, kDrive_, kOutputDb_;
-    Row rDriveModel_, rChokeMode_, rDispHz_, rKeyTrack_, rQuality_, rSubMono_, rLimiter_;
+    Row rDriveModel_, rDispHz_, rLimiter_;
 
     float peakSmoothL_ = 0.0f;
     float peakSmoothR_ = 0.0f;
