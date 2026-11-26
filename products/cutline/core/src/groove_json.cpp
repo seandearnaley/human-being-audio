@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace cl {
 
@@ -233,6 +235,12 @@ std::optional<Pattern> readPattern(const Json& value, std::string* error) {
             applyEdit(edit, inFill ? p.fill.steps[li][si] : p.lanes[li].steps[si]);
         }
     }
+    // Only the fill window is part of the fill: characters and edits before it are ignored.
+    const auto fillFrom = static_cast<std::size_t>(fillWindowStart(p.fill));
+    for (auto& row : p.fill.steps) {
+        for (std::size_t step = 0; step < fillFrom; ++step)
+            row[step] = {};
+    }
     return p;
 }
 
@@ -281,7 +289,9 @@ Json writePattern(const Pattern& pattern) {
     fill["beats"] = kStepsPerBar / 4 - fillWindowStart(pattern.fill) / 4;
     Json fillLanes = Json::object();
     for (int lane = 0; lane < kDrumLaneCount; ++lane) {
-        const auto& row = pattern.fill.steps[static_cast<std::size_t>(lane)];
+        auto row = pattern.fill.steps[static_cast<std::size_t>(lane)];
+        for (int step = 0; step < fillWindowStart(pattern.fill); ++step)
+            row[static_cast<std::size_t>(step)] = {};
         const std::string key(kLaneKeys[static_cast<std::size_t>(lane)]);
         bool any = false;
         std::string text = stepString(row.data(), kStepsPerBar, true, Layer::groove, any);
