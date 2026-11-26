@@ -50,14 +50,20 @@ void Engine::Impl::prepare(double sampleRate, int oversampling) {
     reset();
 }
 
-// Group delay at DC of the 2x trip around the growl clipper, base samples.
+// Group delay at DC of the 4x trip + pass-0 ADAA1 linear delay around the growl clipper, base samples.
 double Engine::Impl::measureClipTripDelay() {
     ClipTrip t;
     t.prepare();
+    double halfDelay = 0.0;
     double moment = 0.0, sum = 0.0;
     for (int n = 0; n < 4096; ++n) {
         float buf[ClipTrip::kFactor];
         t.up(n == 0 ? 1.0f : 0.0f, buf);
+        for (std::size_t k = 0; k < ClipTrip::kFactor; ++k) {
+            const double v = buf[k];
+            buf[k] = static_cast<float>(0.5 * (v + halfDelay));
+            halfDelay = v;
+        }
         const double y = t.down(buf);
         moment += n * y;
         sum += y;
@@ -103,6 +109,9 @@ void Engine::Impl::resetDsp() noexcept TF_NONBLOCKING {
     clip2xR.reset();
     clip2xSub.reset();
     clip2xMaster.reset();
+    growlClipAdaa.reset();
+    subClipHalfDelay = 0.0;
+    masterClipHalfDelay = 0.0;
     feedback.clear();
     feedbackDc.reset();
     feedbackLp.reset();
@@ -173,7 +182,8 @@ void Engine::Impl::reset() noexcept TF_NONBLOCKING {
     idle = true;
     silentCount = 0;
     wasPlaying = false;
-    sinceAnchor = sinceNoteStart = 0;
+    sinceAnchor = sinceNoteStart = freeSamples = 0;
+    uiFreeSec = uiNoteSec = 0.0;
     grDb = 0.0f;
     effective = EffectiveState{};
 }
@@ -341,14 +351,25 @@ double Engine::Impl::notePpqAhead(long long samplesAhead) const noexcept TF_NONB
     return static_cast<double>(sinceNoteStart + samplesAhead) * qps;
 }
 
-void Engine::Impl::laneTick(const Params& p, double ppq, double nPpq, double c) noexcept TF_NONBLOCKING {
+double Engine::Impl::freeSecAhead(long long samplesAhead) const noexcept TF_NONBLOCKING {
+    return static_cast<double>(freeSamples + samplesAhead) / fs;
+}
+
+double Engine::Impl::noteSecAhead(long long samplesAhead) const noexcept TF_NONBLOCKING {
+    return static_cast<double>(sinceNoteStart + samplesAhead) / fs;
+}
+
+void Engine::Impl::laneTick(const Params& p, double ppq, double nPpq, double fSec, double nSec,
+                            double c) noexcept TF_NONBLOCKING {
     uiPpq = ppq;
     uiNotePpq = nPpq;
+    uiFreeSec = fSec;
+    uiNoteSec = nSec;
     laneMove.fill(0.0);
     for (int i = 0; i < kLaneCount; ++i) {
         const auto lane = static_cast<std::size_t>(i);
-        const double v = laneSmooth[lane].step(laneSend(p, laneCurves, i, ppq, nPpq), c);
-        uiPhase[lane] = static_cast<float>(lanePhaseFor(p, i, ppq, nPpq));
+        const double v = laneSmooth[lane].step(laneSend(p, laneCurves, i, ppq, nPpq, fSec, nSec), c);
+        uiPhase[lane] = static_cast<float>(lanePhaseFor(p, i, ppq, nPpq, fSec, nSec));
         uiValue[lane] = static_cast<float>(v);
         laneMove[static_cast<std::size_t>(laneTargetOf(p, i))] += v;
     }
@@ -508,7 +529,8 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
     snapNext = false;
     const double c = snap ? 1.0 : tickCoef;
     // Lanes, evaluated at the end of this control period.
-    laneTick(p, lanePpqAhead(controlBase), notePpqAhead(controlBase), c);
+    laneTick(p, lanePpqAhead(controlBase), notePpqAhead(controlBase), freeSecAhead(controlBase),
+             noteSecAhead(controlBase), c);
 
     smoothParameters(p, c, snap);
 

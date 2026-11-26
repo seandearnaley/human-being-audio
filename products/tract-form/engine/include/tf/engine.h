@@ -80,8 +80,10 @@ public:
     // gain reduction in dB (>= 0).
     float growlClipDb() const noexcept TF_NONBLOCKING;
     float growlClipMeanDb() const noexcept TF_NONBLOCKING;
-    double lanePpq() const noexcept TF_NONBLOCKING;  // the lane clock in quarter notes
-    double notePpq() const noexcept TF_NONBLOCKING;  // note-relative clock for Retrig / One-Shot lanes
+    double lanePpq() const noexcept TF_NONBLOCKING;     // the lane clock in quarter notes
+    double notePpq() const noexcept TF_NONBLOCKING;     // note-relative clock for Retrig / One-Shot lanes
+    double freeSeconds() const noexcept TF_NONBLOCKING; // monotonic free-running clock in seconds for Free lanes
+    double noteSeconds() const noexcept TF_NONBLOCKING; // note-relative elapsed seconds for Free R lanes
     std::array<float, kLaneCount> lanePhases() const noexcept TF_NONBLOCKING;  // 0..1
     std::array<float, kLaneCount> laneValues() const noexcept TF_NONBLOCKING;  // -1..1, after depth and motion
 

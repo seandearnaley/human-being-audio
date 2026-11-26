@@ -80,6 +80,7 @@ enum class ParamId : std::uint8_t {
     lane1Follow,
     lane1Ratio,
     lane1Mode,
+    lane1Hz,
     lane2On,
     lane2Rate,
     lane2Phase,
@@ -89,6 +90,7 @@ enum class ParamId : std::uint8_t {
     lane2Follow,
     lane2Ratio,
     lane2Mode,
+    lane2Hz,
     lane3On,
     lane3Rate,
     lane3Phase,
@@ -98,6 +100,7 @@ enum class ParamId : std::uint8_t {
     lane3Follow,
     lane3Ratio,
     lane3Mode,
+    lane3Hz,
     lane4On,
     lane4Rate,
     lane4Phase,
@@ -107,14 +110,15 @@ enum class ParamId : std::uint8_t {
     lane4Follow,
     lane4Ratio,
     lane4Mode,
+    lane4Hz,
     count
 };
 
 inline constexpr int kParamCount = static_cast<int>(ParamId::count);
 inline constexpr int kLaneCount = 4;
 
-enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio, mode };
-inline constexpr int kLaneFieldCount = 9;
+enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio, mode, hz };
+inline constexpr int kLaneFieldCount = 10;
 
 // What a lane moves. Order matches choices::laneTarget.
 enum class LaneTarget : std::uint8_t { phase, morph, drive, beat, coupling, reach, weight, sculpt, fit, width, shift };
@@ -170,7 +174,7 @@ inline constexpr std::array<std::string_view, 11> laneTarget{"Phase",  "Morph", 
 // A lane plays its own shape, or follows another lane's shape at a ratio of its rate.
 inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
 inline constexpr std::array<std::string_view, 7> laneRatio { "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74" };
-inline constexpr std::array<std::string_view, 3> laneMode{"Sync", "Retrig", "1-Shot"};
+inline constexpr std::array<std::string_view, 5> laneMode{"Sync", "Retrig", "1-Shot", "Free", "Free R"};
 }
 
 // Feedback delay per choice, in cycles of the note.
@@ -188,7 +192,7 @@ enum class TractPos : std::uint8_t { pre, post };
 enum class SculptMode : std::uint8_t { bell, phaser, comb };
 enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
-enum class LaneMode : std::uint8_t { sync, retrig, oneShot };
+enum class LaneMode : std::uint8_t { sync, retrig, oneShot, freeRun, freeRetrig };
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def, bool automatable = true) {
@@ -235,7 +239,8 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
                        false),                                                                                         \
         detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
         detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false),                          \
-        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false)
+        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false),                             \
+        detail::ranged("lane" #n "Hz", "Lane " #n " Hz", 0.05f, 20.0f, 0.5f, Unit::hz, 0.0f, false)
 
 // Order must match ParamId.
 inline constexpr std::array<ParamSpec, kParamCount> kParams{{
@@ -329,6 +334,8 @@ static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must match ParamId");
 static_assert(spec(ParamId::lane4Mode).key == "lane4Mode" && spec(laneParam(2, LaneField::target)).key == "lane3Target",
               "lane layout");
+static_assert(spec(ParamId::lane4Hz).key == "lane4Hz" && spec(laneParam(1, LaneField::hz)).key == "lane2Hz",
+              "lane hz layout");
 static_assert(choices::laneTarget.size() == kLaneTargetCount && kLaneRatios.size() == choices::laneRatio.size());
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
 static_assert(spec(ParamId::reach).key == "reach" && spec(ParamId::beatLock).key == "beatLock", "kParams order");

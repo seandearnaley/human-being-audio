@@ -41,6 +41,9 @@ struct Visuals {
     double ppq = 0.0;
     // Note-relative elapsed quarter notes for Retrig and One-Shot lane modes.
     double notePpq = 0.0;
+    // Monotonic elapsed seconds and note-relative seconds for Free / Free R lanes.
+    double freeSec = 0.0;
+    double noteSec = 0.0;
 
     float hz = 0.0f;
     int note = -1;  // MIDI note, -1 when silent

@@ -129,5 +129,9 @@
             0.0,
             "hold"
         ]
-    ]
+    ],
+    "lane1Hz": 0.5,
+    "lane2Hz": 0.5,
+    "lane3Hz": 0.5,
+    "lane4Hz": 0.5
 }

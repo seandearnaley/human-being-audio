@@ -292,11 +292,12 @@ TEST_CASE("Quality set from another thread takes effect on the message thread") 
     };
     {
         Host host;
-        const int before = host.processor.getLatencySamples();
+        const int before = host.processor.engineOversamplingFactor();
+        REQUIRE(before == 4);
         setQualityElsewhere(host.processor, 0.0f);
-        CHECK(host.processor.getLatencySamples() == before);
+        CHECK(host.processor.engineOversamplingFactor() == before);
         runMessageLoop();
-        CHECK(host.processor.getLatencySamples() != before);
+        CHECK(host.processor.engineOversamplingFactor() == 2);
     }
     {
         // A processor destroyed with a change still queued leaves nothing behind to run.

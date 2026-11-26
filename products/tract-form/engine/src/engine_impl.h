@@ -84,9 +84,8 @@ constexpr double kGrowlLimiterReleaseSeconds = 0.12; // > 3 periods of E1 (41 Hz
 constexpr double kSubHoldSeconds = 0.06;             // > 2 periods of E1
 constexpr double kSubReleaseSeconds = 0.25;
 // The growl clipper's oversampling (the sub and master tap take the same
-// trip). 4x measured the same (-51.8 dB inharmonic, tube fold, growl 1) and
-// costs a sample of latency.
-using ClipTrip = BaseRate2x;
+// 4x trip + matched 2-pass linear midpoint so latency and phase stay exact).
+using ClipTrip = BaseRate4x;
 // Two 2x-oversampled growl clipper passes each followed by a 4th-order
 // Butterworth high-pass at 1.05x splitHz (combined LR8: -48 dB/oct, -64 dB at f0):
 // restores +13 dB of lower-growl punch at 3*f0 while trimming filter overshoot cleanly
@@ -227,8 +226,11 @@ struct Engine::Impl {
     // and Weight, voice B through channel B's; Width mixes them after that.
     detail::Decimator decSub, decL, decR;
     detail::LocalOversampler localSub, localA, localB; // around the fold; the sub gets the same delay
-    // Around the growl clipper; the sub and the master tap take the same trip.
+    // Around the growl clipper (4x HIIR + pass-0 ADAA1 + pass-1 linked trim); the sub and master tap take the same
+    // trip.
     ClipTrip clip2xL, clip2xR, clip2xSub, clip2xMaster;
+    detail::GrowlClipAdaa growlClipAdaa;
+    double subClipHalfDelay = 0.0, masterClipHalfDelay = 0.0;
     std::array<float, detail::kMaxOversampling> bufSub{}, bufL{}, bufR{}, bufLocal{};
     detail::FeedbackDelay feedback;
     detail::DcBlocker feedbackDc;
@@ -300,7 +302,7 @@ struct Engine::Impl {
     // Clock.
     bool wasPlaying = false;
     double anchorPpq = 0.0, anchorBpm = 0.0;
-    long long sinceAnchor = 0, sinceNoteStart = 0;
+    long long sinceAnchor = 0, sinceNoteStart = 0, freeSamples = 0;
     double qps = 0.0; // quarters per base sample
     bool playing = false;
 
@@ -320,6 +322,8 @@ struct Engine::Impl {
     std::array<double, kLaneTargetCount> laneMove{};
     double uiPpq = 0.0;     // the lane clock, host position or free-running
     double uiNotePpq = 0.0; // note-relative clock for Retrig / One-Shot lanes
+    double uiFreeSec = 0.0; // monotonic elapsed seconds for Free lanes
+    double uiNoteSec = 0.0; // note-relative elapsed seconds for Free R lanes
     EffectiveState effective{};
 
     void prepare(double sampleRate, int oversampling);
@@ -342,7 +346,9 @@ struct Engine::Impl {
     void retargetPitchNow() noexcept TF_NONBLOCKING;
     double lanePpqAhead(long long samplesAhead) const noexcept TF_NONBLOCKING;
     double notePpqAhead(long long samplesAhead) const noexcept TF_NONBLOCKING;
-    void laneTick(const Params& p, double ppq, double nPpq, double c) noexcept TF_NONBLOCKING;
+    double freeSecAhead(long long samplesAhead) const noexcept TF_NONBLOCKING;
+    double noteSecAhead(long long samplesAhead) const noexcept TF_NONBLOCKING;
+    void laneTick(const Params& p, double ppq, double nPpq, double fSec, double nSec, double c) noexcept TF_NONBLOCKING;
     double moved(LaneTarget target, double value, double lo, double hi) const noexcept TF_NONBLOCKING;
     double movedCycles(LaneTarget target) const noexcept TF_NONBLOCKING;
     void smoothParameters(const Params& p, double c, bool snap) noexcept TF_NONBLOCKING;

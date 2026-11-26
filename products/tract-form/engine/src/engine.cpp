@@ -28,35 +28,52 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
     phaseLockB -= std::floor(phaseLockB);
 
     // Master sine + phase-locked Sub Warmth (2nd/3rd harmonics pre-subLp, zero DC/phase shift).
-    const float master = std::sin(static_cast<float>(kTwoPi * phaseMaster));
+    // Gentle at low settings for pure sub headroom; blooms warmly into rich 2nd/3rd harmonics
+    // at higher settings for effortless small-speaker translation.
+    const double master = std::sin(kTwoPi * phaseMaster);
     const double pSub = kTwoPi * frac(phaseMaster + os[subRot].value);
     const double subFund = std::sin(pSub);
     const double sw = os[subWarmth_].value;
-    const float subSine =
-        static_cast<float>(sw <= 1.0e-5 ? subFund
-                                        : (subFund + sw * (0.24 * std::sin(2.0 * pSub) + 0.14 * std::sin(3.0 * pSub))) /
-                                              (1.0 + 0.24 * sw));
+    const double sw2 = 0.24 * sw + 0.14 * sw * sw;
+    const double sw3 = 0.14 * sw + 0.08 * sw * sw;
+    const float subSine = static_cast<float>(
+        sw <= 1.0e-5 ? subFund : (subFund + sw2 * std::sin(2.0 * pSub) + sw3 * std::sin(3.0 * pSub)) / (1.0 + sw2));
 
     const double fbTap2 = std::min(os[fbDelay].value + os[fbPeriod].value, feedback.maxDelay());
     const double fbRaw = 0.5 * (feedback.read(os[fbDelay].value) + feedback.read(fbTap2));
     const double fb = os[fbGain].value * std::tanh(feedbackDc.process(fbRaw));
 
+    // Clean Nyquist-guarded Bessel-windowed analog sawtooth carrier:
+    // blends pure PM sine with single-term phase-warped sawtooth `sin(rad + k*sin(rad))`
+    // (dropping the harsh nested 2nd-harmonic self-PM term and float phase quantization).
+    // Under Beat Lock, warps against `phiLock` so every harmonic beats at one exact delta.
     const double shp = os[oscShape_].value;
-    const auto shapeOsc = [shp](double rad) noexcept TF_NONBLOCKING -> double {
-        const double s1 = std::sin(static_cast<float>(rad));
+    const auto shapeOsc = [shp](double phi, double phiLock, double mod, double inc,
+                                bool locked) noexcept TF_NONBLOCKING -> double {
+        const double rad = phi + mod;
+        const double s1 = std::sin(rad);
         if (shp <= 1.0e-5)
             return s1;
-        const double s2 = std::sin(static_cast<float>(2.0 * rad));
-        const double rich = std::sin(static_cast<float>(rad + 0.85 * shp * s1 + 0.35 * shp * s2));
+        const double nyqGuard = std::clamp((0.36 - 4.0 * inc) / 0.10, 0.0, 1.0);
+        if (locked) {
+            const double warp = 0.88 * shp * nyqGuard;
+            return std::sin(phi + warp * std::sin(phiLock) + mod);
+        }
+        const double warp = 0.85 * shp * nyqGuard;
+        const double rich = std::sin(rad + warp * s1);
         return (1.0 - shp) * s1 + shp * rich;
     };
 
-    const double a = shapeOsc(kTwoPi * frac(phaseA + os[offA].value) + os[pmA].value * master + fb);
-    const double b = shapeOsc(kTwoPi * frac(phaseB + os[offB].value) + os[pmB].value * master + fb);
-    const double lockA =
-        std::sin(static_cast<float>(kTwoPi * frac(phaseLockA + os[offA].value) + os[pmA].value * master + fb));
-    const double lockB =
-        std::sin(static_cast<float>(kTwoPi * frac(phaseLockB + os[offB].value) + os[pmB].value * master + fb));
+    const double phiA = kTwoPi * frac(phaseA + os[offA].value);
+    const double phiB = kTwoPi * frac(phaseB + os[offB].value);
+    const double phiLockA = kTwoPi * frac(phaseLockA + os[offA].value);
+    const double phiLockB = kTwoPi * frac(phaseLockB + os[offB].value);
+    const double modA = os[pmA].value * master + fb;
+    const double modB = os[pmB].value * master + fb;
+    const double a = shapeOsc(phiA, phiLockA, modA, os[incA].value, beatLockOn);
+    const double b = shapeOsc(phiB, phiLockB, modB, os[incB].value, beatLockOn);
+    const double lockA = std::sin(phiLockA + modA);
+    const double lockB = std::sin(phiLockB + modB);
 
     feedback.write(static_cast<float>(feedbackLp.process(ReachCoefs::make(os[loopG].value), 0.5 * (lockA + lockB))));
     const ReachCoefs reach = ReachCoefs::make(os[reachG].value);
@@ -219,10 +236,18 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
             // second side high-pass at the crossover here measured 2 dB worse
             // for mono low end, not better, so there is none.) The sub and the
             // master tap take the same 2x trip.
-            // Sub lock: the same 2x trip, nothing else.
+            // Sub lock: the same 4x trip + matched pass-0 ADAA1 linear midpoint, nothing else.
             std::array<float, ClipTrip::kFactor> upSub{}, upMaster{};
             clip2xSub.up(static_cast<float>(subLp.process(cSub, sub) * base[subLevel].value), upSub.data());
             clip2xMaster.up(static_cast<float>(sub), upMaster.data());
+            for (std::size_t k = 0; k < ClipTrip::kFactor; ++k) {
+                const double vs = upSub[k];
+                upSub[k] = static_cast<float>(0.5 * (vs + subClipHalfDelay));
+                subClipHalfDelay = vs;
+                const double vm = upMaster[k];
+                upMaster[k] = static_cast<float>(0.5 * (vm + masterClipHalfDelay));
+                masterClipHalfDelay = vm;
+            }
             const double subOut = clip2xSub.down(upSub.data());
             const double masterTap = clip2xMaster.down(upMaster.data());
 
@@ -237,9 +262,11 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
                 std::min(base[growlCeiling].value, base[ceilingGain].value * kGrowlCeilingMargin - subEnvelope),
                 kGrowlCeilingFloor);
             const double lim = base[limitAmt].value;
-            // Clip 1.4 dB below ceilingG so post-clip BW4 overshoot lands under the
-            // look-ahead limiter's threshold, keeping the limiter transparent and ripple-free.
-            const double clipCeilEff = lim * (0.85 * ceilingG) + (1.0 - lim) * 2.5;
+            // Pass 0 clips at 0.85*ceilingG (ADAA1 at 4x); pass 1 trims post-BW4 overshoot
+            // to 0.73*ceilingG (knee 0.78 -> linear up to 0.57*ceilingG) so the final BW4 HP
+            // lands under the look-ahead limiter's threshold, free of 5-15 Hz side ripple.
+            const double clipCeil0 = lim * (0.85 * ceilingG) + (1.0 - lim) * 2.5;
+            const double clipCeil1 = lim * (0.73 * ceilingG) + (1.0 - lim) * 2.5;
             std::array<float, ClipTrip::kFactor> upL{}, upR{};
             const double preClip = mid; // (L + R) / 2
             clip2xL.up(static_cast<float>(mid + side), upL.data());
@@ -248,9 +275,10 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
             for (std::size_t k = 0; k < ClipTrip::kFactor; ++k) {
                 double a = upL[k], c = upR[k];
                 for (std::size_t pass = 0; pass < kClipPasses; ++pass) {
-                    const double db = -gainToDb(growlClip(a, c, clipCeilEff));
+                    const double gain = pass == 0 ? growlClipAdaa.process(a, c, clipCeil0)
+                                                  : softClipLinked(a, c, 0.78 * clipCeil1, clipCeil1);
                     if (pass == 0)
-                        clipDbNow = std::max(clipDbNow, db);
+                        clipDbNow = std::max(clipDbNow, -gainToDb(gain));
                     a = postClipHp[pass][0].process(cSubClip, a);
                     c = postClipHp[pass][1].process(cSubClip, c);
                     if (pass == 0) {
@@ -300,6 +328,7 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
 
             ++sinceAnchor;
             ++sinceNoteStart;
+            ++freeSamples;
 
             if (gate.silent() && notes.empty() && pendingNote < 0) {
                 if (++silentCount > gateDelay.delay() + limiter.latency() + 2) {
@@ -331,7 +360,8 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
         // The lanes keep their control periods while the DSP sleeps.
         for (; n < numSamples; ++n) {
             if (countdown == 0) {
-                laneTick(p, lanePpqAhead(controlBase), notePpqAhead(controlBase), tickCoef);
+                laneTick(p, lanePpqAhead(controlBase), notePpqAhead(controlBase), freeSecAhead(controlBase),
+                         noteSecAhead(controlBase), tickCoef);
                 const double mw = smooth[modWheel_].step(modWheelTarget, tickCoef);
                 const double ti = smooth[timbreOffset_].step(timbreOffsetTarget, tickCoef);
                 const double at = smooth[aftertouch_].step(aftertouchTarget, tickCoef);
@@ -367,6 +397,7 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
             --countdown;
             ++sinceAnchor;
             ++sinceNoteStart;
+            ++freeSamples;
         }
     }
 }
@@ -416,6 +447,8 @@ int Engine::activeNote() const noexcept TF_NONBLOCKING { return impl_->notes.top
 float Engine::gainReductionDb() const noexcept TF_NONBLOCKING { return std::max(0.0f, impl_->grDb); }
 double Engine::lanePpq() const noexcept TF_NONBLOCKING { return impl_->uiPpq; }
 double Engine::notePpq() const noexcept TF_NONBLOCKING { return impl_->uiNotePpq; }
+double Engine::freeSeconds() const noexcept TF_NONBLOCKING { return impl_->uiFreeSec; }
+double Engine::noteSeconds() const noexcept TF_NONBLOCKING { return impl_->uiNoteSec; }
 float Engine::growlClipDb() const noexcept TF_NONBLOCKING { return impl_->clipDb; }
 float Engine::growlClipMeanDb() const noexcept TF_NONBLOCKING { return impl_->clipMeanDb; }
 std::array<float, kLaneCount> Engine::lanePhases() const noexcept TF_NONBLOCKING { return impl_->uiPhase; }

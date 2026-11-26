@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <concepts>
 #include <functional>
 #include <string>
 #include <vector>
@@ -47,8 +48,21 @@ inline constexpr float kMoveFillAlpha = 0.12f;
 inline constexpr float kMoveFollowerAlpha = 0.6f;
 inline constexpr float kMoveLeaderAlpha = 0.45f;
 inline constexpr double kMoveWindowQuarters = 8.0;
+inline constexpr double kMoveWindowSeconds = 4.0;
 inline constexpr int kMoveQuartersPerBar = 4;
 inline constexpr double kMoveAlmostOne = 1.0 - 1.0e-6;
+
+template <typename T>
+concept HasFreeHzTrait = requires {
+    { T::kHasFreeHz } -> std::convertible_to<bool>;
+};
+
+template <typename T> constexpr bool hasFreeHz() {
+    if constexpr (HasFreeHzTrait<T>)
+        return T::kHasFreeHz;
+    else
+        return false;
+}
 
 inline float snapPx(float v) { return std::round(v); }
 inline float hairlinePx(float scale) { return std::max(1.0f, snapPx(metric::hairline * scale)); }
@@ -372,6 +386,8 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                 &this->template add<Chip>(context, Traits::field(lane, LaneField::target), Traits::defaultAccent());
             c.follow = &this->template add<FollowChip>(context, Traits::field(lane, LaneField::follow), lane);
             c.rate = &this->template add<Chip>(context, Traits::field(lane, LaneField::rate), colour::textDim);
+            if constexpr (detail::hasFreeHz<Traits>())
+                c.hz = &this->template add<Chip>(context, Traits::field(lane, LaneField::hz), colour::textDim);
             c.ratio = &this->template add<Chip>(context, Traits::field(lane, LaneField::ratio), colour::textDim);
             if constexpr (Traits::kHasModeChip)
                 c.mode = &this->template add<Chip>(context, Traits::field(lane, LaneField::mode), colour::textDim);
@@ -400,6 +416,10 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         bool liveChanged = this->context_.model.visuals().ppq != drawnPpq_;
         if constexpr (Traits::kHasModeChip)
             liveChanged = liveChanged || this->context_.model.visuals().notePpq != drawnNotePpq_;
+        if constexpr (detail::hasFreeHz<Traits>()) {
+            liveChanged = liveChanged || Traits::freeSeconds(this->context_.model) != drawnFreeSec_ ||
+                          Traits::noteSeconds(this->context_.model) != drawnNoteSec_;
+        }
         if constexpr (Traits::kHasEnvLane) {
             const float envLvl = Traits::envLevel(this->context_.model);
             const float envTail = Traits::envHistory(this->context_.model).back();
@@ -422,6 +442,10 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         drawnPpq_ = this->context_.model.visuals().ppq;
         if constexpr (Traits::kHasModeChip)
             drawnNotePpq_ = this->context_.model.visuals().notePpq;
+        if constexpr (detail::hasFreeHz<Traits>()) {
+            drawnFreeSec_ = Traits::freeSeconds(this->context_.model);
+            drawnNoteSec_ = Traits::noteSeconds(this->context_.model);
+        }
         if constexpr (Traits::kHasEnvLane) {
             drawnEnv_ = Traits::envLevel(this->context_.model);
             drawnEnvTail_ = Traits::envHistory(this->context_.model).back();
@@ -452,7 +476,11 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                 drawPanel(canvas, scale, detail::snapPx(c.curve), top,
                           detail::snapPx(c.curve + c.curveWidth) - detail::snapPx(c.curve), height, colour::raised,
                           metric::radiusSmall);
-            drawGrid(canvas, left, plotWidth, top, height);
+
+            bool freeLane = false;
+            if constexpr (detail::hasFreeHz<Traits>())
+                freeLane = Traits::isFreeLane(params, lane);
+            drawGrid(canvas, left, plotWidth, top, height, freeLane);
 
             const bool on = params.on(Traits::field(lane, LaneField::on));
             const float ampScale = params[Traits::field(lane, LaneField::depth)] * motion;
@@ -486,16 +514,36 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
 
             float playheadX = syncPlayheadX;
             double noteWindow = 0.0;
+            double freeWindow = 0.0;
+            if constexpr (detail::hasFreeHz<Traits>()) {
+                if (freeLane) {
+                    const double clk = Traits::isFreeRetrig(params, lane) ? drawnNoteSec_ : drawnFreeSec_;
+                    freeWindow = std::floor(clk / detail::kMoveWindowSeconds) * detail::kMoveWindowSeconds;
+                    playheadX = left + plotWidth * static_cast<float>(std::clamp(
+                                                       (clk - freeWindow) / detail::kMoveWindowSeconds, 0.0, 1.0));
+                }
+            }
             if constexpr (Traits::kHasModeChip) {
-                const auto timing = Traits::noteTiming(params, lane, drawnNotePpq_, detail::kMoveWindowQuarters);
-                noteWindow = timing.noteWindow;
-                if (timing.noteClock)
-                    playheadX = left + plotWidth * timing.normPos;
+                if (!freeLane) {
+                    const auto timing = Traits::noteTiming(params, lane, drawnNotePpq_, detail::kMoveWindowQuarters);
+                    noteWindow = timing.noteWindow;
+                    if (timing.noteClock)
+                        playheadX = left + plotWidth * timing.normPos;
+                }
             }
 
             for (std::size_t i = 0; i < values_.size(); ++i) {
                 const double t =
                     std::min(static_cast<double>(i) / static_cast<double>(values_.size() - 1), detail::kMoveAlmostOne);
+                if constexpr (detail::hasFreeHz<Traits>()) {
+                    if (freeLane) {
+                        const double sampleSec = freeWindow + t * detail::kMoveWindowSeconds;
+                        values_[i] =
+                            static_cast<float>(Traits::sampleLaneFree(params, curves, lane, sampleSec, sampleSec)) *
+                            ampScale;
+                        continue;
+                    }
+                }
                 const double samplePpq = windowStart + t * detail::kMoveWindowQuarters;
                 const double sampleNotePpq = noteWindow + t * detail::kMoveWindowQuarters;
                 values_[i] =
@@ -512,8 +560,20 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                         height);
 
             if (on) {
-                const float value =
-                    static_cast<float>(Traits::sampleLane(params, curves, lane, drawnPpq_, drawnNotePpq_)) * ampScale;
+                float value = 0.0f;
+                if constexpr (detail::hasFreeHz<Traits>()) {
+                    if (freeLane) {
+                        value = static_cast<float>(
+                                    Traits::sampleLaneFree(params, curves, lane, drawnFreeSec_, drawnNoteSec_)) *
+                                ampScale;
+                    } else {
+                        value = static_cast<float>(Traits::sampleLane(params, curves, lane, drawnPpq_, drawnNotePpq_)) *
+                                ampScale;
+                    }
+                } else {
+                    value = static_cast<float>(Traits::sampleLane(params, curves, lane, drawnPpq_, drawnNotePpq_)) *
+                            ampScale;
+                }
                 const float y =
                     top + inset + (height - 2.0f * inset) * (1.0f - (std::clamp(value, -1.0f, 1.0f) + 1.0f) * 0.5f);
                 const float ring = this->px(detail::kMoveDot) + 2.0f * this->px(metric::stroke);
@@ -546,6 +606,7 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         Chip* target = nullptr;
         FollowChip* follow = nullptr;
         Chip* rate = nullptr;
+        Chip* hz = nullptr;
         Chip* ratio = nullptr;
         Chip* mode = nullptr;
         Chip* phase = nullptr;
@@ -621,6 +682,8 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
             place(*controls.target, c.target, this->px(w.targetW), chip);
             place(*controls.follow, c.follow, this->px(w.followW), chip);
             place(*controls.rate, c.rate, this->px(w.rateW), chip);
+            if constexpr (detail::hasFreeHz<Traits>())
+                place(*controls.hz, c.rate, this->px(w.rateW), chip);
             place(*controls.ratio, c.rate, this->px(w.rateW), chip);
             if constexpr (Traits::kHasModeChip)
                 place(*controls.mode, c.mode, this->px(w.modeW), chip);
@@ -647,8 +710,13 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
             bool envMode = false;
             if constexpr (Traits::kHasEnvLane)
                 envMode = Traits::isEnvLane(params, lane);
+            bool freeMode = false;
+            if constexpr (detail::hasFreeHz<Traits>())
+                freeMode = Traits::isFreeLane(params, lane);
 
-            controls.rate->setVisible(!follows && !envMode);
+            controls.rate->setVisible(!follows && !envMode && !freeMode);
+            if constexpr (detail::hasFreeHz<Traits>())
+                controls.hz->setVisible(!follows && !envMode && freeMode);
             controls.ratio->setVisible(follows && !envMode);
             controls.phase->setVisible(!envMode);
             controls.shape->setVisible(!follows);
@@ -676,6 +744,12 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                 controls.mode->setAccent(Traits::modeAccent(params, lane, on, dim));
             for (Chip* chip : {controls.rate, controls.ratio, controls.phase, controls.shape, controls.depth})
                 chip->setAccent(dim);
+            if constexpr (detail::hasFreeHz<Traits>()) {
+                const unsigned freeTint = (on && freeMode) ? Traits::freeAccent() : dim;
+                controls.hz->setAccent(freeTint);
+                if (follows && freeMode)
+                    controls.ratio->setAccent(freeTint);
+            }
         }
         if (editor_ != nullptr)
             editor_->syncVisibility();
@@ -702,12 +776,15 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         this->redraw();
     }
 
-    void drawGrid(visage::Canvas& canvas, float left, float plotWidth, float top, float height) const {
+    void drawGrid(visage::Canvas& canvas, float left, float plotWidth, float top, float height,
+                  bool freeTime = false) const {
         const float line = detail::hairlinePx(this->context_.scale);
-        const int quarters = static_cast<int>(detail::kMoveWindowQuarters);
-        for (int q = 1; q < quarters; ++q) {
-            const float x = detail::snapPx(left + plotWidth * static_cast<float>(q) / static_cast<float>(quarters));
-            canvas.setColor(colour::withAlpha(colour::text, q % detail::kMoveQuartersPerBar == 0 ? 0.10f : 0.04f));
+        const int divs = freeTime ? 4 : static_cast<int>(detail::kMoveWindowQuarters);
+        for (int q = 1; q < divs; ++q) {
+            const float x = detail::snapPx(left + plotWidth * static_cast<float>(q) / static_cast<float>(divs));
+            const float alpha =
+                freeTime ? (q % 2 == 0 ? 0.10f : 0.04f) : (q % detail::kMoveQuartersPerBar == 0 ? 0.10f : 0.04f);
+            canvas.setColor(colour::withAlpha(colour::text, alpha));
             canvas.fill(x, top, line, height);
         }
         canvas.setColor(colour::track);
@@ -721,6 +798,8 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
     int hovered_ = -1;
     double drawnPpq_ = -1.0;
     double drawnNotePpq_ = -1.0;
+    double drawnFreeSec_ = -1.0;
+    double drawnNoteSec_ = -1.0;
     float drawnEnv_ = -1.0f;
     float drawnEnvTail_ = -1.0f;
     State shown_{};

@@ -28,6 +28,8 @@ class Analysis {
         float gainReductionDb = 0.0f;
         double ppq = 0.0;
         double notePpq = 0.0;
+        double freeSec = 0.0;
+        double noteSec = 0.0;
         std::array<float, kLaneCount> lanePhase{};
         std::array<float, kLaneCount> laneValue{};
         Engine::EffectiveState effective{};
@@ -55,6 +57,8 @@ class Analysis {
     std::atomic<float> gainReductionDb_{0.0f};
     std::atomic<double> ppq_{0.0};
     std::atomic<double> notePpq_{0.0};
+    std::atomic<double> freeSec_{0.0};
+    std::atomic<double> noteSec_{0.0};
     std::array<std::atomic<float>, kLaneCount> lanePhase_{};
     std::array<std::atomic<float>, kLaneCount> laneValue_{};
     std::atomic<float> effCoupling_{0.72f};

@@ -20,12 +20,11 @@ On Ubuntu, the editor uses Vulkan through the desktop graphics driver. The studi
 ## What it does
 
 - **Master sine** sets the pitch, phase-modulates both reese voices and becomes the sub.
-- **Reese A and B** are sines with detune, ratio, phase offset and a tempo-synced
-  feedback loop into their phase.
-- **Tract** morphs a five-formant filter between two vowels.
-- **Fold** is an anti-aliased wavefolder with drive and asymmetry.
+- **Reese A and B** are Nyquist-guarded analog phase-warped voices with detune, ratio, phase offset and a tempo-synced feedback loop into their phase.
+- **Tract** morphs a five-formant filter between two vowels (switchable Pre or Post fold).
+- **Fold & 4× ADAA1 Growl Stage** pairs an oversampled ADAA2 wavefolder with a 4× HIIR ADAA1 growl clipper for clean, alias-free rolling harmonics.
 - **Mid/side** keeps everything below the crossover mono.
-- **Movement & MIDI expression** pairs four tempo-locked curve lanes with smooth `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch-bend modulation, visualized with live modulation ghost arcs on macro knobs and bars.
+- **Movement & MIDI expression** pairs four Bézier curve lanes (`Sync`, `Retrig`, `1-Shot`, plus BPM-independent `Free` and note-retriggered `Free R` Hz LFOs with phase-locked `Follow` + `÷4..×4` ratios) with smooth `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch-bend modulation, visualized with live modulation ghost arcs on macro knobs and bars.
 - **Resample & A/B workflow** renders four bars offline at 16× and hands you the WAV to drag into your session, alongside 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare.
 
 ## Install and release

@@ -57,11 +57,14 @@ const Visuals& FakeModel::visuals() {
 
     visuals_.ppq = time_ * 174.0 / 60.0;
     visuals_.notePpq = visuals_.ppq;
+    visuals_.freeSec = time_;
+    visuals_.noteSec = time_;
     for (int lane = 0; lane < kLaneCount; ++lane) {
         const auto index = static_cast<std::size_t>(lane);
-        visuals_.lanePhase[index] = static_cast<float>(lanePhaseFor(params_, lane, visuals_.ppq, visuals_.notePpq));
-        visuals_.laneValue[index] =
-            static_cast<float>(laneSend(params_, curves_, lane, visuals_.ppq, visuals_.notePpq));
+        visuals_.lanePhase[index] = static_cast<float>(
+            lanePhaseFor(params_, lane, visuals_.ppq, visuals_.notePpq, visuals_.freeSec, visuals_.noteSec));
+        visuals_.laneValue[index] = static_cast<float>(
+            laneSend(params_, curves_, lane, visuals_.ppq, visuals_.notePpq, visuals_.freeSec, visuals_.noteSec));
     }
 
     visuals_.hz = 43.65f;
