@@ -1,13 +1,7 @@
 add_library(pf_engine STATIC
     include/pf/engine.h
-    src/control.h
-    src/crossover.h
-    src/decimator.h
-    src/denormals.h
     src/fold.h
-    src/limiter.h
     src/pole_zero.h
-    src/svf.h
     src/engine.cpp)
 
 target_include_directories(pf_engine

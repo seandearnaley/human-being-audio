@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "tg/params.h"
 
+#include <hba/core/param_math.h>
+
 #include <cstdio>
 #include <sstream>
 
@@ -119,29 +121,17 @@ const ParamSpec* findParam(std::string_view key) {
 }
 
 float clampValue(const ParamSpec& spec, float real) noexcept HBA_NONBLOCKING {
-    if (!std::isfinite(real))
-        return spec.def;
-    const float clamped = std::clamp(real, spec.low, spec.high);
-    if (spec.kind == ParamKind::continuous)
-        return clamped;
-    return std::round(clamped);
+    return hba::core::clampParam(real, spec.low, spec.high, spec.def, spec.kind == ParamKind::continuous);
 }
 
 float toNormalised(const ParamSpec& spec, float real) noexcept HBA_NONBLOCKING {
-    const float span = spec.high - spec.low;
-    if (span <= 0.0f)
-        return 0.0f;
-    const float lin = std::clamp((real - spec.low) / span, 0.0f, 1.0f);
-    if (spec.kind != ParamKind::continuous || spec.skew == 1.0f)
-        return lin;
-    return std::pow(lin, spec.skew);
+    return hba::core::toNormalisedJuceSkew(real, spec.low, spec.high, spec.def, spec.skew,
+                                           spec.kind == ParamKind::continuous);
 }
 
 float fromNormalised(const ParamSpec& spec, float norm) noexcept HBA_NONBLOCKING {
-    const float clamped = std::clamp(norm, 0.0f, 1.0f);
-    const float lin =
-        (spec.kind == ParamKind::continuous && spec.skew != 1.0f) ? std::pow(clamped, 1.0f / spec.skew) : clamped;
-    return clampValue(spec, spec.low + lin * (spec.high - spec.low));
+    return hba::core::fromNormalisedJuceSkew(norm, spec.low, spec.high, spec.def, spec.skew,
+                                             spec.kind == ParamKind::continuous);
 }
 
 std::string formatValue(const ParamSpec& spec, float real) {

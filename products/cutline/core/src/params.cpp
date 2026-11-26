@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/params.h"
 
+#include <hba/core/param_math.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -16,42 +18,24 @@ std::optional<ParamId> findParam(std::string_view key) {
 }
 
 float clampToRange(const ParamSpec& spec, float real) {
-    if (!std::isfinite(real))
-        return spec.def;
-    if (spec.kind == ParamKind::toggle)
+    if (spec.kind == ParamKind::toggle && std::isfinite(real))
         return real >= 0.5f ? 1.0f : 0.0f;
-    if (spec.kind == ParamKind::choice)
-        return std::clamp(std::round(real), spec.min, spec.max);
-    if (spec.unit == Unit::integer)
-        return std::clamp(std::round(real), spec.min, spec.max);
-    return std::clamp(real, spec.min, spec.max);
+    const bool isCont = spec.kind == ParamKind::continuous && spec.unit != Unit::integer;
+    return hba::core::clampParam(real, spec.min, spec.max, spec.def, isCont);
 }
 
 float toNormalised(const ParamSpec& spec, float real) {
     const float clamped = clampToRange(spec, real);
-    if (spec.max <= spec.min)
-        return 0.0f;
-    if (spec.kind != ParamKind::continuous)
-        return (clamped - spec.min) / (spec.max - spec.min);
-    if (spec.skew == 0.0f)
-        return std::log(clamped / spec.min) / std::log(spec.max / spec.min);
-    const float linear = (clamped - spec.min) / (spec.max - spec.min);
-    return spec.skew == 1.0f ? linear : std::pow(linear, 1.0f / spec.skew);
+    return hba::core::toNormalisedLogSkew(clamped, spec.min, spec.max, spec.def, spec.skew,
+                                          spec.kind == ParamKind::continuous);
 }
 
 float fromNormalised(const ParamSpec& spec, float normalised) {
-    const float n = std::clamp(normalised, 0.0f, 1.0f);
+    const float n = std::clamp(std::isfinite(normalised) ? normalised : 0.0f, 0.0f, 1.0f);
     if (spec.kind == ParamKind::toggle)
         return n >= 0.5f ? 1.0f : 0.0f;
-    if (spec.kind == ParamKind::choice)
-        return std::clamp(std::round(spec.min + (spec.max - spec.min) * n), spec.min, spec.max);
-    float raw = 0.0f;
-    if (spec.skew == 0.0f)
-        raw = spec.min * std::pow(spec.max / spec.min, n);
-    else if (spec.skew == 1.0f)
-        raw = spec.min + (spec.max - spec.min) * n;
-    else
-        raw = spec.min + (spec.max - spec.min) * std::pow(n, spec.skew);
+    const bool isCont = spec.kind == ParamKind::continuous;
+    const float raw = hba::core::fromNormalisedLogSkew(n, spec.min, spec.max, spec.def, spec.skew, isCont);
     return spec.unit == Unit::integer ? std::clamp(std::round(raw), spec.min, spec.max) : raw;
 }
 

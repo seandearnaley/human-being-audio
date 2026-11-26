@@ -3,7 +3,11 @@
 
 #include "StrikeBodyPresetsData.h"
 
+#include <hba/host/preset_bank.h>
+
 #include <algorithm>
+#include <array>
+#include <string_view>
 
 namespace sb {
 
@@ -11,28 +15,13 @@ namespace {
 const juce::Identifier kPresetProp{"StrikeBodyPresetName"};
 
 int categoryOrder(const std::string& cat) {
-    if (cat == "Snare")
-        return 0;
-    if (cat == "Kick")
-        return 1;
-    if (cat == "Clap & Slap")
-        return 2;
-    if (cat == "Metallic")
-        return 3;
-    if (cat == "Toms")
-        return 4;
-    if (cat == "FX & Hats")
-        return 5;
-    return 6;
+    static constexpr std::array<std::string_view, 6> kOrder{"Snare",    "Kick", "Clap & Slap",
+                                                            "Metallic", "Toms", "FX & Hats"};
+    return static_cast<int>(std::find(kOrder.begin(), kOrder.end(), cat) - kOrder.begin());
 }
 } // namespace
 
-juce::File Presets::userDirectory() {
-    return juce::File::getSpecialLocation(juce::File::userMusicDirectory)
-        .getChildFile("Human Being Audio")
-        .getChildFile("Strike Body")
-        .getChildFile("Presets");
-}
+juce::File Presets::userDirectory() { return hba::host::studioUserDirectory("Strike Body", "Presets"); }
 
 Presets::Presets(juce::AudioProcessorValueTreeState& state) : state_(state) {
     scanPresets();
@@ -43,42 +32,11 @@ Presets::Presets(juce::AudioProcessorValueTreeState& state) : state_(state) {
 Presets::~Presets() { *alive_ = false; }
 
 void Presets::scanPresets() {
-    presets_.clear();
-    struct NamedRaw {
-        std::string origName;
-        PresetData data;
-    };
-    std::vector<NamedRaw> factory;
-    for (int i = 0; i < StrikeBodyPresetsData::namedResourceListSize; ++i) {
-        int size = 0;
-        const char* raw = StrikeBodyPresetsData::getNamedResource(StrikeBodyPresetsData::namedResourceList[i], size);
-        if (raw == nullptr || size <= 0)
-            continue;
-        if (auto parsed = parsePresetJson(std::string_view(raw, static_cast<std::size_t>(size)))) {
-            std::string orig = StrikeBodyPresetsData::originalFilenames[i];
-            factory.push_back({std::move(orig), std::move(*parsed)});
-        }
-    }
-    std::sort(factory.begin(), factory.end(), [](const NamedRaw& a, const NamedRaw& b) {
-        const int ca = categoryOrder(a.data.category);
-        const int cb = categoryOrder(b.data.category);
-        return ca != cb ? ca < cb : a.origName < b.origName;
-    });
-    for (auto& item : factory)
-        presets_.push_back(std::move(item.data));
-
-    const auto dir = userDirectory();
-    if (dir.isDirectory()) {
-        const auto files = dir.findChildFiles(juce::File::findFiles, false, "*.json");
-        for (const auto& f : files) {
-            if (auto parsed = parsePresetJson(f.loadFileAsString().toStdString())) {
-                parsed->category = "User";
-                if (parsed->name.empty())
-                    parsed->name = f.getFileNameWithoutExtension().toStdString();
-                presets_.push_back(std::move(*parsed));
-            }
-        }
-    }
+    presets_ = hba::host::scanFactoryPresets<PresetData>(
+        StrikeBodyPresetsData::namedResourceList, StrikeBodyPresetsData::originalFilenames,
+        StrikeBodyPresetsData::namedResourceListSize, StrikeBodyPresetsData::getNamedResource, parsePresetJson,
+        categoryOrder, true);
+    hba::host::appendUserPresets(presets_, userDirectory(), parsePresetJson, "User", false);
 }
 
 std::vector<ui::PresetEntry> Presets::entries() const {
@@ -128,11 +86,9 @@ void Presets::load(int index) {
 }
 
 void Presets::step(int delta) {
-    if (presets_.empty())
-        return;
-    const int count = static_cast<int>(presets_.size());
-    const int next = ((currentIndex_ + delta) % count + count) % count;
-    load(next);
+    const int next = hba::host::wrappedStepIndex(currentIndex_, delta, static_cast<int>(presets_.size()));
+    if (next >= 0)
+        load(next);
 }
 
 void Presets::saveUserPresetAsync() {

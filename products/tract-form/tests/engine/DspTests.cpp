@@ -1,16 +1,19 @@
 // Unit tests for the individual DSP pieces under engine/src.
 #include "helpers.h"
 
-#include "crossover.h"
-#include "decimator.h"
 #include "feedback_delay.h"
 #include "fold.h"
 #include "tf/lanes.h"
 #include "limiter.h"
 #include "squash.h"
-#include "svf.h"
 #include "tract.h"
 #include "voice.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
+#include <hba/dsp/limiter.h>
+#include <hba/dsp/oversampling.h>
+#include <hba/dsp/svf.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -21,6 +24,7 @@
 
 using namespace tf;
 using namespace tf::dsp;
+using namespace hba::dsp;
 using analysis::Signal;
 
 namespace {

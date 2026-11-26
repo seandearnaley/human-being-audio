@@ -4,33 +4,23 @@
 #include "sb/export.h"
 #include "sb/ui/model.h"
 
-#include <juce_core/juce_core.h>
-
-#include <atomic>
+#include <hba/host/offline_export.h>
 
 namespace sb {
 
-class Bouncer final : private juce::Thread {
+class Bouncer {
   public:
     Bouncer();
-    ~Bouncer() override;
 
     static juce::File directory();
 
-    ui::BounceState state() const noexcept { return state_.load(std::memory_order_acquire); }
+    ui::BounceState state() const noexcept { return worker_.state(); }
     void start(const OneShotRequest& request, const juce::String& presetName);
-    void invalidate() noexcept;
-    juce::File file() const;
+    void invalidate() noexcept { worker_.invalidate(); }
+    juce::File file() const { return worker_.file(); }
 
   private:
-    void run() override;
-
-    mutable juce::CriticalSection lock_;
-    OneShotRequest request_{};
-    juce::File target_{};
-    std::atomic<std::uint64_t> generation_{0};
-    std::atomic<std::uint64_t> activeGen_{0};
-    std::atomic<ui::BounceState> state_{ui::BounceState::idle};
+    hba::host::OfflineWavWorker<OneShotRequest, ui::BounceState> worker_;
 };
 
 } // namespace sb

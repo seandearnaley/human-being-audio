@@ -50,12 +50,12 @@ double offHarmonic(const Rendered& out, const Params& p, int note, double fs, do
 
 // Phase (radians) of the component at `hz` in x[from, to), whole periods.
 double phaseAt(const Signal& x, double hz, double fs, std::size_t from, std::size_t to) {
-    const double w = 2.0 * dsp::kPi * hz / fs;
-    const double periods = std::floor(static_cast<double>(to - from) * w / (2.0 * dsp::kPi));
-    to = from + static_cast<std::size_t>(std::floor(periods * 2.0 * dsp::kPi / w));
+    const double w = 2.0 * hba::dsp::kPi * hz / fs;
+    const double periods = std::floor(static_cast<double>(to - from) * w / (2.0 * hba::dsp::kPi));
+    to = from + static_cast<std::size_t>(std::floor(periods * 2.0 * hba::dsp::kPi / w));
     std::complex<double> acc { 0, 0 };
     for (std::size_t n = from; n < to; ++n) acc += x[n] * std::polar(1.0, -w * static_cast<double>(n));
-    return std::arg(acc) + dsp::kPi / 2;  // sin(w n + phi) correlates to e^{j phi} / 2j
+    return std::arg(acc) + hba::dsp::kPi / 2; // sin(w n + phi) correlates to e^{j phi} / 2j
 }
 
 // Frequency of the largest Hann-windowed DFT magnitude between lo and hi Hz,
@@ -65,7 +65,7 @@ double peakHz(const Signal& x, double fs, double lo, double hi, double step) {
     const Signal w = analysis::hann(n);
     std::vector<double> mags;
     for (double hz = lo; hz <= hi; hz += step) {
-        const std::complex<double> rot = std::polar(1.0, -2.0 * dsp::kPi * hz / fs);
+        const std::complex<double> rot = std::polar(1.0, -2.0 * hba::dsp::kPi * hz / fs);
         std::complex<double> phasor { 1, 0 }, acc { 0, 0 };
         for (std::size_t i = 0; i < n; ++i) {
             acc += x[i] * w[i] * phasor;
@@ -223,7 +223,7 @@ TEST_CASE("weight's blend is exactly dry at 0 and matched over the octave above 
     // Each blend on a sine: the steady gain.
     const auto gainDb = [&](const dsp::WeightMix& m, double hz) {
         dsp::WeightFilter filter;
-        const double w = 2.0 * dsp::kPi * hz / fo;
+        const double w = 2.0 * hba::dsp::kPi * hz / fo;
         const auto n = static_cast<std::size_t>(fo);  // 1 s
         double sum = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
@@ -353,10 +353,10 @@ TEST_CASE("fit 0 puts the sub at the output in phase with the master; fit rotate
         s.params[ParamId::fit] = fit;
         const auto out = render(s, held(note), frames(1.2, fs));
         // The master in output time: sin(w (n + 1/factor - latency)) (see the latency test).
-        const double w = 2.0 * dsp::kPi * f0 / fs;
+        const double w = 2.0 * hba::dsp::kPi * f0 / fs;
         const double master = w * (1.0 / s.oversampling - out.latency);
         const double sub = phaseAt(out.left, f0, fs, from, out.left.size());
-        const double degrees = std::remainder(sub - master, 2.0 * dsp::kPi) * 180.0 / dsp::kPi;
+        const double degrees = std::remainder(sub - master, 2.0 * hba::dsp::kPi) * 180.0 / hba::dsp::kPi;
         const double expected = std::remainder(static_cast<double>(fit), 360.0);
         std::printf("[fit] note %d fit %3.0f: sub at the output %+7.2f deg re master\n", note, static_cast<double>(fit), degrees);
         CAPTURE(fit, degrees);
@@ -418,7 +418,7 @@ TEST_CASE("fit moves the short way round and does not click", "[engine][harmonic
     for (std::size_t i = static_cast<std::size_t>(0.3 * s.sampleRate); i + 1 < x.size(); ++i)
         worstStep = std::max(worstStep, std::abs(x[i + 1] - x[i]));
     // A sine of peak 0.5 at 43.65 Hz moves at most 0.5 x 2 pi f0 / fs per sample.
-    const double sineStep = 0.5 * 2.0 * dsp::kPi * noteHz(29) / s.sampleRate;
+    const double sineStep = 0.5 * 2.0 * hba::dsp::kPi * noteHz(29) / s.sampleRate;
     CHECK(worstStep <= 1.25 * sineStep);  // a 20 degree jump would be about 60 times that
 }
 

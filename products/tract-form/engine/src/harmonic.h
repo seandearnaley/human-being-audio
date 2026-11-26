@@ -11,9 +11,12 @@
 // All of it runs at control rate (coefficients) and the oversampled rate (filters).
 #pragma once
 
-#include "crossover.h"
-#include "svf.h"
+#include "tf/nonblocking.h"
 #include "tf/params.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
+#include <hba/dsp/svf.h>
 
 #include <algorithm>
 #include <array>
@@ -35,9 +38,9 @@ inline double wrapHalf(double x) noexcept TF_NONBLOCKING { return x - std::floor
 // each section lags atan2(sqrt2 W, 1 - W^2).
 inline double lr4LowpassLagCycles(double hz, double cutoff, double sampleRate) noexcept TF_NONBLOCKING {
     if (hz <= 0.0 || hz >= 0.499 * sampleRate) return 0.0;
-    const double w = std::tan(kPi * hz / sampleRate) / SvfCoefs::prewarp(cutoff, sampleRate);
-    const double section = std::atan2(1.0 / kButterworthQ * w, 1.0 - w * w);
-    return 2.0 * section / kTwoPi;
+    const double w = std::tan(hba::dsp::kPi * hz / sampleRate) / hba::dsp::SvfCoefs::prewarp(cutoff, sampleRate);
+    const double section = std::atan2(1.0 / hba::dsp::kButterworthQ * w, 1.0 - w * w);
+    return 2.0 * section / hba::dsp::kTwoPi;
 }
 
 // ---- Reach -----------------------------------------------------------------
@@ -53,9 +56,9 @@ inline constexpr double kButterworth4K2 = 0.7653668647301796;
 inline constexpr double kLoopMaxHarmonic = 8.0;
 
 struct ReachCoefs {
-    SvfCoefs first, second;
+    hba::dsp::SvfCoefs first, second;
     static ReachCoefs make(double g) noexcept TF_NONBLOCKING {
-        return { SvfCoefs::fromGK(g, kButterworth4K1), SvfCoefs::fromGK(g, kButterworth4K2) };
+        return {hba::dsp::SvfCoefs::fromGK(g, kButterworth4K1), hba::dsp::SvfCoefs::fromGK(g, kButterworth4K2)};
     }
 };
 
@@ -70,7 +73,7 @@ public:
     }
 
 private:
-    SvfState a_, b_;
+  hba::dsp::SvfState a_, b_;
 };
 
 // ---- Weight ----------------------------------------------------------------
@@ -117,14 +120,15 @@ inline WeightMix weightBlend(double slopeDbPerOct, double pivotHz, double sample
         m.two = poles - 1.0;
     }
     const double pivot = std::min(pivotHz, kMaxFilterRatio * sampleRate);
-    const double g = SvfCoefs::prewarp(std::min(kWeightCornerRatio * pivot, kMaxFilterRatio * sampleRate), sampleRate);
+    const double g =
+        hba::dsp::SvfCoefs::prewarp(std::min(kWeightCornerRatio * pivot, kMaxFilterRatio * sampleRate), sampleRate);
     m.gain = g / (1.0 + g);
     // One pole: H = 1 / (1 + jW) = (1 - jW) / (1 + W^2); two: H^2.
     double power = 0.0;
     constexpr int kPoints = 5;
     for (int i = 0; i < kPoints; ++i) {
         const double hz = std::min(pivot * std::exp2(static_cast<double>(i) / (kPoints - 1)), 0.499 * sampleRate);
-        const double wr = std::tan(kPi * hz / sampleRate) / g;
+        const double wr = std::tan(hba::dsp::kPi * hz / sampleRate) / g;
         const double d = 1.0 + wr * wr;
         const double re = m.dry + m.one / d + m.two * (1.0 - wr * wr) / (d * d);
         const double im = -m.one * wr / d - m.two * 2.0 * wr / (d * d);
@@ -174,16 +178,18 @@ public:
         auto& b = bands_[static_cast<std::size_t>(band)];
         // A target repeated from the previous control point is reached
         // exactly, so a band that fades to m = 0 really switches off.
-        const auto move = [steps](Ramp& r, double& last, double end) {
-            if (steps <= 0 || end == last) r.snap(end);
-            else r.to(end, steps);
+        const auto move = [steps](hba::dsp::Ramp& r, double& last, double end) {
+            if (steps <= 0 || end == last)
+                r.snap(end);
+            else
+                r.to(end, steps);
             last = end;
         };
         move(b.g, b.lastG, g);
         move(b.k, b.lastK, k);
         move(b.m, b.lastM, m);
         if (active(b) || band < activeCount_)
-            b.coefs = SvfCoefs::fromGK(b.g.value, b.k.value);
+            b.coefs = hba::dsp::SvfCoefs::fromGK(b.g.value, b.k.value);
     }
     void setSpecial(int activeCount, double depth, double res, double combDelaySamples,
                     int steps) noexcept TF_NONBLOCKING {
@@ -210,11 +216,13 @@ public:
             b.g.next();
             b.k.next();
             b.m.next();
-            b.coefs = SvfCoefs::fromGK(b.g.value, b.k.value);
+            b.coefs = hba::dsp::SvfCoefs::fromGK(b.g.value, b.k.value);
         }
     }
     bool active(int band) const noexcept TF_NONBLOCKING { return active(bands_[static_cast<std::size_t>(band)]); }
-    const SvfCoefs& coefs(int band) const noexcept TF_NONBLOCKING { return bands_[static_cast<std::size_t>(band)].coefs; }
+    const hba::dsp::SvfCoefs& coefs(int band) const noexcept TF_NONBLOCKING {
+        return bands_[static_cast<std::size_t>(band)].coefs;
+    }
     double mix(int band) const noexcept TF_NONBLOCKING { return bands_[static_cast<std::size_t>(band)].m.value; }
     int activeCount() const noexcept TF_NONBLOCKING { return activeCount_; }
     double depth() const noexcept TF_NONBLOCKING { return depth_.value; }
@@ -228,17 +236,18 @@ public:
 
 private:
     struct Band {
-        Ramp g, k, m;
+        hba::dsp::Ramp g, k, m;
         double lastG = -1.0, lastK = -1.0, lastM = -1.0;
-        SvfCoefs coefs;
+        hba::dsp::SvfCoefs coefs;
     };
     static bool active(const Band& b) noexcept TF_NONBLOCKING { return b.m.value != 0.0 || b.m.increment != 0.0; }
     static void refresh(Band& b) noexcept TF_NONBLOCKING {
-        if (active(b)) b.coefs = SvfCoefs::fromGK(b.g.value, b.k.value);
+        if (active(b))
+            b.coefs = hba::dsp::SvfCoefs::fromGK(b.g.value, b.k.value);
     }
     std::array<Band, kSculptMaxBands> bands_ {};
     int activeCount_ = 3;
-    Ramp depth_{}, res_{}, combDelay_{};
+    hba::dsp::Ramp depth_{}, res_{}, combDelay_{};
 };
 
 class SculptChannel {
@@ -248,7 +257,7 @@ public:
       const int cap = std::max(64, static_cast<int>(std::ceil(osSampleRate / 25.0)) + 16);
       combBuf_.assign(static_cast<std::size_t>(cap), 0.0f);
       combSize_ = cap;
-      dampCoef_ = onePoleCoef(0.00018, 1.0 / std::max(osSampleRate, 1000.0));
+      dampCoef_ = hba::dsp::onePoleCoef(0.00018, 1.0 / std::max(osSampleRate, 1000.0));
       reset();
   }
 
@@ -339,15 +348,15 @@ public:
     }
 
 private:
-    std::array<SvfState, kSculptMaxBands> state_ {};
-    std::array<SvfState, kSculptMaxBands> phaserState_{};
-    double phaserFb_ = 0.0;
-    std::vector<float> combBuf_;
-    int combSize_ = 0;
-    int combPos_ = 0;
-    int combWritten_ = 0;
-    double combDamp_ = 0.0;
-    double dampCoef_ = 0.3;
+  std::array<hba::dsp::SvfState, kSculptMaxBands> state_{};
+  std::array<hba::dsp::SvfState, kSculptMaxBands> phaserState_{};
+  double phaserFb_ = 0.0;
+  std::vector<float> combBuf_;
+  int combSize_ = 0;
+  int combPos_ = 0;
+  int combWritten_ = 0;
+  double combDamp_ = 0.0;
+  double dampCoef_ = 0.3;
 };
 
 }

@@ -3,10 +3,7 @@
 
 #include "tg/params.h"
 
-#include <juce_audio_processors/juce_audio_processors.h>
-
-#include <array>
-#include <atomic>
+#include <hba/host/parameters.h>
 
 namespace tg {
 
@@ -18,7 +15,7 @@ class ParameterValues {
     Params snapshot() const noexcept;
 
   private:
-    std::array<std::atomic<float>*, kParamCount> raw_{};
+    hba::host::ParameterSnapshotter<Params, std::array<ParamSpec, kParamCount>> snap_;
 };
 
 } // namespace tg

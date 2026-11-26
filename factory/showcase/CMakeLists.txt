@@ -40,6 +40,7 @@ target_link_libraries(studio-showcase PRIVATE
     cl_engine
     tg_engine
     sb_engine
+    hba_core
     hba_dsp
     nlohmann_json::nlohmann_json
 )

@@ -2,10 +2,13 @@
 // "Verification" section, plus note handling, latency and taps.
 #include "helpers.h"
 
-#include "crossover.h"
 #include "harmonic.h"
 #include "limiter.h"
 #include "squash.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
+#include <hba/dsp/limiter.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -454,15 +457,15 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     s.params[ParamId::fit] = static_cast<float>(360.0 * (1.0 - lag));
     const auto out = render(s, held(note), frames(0.6, fs));
 
-    const auto cSub = dsp::butterworth(splitHz(s.params, note), fs);
-    const auto cSubClip = dsp::Bw4Coefs::make(1.10 * splitHz(s.params, note), fs);
-    const auto cX = dsp::butterworth(s.params[ParamId::xover], fs);
-    const auto cLo = dsp::butterworth(dsp::kSquashLowHz, fs);
-    const auto cHi = dsp::butterworth(dsp::kSquashHighHz, fs);
-    dsp::Lr4Highpass hp;
-    std::array<dsp::Bw4Highpass, 2> postClipHp{}; // two BW4 HPs (LR8) after the clipper passes
-    dsp::ThreeBandSplit split;
-    dsp::Lr4Allpass ap, apPost;
+    const auto cSub = hba::dsp::butterworth(splitHz(s.params, note), fs);
+    const auto cSubClip = hba::dsp::Bw4Coefs::make(1.10 * splitHz(s.params, note), fs);
+    const auto cX = hba::dsp::butterworth(s.params[ParamId::xover], fs);
+    const auto cLo = hba::dsp::butterworth(dsp::kSquashLowHz, fs);
+    const auto cHi = hba::dsp::butterworth(dsp::kSquashHighHz, fs);
+    hba::dsp::Lr4Highpass hp;
+    std::array<hba::dsp::Bw4Highpass, 2> postClipHp{}; // two BW4 HPs (LR8) after the clipper passes
+    hba::dsp::ThreeBandSplit split;
+    hba::dsp::Lr4Allpass ap, apPost;
     Signal expected(out.master.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
         double lo, mi, hi;
@@ -480,9 +483,9 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     // sine e[n], cos(t) e[n] + sin(t) (e[n+1] - e[n-1]) / (2 sin w) is e advanced by t.
     const double fo = fs * factor;
     const double fc = std::min(64.0 * f0, dsp::kMaxFilterRatio * fo);
-    const double wr = std::tan(dsp::kPi * f0 / fo) / std::tan(dsp::kPi * fc / fo);
+    const double wr = std::tan(hba::dsp::kPi * f0 / fo) / std::tan(hba::dsp::kPi * fc / fo);
     const double theta = -std::atan2(dsp::kButterworth4K1 * wr, 1.0 - wr * wr) - std::atan2(dsp::kButterworth4K2 * wr, 1.0 - wr * wr);
-    const double w = 2.0 * dsp::kPi * f0 / fs;
+    const double w = 2.0 * hba::dsp::kPi * f0 / fs;
     Signal rotated(expected.size(), 0.0);
     for (std::size_t i = 1; i + 1 < expected.size(); ++i)
         rotated[i] = std::cos(theta) * expected[i] + std::sin(theta) * (expected[i + 1] - expected[i - 1]) / (2.0 * std::sin(w));
@@ -534,11 +537,11 @@ TEST_CASE("the master tap is latency-aligned with the output", "[engine]") {
     s.params[ParamId::limit] = 0.0f;
     const double fs = s.sampleRate;
     const auto out = render(s, held(33), frames(0.5, fs));
-    const auto c = dsp::butterworth(splitHz(s.params, 33), fs);
-    dsp::Lr4Lowpass lp;
+    const auto c = hba::dsp::butterworth(splitHz(s.params, 33), fs);
+    hba::dsp::Lr4Lowpass lp;
     double worst = 0.0;
     for (std::size_t i = 0; i < out.master.size(); ++i) {
-        const double expected = dsp::softClip(lp.process(c, out.master[i]), std::pow(10.0, -0.3 / 20.0), 1.0);
+        const double expected = hba::dsp::softClip(lp.process(c, out.master[i]), std::pow(10.0, -0.3 / 20.0), 1.0);
         if (i > static_cast<std::size_t>(out.latency) + 200) worst = std::max(worst, std::abs(expected - out.left[i]));
     }
     CHECK(worst < 1e-5);
@@ -630,27 +633,27 @@ TEST_CASE("latency equals latencySamples()", "[engine]") {
     // sin(w (n + 1/factor)). At fit 0 the sub at the output is in phase with
     // the master (Fit runs the sub ahead by its low-pass's lag), so the output
     // shows sin(w (n + 1/factor - latency)).
-    const double w = 2.0 * dsp::kPi * noteHz(note) / fs;
+    const double w = 2.0 * hba::dsp::kPi * noteHz(note) / fs;
     const auto from = static_cast<std::size_t>(0.2 * fs);
     const double available = static_cast<double>(out.left.size() - from);
-    const double periods = std::floor(available * w / (2 * dsp::kPi));
-    const auto to = from + static_cast<std::size_t>(std::floor(periods * 2 * dsp::kPi / w));
+    const double periods = std::floor(available * w / (2 * hba::dsp::kPi));
+    const auto to = from + static_cast<std::size_t>(std::floor(periods * 2 * hba::dsp::kPi / w));
     // sin(w n + phi) correlates to (1/2j) e^{j phi}: phi = arg(acc) + pi/2.
     const auto phase = [&](const Signal& x) {
         std::complex<double> acc { 0, 0 };
         for (std::size_t n = from; n < to; ++n) acc += x[n] * std::polar(1.0, -w * static_cast<double>(n));
-        return std::arg(acc) + dsp::kPi / 2;
+        return std::arg(acc) + hba::dsp::kPi / 2;
     };
     const double phi = phase(out.left);
     double measured = (w / factor - phi) / w;
-    const double period = 2 * dsp::kPi / w;
+    const double period = 2 * hba::dsp::kPi / w;
     while (measured < 0) measured += period;
     while (measured >= period) measured -= period;
     std::printf("[latency] %.1f kHz %2dx: reported %d, measured %.2f samples\n", fs / 1000, factor, out.latency, measured);
     CHECK(std::abs(measured - out.latency) <= 0.5);
 
     // The master tap is the sub before its low-pass: ahead of the output by the lag.
-    const double lead = std::remainder(phase(out.master) - phi, 2 * dsp::kPi) / (2 * dsp::kPi);
+    const double lead = std::remainder(phase(out.master) - phi, 2 * hba::dsp::kPi) / (2 * hba::dsp::kPi);
     CHECK(lead == Catch::Approx(dsp::lr4LowpassLagCycles(noteHz(note), splitHz(s.params, note), fs)).margin(0.5 / 360));
 }
 
@@ -1001,7 +1004,7 @@ TEST_CASE("Phase 4: Sub Warmth adds phase-locked 2nd/3rd harmonics with zero DC"
 
     // 2nd harmonic grows substantially while fundamental stays strong.
     const auto goertzel = [&](const Signal& x, double hz) {
-        const double w = 2.0 * dsp::kPi * hz / s.sampleRate;
+        const double w = 2.0 * hba::dsp::kPi * hz / s.sampleRate;
         double re = 0.0, im = 0.0;
         const std::size_t n = x.size() - from;
         for (std::size_t i = 0; i < n; ++i) {

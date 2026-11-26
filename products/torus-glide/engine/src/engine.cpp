@@ -3,6 +3,8 @@
 
 #include <hba/dsp/denormals.h>
 #include <hba/dsp/gain.h>
+#include <hba/dsp/oscillator.h>
+#include <hba/dsp/pitch.h>
 
 #include <algorithm>
 #include <cmath>
@@ -10,21 +12,8 @@
 namespace tg {
 
 namespace {
-inline double midiToHz(double midi) noexcept HBA_NONBLOCKING { return 440.0 * std::pow(2.0, (midi - 69.0) / 12.0); }
-
-inline double polyBlep(double t, double dt) noexcept HBA_NONBLOCKING {
-    if (dt <= 0.0)
-        return 0.0;
-    if (t < dt) {
-        const double x = t / dt;
-        return x + x - x * x - 1.0;
-    }
-    if (t > 1.0 - dt) {
-        const double x = (t - 1.0) / dt;
-        return x * x + x + x + 1.0;
-    }
-    return 0.0;
-}
+using hba::dsp::midiToHz;
+using hba::dsp::polyBlep;
 
 // Strict zero-boundary Hann^2 log-frequency bell shaped by center & width.
 inline double spiralBellWeight(double u, double octSpan, double centerOct, double widthNorm) noexcept HBA_NONBLOCKING {

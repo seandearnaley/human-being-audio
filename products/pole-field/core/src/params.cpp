@@ -1,5 +1,7 @@
 #include "pf/params.h"
 
+#include <hba/core/param_math.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -13,27 +15,17 @@ std::optional<ParamId> findParam(std::string_view key) {
 }
 
 float clampToRange(const ParamSpec& spec, float real) {
-    if (!std::isfinite(real))
-        return spec.def;
-    const float clamped = std::clamp(real, spec.min, spec.max);
-    return spec.kind == ParamKind::continuous ? clamped : std::round(clamped);
+    return hba::core::clampParam(real, spec.min, spec.max, spec.def, spec.kind == ParamKind::continuous);
 }
 
 float toNormalised(const ParamSpec& spec, float real) {
-    const float value = clampToRange(spec, real);
-    if (spec.skew == 0.0f) return std::log(value / spec.min) / std::log(spec.max / spec.min);
-    const float linear = (value - spec.min) / (spec.max - spec.min);
-    return spec.skew == 1.0f ? linear : std::pow(linear, 1.0f / spec.skew);
+    return hba::core::toNormalisedLogSkew(real, spec.min, spec.max, spec.def, spec.skew,
+                                          spec.kind == ParamKind::continuous);
 }
 
 float fromNormalised(const ParamSpec& spec, float normalised) {
-    const float n = std::clamp(normalised, 0.0f, 1.0f);
-    float real;
-    if (spec.skew == 0.0f)
-        real = spec.min * std::pow(spec.max / spec.min, n);
-    else
-        real = spec.min + (spec.max - spec.min) * (spec.skew == 1.0f ? n : std::pow(n, spec.skew));
-    return clampToRange(spec, real);
+    return hba::core::fromNormalisedLogSkew(normalised, spec.min, spec.max, spec.def, spec.skew,
+                                            spec.kind == ParamKind::continuous);
 }
 
 namespace {

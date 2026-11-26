@@ -1,9 +1,5 @@
 #include "tf/engine.h"
 
-#include "control.h"
-#include "crossover.h"
-#include "decimator.h"
-#include "denormals.h"
 #include "feedback_delay.h"
 #include "fold.h"
 #include "harmonic.h"
@@ -16,6 +12,13 @@
 #include "tf/lanes.h"
 #include "tf/voice_pitch.h"
 
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
+#include <hba/dsp/denormals.h>
+#include <hba/dsp/limiter.h>
+#include <hba/dsp/oversampling.h>
+#include <hba/dsp/svf.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -23,6 +26,7 @@
 namespace tf {
 
 using namespace dsp;
+using namespace hba::dsp;
 
 namespace {
 

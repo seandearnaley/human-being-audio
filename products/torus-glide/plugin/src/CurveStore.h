@@ -3,8 +3,7 @@
 
 #include "tg/params.h"
 
-#include <hba/host/state_mailbox.h>
-#include <juce_audio_processors/juce_audio_processors.h>
+#include <hba/host/curve_store.h>
 
 namespace tg {
 
@@ -19,13 +18,10 @@ class CurveStore {
     void reloadFromState();
 
     // Audio thread non-blocking pull
-    bool pull(LaneCurves& destination) noexcept { return mailbox_.pull(destination); }
+    bool pull(LaneCurves& destination) noexcept { return store_.pull(destination); }
 
   private:
-    void writeToTree(const LaneCurves& curves);
-
-    juce::AudioProcessorValueTreeState& state_;
-    hba::host::StateMailbox<LaneCurves> mailbox_{defaultLaneCurves()};
+    hba::host::CurveStore<kLaneCount> store_;
 };
 
 } // namespace tg

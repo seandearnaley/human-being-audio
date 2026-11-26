@@ -1,5 +1,7 @@
 #include "analysis.h"
 
+#include <hba/core/wav.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -417,47 +419,8 @@ std::string toJson(const Metrics& m) {
     return buf;
 }
 
-namespace {
-void put32(std::ofstream& f, std::uint32_t v) {
-    const char b[4] = { static_cast<char>(v & 0xff), static_cast<char>((v >> 8) & 0xff), static_cast<char>((v >> 16) & 0xff),
-                        static_cast<char>((v >> 24) & 0xff) };
-    f.write(b, 4);
-}
-void put16(std::ofstream& f, std::uint16_t v) {
-    const char b[2] = { static_cast<char>(v & 0xff), static_cast<char>((v >> 8) & 0xff) };
-    f.write(b, 2);
-}
-}
-
 bool writeWavFloat(const std::string& path, const std::vector<float>& interleaved, int channels, int sampleRate) {
-    std::ofstream f(path, std::ios::binary);
-    if (!f) return false;
-    const auto dataBytes = static_cast<std::uint32_t>(interleaved.size() * sizeof(float));
-    const auto frames = static_cast<std::uint32_t>(interleaved.size() / static_cast<std::size_t>(channels));
-    f.write("RIFF", 4);
-    put32(f, 4 + (8 + 18) + (8 + 4) + (8 + dataBytes));
-    f.write("WAVE", 4);
-    f.write("fmt ", 4);
-    put32(f, 18);
-    put16(f, 3);  // IEEE float
-    put16(f, static_cast<std::uint16_t>(channels));
-    put32(f, static_cast<std::uint32_t>(sampleRate));
-    put32(f, static_cast<std::uint32_t>(sampleRate * channels * 4));
-    put16(f, static_cast<std::uint16_t>(channels * 4));
-    put16(f, 32);
-    put16(f, 0);  // cbSize
-    f.write("fact", 4);
-    put32(f, 4);
-    put32(f, frames);
-    f.write("data", 4);
-    put32(f, dataBytes);
-    for (float v : interleaved) {
-        std::uint32_t bits;
-        static_assert(sizeof bits == sizeof v);
-        std::memcpy(&bits, &v, sizeof bits);
-        put32(f, bits);
-    }
-    return static_cast<bool>(f);
+    return hba::core::writeWavFloat(path, interleaved, channels, sampleRate);
 }
 
 }

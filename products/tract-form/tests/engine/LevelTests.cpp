@@ -3,10 +3,10 @@
 // ceiling stage, and the split is subSplit x f0.
 #include "helpers.h"
 
-#include "control.h"
-
 #include "tf/render.h"
 #include "tf/voice_pitch.h"
+
+#include <hba/dsp/control.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>

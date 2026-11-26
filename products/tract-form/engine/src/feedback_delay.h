@@ -4,7 +4,7 @@
 // going idle stays cheap after short notes.
 #pragma once
 
-#include "control.h"
+#include "tf/nonblocking.h"
 
 #include <algorithm>
 #include <cmath>

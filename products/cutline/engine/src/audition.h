@@ -11,6 +11,9 @@
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/control.h>
 #include <hba/dsp/gain.h>
+#include <hba/dsp/oscillator.h>
+#include <hba/dsp/pitch.h>
+#include <hba/dsp/random.h>
 #include <hba/dsp/svf.h>
 
 #include <algorithm>
@@ -239,7 +242,7 @@ class AuditionSynth {
 
             const double bend = v.bendSmooth.step(channelBend_[chIdx], bendCoef_);
             const double subPunchSt = (tone == AuditionTone::sub) ? (9.0 * v.punchEnv) : 0.0;
-            const double freq = 440.0 * std::exp2((static_cast<double>(v.note) + bend + subPunchSt - 69.0) / 12.0);
+            const double freq = hba::dsp::midiToHz(static_cast<double>(v.note) + bend + subPunchSt);
             const double inc = std::clamp(freq / fs_, 1.0e-5, 0.45);
             const double detUp = std::clamp(inc * 1.0064, 1.0e-5, 0.45);   // +11 cents
             const double detDown = std::clamp(inc * 0.9936, 1.0e-5, 0.45); // -11 cents
@@ -273,8 +276,8 @@ class AuditionSynth {
                 voiceR = s;
             } else if (tone == AuditionTone::pluck) {
                 // PolyBLEP saw + pulse blend through fast exponential pluck SVF.
-                const double saw = polyBlepSaw(v.phase, inc);
-                const double sq = polyBlepSquare(v.phase, inc);
+                const double saw = hba::dsp::polyBlepSaw(v.phase, inc);
+                const double sq = hba::dsp::polyBlepSquare(v.phase, inc);
                 const double osc = 0.72 * saw + 0.28 * sq;
                 const double plCutoff =
                     std::clamp(cutoff * (0.38 + (1.4 + 0.9 * v.vel) * v.pluckEnv), 120.0, 0.42 * fs_);
@@ -286,9 +289,9 @@ class AuditionSynth {
                 voiceR = body * amp * (1.0 + pan * 0.45);
             } else {
                 // Reese: 3-osc unison PolyBLEP saws (L/C/R detuned +-11 ct) + ADAA1 Tanh + stereo SVF + mono sub.
-                const double sC = polyBlepSaw(v.phase, inc);
-                const double sL = polyBlepSaw(v.detPhase, detUp);
-                const double sR = polyBlepSaw(v.detPhase2, detDown);
+                const double sC = hba::dsp::polyBlepSaw(v.phase, inc);
+                const double sL = hba::dsp::polyBlepSaw(v.detPhase, detUp);
+                const double sR = hba::dsp::polyBlepSaw(v.detPhase2, detDown);
                 const double midOsc = 0.42 * sC + 0.29 * (sL + sR);
                 const double sideOsc = 0.55 * (sL - sR);
                 const double sub = std::sin(6.283185307179586 * v.subPhase);
@@ -309,32 +312,6 @@ class AuditionSynth {
     }
 
   private:
-    static double polyBlep(double t, double dt) noexcept CL_NONBLOCKING {
-        if (t < dt) {
-            const double x = t / dt;
-            return x + x - x * x - 1.0;
-        }
-        if (t > 1.0 - dt) {
-            const double x = (t - 1.0) / dt;
-            return x * x + x + x + 1.0;
-        }
-        return 0.0;
-    }
-
-    static double polyBlepSaw(double phase, double inc) noexcept CL_NONBLOCKING {
-        return (2.0 * phase - 1.0) - polyBlep(phase, inc);
-    }
-
-    static double polyBlepSquare(double phase, double inc) noexcept CL_NONBLOCKING {
-        double sq = phase < 0.5 ? 1.0 : -1.0;
-        sq += polyBlep(phase, inc);
-        double p2 = phase + 0.5;
-        if (p2 >= 1.0)
-            p2 -= 1.0;
-        sq -= polyBlep(p2, inc);
-        return sq;
-    }
-
     static double slideToCutoff(double norm01) noexcept CL_NONBLOCKING {
         return 170.0 * std::pow(26.0, std::clamp(norm01, 0.0, 1.0));
     }
@@ -410,8 +387,7 @@ class AuditionSynth {
     };
 
     void renderKitSample(double& outL, double& outR) noexcept CL_NONBLOCKING {
-        noiseState_ = noiseState_ * 1664525U + 1013904223U;
-        const double noise = (static_cast<double>(noiseState_) / 2147483648.0) - 1.0;
+        const double noise = noise_.nextBipolar();
 
         // Shared inharmonic TR-808 metallic hat ring (4 square oscillators)
         constexpr std::array<double, 4> kHatHz{296.0, 415.0, 543.0, 800.0};
@@ -576,7 +552,7 @@ class AuditionSynth {
     DrumKit kit_{};
     bool drumMode_ = false;
     std::uint64_t ageCounter_ = 0;
-    std::uint32_t noiseState_ = 0x12345678U;
+    hba::dsp::Lcg32 noise_{0x12345678u};
     hba::dsp::SvfCoefs snareHpCoefs_{};
     hba::dsp::SvfCoefs ghostBpCoefs_{};
     hba::dsp::SvfCoefs closedHatCoefs_{};

@@ -3,43 +3,15 @@
 
 #include "PluginModel.h"
 #include "PluginProcessor.h"
-#include "StudioAbout.h"
 #include "sb/ui/editor.h"
 
-#include <hba/host/visage_surface.h>
-#include <juce_audio_processors/juce_audio_processors.h>
-
-#include <memory>
+#include <hba/host/plugin_editor.h>
 
 namespace sb {
 
-class PluginEditor final : public juce::AudioProcessorEditor {
+class PluginEditor final : public hba::host::StudioPluginEditor<PluginProcessor, PluginModel, ui::Editor> {
   public:
     explicit PluginEditor(PluginProcessor& processor);
-    ~PluginEditor() override;
-
-    void paint(juce::Graphics& g) override;
-    void resized() override;
-    void parentHierarchyChanged() override;
-
-  private:
-    struct AboutPage final : hba::StudioAbout {
-        AboutPage();
-        void paint(juce::Graphics& g) override;
-        std::unique_ptr<juce::Drawable> wordmark, monogram;
-    };
-
-    void attachWhenOnScreen();
-    void detachView();
-    void showAbout();
-
-    PluginModel model_;
-    ui::Editor view_;
-    hba::host::VisageSurface nativeHost_;
-    AboutPage about_;
-    void* attachedTo_ = nullptr;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)
 };
 
 } // namespace sb

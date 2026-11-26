@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "sb/params.h"
 
+#include <hba/core/note_name.h>
+#include <hba/core/param_math.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -123,41 +126,22 @@ const ParamSpec* findParam(std::string_view key) {
 }
 
 float clampValue(const ParamSpec& spec, float real) noexcept HBA_NONBLOCKING {
-    if (!std::isfinite(real))
-        return spec.def;
-    if (spec.kind == ParamKind::toggle)
+    if (spec.kind == ParamKind::toggle && std::isfinite(real))
         return real >= 0.5f ? 1.0f : 0.0f;
-    if (spec.kind == ParamKind::choice)
-        return std::clamp(std::round(real), spec.low, spec.high);
-    return std::clamp(real, spec.low, spec.high);
+    return hba::core::clampParam(real, spec.low, spec.high, spec.def, spec.kind == ParamKind::continuous);
 }
 
 float toNormalised(const ParamSpec& spec, float real) noexcept HBA_NONBLOCKING {
-    const float c = clampValue(spec, real);
-    const float span = spec.high - spec.low;
-    if (span <= 0.0f)
-        return 0.0f;
-    const float lin = std::clamp((c - spec.low) / span, 0.0f, 1.0f);
-    if (spec.kind == ParamKind::continuous && spec.skew != 1.0f)
-        return std::pow(lin, spec.skew);
-    return lin;
+    return hba::core::toNormalisedJuceSkew(real, spec.low, spec.high, spec.def, spec.skew,
+                                           spec.kind == ParamKind::continuous);
 }
 
 float fromNormalised(const ParamSpec& spec, float norm) noexcept HBA_NONBLOCKING {
-    const float n = std::clamp(std::isfinite(norm) ? norm : 0.0f, 0.0f, 1.0f);
-    const float lin = (spec.kind == ParamKind::continuous && spec.skew != 1.0f) ? std::pow(n, 1.0f / spec.skew) : n;
-    return clampValue(spec, spec.low + lin * (spec.high - spec.low));
+    return hba::core::fromNormalisedJuceSkew(norm, spec.low, spec.high, spec.def, spec.skew,
+                                             spec.kind == ParamKind::continuous);
 }
 
-std::string hzToNoteTag(float hz) {
-    static constexpr std::array<const char*, 12> kNotes{"C",  "C#", "D",  "D#", "E",  "F",
-                                                        "F#", "G",  "G#", "A",  "A#", "B"};
-    const double safeHz = std::max(16.0, static_cast<double>(hz));
-    const int midi = static_cast<int>(std::lround(69.0 + 12.0 * std::log2(safeHz / 440.0)));
-    const int pc = ((midi % 12) + 12) % 12;
-    const int oct = (midi / 12) - 1;
-    return std::string(kNotes[static_cast<std::size_t>(pc)]) + std::to_string(oct);
-}
+std::string hzToNoteTag(float hz) { return hba::core::hzToNoteName(hz, false); }
 
 std::string formatValue(const ParamSpec& spec, float real) {
     const float c = clampValue(spec, real);

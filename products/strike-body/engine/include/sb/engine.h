@@ -5,6 +5,8 @@
 #include "sb/params.h"
 
 #include <hba/dsp/adaa.h>
+#include <hba/dsp/allpass.h>
+#include <hba/dsp/biquad.h>
 #include <hba/dsp/control.h>
 #include <hba/dsp/crossover.h>
 #include <hba/dsp/limiter.h>
@@ -116,67 +118,21 @@ class Engine {
         }
     };
 
-    // Matched 1st-order allpass pair: H(z) = [(-c + z^-1)/(1 - c z^-1)]^2
-    // Exact |H(e^jw)| == 1.000 at ALL frequencies, +1 at DC and +1 at Nyquist!
-    struct AllpassPair {
-        double z1 = 0.0;
-        double z2 = 0.0;
-        double c = 0.0;
-
-        void reset() noexcept HBA_NONBLOCKING { z1 = z2 = 0.0; }
-        void setFreq(double hz, double sr) noexcept HBA_NONBLOCKING {
-            const double f = std::clamp(hz, 30.0, 0.46 * sr);
-            const double t = std::tan(hba::dsp::kPi * f / sr);
-            c = std::clamp((1.0 - t) / (1.0 + t), -0.985, 0.995);
-        }
-        double process(double x) noexcept HBA_NONBLOCKING {
-            const double y1 = -c * x + z1;
-            z1 = x + c * y1;
-            const double y2 = -c * y1 + z2;
-            z2 = y1 + c * y2;
-            return y2;
-        }
-    };
+    using AllpassPair = hba::dsp::AllpassPair;
 
     // Lightweight zero-alloc biquad for Tone Scoop (380 Hz bell + 6.2 kHz shelf)
     struct Biquad {
-        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
-        double z1 = 0.0, z2 = 0.0;
+        hba::dsp::BiquadCoefs coefs{};
+        hba::dsp::BiquadState state{};
 
-        void reset() noexcept HBA_NONBLOCKING { z1 = z2 = 0.0; }
+        void reset() noexcept HBA_NONBLOCKING { state.reset(); }
         void setPeak(double hz, double q, double gainDb, double sr) noexcept HBA_NONBLOCKING {
-            const double A = std::pow(10.0, gainDb / 40.0);
-            const double w0 = hba::dsp::kTwoPi * std::clamp(hz, 40.0, 0.44 * sr) / sr;
-            const double cosW = std::cos(w0);
-            const double alpha = std::sin(w0) / (2.0 * std::max(0.25, q));
-            const double invA0 = 1.0 / (1.0 + alpha / A);
-            b0 = (1.0 + alpha * A) * invA0;
-            b1 = (-2.0 * cosW) * invA0;
-            b2 = (1.0 - alpha * A) * invA0;
-            a1 = b1;
-            a2 = (1.0 - alpha / A) * invA0;
+            coefs = hba::dsp::BiquadCoefs::peak(hz, std::max(0.25, q), gainDb, sr);
         }
         void setHighShelf(double hz, double slope, double gainDb, double sr) noexcept HBA_NONBLOCKING {
-            const double A = std::pow(10.0, gainDb / 40.0);
-            const double w0 = hba::dsp::kTwoPi * std::clamp(hz, 200.0, 0.44 * sr) / sr;
-            const double cosW = std::cos(w0);
-            const double sinW = std::sin(w0);
-            const double alpha =
-                0.5 * sinW * std::sqrt(std::max(0.01, (A + 1.0 / A) * (1.0 / std::max(0.2, slope) - 1.0) + 2.0));
-            const double twoSqrtA = 2.0 * std::sqrt(A) * alpha;
-            const double invA0 = 1.0 / ((A + 1.0) - (A - 1.0) * cosW + twoSqrtA);
-            b0 = A * ((A + 1.0) + (A - 1.0) * cosW + twoSqrtA) * invA0;
-            b1 = -2.0 * A * ((A - 1.0) + (A + 1.0) * cosW) * invA0;
-            b2 = A * ((A + 1.0) + (A - 1.0) * cosW - twoSqrtA) * invA0;
-            a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cosW) * invA0;
-            a2 = ((A + 1.0) - (A - 1.0) * cosW - twoSqrtA) * invA0;
+            coefs = hba::dsp::BiquadCoefs::highShelf(hz, std::max(0.2, slope), gainDb, sr);
         }
-        double process(double x) noexcept HBA_NONBLOCKING {
-            const double y = b0 * x + z1;
-            z1 = b1 * x - a1 * y + z2;
-            z2 = b2 * x - a2 * y;
-            return y;
-        }
+        double process(double x) noexcept HBA_NONBLOCKING { return state.process(coefs, x); }
     };
 
     // Tight zero-alloc 4-line Hadamard Stereo Early-Reflection Micro-Room (8-35 ms)

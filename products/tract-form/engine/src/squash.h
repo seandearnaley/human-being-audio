@@ -9,7 +9,10 @@
 // upward range; at 0 every gain is exactly 1 and the module is a pure all-pass.
 #pragma once
 
-#include "crossover.h"
+#include "tf/nonblocking.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/crossover.h>
 
 #include <array>
 #include <cmath>
@@ -49,13 +52,14 @@ struct SquashCurve {
 class Squash {
 public:
     void prepare(double sampleRate) noexcept TF_NONBLOCKING {
-        cLow_ = butterworth(kSquashLowHz, sampleRate);
-        cHigh_ = butterworth(kSquashHighHz, sampleRate);
+        cLow_ = hba::dsp::butterworth(kSquashLowHz, sampleRate);
+        cHigh_ = hba::dsp::butterworth(kSquashHighHz, sampleRate);
         constexpr std::array<double, kSquashBands> rmsMs { 30.0, 15.0, 8.0 };
-        for (std::size_t b = 0; b < kSquashBands; ++b) rmsCoef_[b] = onePoleCoef(rmsMs[b] * 1e-3, 1.0 / sampleRate);
-        attackCoef_ = onePoleCoef(0.003, 1.0 / sampleRate);
-        releaseCoef_ = onePoleCoef(0.080, 1.0 / sampleRate);
-        makeupCoef_ = onePoleCoef(kSquashMakeupSeconds, 1.0 / sampleRate);
+        for (std::size_t b = 0; b < kSquashBands; ++b)
+            rmsCoef_[b] = hba::dsp::onePoleCoef(rmsMs[b] * 1e-3, 1.0 / sampleRate);
+        attackCoef_ = hba::dsp::onePoleCoef(0.003, 1.0 / sampleRate);
+        releaseCoef_ = hba::dsp::onePoleCoef(0.080, 1.0 / sampleRate);
+        makeupCoef_ = hba::dsp::onePoleCoef(kSquashMakeupSeconds, 1.0 / sampleRate);
         reset();
     }
     void reset() noexcept TF_NONBLOCKING {
@@ -86,7 +90,7 @@ public:
             }
             const double coef = target < gainDb_[b] ? attackCoef_ : releaseCoef_;
             gainDb_[b] += coef * (target - gainDb_[b]);
-            const double gain = gainDb_[b] == 0.0 ? 1.0 : dbToGain(gainDb_[b]);
+            const double gain = gainDb_[b] == 0.0 ? 1.0 : hba::dsp::dbToGain(gainDb_[b]);
             outL += gain * l[b];
             outR += gain * r[b];
             if (b > 0) {
@@ -99,7 +103,7 @@ public:
             const double match = 10.0 * std::log10((inPower_ + 1e-20) / (outPower_ + 1e-20));
             const double matchScale = std::clamp(amount * 20.0, 0.0, 1.0);
             makeupDb_ = std::clamp(match, 0.0, kSquashMaxMakeupDb) * matchScale + kSquashLiftDb * amount;
-            const double gain = dbToGain(makeupDb_);
+            const double gain = hba::dsp::dbToGain(makeupDb_);
             outL *= gain;
             outR *= gain;
         } else {
@@ -114,13 +118,13 @@ public:
     double bandGainDb(int band) const noexcept TF_NONBLOCKING { return gainDb_[static_cast<std::size_t>(band)]; }
 
 private:
-    SvfCoefs cLow_, cHigh_;
-    std::array<ThreeBandSplit, 2> split_ {};
-    std::array<double, kSquashBands> rmsCoef_ {};
-    std::array<double, kSquashBands> meanSquare_ {};
-    std::array<double, kSquashBands> gainDb_ {};
-    double attackCoef_ = 1.0, releaseCoef_ = 1.0, makeupCoef_ = 1.0;
-    double inPower_ = 0.0, outPower_ = 0.0, makeupDb_ = 0.0;
+  hba::dsp::SvfCoefs cLow_, cHigh_;
+  std::array<hba::dsp::ThreeBandSplit, 2> split_{};
+  std::array<double, kSquashBands> rmsCoef_{};
+  std::array<double, kSquashBands> meanSquare_{};
+  std::array<double, kSquashBands> gainDb_{};
+  double attackCoef_ = 1.0, releaseCoef_ = 1.0, makeupCoef_ = 1.0;
+  double inPower_ = 0.0, outPower_ = 0.0, makeupDb_ = 0.0;
 };
 
 }

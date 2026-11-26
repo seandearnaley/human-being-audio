@@ -2,10 +2,11 @@
 // (hba::dsp::MultiShaperAdaa2).
 #pragma once
 
-#include "control.h"
+#include "tf/nonblocking.h"
 #include "tf/params.h"
 
 #include <hba/dsp/adaa.h>
+#include <hba/dsp/control.h>
 
 #include <cmath>
 
@@ -65,7 +66,7 @@ public:
     }
 
   private:
-    DcBlocker dc_;
+    hba::dsp::DcBlocker dc_;
     hba::dsp::MultiShaperAdaa2 shaper_{};
 };
 

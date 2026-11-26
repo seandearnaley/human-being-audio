@@ -1,31 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PluginEditor.h"
 
-LivecutAudioProcessorEditor::LivecutAudioProcessorEditor(LivecutAudioProcessor& proc)
-    : AudioProcessorEditor(proc), model_(proc), view_(model_, [this] { showAbout(); }) {
-    nativeHost_.setComponentID("instrumentSurface");
-    addAndMakeVisible(nativeHost_);
-    addChildComponent(about_);
-    about_.onClosed = [this] {
-        nativeHost_.setVisible(true);
-        attachWhenOnScreen();
-    };
-    model_.setDragSource(this);
-
-    setOpaque(true);
-    setResizable(true, true);
-    setResizeLimits(lc::ui::kMinWidth, lc::ui::kMinHeight, lc::ui::kDefaultWidth * 2, lc::ui::kDefaultHeight * 2);
-    getConstrainer()->setFixedAspectRatio(static_cast<double>(lc::ui::kDefaultWidth) / lc::ui::kDefaultHeight);
-    setSize(lc::ui::kDefaultWidth, lc::ui::kDefaultHeight);
-}
-
-LivecutAudioProcessorEditor::AboutPage::AboutPage() {
+LivecutAboutPage::LivecutAboutPage() {
     setDescription(getDescription() +
                    ". Real-time breakbeat & spectral live slicer with Pad performance surface, "
                    "4-voice resonator, granular & tape readers, Sub-Anchor and MIDI C1-G1 triggering.");
 }
 
-void LivecutAudioProcessorEditor::AboutPage::paint(juce::Graphics& g) {
+void LivecutAboutPage::paint(juce::Graphics& g) {
     g.fillAll(juce::Colour(0xff0a0d12));
     StudioAbout::paint(g);
 
@@ -58,54 +40,6 @@ void LivecutAudioProcessorEditor::AboutPage::paint(juce::Graphics& g) {
         juce::Justification::topLeft, 5);
 }
 
-LivecutAudioProcessorEditor::~LivecutAudioProcessorEditor() { detachView(); }
-
-void LivecutAudioProcessorEditor::detachView() {
-#if JUCE_LINUX
-    if (const int fd = view_.eventFd(); fd >= 0)
-        juce::LinuxEventLoop::unregisterFdCallback(fd);
-#endif
-    view_.detach();
-    attachedTo_ = nullptr;
-}
-
-void LivecutAudioProcessorEditor::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff0a0d12)); }
-
-void LivecutAudioProcessorEditor::resized() {
-    nativeHost_.setBounds(getLocalBounds());
-    about_.setBounds(getLocalBounds());
-    if (attachedTo_ != nullptr)
-        view_.setSize(getWidth(), getHeight());
-}
-
-void LivecutAudioProcessorEditor::parentHierarchyChanged() { attachWhenOnScreen(); }
-
-void LivecutAudioProcessorEditor::showAbout() {
-    if (about_.isVisible())
-        return;
-    nativeHost_.setVisible(false);
-    about_.open();
-}
-
-void LivecutAudioProcessorEditor::attachWhenOnScreen() {
-    auto* peer = getPeer();
-    if (peer == nullptr) {
-        detachView();
-        return;
-    }
-    if (about_.isVisible())
-        return;
-    auto* nativeView = nativeHost_.nativeHandle(peer);
-    if (nativeView == attachedTo_)
-        return;
-
-    detachView();
-    if (nativeView == nullptr)
-        return;
-    view_.attach(nativeView, getWidth(), getHeight());
-    attachedTo_ = nativeView;
-#if JUCE_LINUX
-    if (const int fd = view_.eventFd(); fd >= 0)
-        juce::LinuxEventLoop::registerFdCallback(fd, [this](int) { view_.dispatchEvents(); });
-#endif
-}
+LivecutAudioProcessorEditor::LivecutAudioProcessorEditor(LivecutAudioProcessor& proc)
+    : StudioPluginEditor(proc, lc::ui::kMinWidth, lc::ui::kMinHeight, lc::ui::kDefaultWidth, lc::ui::kDefaultHeight,
+                         0xff0a0d12u) {}

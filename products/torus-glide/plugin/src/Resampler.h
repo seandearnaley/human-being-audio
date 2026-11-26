@@ -4,33 +4,23 @@
 #include "tg/export.h"
 #include "tg/ui/model.h"
 
-#include <juce_core/juce_core.h>
-
-#include <atomic>
+#include <hba/host/offline_export.h>
 
 namespace tg {
 
-class Resampler final : private juce::Thread {
+class Resampler {
   public:
     Resampler();
-    ~Resampler() override;
 
     static juce::File directory();
 
-    ui::ResampleState state() const noexcept { return state_.load(std::memory_order_acquire); }
+    ui::ResampleState state() const noexcept { return worker_.state(); }
     void start(const RenderRequest& request, const juce::String& presetName);
-    void invalidate() noexcept;
-    juce::File file() const;
+    void invalidate() noexcept { worker_.invalidate(); }
+    juce::File file() const { return worker_.file(); }
 
   private:
-    void run() override;
-
-    mutable juce::CriticalSection lock_;
-    RenderRequest request_{};
-    juce::File target_{};
-    std::atomic<std::uint64_t> generation_{0};
-    std::atomic<std::uint64_t> activeGen_{0};
-    std::atomic<ui::ResampleState> state_{ui::ResampleState::idle};
+    hba::host::OfflineWavWorker<RenderRequest, ui::ResampleState> worker_;
 };
 
 } // namespace tg
