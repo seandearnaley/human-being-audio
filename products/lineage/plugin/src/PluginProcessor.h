@@ -100,6 +100,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     std::atomic<int> lastNote_{29};
     std::atomic<double> lastBpm_{172.0};
     std::atomic<bool> pendingPrepare_{false};
+    int lastBendChoice_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };

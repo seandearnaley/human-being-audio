@@ -240,3 +240,43 @@ TEST_CASE("Strata sub-split protection, Hi/Lo band-split crossover, Loop Xfade, 
         diff += std::abs(hi[i] - lo[i]);
     CHECK(diff > 1.0);
 }
+
+TEST_CASE("Lineage Poly 4 tracks chords cleanly with lowest-note sub lock and Legato mode preserves phase", "[engine]") {
+    constexpr double fs = 48000.0;
+    ln::Engine eng;
+    eng.prepare(fs, 256, 4);
+    auto p = ln::Params::defaults();
+    p[ln::ParamId::playMode] = static_cast<float>(ln::PlayMode::poly4);
+    p[ln::ParamId::glideMode] = static_cast<float>(ln::GlideMode::legato);
+    p[ln::ParamId::release] = 15.0f;
+    p[ln::ParamId::width] = 1.0f;
+    p[ln::ParamId::subLevel] = 0.85f;
+
+    // Play an F minor triad (F1=29, G#1=32, C2=36)
+    eng.noteOn(29, 0.9f);
+    eng.noteOn(32, 0.85f);
+    eng.noteOn(36, 0.85f);
+
+    std::vector<float> l(4096), r(4096);
+    for (int pos = 0; pos < 4096; pos += 256)
+        eng.process(p, {172.0, 0.0, true}, l.data() + pos, r.data() + pos, 256);
+
+    CHECK(eng.telemetry().activeVoices == 3);
+    float pk = 0.0f;
+    double energy = 0.0;
+    for (std::size_t i = 0; i < l.size(); ++i) {
+        REQUIRE(std::isfinite(l[i]));
+        REQUIRE(std::isfinite(r[i]));
+        pk = std::max(pk, std::max(std::abs(l[i]), std::abs(r[i])));
+        energy += 0.5 * (l[i] * l[i] + r[i] * r[i]);
+    }
+    CHECK(pk <= 1.05f);
+    CHECK(std::sqrt(energy / static_cast<double>(l.size())) > 0.08);
+
+    // Release 2 notes -> 1 voice remains active
+    eng.noteOff(32);
+    eng.noteOff(36);
+    for (int blk = 0; blk < 30; ++blk)
+        eng.process(p, {172.0, 0.0, true}, l.data(), r.data(), 256);
+    CHECK(eng.telemetry().activeVoices == 1);
+}

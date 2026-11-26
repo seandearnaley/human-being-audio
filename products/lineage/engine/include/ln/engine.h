@@ -66,6 +66,7 @@ struct TelemetrySnapshot {
     float loopStartNorm = 0.0f;
     float loopEndNorm = 1.0f;
     int activeNote = -1;
+    int activeVoices = 0;
     int generation = 0;
     bool sounding = false;
     bool padActive = false;

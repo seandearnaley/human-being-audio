@@ -113,6 +113,10 @@ enum class ParamId : std::uint8_t {
     lane4Ratio,
     lane4Mode,
     lane4Hz,
+    playMode,
+    glideMode,
+    bendRange,
+    octave,
     count
 };
 
@@ -164,6 +168,11 @@ inline constexpr std::array<std::string_view, 5> foldType { "Fold", "Sine", "Tub
 inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> sculptMode{"Bell", "Phaser", "Comb"};
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
+inline constexpr std::array<std::string_view, 2> playMode{"Mono", "Legato"};
+inline constexpr std::array<std::string_view, 2> glideMode{"Always", "Legato"};
+inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1" "2 st",  "\xc2\xb1" "7 st", "\xc2\xb1" "12 st",
+                                                           "\xc2\xb1" "24 st", "\xc2\xb1" "48 st"};
+inline constexpr std::array<std::string_view, 4> octave{"-2 oct", "-1 oct", "0 oct", "+1 oct"};
 inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 // "Custom" plays the lane's drawn curve.
 inline constexpr std::array<std::string_view, 7> laneShape {
@@ -183,12 +192,16 @@ inline constexpr std::array<double, 5> kFbCycles { 0.25, 0.5, 1.0, 2.0, 4.0 };
 inline constexpr std::array<double, 9> kBeatLockQuarters { 32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
 using hba::dsp::kLaneRateQuarters;
 inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
+inline constexpr std::array<int, 5> kBendSemitones{2, 7, 12, 24, 48};
+inline constexpr std::array<int, 4> kOctaveSemitones{-24, -12, 0, 12};
 // How many times faster than its leader a following lane runs.
 using hba::dsp::kLaneRatios;
 
 enum class TractPos : std::uint8_t { pre, post };
 enum class SculptMode : std::uint8_t { bell, phaser, comb };
 enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
+enum class PlayMode : std::uint8_t { mono, legato };
+enum class GlideMode : std::uint8_t { always, legato };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
 using LaneMode = hba::dsp::LaneMode;
 
@@ -302,6 +315,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     TF_LANE(2, LaneTarget::morph, 5, 90.0f, 0.79f),
     TF_LANE(3, LaneTarget::drive, 7, 180.0f, 0.46f),
     TF_LANE(4, LaneTarget::beat, 4, 270.0f, 0.38f),
+    detail::choice("playMode", "Play mode", choices::playMode, 1, false),
+    detail::choice("glideMode", "Portamento", choices::glideMode, 1, false),
+    detail::choice("bendRange", "Bend range", choices::bendRange, 0, false),
+    detail::choice("octave", "Octave", choices::octave, 2, false),
 }};
 
 #undef TF_LANE

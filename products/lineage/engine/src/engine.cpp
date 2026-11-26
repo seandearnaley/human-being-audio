@@ -41,6 +41,7 @@ void PrintBuffer::computePeaks() {
 namespace {
 
 constexpr int kNumVoices = 7;
+constexpr int kMaxPolyVoices = 4;
 constexpr int kMaxHeldNotes = 16;
 constexpr int kCombMaxDelay = 4096;
 constexpr int kDisperseStages = 6;
@@ -229,7 +230,39 @@ struct Engine::Impl {
     std::array<hba::dsp::Lr4Split, 2> g2BandSplit{};
     hba::dsp::Limiter limiter{};
 
-    // Note / envelope / expression state
+    // Note / envelope / expression state (Mono / Legato + 4-Voice Polyphonic pool)
+    struct PolyVoice {
+        int midiNote = 29;
+        bool gate = false;
+        bool sustained = false;
+        double velGain = 0.9;
+        double ampEnv = 0.0;
+        std::uint64_t age = 0;
+        hba::dsp::Smoother smNote{};
+        std::array<double, kNumVoices> voicePhase = kInitPhases;
+        std::array<double, kNumVoices> slavePhase = kInitPhases;
+        std::array<double, kNumVoices> slaveDir{1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+        std::array<double, kNumVoices> fmModPhase = kInitPhases;
+
+        void reset() noexcept LN_NONBLOCKING {
+            midiNote = 29;
+            gate = false;
+            sustained = false;
+            velGain = 0.9;
+            ampEnv = 0.0;
+            age = 0;
+            smNote.reset();
+            voicePhase = kInitPhases;
+            slavePhase = kInitPhases;
+            slaveDir.fill(1.0);
+            fmModPhase = kInitPhases;
+        }
+    };
+    std::array<PolyVoice, kMaxPolyVoices> polyVoices{};
+    std::uint64_t voiceAgeCounter = 0;
+    PlayMode currentPlayMode = PlayMode::mono;
+    GlideMode currentGlideMode = GlideMode::always;
+
     std::array<int, kMaxHeldNotes> noteStack{};
     int noteCount = 0;
     int activeNote = 29; // F1 default
@@ -326,6 +359,12 @@ struct Engine::Impl {
         scrubPos = 0.0;
         scrubInit = false;
 
+        for (auto& pv : polyVoices)
+            pv.reset();
+        voiceAgeCounter = 0;
+        currentPlayMode = PlayMode::mono;
+        currentGlideMode = GlideMode::always;
+
         noteCount = 0;
         activeNote = 29;
         lastDroneChoice = 5;
@@ -381,12 +420,14 @@ struct Engine::Impl {
         tel = {};
     }
 
-    void triggerNote(int note, float vel, bool resetClock) noexcept LN_NONBLOCKING {
+    void triggerNote(int note, float vel, bool resetClock, bool overlapping = false) noexcept LN_NONBLOCKING {
         activeNote = std::clamp(note, 12, 96);
         velocityGain = std::clamp(0.45 + 0.55 * static_cast<double>(vel), 0.25, 1.0);
         const bool wasSilent = (!gate && ampEnv < 0.02);
+        const bool isLegatoHold = (currentPlayMode == PlayMode::legato && overlapping && !wasSilent);
+        const bool snapPitch = wasSilent || (currentGlideMode == GlideMode::legato && !overlapping);
         gate = true;
-        if (wasSilent) {
+        if (wasSilent || (!isLegatoHold && currentPlayMode == PlayMode::mono && !overlapping)) {
             masterPhase = 0.0;
             voicePhase = kInitPhases;
             slavePhase = kInitPhases;
@@ -394,20 +435,73 @@ struct Engine::Impl {
             fmModPhase = kInitPhases;
             strataCursor = 0.0;
             strataPingDir = 1.0;
-            smNoteMidi.reset();
         }
-        if (resetClock)
+        if (snapPitch)
+            smNoteMidi.reset();
+        if (resetClock && !isLegatoHold)
             noteSamples = 0;
+    }
+
+    void allocPolyVoice(int note, float vel) noexcept LN_NONBLOCKING {
+        const int clamped = std::clamp(note, 12, 96);
+        const double vGain = std::clamp(0.45 + 0.55 * static_cast<double>(vel), 0.25, 1.0);
+
+        // 1) Reuse voice already on this pitch, 2) free/quiet voice, 3) oldest released, 4) oldest held
+        int chosen = -1;
+        for (int i = 0; i < kMaxPolyVoices; ++i) {
+            if (polyVoices[static_cast<std::size_t>(i)].midiNote == clamped &&
+                (polyVoices[static_cast<std::size_t>(i)].gate || polyVoices[static_cast<std::size_t>(i)].ampEnv > 1.0e-4)) {
+                chosen = i;
+                break;
+            }
+        }
+        if (chosen < 0) {
+            for (int i = 0; i < kMaxPolyVoices; ++i) {
+                const auto& pv = polyVoices[static_cast<std::size_t>(i)];
+                if (!pv.gate && pv.ampEnv < 1.0e-4) {
+                    chosen = i;
+                    break;
+                }
+            }
+        }
+        if (chosen < 0) {
+            double bestScore = 1.0e18;
+            for (int i = 0; i < kMaxPolyVoices; ++i) {
+                const auto& pv = polyVoices[static_cast<std::size_t>(i)];
+                const double score = (pv.gate ? 1.0e9 : 0.0) + static_cast<double>(pv.age);
+                if (score < bestScore) {
+                    bestScore = score;
+                    chosen = i;
+                }
+            }
+        }
+        auto& pv = polyVoices[static_cast<std::size_t>(std::max(0, chosen))];
+        const bool wasQuiet = pv.ampEnv < 0.02;
+        pv.midiNote = clamped;
+        pv.velGain = vGain;
+        pv.gate = true;
+        pv.sustained = false;
+        pv.age = ++voiceAgeCounter;
+        if (wasQuiet) {
+            pv.voicePhase = kInitPhases;
+            pv.slavePhase = kInitPhases;
+            pv.slaveDir.fill(1.0);
+            pv.fmModPhase = kInitPhases;
+        }
+        if (wasQuiet || currentGlideMode == GlideMode::legato)
+            pv.smNote.reset();
     }
 
     void noteOn(int note, float vel) noexcept LN_NONBLOCKING {
         hasReceivedMidi = true;
+        const bool overlapping = (noteCount > 0);
         noteOffFromStack(note);
         if (noteCount < kMaxHeldNotes)
             noteStack[static_cast<std::size_t>(noteCount++)] = note;
         else
             noteStack[kMaxHeldNotes - 1] = note;
-        triggerNote(note, vel, true);
+        allocPolyVoice(note, vel);
+        triggerNote(note, vel, true, overlapping);
     }
 
     void noteOffFromStack(int note) noexcept LN_NONBLOCKING {
@@ -423,6 +517,14 @@ struct Engine::Impl {
 
     void noteOff(int note) noexcept LN_NONBLOCKING {
         noteOffFromStack(note);
+        for (auto& pv : polyVoices) {
+            if (pv.gate && pv.midiNote == note) {
+                if (sustainDown)
+                    pv.sustained = true;
+                else
+                    pv.gate = false;
+            }
+        }
         if (noteCount > 0) {
             activeNote = noteStack[static_cast<std::size_t>(noteCount - 1)];
         } else if (!sustainDown && !padNoteActive) {
@@ -432,8 +534,16 @@ struct Engine::Impl {
 
     void sustain(bool down) noexcept LN_NONBLOCKING {
         sustainDown = down;
-        if (!down && noteCount == 0 && !padNoteActive)
-            gate = false;
+        if (!down) {
+            for (auto& pv : polyVoices) {
+                if (pv.sustained) {
+                    pv.sustained = false;
+                    pv.gate = false;
+                }
+            }
+            if (noteCount == 0 && !padNoteActive)
+                gate = false;
+        }
     }
 
     void allNotesOff() noexcept LN_NONBLOCKING {
@@ -441,6 +551,10 @@ struct Engine::Impl {
         sustainDown = false;
         padNoteActive = false;
         gate = false;
+        for (auto& pv : polyVoices) {
+            pv.gate = false;
+            pv.sustained = false;
+        }
     }
 
     void publishPrint(const PrintBuffer& buf) {
@@ -631,8 +745,30 @@ struct Engine::Impl {
         const auto strataDir = static_cast<StrataDir>(std::clamp(params.choice(ParamId::strataDir), 0, 3));
         const auto strataBlend = static_cast<StrataBlend>(std::clamp(params.choice(ParamId::strataBlend), 0, 2));
         const bool strataKeytrack = params.on(ParamId::strataKeytrack);
+        const auto playMode = static_cast<PlayMode>(std::clamp(params.choice(ParamId::playMode), 0, 2));
+        const auto glideMode = static_cast<GlideMode>(std::clamp(params.choice(ParamId::glideMode), 0, 1));
+        currentPlayMode = playMode;
+        currentGlideMode = glideMode;
+        const bool isPoly4 = (playMode == PlayMode::poly4);
         const auto padProg = static_cast<PadProgram>(std::clamp(params.choice(ParamId::padProgram), 0, 4));
         const int octSt = kOctaveSemitones[static_cast<std::size_t>(std::clamp(params.choice(ParamId::octave), 0, 3))];
+
+        // In Poly 4 mode, keep Drone/Pad touch auditioning seamlessly via voice 0 when no MIDI keys are held
+        if (isPoly4 && wantPadNote && noteCount == 0) {
+            auto& pv = polyVoices[0];
+            if (!pv.gate || pv.midiNote != activeNote) {
+                pv.midiNote = activeNote;
+                pv.velGain = 0.92;
+                pv.gate = true;
+                pv.sustained = false;
+                pv.age = ++voiceAgeCounter;
+                if (pv.ampEnv < 0.02)
+                    pv.smNote.reset();
+            }
+        } else if (isPoly4 && !wantPadNote && noteCount == 0 && !sustainDown) {
+            for (auto& pv : polyVoices)
+                pv.gate = false;
+        }
 
         if (driveType != activeDriveType) {
             prevDriveType = activeDriveType;
@@ -677,11 +813,41 @@ struct Engine::Impl {
             ++freeSamples;
             ++noteSamples;
 
-            // Smooth amp envelope
+            // Smooth amp envelope (mono + per-voice Poly 4 envelopes)
             const double envTarget = gate ? 1.0 : 0.0;
             ampEnv += (envTarget > ampEnv ? atkCoef : relCoef) * (envTarget - ampEnv);
             if (!gate && ampEnv < 1.0e-6)
                 ampEnv = 0.0;
+
+            double polyMaxEnv = 0.0;
+            double polyEnvSqSum = 0.0;
+            int polyActiveCount = 0;
+            double lowestPolyMidi = static_cast<double>(activeNote + octSt);
+            double lowestPolyVel = velocityGain;
+            if (isPoly4) {
+                bool foundLowest = false;
+                for (int pi = 0; pi < kMaxPolyVoices; ++pi) {
+                    auto& pv = polyVoices[static_cast<std::size_t>(pi)];
+                    const double pvTarget = pv.gate ? 1.0 : 0.0;
+                    pv.ampEnv += (pvTarget > pv.ampEnv ? atkCoef : relCoef) * (pvTarget - pv.ampEnv);
+                    if (!pv.gate && pv.ampEnv < 1.0e-6)
+                        pv.ampEnv = 0.0;
+                    if (pv.ampEnv > 1.0e-6) {
+                        const double pMidi = pv.smNote.step(static_cast<double>(pv.midiNote + octSt), glideCoef);
+                        polyMaxEnv = std::max(polyMaxEnv, pv.ampEnv);
+                        polyEnvSqSum += pv.ampEnv * pv.ampEnv;
+                        if (pv.ampEnv > 1.0e-3)
+                            ++polyActiveCount;
+                        if (!foundLowest || pMidi < lowestPolyMidi) {
+                            foundLowest = true;
+                            lowestPolyMidi = pMidi;
+                            lowestPolyVel = pv.velGain;
+                        }
+                    }
+                }
+            }
+            const double effectiveAmpEnv = isPoly4 ? polyMaxEnv : ampEnv;
+            const int activeVoicesNow = isPoly4 ? polyActiveCount : (ampEnv > 1.0e-4 ? 1 : 0);
 
             // Evaluate 4 unified Free-Hz / Sync lanes
             std::array<float, kLaneCount> sends{};
@@ -786,10 +952,10 @@ struct Engine::Impl {
                                               laneSum(params, sends, LaneTarget::subPhase))) +
                 padSubPhase;
 
-            // Smooth control signals
+            // Smooth control signals (in Poly 4, sub locks cleanly to lowest active chord note!)
             const double sNote = smNoteMidi.step(static_cast<double>(activeNote + octSt), glideCoef);
             const double sBend = smBend.step(pitchBendSt, controlCoef);
-            const double totalMidi = sNote + sBend;
+            const double totalMidi = (isPoly4 ? lowestPolyMidi : sNote) + sBend;
             const double baseHz = std::clamp(hba::dsp::midiToHz(totalMidi), 18.0, 4200.0);
 
             const double sF1 = smFilt1.step(tF1, controlCoef);
@@ -864,12 +1030,12 @@ struct Engine::Impl {
             }
             ++sampleIndex;
 
-            if (ampEnv <= 1.0e-6) {
+            if (effectiveAmpEnv <= 1.0e-6) {
                 left[n] = 0.0f;
                 right[n] = 0.0f;
                 if (n == numSamples - 1)
                     publishTelemetry(ppq, notePpq, freeSec, noteSec, params, sends, sF1, sF2, sDrive, sTone, sGenMix,
-                                     sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, curSlot, false,
+                                     sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, curSlot, 0, false,
                                      wantPadNote, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
                 continue;
             }
@@ -912,28 +1078,47 @@ struct Engine::Impl {
             }
             const double voiceScale = 0.42 / std::sqrt(std::max(1.0, weightNorm));
 
-            // Precompute per-voice base increments at osRate
+            // Precompute per-voice base increments at osRate (for mono core + optional 4-voice poly pool)
             std::array<double, kNumVoices> vInc{};
-            for (int v = 0; v < kNumVoices; ++v) {
-                const auto vi = static_cast<std::size_t>(v);
-                const double cents = kDetuneOffsets[vi] * sDetune * (0.28 + 0.72 * sUnison);
-                vInc[vi] = std::clamp((baseHz * std::exp2(cents / 1200.0)) / osRate, 1.0e-6, 0.45);
+            std::array<std::array<double, kNumVoices>, kMaxPolyVoices> polyInc{};
+            if (!isPoly4) {
+                for (int v = 0; v < kNumVoices; ++v) {
+                    const auto vi = static_cast<std::size_t>(v);
+                    const double cents = kDetuneOffsets[vi] * sDetune * (0.28 + 0.72 * sUnison);
+                    vInc[vi] = std::clamp((baseHz * std::exp2(cents / 1200.0)) / osRate, 1.0e-6, 0.45);
+                }
+            } else {
+                for (int pi = 0; pi < kMaxPolyVoices; ++pi) {
+                    const auto& pv = polyVoices[static_cast<std::size_t>(pi)];
+                    if (pv.ampEnv <= 1.0e-6)
+                        continue;
+                    const double vHz = std::clamp(hba::dsp::midiToHz(pv.smNote.value() + sBend), 18.0, 4200.0);
+                    for (int v = 0; v < kNumVoices; ++v) {
+                        const auto vi = static_cast<std::size_t>(v);
+                        const double cents = kDetuneOffsets[vi] * sDetune * (0.28 + 0.72 * sUnison);
+                        polyInc[static_cast<std::size_t>(pi)][vi] =
+                            std::clamp((vHz * std::exp2(cents / 1200.0)) / osRate, 1.0e-6, 0.45);
+                    }
+                }
             }
+            const double polyNorm = isPoly4 ? (1.0 / std::sqrt(std::max(1.0, polyEnvSqSum))) : 1.0;
 
             const double syncRatio = 1.0 + 6.8 * std::pow(sTone, 1.35);
             const double fmRatio = (sTone < 0.33) ? 1.0 : ((sTone < 0.66) ? 2.0 : 3.0);
             const double fmIndex = sTone * 4.5;
             const double foldDrive = 1.0 + sTone * 5.2;
 
-            for (int k = 0; k < osFactor; ++k) {
-                double sumL = 0.0, sumR = 0.0;
+            const auto evalOscBank = [&](std::array<double, kNumVoices>& vPh, std::array<double, kNumVoices>& sPh,
+                                         std::array<double, kNumVoices>& sDr, std::array<double, kNumVoices>& fmPh,
+                                         const std::array<double, kNumVoices>& incs, double gainScale, double& accL,
+                                         double& accR) noexcept LN_NONBLOCKING {
                 for (int v = 0; v < kNumVoices; ++v) {
                     const auto vi = static_cast<std::size_t>(v);
                     if (vWeight[vi] <= 1.0e-4)
                         continue;
 
-                    const double inc = vInc[vi];
-                    double p = voicePhase[vi] + inc;
+                    const double inc = incs[vi];
+                    double p = vPh[vi] + inc;
                     bool wrapped = false;
                     double wrapFrac = 0.0;
                     if (p >= 1.0) {
@@ -941,35 +1126,33 @@ struct Engine::Impl {
                         wrapped = true;
                         wrapFrac = p / inc;
                     }
-                    voicePhase[vi] = p;
+                    vPh[vi] = p;
 
                     double sig = 0.0;
                     switch (coreMode) {
                     case CoreMode::analogReese: {
                         const double saw = hba::dsp::polyBlepSaw(p, inc);
-                        // Warm triangle + subtle bright saw-octave blend driven by Tone
                         const double tri = 1.0 - 4.0 * std::abs(p - 0.5);
                         const double octP = hba::dsp::frac(p * 2.0);
                         const double octSaw = hba::dsp::polyBlepSaw(octP, std::min(0.45, inc * 2.0));
-                        sig = (1.0 - 0.45 * sTone) * (0.72 * saw + 0.28 * tri) + 0.45 * sTone * (0.75 * saw + 0.25 * octSaw);
+                        sig = (1.0 - 0.45 * sTone) * (0.72 * saw + 0.28 * tri) +
+                              0.45 * sTone * (0.75 * saw + 0.25 * octSaw);
                         break;
                     }
                     case CoreMode::softSync: {
-                        // Continuous phase-reversing soft sync: zero hard discontinuities!
                         const double sInc = std::min(0.42, inc * syncRatio);
                         if (wrapped)
-                            slaveDir[vi] = -slaveDir[vi];
-                        double sp = slavePhase[vi] + slaveDir[vi] * sInc;
+                            sDr[vi] = -sDr[vi];
+                        double sp = sPh[vi] + sDr[vi] * sInc;
                         if (sp >= 1.0) {
                             sp = 2.0 - sp;
-                            slaveDir[vi] = -1.0;
+                            sDr[vi] = -1.0;
                         } else if (sp <= 0.0) {
                             sp = -sp;
-                            slaveDir[vi] = 1.0;
+                            sDr[vi] = 1.0;
                         }
-                        slavePhase[vi] = std::clamp(sp, 0.0, 1.0);
-                        // Rich continuous soft-sync waveshape: muscular analog sync overtones, zero hard jump
-                        const double tri = 2.0 * slavePhase[vi] - 1.0;
+                        sPh[vi] = std::clamp(sp, 0.0, 1.0);
+                        const double tri = 2.0 * sPh[vi] - 1.0;
                         const double shaped = std::tanh(tri * (2.1 + 1.6 * sTone));
                         const double edge = std::sin(kPi * tri * (1.0 + 0.85 * sTone));
                         sig = 0.74 * shaped + 0.26 * edge;
@@ -977,28 +1160,27 @@ struct Engine::Impl {
                     }
                     case CoreMode::hardSync: {
                         const double sInc = std::min(0.45, inc * syncRatio);
-                        double sp = slavePhase[vi] + sInc;
+                        double sp = sPh[vi] + sInc;
                         double blep = 0.0;
                         if (sp >= 1.0) {
                             sp -= 1.0;
                             blep -= hba::dsp::polyBlep(sp, sInc);
                         }
                         if (wrapped) {
-                            // Exact subsample-corrected master-forced reset
                             const double preVal = 2.0 * sp - 1.0;
                             sp = wrapFrac * sInc;
                             const double postVal = 2.0 * sp - 1.0;
                             const double jump = (postVal - preVal) * 0.5;
                             blep += jump * hba::dsp::polyBlep(p, inc);
                         }
-                        slavePhase[vi] = sp;
+                        sPh[vi] = sp;
                         sig = (2.0 * sp - 1.0) + blep;
                         break;
                     }
                     case CoreMode::tzfm: {
                         const double mInc = std::min(0.45, inc * fmRatio * (1.0 + 0.002 * kDetuneOffsets[vi]));
-                        fmModPhase[vi] = hba::dsp::frac(fmModPhase[vi] + mInc);
-                        const double mod = std::sin(kTwoPi * fmModPhase[vi]);
+                        fmPh[vi] = hba::dsp::frac(fmPh[vi] + mInc);
+                        const double mod = std::sin(kTwoPi * fmPh[vi]);
                         sig = std::sin(kTwoPi * p + fmIndex * mod);
                         break;
                     }
@@ -1018,10 +1200,26 @@ struct Engine::Impl {
                     }
 
                     const double pan = kVoicePan[vi] * (0.25 + 0.75 * sWidth);
-                    const double gL = vWeight[vi] * std::sqrt(0.5 * (1.0 - pan));
-                    const double gR = vWeight[vi] * std::sqrt(0.5 * (1.0 + pan));
-                    sumL += sig * gL;
-                    sumR += sig * gR;
+                    const double gL = vWeight[vi] * gainScale * std::sqrt(0.5 * (1.0 - pan));
+                    const double gR = vWeight[vi] * gainScale * std::sqrt(0.5 * (1.0 + pan));
+                    accL += sig * gL;
+                    accR += sig * gR;
+                }
+            };
+
+            for (int k = 0; k < osFactor; ++k) {
+                double sumL = 0.0, sumR = 0.0;
+                if (!isPoly4) {
+                    evalOscBank(voicePhase, slavePhase, slaveDir, fmModPhase, vInc, 1.0, sumL, sumR);
+                } else {
+                    for (int pi = 0; pi < kMaxPolyVoices; ++pi) {
+                        auto& pv = polyVoices[static_cast<std::size_t>(pi)];
+                        if (pv.ampEnv <= 1.0e-6)
+                            continue;
+                        evalOscBank(pv.voicePhase, pv.slavePhase, pv.slaveDir, pv.fmModPhase,
+                                    polyInc[static_cast<std::size_t>(pi)], pv.ampEnv * pv.velGain * polyNorm, sumL,
+                                    sumR);
+                    }
                 }
 
                 double xL = sumL * voiceScale;
@@ -1177,8 +1375,10 @@ struct Engine::Impl {
             }
             // Dedicated LR4 Sub-Split high-pass on Strata so pitched-down loops, Post Drive DC,
             // and full-range external WAVs NEVER fight or phase-cancel the clean mono sub!
-            g2L = strataHp[0].process(cSubSplit, g2L);
-            g2R = strataHp[1].process(cSubSplit, g2R);
+            // In Poly 4 mode, scale Strata by the poly max envelope so chord release fades smoothly!
+            const double g2Env = isPoly4 ? (polyMaxEnv * lowestPolyVel) : 1.0;
+            g2L = strataHp[0].process(cSubSplit, g2L) * g2Env;
+            g2R = strataHp[1].process(cSubSplit, g2R) * g2Env;
 
             // Gen 1 <-> Gen 2 Crossover / Blend (Full Blend, Hi-Strata >460 Hz, or Lo-Strata <460 Hz)
             double g1LoL = 0.0, g1HiL = 0.0, g1LoR = 0.0, g1HiR = 0.0;
@@ -1206,8 +1406,10 @@ struct Engine::Impl {
             // Stereo width strictly above subSplit (sub band stays 100% mono!)
             const double midSig = 0.5 * (midTopL + midTopR);
             const double sideClean = postSideHp.process(cSubSplit, 0.5 * (midTopL - midTopR)) * (sWidth * 1.45);
-            double outL = (midSig + sideClean + subClean) * ampEnv * velocityGain * sOutGain;
-            double outR = (midSig - sideClean + subClean) * ampEnv * velocityGain * sOutGain;
+            const double outEnv = isPoly4 ? 1.0 : (ampEnv * velocityGain);
+            const double subEnv = isPoly4 ? (polyMaxEnv * lowestPolyVel) : (ampEnv * velocityGain);
+            double outL = ((midSig + sideClean) * outEnv + subClean * subEnv) * sOutGain;
+            double outR = ((midSig - sideClean) * outEnv + subClean * subEnv) * sOutGain;
 
             limiter.process(outL, outR, sCeiling, sLimit);
             minLimGain = std::min(minLimGain, limiter.gain());
@@ -1221,7 +1423,7 @@ struct Engine::Impl {
 
             blockPeakL = std::max(blockPeakL, std::abs(left[n]));
             blockPeakR = std::max(blockPeakR, std::abs(right[n]));
-            blockSubPk = std::max(blockSubPk, static_cast<float>(std::abs(subClean * ampEnv)));
+            blockSubPk = std::max(blockSubPk, static_cast<float>(std::abs(subClean * subEnv)));
             rmsSum += 0.5 * (outL * outL + outR * outR);
 
             // Downsampled live oscilloscope capture for 60fps UI waveforms
@@ -1234,8 +1436,8 @@ struct Engine::Impl {
                 const float rmsVal = static_cast<float>(std::sqrt(rmsSum / static_cast<double>(numSamples)));
                 publishTelemetry(ppq, notePpq, freeSec, noteSec, params, sends, sF1, sF2, sDrive, sTone, sGenMix,
                                  sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, curSlot,
-                                 ampEnv > 1.0e-3, wantPadNote, blockPeakL, blockPeakR, rmsVal, blockSubPk,
-                                 static_cast<float>(minLimGain));
+                                 activeVoicesNow, effectiveAmpEnv > 1.0e-3, wantPadNote, blockPeakL, blockPeakR, rmsVal,
+                                 blockSubPk, static_cast<float>(minLimGain));
             }
         }
     }
@@ -1243,8 +1445,9 @@ struct Engine::Impl {
     void publishTelemetry(double ppq, double notePpq, double freeSec, double noteSec, const Params& params,
                           const std::array<float, kLaneCount>& sends, double sF1, double sF2, double sDrive,
                           double sTone, double sGenMix, double sStrataPos, double sStrataSpan, double sDisperse,
-                          double sDensity, double sWidth, double sSubWarm, int curSlot, bool isSounding, bool isPadOn,
-                          float pkL, float pkR, float rmsVal, float subPk, float limGain) noexcept LN_NONBLOCKING {
+                          double sDensity, double sWidth, double sSubWarm, int curSlot, int numActiveVoices,
+                          bool isSounding, bool isPadOn, float pkL, float pkR, float rmsVal, float subPk,
+                          float limGain) noexcept LN_NONBLOCKING {
         tel.peakL = pkL;
         tel.peakR = pkR;
         tel.rms = rmsVal;
@@ -1263,6 +1466,7 @@ struct Engine::Impl {
         tel.effSubWarmth = static_cast<float>(sSubWarm);
 
         tel.activeNote = activeNote;
+        tel.activeVoices = numActiveVoices;
         tel.sounding = isSounding;
         tel.padActive = isPadOn;
         tel.ppq = ppq;

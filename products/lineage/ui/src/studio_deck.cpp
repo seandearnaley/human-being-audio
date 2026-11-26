@@ -15,13 +15,11 @@ class StudioDeck final : public Panel {
         : Panel(ctx),
           // Card 1: GEN 0 · Source & Sub
           coreMode_(add<Row>(ctx, ParamId::coreMode, colour::reese, "Core")),
-          octave_(add<Row>(ctx, ParamId::octave, colour::reese, "Octave")),
-          quality_(add<Row>(ctx, ParamId::quality, colour::reese, "OS")),
+          droneNote_(add<Row>(ctx, ParamId::droneNote, colour::reese, "Drone Key")),
           unison_(add<Knob>(ctx, ParamId::unison, colour::reese)),
           detune_(add<Knob>(ctx, ParamId::detune, colour::reese)),
           tone_(add<Knob>(ctx, ParamId::tone, colour::reese)),
           subLevel_(add<Knob>(ctx, ParamId::subLevel, colour::sub)),
-          glide_(add<Row>(ctx, ParamId::glide, colour::reese, "Glide", true)),
           attack_(add<Row>(ctx, ParamId::attack, colour::reese, "Attack", true)),
           release_(add<Row>(ctx, ParamId::release, colour::reese, "Release", true)),
           subWarmth_(add<Row>(ctx, ParamId::subWarmth, colour::sub, "Sub Warmth", true)),
@@ -101,8 +99,7 @@ class StudioDeck final : public Panel {
             const float selY = px(36.0f);
             if (idx == 0) {
                 coreMode_.setBounds(cx + pad, selY, halfW, rowH);
-                octave_.setBounds(cx + pad + halfW + colGap, selY, halfW, rowH);
-                quality_.setBounds(cx + cw - pad - px(64.0f), px(8.0f), px(64.0f), px(18.0f));
+                droneNote_.setBounds(cx + pad + halfW + colGap, selY, halfW, rowH);
             } else if (idx == 1) {
                 filt1Mode_.setBounds(cx + pad, selY, halfW, rowH);
                 filt2Mode_.setBounds(cx + pad + halfW + colGap, selY, halfW, rowH);
@@ -126,18 +123,24 @@ class StudioDeck final : public Panel {
                     cx + pad + static_cast<float>(k) * (knobW + knobGap), knobY, knobW, knobH);
             }
 
-            // 2 columns x 3 precision rows
+            // 2 columns x 3 precision rows (Card 0 spans Sub Phase full-width on row 3 for fine phase alignment!)
             const float rowsTop = px(158.0f);
             const float rowPitch = px(34.0f);
             for (int r = 0; r < 3; ++r) {
                 const float ry = rowsTop + static_cast<float>(r) * rowPitch;
-                colL[static_cast<std::size_t>(r)]->setBounds(cx + pad, ry, halfW, rowH);
-                colR[static_cast<std::size_t>(r)]->setBounds(cx + pad + halfW + colGap, ry, halfW, rowH);
+                if (idx == 0 && r == 2) {
+                    subPhase_.setBounds(cx + pad, ry, innerW, rowH);
+                } else {
+                    if (colL[static_cast<std::size_t>(r)] != nullptr)
+                        colL[static_cast<std::size_t>(r)]->setBounds(cx + pad, ry, halfW, rowH);
+                    if (colR[static_cast<std::size_t>(r)] != nullptr)
+                        colR[static_cast<std::size_t>(r)]->setBounds(cx + pad + halfW + colGap, ry, halfW, rowH);
+                }
             }
         };
 
-        placeCard(0, {&unison_, &detune_, &tone_, &subLevel_}, {&glide_, &attack_, &release_},
-                  {&subWarmth_, &subSplit_, &subPhase_});
+        placeCard(0, {&unison_, &detune_, &tone_, &subLevel_}, {&attack_, &release_, nullptr},
+                  {&subWarmth_, &subSplit_, nullptr});
         placeCard(1, {&filt1Hz_, &drive_, &filt2Hz_, &density_}, {&filt1Res_, &driveType_, &asym_},
                   {&filt2Res_, &disperse_, &width_});
         placeCard(2, {&genMix_, &strataPos_, &strataSpan_, &motion_}, {&strataPitch_, &strataFade_, &postDrive_},
@@ -172,9 +175,9 @@ class StudioDeck final : public Panel {
     }
 
   private:
-    Row &coreMode_, &octave_, &quality_;
+    Row &coreMode_, &droneNote_;
     Knob &unison_, &detune_, &tone_, &subLevel_;
-    Row &glide_, &attack_, &release_, &subWarmth_, &subSplit_, &subPhase_;
+    Row &attack_, &release_, &subWarmth_, &subSplit_, &subPhase_;
 
     Row &filt1Mode_, &filt2Mode_;
     Knob &filt1Hz_, &drive_, &filt2Hz_, &density_;

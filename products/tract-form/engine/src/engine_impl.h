@@ -298,6 +298,10 @@ struct Engine::Impl {
     double glideMs = spec(ParamId::glide).def;
     bool phaseResetOn = true;
     bool beatLockOn = false;
+    PlayMode playModeCur = PlayMode::legato;
+    GlideMode glideModeCur = GlideMode::legato;
+    int octaveSt = 0;
+    bool hasPlayedNote = false;
 
     // Clock.
     bool wasPlaying = false;

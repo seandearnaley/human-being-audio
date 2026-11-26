@@ -59,6 +59,9 @@ enum class ParamId : std::uint8_t {
     strataFade,
     strataKeytrack,
     droneNote,
+    playMode,
+    glideMode,
+    bendRange,
     padProgram,
     padX,
     padY,
@@ -162,6 +165,8 @@ enum class DriveType : std::uint8_t { tube, fold, buchla, sine, clip };
 enum class Filt2Mode : std::uint8_t { notch, dualNotch, lp12, bp12, phaser };
 enum class StrataDir : std::uint8_t { forward, pingPong, reverse, scrub };
 enum class StrataBlend : std::uint8_t { blend, hiStrata, loStrata };
+enum class PlayMode : std::uint8_t { mono, legato, poly4 };
+enum class GlideMode : std::uint8_t { always, legato };
 enum class PadProgram : std::uint8_t { sculpt, reese, strata, disperse, abyss };
 inline constexpr int kPadProgramCount = 5;
 
@@ -181,6 +186,10 @@ inline constexpr std::array<std::string_view, 3> strataBlend{"Blend", "Hi-Strata
 inline constexpr std::array<std::string_view, 3> printBars{"1 bar", "2 bars", "4 bars"};
 inline constexpr std::array<std::string_view, 12> droneNote{"C1",  "C#1", "D1",  "D#1", "E1",  "F1",
                                                             "F#1", "G1",  "G#1", "A1",  "A#1", "B1"};
+inline constexpr std::array<std::string_view, 3> playMode{"Mono", "Legato", "Poly 4"};
+inline constexpr std::array<std::string_view, 2> glideMode{"Always", "Legato"};
+inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1" "2 st",  "\xc2\xb1" "7 st", "\xc2\xb1" "12 st",
+                                                           "\xc2\xb1" "24 st", "\xc2\xb1" "48 st"};
 inline constexpr std::array<std::string_view, 5> padProgram{"Sculpt", "Reese", "Strata", "Disperse", "Abyss"};
 inline constexpr std::array<std::string_view, 3> quality{"2\u00d7", "4\u00d7", "8\u00d7"};
 
@@ -198,6 +207,7 @@ inline constexpr auto& laneMode = hba::dsp::kLaneModeLabels;
 inline constexpr std::array<int, 3> kQualityFactors{2, 4, 8};
 inline constexpr std::array<int, 3> kPrintBarCounts{1, 2, 4};
 inline constexpr std::array<int, 4> kOctaveSemitones{-24, -12, 0, 12};
+inline constexpr std::array<int, 5> kBendSemitones{2, 7, 12, 24, 48};
 using hba::dsp::kLaneRateQuarters;
 using hba::dsp::kLaneRatios;
 
@@ -320,6 +330,9 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::ranged("strataFade", "Loop Xfade", 2.0f, 80.0f, 14.0f, Unit::ms, 1.8f),
     detail::toggle("strataKeytrack", "Keytrack", true, false),
     detail::choice("droneNote", "Drone Key", choices::droneNote, 5, false),
+    detail::choice("playMode", "Play Mode", choices::playMode, 0, false),
+    detail::choice("glideMode", "Portamento", choices::glideMode, 0, false),
+    detail::choice("bendRange", "Bend Range", choices::bendRange, 0, false),
     detail::choice("padProgram", "Pad World", choices::padProgram, 0, false),
     detail::amount("padX", "Pad X", 0.50f),
     detail::amount("padY", "Pad Y", 0.50f),

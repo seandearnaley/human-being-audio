@@ -4,7 +4,11 @@
 #include "panels.h"
 #include "top_bar.h"
 
+#include <hba/core/note_name.h>
 #include <hba/ui/editor_window.h>
+#include <hba/ui/voice_bar.h>
+
+#include <string>
 
 namespace tg::ui {
 
@@ -21,6 +25,11 @@ constexpr hba::ui::DesignRect kPlayPad{kM, 134.0f, kW, 616.0f};
 constexpr hba::ui::DesignRect kStage{kM, 70.0f, kW, 288.0f};
 constexpr hba::ui::DesignRect kControls{kM, 366.0f, kW, 226.0f};
 constexpr hba::ui::DesignRect kMovement{kM, 600.0f, kW, 150.0f};
+
+// Persistent studio Voice / Playability / Quality footer (always visible in both PLAY and STUDIO)
+constexpr hba::ui::DesignRect kVoiceBar{kM, 758.0f, kW, hba::ui::kVoiceBarHeight};
+
+using VoiceBar = hba::ui::StudioVoiceBar<Context, ParamFrame, ParamId, ParamKind>;
 } // namespace
 
 struct Editor::Impl final {
@@ -28,7 +37,24 @@ struct Editor::Impl final {
         : context(model), host(context, static_cast<float>(kDefaultWidth)),
           topBar(context, std::move(showAbout), [this](bool studio) { applyView(studio); }),
           ribbon(makeManifoldRibbon(context)), playPad(makePlayPanel(context)), stage(makeStagePanel(context)),
-          controls(makeControlsStrip(context)), movement(makeMovementPanel(context)) {
+          controls(makeControlsStrip(context)), movement(makeMovementPanel(context)),
+          voiceBar(
+              context, colour::spiral, "VOICE",
+              {
+                  {ParamId::retrig, "Retrig", colour::spiral, 88.0f, false, false},
+                  {ParamId::glideMs, "Glide", colour::spiral, 136.0f, true, false},
+                  {ParamId::mpeRange, "Bend", colour::copedent, 108.0f, false, false},
+                  {ParamId::keySwitch, "Key Switch", colour::mobius, 114.0f, false, false},
+                  {ParamId::quality, "OS", colour::spiral, 116.0f, false, true},
+              },
+              [this]() -> std::string {
+                  const auto& v = context.model.visuals();
+                  if (v.heldNoteCount > 0) {
+                      return hba::core::midiNoteName(v.heldNotes[0], false) + " \xc2\xb7 " +
+                             std::to_string(v.heldNoteCount) + "/5v";
+                  }
+                  return v.sounding ? "5v" : "Poly 5";
+              }) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {
             if (key.keyCode() == visage::KeyCode::Space && !key.isMainModifier()) {
                 const bool next = context.model.get(ParamId::padHold) < 0.5f;
@@ -45,6 +71,7 @@ struct Editor::Impl final {
         host.addPlaced(stage.get(), kStage);
         host.addPlaced(controls.get(), kControls);
         host.addPlaced(movement.get(), kMovement);
+        host.addPlaced(&voiceBar, kVoiceBar);
         applyView(false);
     }
 
@@ -62,6 +89,7 @@ struct Editor::Impl final {
     TopBar topBar;
     std::unique_ptr<Panel> ribbon, playPad;
     std::unique_ptr<Panel> stage, controls, movement;
+    VoiceBar voiceBar;
     bool studioView = false;
 };
 

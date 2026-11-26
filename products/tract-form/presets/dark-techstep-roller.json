@@ -115,5 +115,9 @@
             0.1,
             "smooth"
         ]
-    ]
+    ],
+    "playMode": "Legato",
+    "glideMode": "Legato",
+    "bendRange": "±2 st",
+    "octave": "0 oct"
 }

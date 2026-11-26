@@ -10,9 +10,9 @@
 namespace ln::ui {
 
 inline constexpr int kDefaultWidth = 1280;
-inline constexpr int kDefaultHeight = 760;
+inline constexpr int kDefaultHeight = 802;
 inline constexpr int kMinWidth = 960;
-inline constexpr int kMinHeight = 570;
+inline constexpr int kMinHeight = 602;
 
 class Editor {
   public:

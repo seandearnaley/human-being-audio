@@ -147,6 +147,13 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     const Params params = values_.snapshot();
+    const int bendChoice = std::clamp(params.choice(ParamId::bendRange), 0, static_cast<int>(kBendSemitones.size()) - 1);
+    if (bendChoice != lastBendChoice_) {
+        lastBendChoice_ = bendChoice;
+        const float st = static_cast<float>(kBendSemitones[static_cast<std::size_t>(bendChoice)]);
+        midiParser_.setPitchBendRange(st);
+        engine_.setPitchBendRange(st);
+    }
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
 
