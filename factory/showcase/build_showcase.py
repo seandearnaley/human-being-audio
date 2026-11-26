@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Build and encode all 30 Human Being Audio web showcase clips + waveform manifest.
+"""Build and encode all 36 Human Being Audio web showcase clips + waveform manifest.
 
-Canonical developer command:
+Canonical developer commands:
     python3 factory/showcase/build_showcase.py [--keep-wav /path/to/dir]
+    python3 factory/showcase/build_showcase.py --product strike-body
 """
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import os
@@ -22,6 +24,7 @@ SHOWCASE_DIR = REPO_ROOT / "factory" / "showcase"
 BUILD_DIR = SHOWCASE_DIR / "build"
 WEB_AUDIO_DIR = REPO_ROOT / "web" / "public" / "audio"
 WEB_MANIFEST = REPO_ROOT / "web" / "app" / "audioManifest.json"
+STUDIO_CATALOG = REPO_ROOT / "studio.json"
 PEAK_BARS = 64
 
 
@@ -81,23 +84,81 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def encode_clip(item: dict) -> tuple[str, dict]:
+    product = item["product"]
+    clip_id = item["id"]
+    wav_path = Path(item["wav"])
+    out_dir = WEB_AUDIO_DIR / product
+    out_dir.mkdir(parents=True, exist_ok=True)
+    mp3_path = out_dir / f"{clip_id}.mp3"
+
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(wav_path),
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-c:a",
+            "libmp3lame",
+            "-q:a",
+            "2",
+            "-map_metadata",
+            "-1",
+            str(mp3_path),
+        ]
+    )
+
+    duration, peaks = read_wav_peaks(wav_path, PEAK_BARS)
+    return product, {
+        "id": clip_id,
+        "title": item["title"],
+        "tag": item["tag"],
+        "bpm": int(round(item["bpm"])),
+        "key": item["key"],
+        "note": item["note"],
+        "duration": duration,
+        "src": f"/audio/{product}/{clip_id}.mp3",
+        "peaks": peaks,
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build Human Being Audio 30-clip web showcase.")
+    catalog_products = list(json.loads(STUDIO_CATALOG.read_text())["products"])
+    parser = argparse.ArgumentParser(description="Build Human Being Audio 36-clip web showcase.")
     parser.add_argument("--keep-wav", type=Path, default=None, help="Directory to keep rendered WAVs for ear checks")
+    parser.add_argument(
+        "--product",
+        choices=catalog_products,
+        default=None,
+        help="Only re-encode and update manifest entries for one studio product",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=max(1, min(8, os.cpu_count() or 4)),
+        help="Parallel ffmpeg worker count",
+    )
     args = parser.parse_args()
 
     cpm_cache = os.environ.get("CPM_SOURCE_CACHE", str(Path.home() / ".cache" / "CPM"))
-    run(
-        [
-            "cmake",
-            "-S",
-            str(SHOWCASE_DIR),
-            "-B",
-            str(BUILD_DIR),
-            "-DCMAKE_BUILD_TYPE=Release",
-            f"-DCPM_SOURCE_CACHE={cpm_cache}",
-        ]
-    )
+    cmake_cmd = [
+        "cmake",
+        "-S",
+        str(SHOWCASE_DIR),
+        "-B",
+        str(BUILD_DIR),
+        "-DCMAKE_BUILD_TYPE=Release",
+        f"-DCPM_SOURCE_CACHE={cpm_cache}",
+    ]
+    if shutil.which("ninja") and not (BUILD_DIR / "CMakeCache.txt").exists():
+        cmake_cmd[1:1] = ["-G", "Ninja"]
+    run(cmake_cmd)
     run(["cmake", "--build", str(BUILD_DIR), "--parallel"])
 
     tmp_ctx = None
@@ -111,57 +172,28 @@ def main() -> int:
     try:
         run([str(BUILD_DIR / "studio-showcase"), str(REPO_ROOT), str(wav_dir)])
         raw_items = json.loads((wav_dir / "raw-manifest.json").read_text())
+        if args.product:
+            raw_items = [item for item in raw_items if item["product"] == args.product]
+            manifest: dict[str, list[dict]] = json.loads(WEB_MANIFEST.read_text()) if WEB_MANIFEST.exists() else {}
+            manifest[args.product] = []
+        else:
+            manifest = {}
 
-        # Encode all 30 clips to crisp, stripped VBR MP3 (~190-220 kbps, 48 kHz stereo)
-        manifest: dict[str, list[dict]] = {}
-        for item in raw_items:
-            product = item["product"]
-            clip_id = item["id"]
-            wav_path = Path(item["wav"])
-            out_dir = WEB_AUDIO_DIR / product
-            out_dir.mkdir(parents=True, exist_ok=True)
-            mp3_path = out_dir / f"{clip_id}.mp3"
+        # Encode clips in parallel to crisp, stripped VBR MP3 (~190-220 kbps, 48 kHz stereo)
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            encoded = list(pool.map(encode_clip, raw_items))
 
-            run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-v",
-                    "error",
-                    "-i",
-                    str(wav_path),
-                    "-ar",
-                    "48000",
-                    "-ac",
-                    "2",
-                    "-c:a",
-                    "libmp3lame",
-                    "-q:a",
-                    "2",
-                    "-map_metadata",
-                    "-1",
-                    str(mp3_path),
-                ]
-            )
+        for product, entry in encoded:
+            manifest.setdefault(product, []).append(entry)
 
-            duration, peaks = read_wav_peaks(wav_path, PEAK_BARS)
-            manifest.setdefault(product, []).append(
-                {
-                    "id": clip_id,
-                    "title": item["title"],
-                    "tag": item["tag"],
-                    "bpm": int(round(item["bpm"])),
-                    "key": item["key"],
-                    "note": item["note"],
-                    "duration": duration,
-                    "src": f"/audio/{product}/{clip_id}.mp3",
-                    "peaks": peaks,
-                }
-            )
+        ordered = {slug: manifest[slug] for slug in catalog_products if slug in manifest}
+        for slug, entries in manifest.items():
+            if slug not in ordered:
+                ordered[slug] = entries
 
-        WEB_MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n")
+        WEB_MANIFEST.write_text(json.dumps(ordered, indent=2) + "\n")
         total_kb = sum(p.stat().st_size for p in WEB_AUDIO_DIR.rglob("*.mp3")) / 1024.0
-        print(f"Encoded {len(raw_items)} clips ({total_kb:.0f} KB total) -> {WEB_MANIFEST}")
+        print(f"Encoded {len(raw_items)} clips ({total_kb:.0f} KB total across showcase) -> {WEB_MANIFEST}")
     finally:
         if tmp_ctx is not None:
             tmp_ctx.cleanup()

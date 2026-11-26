@@ -3,14 +3,41 @@ on: workflow_call
 
 permissions:
   contents: read
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_NOHASHDIR: 'true'
+  CCACHE_COMPRESS: 'true'
+  CCACHE_MAXSIZE: 250M
+
 jobs:
   release-metadata:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
-      - name: Check the native artwork used in installers and plugins
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-showcase-${{ github.sha }}
+          restore-keys: ccache-showcase-
+      - name: Check the native artwork and release metadata
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python3-pil python3-xlib xvfb xauth
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-pil python3-xlib xvfb xauth \
+            build-essential ca-certificates ccache clang-22 cmake git ninja-build
           /usr/bin/python3 design/studio/test_artwork.py
       - run: xvfb-run -a /usr/bin/python3 -m unittest discover -s factory/release
+      - name: Verify studio-showcase compiles against all 6 engines
+        env:
+          CC: clang-22
+          CXX: clang++-22
+        run: |
+          cmake -S factory/showcase -B factory/showcase/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build factory/showcase/build --parallel

@@ -1,0 +1,111 @@
+name: macOS product
+
+on:
+  workflow_call:
+    inputs:
+      product:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PLUGINVAL_VERSION: v1.0.4
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_NOHASHDIR: 'true'
+  CCACHE_COMPRESS: 'true'
+  CCACHE_MAXSIZE: 500M
+
+jobs:
+  engine:
+    name: ${{ inputs.product }} · macOS engine
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: products/${{ inputs.product }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja ccache
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-mac-${{ inputs.product }}-engine-${{ github.sha }}
+          restore-keys: ccache-mac-${{ inputs.product }}-engine-
+      - run: cmake --preset engine -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset engine
+      - run: ctest --preset engine
+
+  plugin:
+    name: ${{ inputs.product }} · macOS plugin
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: products/${{ inputs.product }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja ccache
+      - uses: actions/cache@v5
+        with:
+          path: .cpm-cache
+          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
+          restore-keys: cpm-v2-
+      - uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: ccache-mac-${{ inputs.product }}-plugin-${{ github.sha }}
+          restore-keys: ccache-mac-${{ inputs.product }}-plugin-
+      - uses: actions/cache@v5
+        with:
+          path: .pluginval
+          key: pluginval-macos-${{ env.PLUGINVAL_VERSION }}
+      - name: Resolve product metadata
+        id: meta
+        working-directory: .
+        env:
+          PRODUCT: ${{ inputs.product }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          p = json.loads(open("studio.json").read())["products"][os.environ["PRODUCT"]]
+          art = "build/dev/" + p["artifacts"].replace("/Release", "/RelWithDebInfo")
+          print(f"name={p['name']}")
+          print(f"artefacts={art}")
+          print(f"artifact_id={p['name'].replace(' ', '')}-macOS")
+          PY
+      - run: cmake --preset dev -DCPM_SOURCE_CACHE="$CPM_SOURCE_CACHE"
+      - run: cmake --build --preset dev
+      - run: ctest --preset dev
+
+      - name: Validate with pluginval
+        env:
+          PRODUCT_NAME: ${{ steps.meta.outputs.name }}
+          ARTEFACTS: ${{ steps.meta.outputs.artefacts }}
+        run: |
+          PV_BIN="$GITHUB_WORKSPACE/.pluginval/pluginval.app/Contents/MacOS/pluginval"
+          if [[ ! -x "$PV_BIN" ]]; then
+            mkdir -p "$GITHUB_WORKSPACE/.pluginval"
+            curl -fsSL -o "$RUNNER_TEMP/pluginval.zip" \
+              "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+            unzip -q -o "$RUNNER_TEMP/pluginval.zip" -d "$GITHUB_WORKSPACE/.pluginval"
+          fi
+          "$PV_BIN" --strictness-level 10 --validate-in-process \
+            --skip-gui-tests --timeout-ms 300000 --validate "$ARTEFACTS/VST3/${PRODUCT_NAME}.vst3"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.artifact_id }}
+          path: |
+            products/${{ inputs.product }}/${{ steps.meta.outputs.artefacts }}/VST3
+            products/${{ inputs.product }}/${{ steps.meta.outputs.artefacts }}/AU
+            products/${{ inputs.product }}/${{ steps.meta.outputs.artefacts }}/Standalone
+          if-no-files-found: error

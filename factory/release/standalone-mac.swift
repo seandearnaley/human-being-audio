@@ -9,6 +9,7 @@ app.executableURL = executable
 try app.run()
 defer { if app.isRunning { app.terminate() } }
 let deadline = Date().addingTimeInterval(30)
+var opened = false
 while Date() < deadline && app.isRunning {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     if windows.contains(where: {
@@ -18,10 +19,11 @@ while Date() < deadline && app.isRunning {
         return (bounds["Width"] ?? 0) > 200 && (bounds["Height"] ?? 0) > 100
     }) {
         print("Opened standalone window for " + url.lastPathComponent)
+        opened = true
         break
     }
     try await Task.sleep(for: .milliseconds(100))
 }
-if Date() >= deadline || !app.isRunning {
+if !opened {
     throw NSError(domain: "StudioStandalone", code: 1, userInfo: [NSLocalizedDescriptionKey: "No standalone window appeared for " + url.path])
 }
