@@ -86,8 +86,8 @@ bool laneAudible(const SceneData& sc, int lane, bool anySolo) noexcept CL_NONBLO
 
 // Compute base generated hit & base velocity for a given drum (lane, stepIndex) before user step overrides.
 void resolveAutoDrumStep(DrumStyle style, const styles::StyleKit& kit, int lane, int stepIdx, int laneLen,
-                         float complexity, float ghosts, int variation, const LaneConfig& laneCfg,
-                         bool& outHit, int& outVel, bool& outAccent, bool& outGhost) noexcept CL_NONBLOCKING {
+                         float complexity, float ghosts, int variation, const LaneConfig& laneCfg, bool& outHit,
+                         int& outVel, bool& outAccent, bool& outGhost) noexcept CL_NONBLOCKING {
     outHit = false;
     outVel = 96;
     outAccent = false;
@@ -98,10 +98,10 @@ void resolveAutoDrumStep(DrumStyle style, const styles::StyleKit& kit, int lane,
 
     // 1. Explicit Euclidean override on this lane or Euclidean Lab style
     if (laneCfg.euclidHits > 0 || style == DrumStyle::euclidean) {
-        const int hits =
-            laneCfg.euclidHits > 0 ? static_cast<int>(laneCfg.euclidHits) : styles::euclideanDefaultHits(lane, complexity);
-        const int rot = laneCfg.euclidHits > 0 ? static_cast<int>(laneCfg.euclidRot)
-                                               : styles::euclideanDefaultRot(lane, effVar);
+        const int hits = laneCfg.euclidHits > 0 ? static_cast<int>(laneCfg.euclidHits)
+                                                : styles::euclideanDefaultHits(lane, complexity);
+        const int rot =
+            laneCfg.euclidHits > 0 ? static_cast<int>(laneCfg.euclidRot) : styles::euclideanDefaultRot(lane, effVar);
         const std::uint32_t em = styles::euclidMask(hits, laneLen, rot);
         outHit = (em & bit) != 0U;
         if (lane == 2 && ghosts < 0.08f)
@@ -136,11 +136,9 @@ void resolveAutoDrumStep(DrumStyle style, const styles::StyleKit& kit, int lane,
     outAccent = (foldMask(kit.accentMask[li]) & bit) != 0U;
 
     // Deterministic per-cell hash for smooth density scaling & tasteful variation swaps
-    const std::uint32_t cellHash =
-        hba::dsp::laneHash(static_cast<std::uint32_t>(effVar) * 2654435761U ^
-                           static_cast<std::uint32_t>(lane) * 2246822519U ^
-                           static_cast<std::uint32_t>(stepIdx) * 3266489917U ^
-                           (static_cast<std::uint32_t>(style) << 18U));
+    const std::uint32_t cellHash = hba::dsp::laneHash(
+        static_cast<std::uint32_t>(effVar) * 2654435761U ^ static_cast<std::uint32_t>(lane) * 2246822519U ^
+        static_cast<std::uint32_t>(stepIdx) * 3266489917U ^ (static_cast<std::uint32_t>(style) << 18U));
     const double u = static_cast<double>(cellHash) / 4294967296.0;
 
     // Curated variation spice (variation == 1 is the canonical signature groove; 2..64 add tasteful twists)
@@ -178,7 +176,8 @@ void resolveAutoDrumStep(DrumStyle style, const styles::StyleKit& kit, int lane,
         return;
     }
 
-    // Core lanes: smooth progression from stripped Kick+Snare backbone (Complex=0) -> full groove (0.5) -> rich spice (1.0)
+    // Core lanes: smooth progression from stripped Kick+Snare backbone (Complex=0) -> full groove (0.5) -> rich spice
+    // (1.0)
     if (lane == 0 || lane == 1) {
         if (inCore)
             outHit = true;
@@ -313,8 +312,7 @@ std::uint32_t phraseSignature(const Params& params, int sceneIdx, const HeldNote
         for (int i = 0; i < kMaxLaneSteps; ++i) {
             const auto& st = bank.slicerSteps[static_cast<std::size_t>(i)];
             if (st.hasAny()) {
-                mix(static_cast<std::uint32_t>(i) |
-                    (static_cast<std::uint32_t>(static_cast<int>(st.state) + 2) << 6U) |
+                mix(static_cast<std::uint32_t>(i) | (static_cast<std::uint32_t>(static_cast<int>(st.state) + 2) << 6U) |
                     (static_cast<std::uint32_t>(st.velOffset + 64) << 9U) |
                     (static_cast<std::uint32_t>(st.ratchet) << 17U) |
                     (static_cast<std::uint32_t>(st.microNudge + 32) << 21U) | (st.flam ? (1U << 28U) : 0U));
@@ -415,7 +413,8 @@ void appendDrumFill(PhrasePlan& out, double fillStart, double fillEnd, double to
         int idx = 0;
         for (double b = fillStart; b < fillEnd - 0.04; b += step) {
             const double prog = (b - fillStart) / len;
-            const int lane = seq[static_cast<std::size_t>(std::min(idx * 6 / std::max(1, static_cast<int>(len / step)), 5))];
+            const int lane =
+                seq[static_cast<std::size_t>(std::min(idx * 6 / std::max(1, static_cast<int>(len / step)), 5))];
             const int vel = 78 + static_cast<int>(44.0 * prog);
             emit(b, lane, vel, step * 0.82, step < 0.22, false);
             if (idx == 0)
@@ -495,9 +494,9 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
     const double msToBeats = safeBpm / 60000.0;
 
     const SceneData sc = effectiveSceneData(bank, out.activeScene);
-    const int effStyleIdx =
-        sc.styleOverride >= 0 ? std::clamp(static_cast<int>(sc.styleOverride), 0, kDrumStyleCount - 1)
-                              : std::clamp(params.choice(ParamId::style), 0, kDrumStyleCount - 1);
+    const int effStyleIdx = sc.styleOverride >= 0
+                                ? std::clamp(static_cast<int>(sc.styleOverride), 0, kDrumStyleCount - 1)
+                                : std::clamp(params.choice(ParamId::style), 0, kDrumStyleCount - 1);
     const auto style = static_cast<DrumStyle>(effStyleIdx);
     const styles::StyleKit& kit = styles::styleKit(style);
 
@@ -549,8 +548,8 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
         bool hit = (kit.slicerStabMask & bit) != 0U;
         const bool acc = (kit.slicerAccentMask & bit) != 0U;
         if (!hit && complexity > 0.65f) {
-            const std::uint32_t h =
-                hba::dsp::laneHash(static_cast<std::uint32_t>(variation) * 919U + static_cast<std::uint32_t>(st) * 313U);
+            const std::uint32_t h = hba::dsp::laneHash(static_cast<std::uint32_t>(variation) * 919U +
+                                                       static_cast<std::uint32_t>(st) * 313U);
             if ((static_cast<double>(h) / 4294967296.0) < static_cast<double>(complexity - 0.65f) * 1.1)
                 hit = true;
         }
@@ -665,10 +664,11 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
                 const auto& edit = laneCfg.steps[static_cast<std::size_t>(stIdx)];
                 const double pocketBeats = kit.pocketMs[li] * std::abs(groove) * msToBeats;
                 const double nudgeBeats = static_cast<double>(edit.microNudge) / 96.0;
-                const double warped = std::clamp(warpBeat(rawBeat, groove, pocket) + pocketBeats + nudgeBeats, 0.0,
-                                                 totalBeats - 0.03);
+                const double warped =
+                    std::clamp(warpBeat(rawBeat, groove, pocket) + pocketBeats + nudgeBeats, 0.0, totalBeats - 0.03);
 
-                // Determine ratchet bursts: explicit user step ratchet OR probabilistic musical ratchet on Hats/Perc/Ghosts
+                // Determine ratchet bursts: explicit user step ratchet OR probabilistic musical ratchet on
+                // Hats/Perc/Ghosts
                 int rc = static_cast<int>(edit.ratchet);
                 if (rc == 0 && ratchetAmt > 0.14f) {
                     const bool eligibleLane = (l == 4 || l == 2 || l == 6 || (l == 1 && isChopped));
@@ -708,7 +708,8 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
                         if (rBeat >= totalBeats - 0.02)
                             break;
                         const double ramp = static_cast<double>(r) / static_cast<double>(rc - 1);
-                        const int rv = std::clamp(static_cast<int>(finalVel) - 22 + static_cast<int>(26.0 * ramp), 24, 127);
+                        const int rv =
+                            std::clamp(static_cast<int>(finalVel) - 22 + static_cast<int>(26.0 * ramp), 24, 127);
                         CompiledNote sub;
                         sub.startBeats = rawBeat + static_cast<double>(r) * subStep;
                         sub.warpedBeats = rBeat;
@@ -787,7 +788,8 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
             const int kickLen = static_cast<int>(out.laneLengths[0]);
             const int kickSt = s16 % kickLen;
             const bool bassHit = out.gridVel[0][static_cast<std::size_t>(kickSt)] > 0;
-            const bool stabHit = out.slicerVel[static_cast<std::size_t>(effIdx)] > 0 && ((s16 % 16) != 0 || held.count == 1);
+            const bool stabHit =
+                out.slicerVel[static_cast<std::size_t>(effIdx)] > 0 && ((s16 % 16) != 0 || held.count == 1);
 
             const double warped = std::clamp(warpBeat(rawBeat, groove, pocket), 0.0, totalBeats - 0.03);
             if (bassHit) {
@@ -798,8 +800,8 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
                 bn.noteNumber = static_cast<std::int8_t>(held.notes[0]);
                 bn.lane = 0;
                 bn.stepIndex = static_cast<std::int16_t>(kickSt);
-                bn.velocity = applyDynamics(static_cast<int>(held.velocities[0]), (s16 % 16) == 0, false, dynamics,
-                                            prog, rng);
+                bn.velocity =
+                    applyDynamics(static_cast<int>(held.velocities[0]), (s16 % 16) == 0, false, dynamics, prog, rng);
                 bn.channel = 1;
                 bn.isChop = isChopped;
                 pushNote(out, bn);
@@ -884,8 +886,8 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
                 CompiledNote n;
                 n.startBeats = rawBeat + static_cast<double>(r) * subStep;
                 n.warpedBeats = startW;
-                n.durationBeats =
-                    reps > 1 ? std::min(subStep * 0.78, totalBeats - startW - 0.01) : std::min(baseDur, totalBeats - startW - 0.01);
+                n.durationBeats = reps > 1 ? std::min(subStep * 0.78, totalBeats - startW - 0.01)
+                                           : std::min(baseDur, totalBeats - startW - 0.01);
                 n.noteNumber = static_cast<std::int8_t>(noteNum);
                 n.lane = static_cast<std::int8_t>(std::min(voiceIdx, 7));
                 n.stepIndex = static_cast<std::int16_t>(effIdx);
@@ -911,10 +913,11 @@ void compilePhrase(const Params& params, int sceneIdx, std::int64_t phraseIndex,
                     const int order = revStrum ? (held.count - 1 - vi) : vi;
                     const double sOff = doStrum ? static_cast<double>(order) * strumStepBeats : 0.0;
                     const double startW = std::min(totalBeats - 0.02, baseW + sOff);
-                    const double dur =
-                        reps > 1 ? std::min(subStep * 0.78, totalBeats - startW - 0.01) : std::min(baseDur, totalBeats - startW - 0.01);
+                    const double dur = reps > 1 ? std::min(subStep * 0.78, totalBeats - startW - 0.01)
+                                                : std::min(baseDur, totalBeats - startW - 0.01);
                     const int voiceVel =
-                        (static_cast<int>(stepV) + static_cast<int>(held.velocities[static_cast<std::size_t>(vi)])) / 2 +
+                        (static_cast<int>(stepV) + static_cast<int>(held.velocities[static_cast<std::size_t>(vi)])) /
+                            2 +
                         (doStrum && vi == held.count - 1 ? 8 : 0);
 
                     CompiledNote n;

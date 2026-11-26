@@ -39,9 +39,8 @@ struct Editor::Impl final {
     Impl(Model& model, std::function<void()> showAbout)
         : context(model), host(context, static_cast<float>(kDefaultWidth)),
           topBar(context, std::move(showAbout), [this](bool grid) { setGridMode(grid); }),
-          ribbon(context, [this] { setGridMode(true); }), play(context),
-          macros(makeMacroStripPanel(context)), stage(makeGridStagePanel(context)),
-          setup(makeSetupPanel(context)), expr(makeMovementPanel(context)),
+          ribbon(context, [this] { setGridMode(true); }), play(context), macros(makeMacroStripPanel(context)),
+          stage(makeGridStagePanel(context)), setup(makeSetupPanel(context)), expr(makeMovementPanel(context)),
           delivery(makeDeliveryPanel(context)) {
         host.addPlaced(&topBar, kTopBar);
 

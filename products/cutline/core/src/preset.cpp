@@ -85,7 +85,8 @@ std::optional<PatternBank> readPatternBankJson(const Json& value) {
             if (so.contains("custom") && so["custom"].is_boolean())
                 sc.customized = so["custom"].get<bool>();
             if (so.contains("style") && so["style"].is_number_integer())
-                sc.styleOverride = static_cast<std::int8_t>(std::clamp(so["style"].get<int>(), -1, kDrumStyleCount - 1));
+                sc.styleOverride =
+                    static_cast<std::int8_t>(std::clamp(so["style"].get<int>(), -1, kDrumStyleCount - 1));
             if (so.contains("fill") && so["fill"].is_number_integer())
                 sc.fillTypeOverride = static_cast<std::int8_t>(std::clamp(so["fill"].get<int>(), -1, 5));
             if (so.contains("varOff") && so["varOff"].is_number_integer())
@@ -104,8 +105,7 @@ std::optional<PatternBank> readPatternBankJson(const Json& value) {
                         continue;
                     auto& lane = sc.lanes[li];
                     if (lo.contains("len") && lo["len"].is_number_integer())
-                        lane.stepLength =
-                            static_cast<std::uint8_t>(std::clamp(lo["len"].get<int>(), 0, kMaxLaneSteps));
+                        lane.stepLength = static_cast<std::uint8_t>(std::clamp(lo["len"].get<int>(), 0, kMaxLaneSteps));
                     if (lo.contains("note") && lo["note"].is_number_integer())
                         lane.midiNote = static_cast<std::uint8_t>(std::clamp(lo["note"].get<int>(), 0, 127));
                     if (lo.contains("mute") && lo["mute"].is_boolean())

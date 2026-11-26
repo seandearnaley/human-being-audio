@@ -82,7 +82,7 @@ double bounceStepBeats(int stepIdx, float x) noexcept CL_NONBLOCKING {
     constexpr int kCycle = 7;
     const int k = stepIdx % kCycle;
     const double u = static_cast<double>(k) / static_cast<double>(kCycle - 1); // 0..1
-    const double curve = (static_cast<double>(x) - 0.5) * 2.0;               // -1..+1
+    const double curve = (static_cast<double>(x) - 0.5) * 2.0;                 // -1..+1
     // Interpolate exponentially between 0.375 beats and 0.0625 beats
     const double t = curve >= 0.0 ? (0.5 * (1.0 - curve) + u * curve) : (0.5 * (1.0 + curve) + (1.0 - u) * (-curve));
     return 0.375 * std::pow(0.0625 / 0.375, std::clamp(t, 0.0, 1.0));
@@ -329,7 +329,8 @@ struct Engine::Impl {
                 sc = effectiveSceneData(bank, currentScene);
             sc.customized = true;
 
-            // Continuous polymetric twist with X: locked 16 -> mild 15/12/9/7 -> rich 11/12/7/5 -> wild prime polyrhythm!
+            // Continuous polymetric twist with X: locked 16 -> mild 15/12/9/7 -> rich 11/12/7/5 -> wild prime
+            // polyrhythm!
             std::array<std::uint8_t, kDrumLaneCount> lens{16, 16, 16, 16, 16, 16, 16, 16};
             if (padX >= 0.80f)
                 lens = {13, 15, 11, 9, 7, 11, 5, 3};
@@ -346,16 +347,16 @@ struct Engine::Impl {
                 lane.stepLength = lens[static_cast<std::size_t>(l)];
                 if (l >= 2 && padX >= 0.24f) {
                     const int len = static_cast<int>(lane.stepLength);
-                    const int hits = std::clamp(
-                        static_cast<int>(std::lround((0.28f + 0.45f * padY) * static_cast<float>(len))), 2,
-                                                std::max(2, len - 1));
+                    const int hits =
+                        std::clamp(static_cast<int>(std::lround((0.28f + 0.45f * padY) * static_cast<float>(len))), 2,
+                                   std::max(2, len - 1));
                     lane.euclidHits = static_cast<std::uint8_t>(hits);
                     lane.euclidRot = static_cast<std::uint8_t>((rotShift + l * 2) % len);
                 }
             }
             // Also polymetrically twist Slicer loop length in MIDI Slicer mode!
-            polyWorkBank.slicerLength = static_cast<std::uint8_t>(
-                padX < 0.25f ? 16 : (padX < 0.55f ? 12 : (padX < 0.80f ? 9 : 7)));
+            polyWorkBank.slicerLength =
+                static_cast<std::uint8_t>(padX < 0.25f ? 16 : (padX < 0.55f ? 12 : (padX < 0.80f ? 9 : 7)));
             outParams[ParamId::variation] =
                 static_cast<float>(std::clamp(1 + static_cast<int>(std::lround(padY * 15.0f)), 1, 64));
             outBank = &polyWorkBank;
@@ -440,10 +441,10 @@ struct Engine::Impl {
         // CC74 Slide (Brightness)
         if (xyDrivesCc74 || targetOn(LaneTarget::cc74Slide)) {
             const double val01 =
-                xyDrivesCc74 ? static_cast<double>(padY)
-                             : (std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::cc74Slide)), -1.0, 1.0) *
-                                    0.5 +
-                                0.5);
+                xyDrivesCc74
+                    ? static_cast<double>(padY)
+                    : (std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::cc74Slide)), -1.0, 1.0) * 0.5 +
+                       0.5);
             const int v = toMidi7BitUni(val01);
             if (lastCc74 != v) {
                 if (outMidi.push(MidiEvent::controlChange(offset, 1, 74, v)))
@@ -483,10 +484,10 @@ struct Engine::Impl {
         // Channel Pressure (Aftertouch)
         if (xyDrivesAt || targetOn(LaneTarget::pressure)) {
             const double val01 =
-                xyDrivesAt ? static_cast<double>(padY)
-                           : (std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::pressure)), -1.0, 1.0) *
-                                  0.5 +
-                              0.5);
+                xyDrivesAt
+                    ? static_cast<double>(padY)
+                    : (std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::pressure)), -1.0, 1.0) * 0.5 +
+                       0.5);
             const int v = toMidi7BitUni(val01);
             if (lastPressure != v) {
                 if (outMidi.push(MidiEvent::channelPressure(offset, 1, v)))
@@ -528,8 +529,7 @@ struct Engine::Impl {
         if (numSamples <= 0)
             return;
 
-        const float flashDecay =
-            static_cast<float>(std::exp(-static_cast<double>(numSamples) / (0.115 * sampleRate)));
+        const float flashDecay = static_cast<float>(std::exp(-static_cast<double>(numSamples) / (0.115 * sampleRate)));
         for (auto& f : laneFlashes)
             f = (f * flashDecay < 0.005f) ? 0.0f : (f * flashDecay);
 
@@ -813,9 +813,9 @@ struct Engine::Impl {
                         const double absStart = scaledStart / baseRate;
                         const int offset = sampleOffsetOf(absStart, rawStart, beatsPerSample, numSamples);
                         const int vBias = evalVelBias(params, absStart, engaged, padY);
-                        const int scaledVel = static_cast<int>(
-                            std::lround(static_cast<float>(n.velocity) * (0.55f + 0.55f * padY))) +
-                                              vBias;
+                        const int scaledVel =
+                            static_cast<int>(std::lround(static_cast<float>(n.velocity) * (0.55f + 0.55f * padY))) +
+                            vBias;
                         triggerNote(n.noteNumber, scaledVel, n.lane,
                                     absStart + std::max(0.03, n.durationBeats / baseRate), offset, outMidi, true);
                     }
@@ -876,9 +876,10 @@ struct Engine::Impl {
                     const double curCell = std::floor((effStart - barOrigin) / win) * win;
                     targetBarBeat = curCell + localOff;
                 } else if (chopAmt > 0.20f) {
-                    const std::uint32_t hChop =
-                        hba::dsp::laneHash(static_cast<std::uint32_t>(ev.note * 919 + static_cast<int>(ev.barBeat * 8)));
-                    if (ev.barBeat < 2.0 && (static_cast<double>(hChop) / 4294967296.0) < static_cast<double>(chopAmt) * 0.4) {
+                    const std::uint32_t hChop = hba::dsp::laneHash(
+                        static_cast<std::uint32_t>(ev.note * 919 + static_cast<int>(ev.barBeat * 8)));
+                    if (ev.barBeat < 2.0 &&
+                        (static_cast<double>(hChop) / 4294967296.0) < static_cast<double>(chopAmt) * 0.4) {
                         const double repBeat = barOrigin + warpBeat(ev.barBeat + 2.0, effGroove, pocket);
                         const double absRep = repBeat / speedMul;
                         if (absRep >= windowStart - kEps && absRep < windowEnd - kEps) {
@@ -906,7 +907,8 @@ struct Engine::Impl {
                 }
             }
         } else {
-            // Standard playback + global SeqRate (0.5x/1x/2x) + Morph (0.5x/1x/2x + Sub <-> Tops filter) + Slice/Swing/Poly XY!
+            // Standard playback + global SeqRate (0.5x/1x/2x) + Morph (0.5x/1x/2x + Sub <-> Tops filter) +
+            // Slice/Swing/Poly XY!
             const bool isMorph = engaged && (curProg == PadProgram::morph);
             const double morphMul = isMorph ? (padX < 0.33f ? 0.5 : (padX > 0.67f ? 2.0 : 1.0)) : 1.0;
             const double speedMul = std::clamp(baseRate * morphMul, 0.25, 4.0);
@@ -937,8 +939,8 @@ struct Engine::Impl {
                     const double absScaled = pOrigin + n.warpedBeats;
                     if (absScaled >= scan - kEps && absScaled < subEnd - kEps) {
                         const double absReal = absScaled / speedMul;
-                        const double absEndReal =
-                            absReal + std::max(0.03, std::min(n.durationBeats / speedMul, (pEnd - absScaled) / speedMul));
+                        const double absEndReal = absReal + std::max(0.03, std::min(n.durationBeats / speedMul,
+                                                                                    (pEnd - absScaled) / speedMul));
                         const int offset = sampleOffsetOf(absReal, rawStart, beatsPerSample, numSamples);
                         const int vBias = evalVelBias(params, absReal, engaged, padY) + (topBreakdown ? 10 : 0);
                         triggerNote(n.noteNumber, static_cast<int>(n.velocity) + vBias, n.lane, absEndReal, offset,
@@ -989,8 +991,7 @@ struct Engine::Impl {
         renderAuditionAudio(params, left, right, numSamples);
     }
 
-    void renderAuditionAudio(const Params& params, float* left, float* right,
-                             int numSamples) noexcept CL_NONBLOCKING {
+    void renderAuditionAudio(const Params& params, float* left, float* right, int numSamples) noexcept CL_NONBLOCKING {
         if (left == nullptr || right == nullptr || numSamples <= 0)
             return;
         const bool enabled = params.on(ParamId::audition);

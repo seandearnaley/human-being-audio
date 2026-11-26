@@ -1,15 +1,15 @@
 {
-  "name": "UKG Dark Garage Shuffle",
-  "category": "Club",
-  "style": "UKG",
-  "gravity": 0.68,
-  "ghosts": 0.84,
-  "chop": 0.26,
-  "ratchet": 0.28,
-  "complexity": 0.7,
-  "fills": 0.42,
-  "dynamics": 0.82,
-  "attractor": "MPC Swing",
-  "fillType": "Snare Roll",
-  "variation": 4
+    "name": "UKG Dark Garage Shuffle",
+    "category": "Club",
+    "style": "UKG",
+    "gravity": 0.68,
+    "ghosts": 0.84,
+    "chop": 0.26,
+    "ratchet": 0.28,
+    "complexity": 0.7,
+    "fills": 0.42,
+    "dynamics": 0.82,
+    "attractor": "MPC Swing",
+    "fillType": "Snare Roll",
+    "variation": 4
 }

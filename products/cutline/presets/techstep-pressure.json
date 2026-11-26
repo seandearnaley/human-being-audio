@@ -1,15 +1,15 @@
 {
-  "name": "Techstep Pressure",
-  "category": "Neuro",
-  "style": "Neuro",
-  "gravity": 0.08,
-  "ghosts": 0.52,
-  "chop": 0.42,
-  "ratchet": 0.48,
-  "complexity": 0.76,
-  "fills": 0.66,
-  "dynamics": 0.8,
-  "attractor": "Downbeat",
-  "fillType": "Drill Chop",
-  "variation": 4
+    "name": "Techstep Pressure",
+    "category": "Neuro",
+    "style": "Neuro",
+    "gravity": 0.08,
+    "ghosts": 0.52,
+    "chop": 0.42,
+    "ratchet": 0.48,
+    "complexity": 0.76,
+    "fills": 0.66,
+    "dynamics": 0.8,
+    "attractor": "Downbeat",
+    "fillType": "Drill Chop",
+    "variation": 4
 }

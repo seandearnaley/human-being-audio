@@ -29,12 +29,10 @@ float frac(float v) { return v - std::floor(v); }
 
 PlayPanel::PlayPanel(Context& context)
     : context_(context), holdBtn_(context, "Hold", [this] { toggleHold(); }),
-      quantChip_(context, ParamId::sceneQuantize, colour::text),
-      styleChip_(context, ParamId::style, colour::iris),
+      quantChip_(context, ParamId::sceneQuantize, colour::text), styleChip_(context, ParamId::style, colour::iris),
       mutateBtn_(context, "Mutate", [this] { context_.model.mutateActiveScene(); }),
       polyBtn_(context, "Polymeter", [this] { context_.model.polymeterActiveScene(); }),
-      ccChip_(context, ParamId::padCcMode, colour::cyan),
-      noteMapChip_(context, ParamId::noteMap, colour::text),
+      ccChip_(context, ParamId::padCcMode, colour::cyan), noteMapChip_(context, ParamId::noteMap, colour::text),
       slicerChip_(context, ParamId::slicerStyle, colour::cyan),
       auditionBtn_(context, "Audition",
                    [this] {
@@ -45,9 +43,9 @@ PlayPanel::PlayPanel(Context& context)
                    }),
       dragMidBtn_(context, "Drag 4-bar .mid \u2197", [this] { context_.model.dragMidiPhrase(); }) {
     setAcceptsKeystrokes(true);
-    for (visage::Frame* child : std::initializer_list<visage::Frame*>{
-             &holdBtn_, &quantChip_, &styleChip_, &mutateBtn_, &polyBtn_, &ccChip_, &noteMapChip_, &slicerChip_,
-             &auditionBtn_, &dragMidBtn_})
+    for (visage::Frame* child :
+         std::initializer_list<visage::Frame*>{&holdBtn_, &quantChip_, &styleChip_, &mutateBtn_, &polyBtn_, &ccChip_,
+                                               &noteMapChip_, &slicerChip_, &auditionBtn_, &dragMidBtn_})
         addChild(child);
 
     mutateBtn_.setAccent(colour::amber);
@@ -110,7 +108,8 @@ std::string PlayPanel::formatAxisValue(int prog, bool isX, float v) const {
     if (isX) {
         switch (prog) {
         case 1: { // Roll rate
-            const char* rate = v < 0.22f ? "1/8" : (v < 0.48f ? "1/16" : (v < 0.72f ? "1/16T" : (v < 0.88f ? "1/32" : "1/64")));
+            const char* rate =
+                v < 0.22f ? "1/8" : (v < 0.48f ? "1/16" : (v < 0.72f ? "1/16T" : (v < 0.88f ? "1/32" : "1/64")));
             return rate;
         }
         case 2: { // Bounce gravity
@@ -149,11 +148,13 @@ std::string PlayPanel::formatAxisValue(int prog, bool isX, float v) const {
 
 std::string PlayPanel::liveStatusBadge(int prog, float x, float y, bool engaged, bool holdOn) const {
     const int ccIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::padCcMode) + 0.5f), 0, 3);
-    const std::string ccStr = ccIdx > 0 ? (" \u00b7 " + std::string(choices::padCcMode[static_cast<std::size_t>(ccIdx)])) : "";
+    const std::string ccStr =
+        ccIdx > 0 ? (" \u00b7 " + std::string(choices::padCcMode[static_cast<std::size_t>(ccIdx)])) : "";
     const std::string modeTag = holdOn ? "HOLD" : (engaged ? "LIVE" : "TOUCH / DRAG");
     const std::string keyVal = formatAxisValue(prog, true, x);
     if (engaged || holdOn)
-        return modeTag + " \u00b7 " + std::string(kPerfPadLabels[static_cast<std::size_t>(prog)]) + " " + keyVal + ccStr;
+        return modeTag + " \u00b7 " + std::string(kPerfPadLabels[static_cast<std::size_t>(prog)]) + " " + keyVal +
+               ccStr;
     (void)y;
     return modeTag + " \u00b7 MIDI " + std::string(kPerfPadHints[static_cast<std::size_t>(prog)]) + ccStr;
 }

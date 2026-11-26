@@ -72,11 +72,12 @@ inline constexpr std::array<unsigned, kPerfPadCount> pad{
 inline unsigned lerpArgb(unsigned a, unsigned b, float t) {
     t = std::clamp(t, 0.0f, 1.0f);
     const auto mixChan = [t](unsigned ca, unsigned cb) -> unsigned {
-        return static_cast<unsigned>(std::lround(static_cast<float>(ca) + (static_cast<float>(cb) - static_cast<float>(ca)) * t));
+        return static_cast<unsigned>(
+            std::lround(static_cast<float>(ca) + (static_cast<float>(cb) - static_cast<float>(ca)) * t));
     };
     return (mixChan((a >> 24) & 0xffu, (b >> 24) & 0xffu) << 24) |
-           (mixChan((a >> 16) & 0xffu, (b >> 16) & 0xffu) << 16) |
-           (mixChan((a >> 8) & 0xffu, (b >> 8) & 0xffu) << 8) | mixChan(a & 0xffu, b & 0xffu);
+           (mixChan((a >> 16) & 0xffu, (b >> 16) & 0xffu) << 16) | (mixChan((a >> 8) & 0xffu, (b >> 8) & 0xffu) << 8) |
+           mixChan(a & 0xffu, b & 0xffu);
 }
 
 inline unsigned programArgb(int program) {

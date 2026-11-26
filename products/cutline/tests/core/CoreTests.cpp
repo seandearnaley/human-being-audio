@@ -64,9 +64,9 @@ TEST_CASE("Kit Note Maps resolve Live Rack, Strike Body, external drum VSTs, and
     CHECK(effectiveLaneMidiNote(NoteMap::bfd3, 1, defCfg) == 26); // BFD3 D0 Snare
     CHECK(effectiveLaneMidiNote(NoteMap::bfd3, 3, defCfg) == 29); // BFD3 F0 Rimshot
 
-    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 0, defCfg) == 24);  // GGD C0 Kick
-    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 4, defCfg) == 43);  // GGD Closed HH Tip
-    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 7, defCfg) == 52);  // GGD Crash 1
+    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 0, defCfg) == 24); // GGD C0 Kick
+    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 4, defCfg) == 43); // GGD Closed HH Tip
+    CHECK(effectiveLaneMidiNote(NoteMap::ggd, 7, defCfg) == 52); // GGD Crash 1
 
     CHECK(effectiveLaneMidiNote(NoteMap::ssd5, 6, defCfg) == 45);    // SSD5 Mid Tom
     CHECK(effectiveLaneMidiNote(NoteMap::kontakt, 7, defCfg) == 51); // NI Studio/Abbey Ride Bow

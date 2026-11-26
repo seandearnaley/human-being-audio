@@ -61,10 +61,10 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     drawPanel(canvas, context_, 0.0f, 0.0f, w, h, colour::panel, metric::radius);
 
     const auto& v = context_.model.visuals();
-    const int prog = std::clamp(
-        (v.padEngaged || v.pendingPadProgram >= 0) ? v.activePadProgram
-                                                   : static_cast<int>(context_.model.get(ParamId::padProgram) + 0.5f),
-        0, kPerfPadCount - 1);
+    const int prog = std::clamp((v.padEngaged || v.pendingPadProgram >= 0)
+                                    ? v.activePadProgram
+                                    : static_cast<int>(context_.model.get(ParamId::padProgram) + 0.5f),
+                                0, kPerfPadCount - 1);
     const unsigned accent = colour::programArgb(prog);
     const auto mode =
         static_cast<EngineMode>(std::clamp(static_cast<int>(context_.model.get(ParamId::engineMode) + 0.5f), 0, 1));
@@ -204,9 +204,10 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     canvas.circle(pillX + 10.0f * px, wellY + (wellH - dotD) * 0.5f, dotD);
 
     // Style & Scene headline
-    const int styleIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::style) + 0.5f), 0, kDrumStyleCount - 1);
-    const int scIdx = std::clamp(v.playing ? v.activeScene : static_cast<int>(context_.model.get(ParamId::scene) + 0.5f),
-                                 0, kSceneCount - 1);
+    const int styleIdx =
+        std::clamp(static_cast<int>(context_.model.get(ParamId::style) + 0.5f), 0, kDrumStyleCount - 1);
+    const int scIdx = std::clamp(
+        v.playing ? v.activeScene : static_cast<int>(context_.model.get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
     const char sceneChar = static_cast<char>('A' + scIdx);
     char headBuf[48]{};
     if (mode == EngineMode::drum) {

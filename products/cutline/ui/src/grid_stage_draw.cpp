@@ -12,8 +12,8 @@ namespace cl::ui {
 namespace {
 
 constexpr std::array<const char*, 5> kActLabels{"NOTE", "CC", "PAD", "SLICE", "CLIP"};
-constexpr std::array<unsigned, 5> kActColours{
-    colour::emerald, colour::cyan, colour::coral, colour::iris, colour::amber};
+constexpr std::array<unsigned, 5> kActColours{colour::emerald, colour::cyan, colour::coral, colour::iris,
+                                              colour::amber};
 
 void drawPill(visage::Canvas& canvas, const Context& ctx, float x, float y, float w, float h, const std::string& label,
               unsigned bg, unsigned border, unsigned fg, float fontSize = 10.5f, Weight weight = Weight::semibold) {
@@ -118,8 +118,7 @@ void GridStagePanel::drawHeader(visage::Canvas& canvas, const Layout& lay, const
     // Quick Action buttons
     auto drawAct = [&](const Rect& r, const char* text, unsigned hue, int idx) {
         const bool hov = (hoverAction_ == idx);
-        drawPill(canvas, context_, r.x, r.y, r.w, r.h, text,
-                 colour::withAlpha(hue, hov ? 0.26f : 0.12f),
+        drawPill(canvas, context_, r.x, r.y, r.w, r.h, text, colour::withAlpha(hue, hov ? 0.26f : 0.12f),
                  colour::withAlpha(hue, hov ? 0.90f : 0.45f), hov ? colour::text : hue, 10.0f, Weight::semibold);
     };
     drawAct(lay.btnMutate, "Mutate", colour::amber, 0);
@@ -141,13 +140,14 @@ void GridStagePanel::drawHeader(visage::Canvas& canvas, const Layout& lay, const
         canvas.setColor(colour::withAlpha(c, 0.25f + 0.75f * glow));
         canvas.roundedRectangleBorder(lx, ledY, ledW, ledH, px(3.5f), px(1.0f));
         canvas.setColor(glow > 0.25f ? colour::text : colour::textDim);
-        canvas.text(kActLabels[static_cast<std::size_t>(i)], font(context_, 8.5f, Weight::semibold), visage::Font::kCenter,
-                    lx, ledY, ledW, ledH);
+        canvas.text(kActLabels[static_cast<std::size_t>(i)], font(context_, 8.5f, Weight::semibold),
+                    visage::Font::kCenter, lx, ledY, ledW, ledH);
         lx -= px(4.0f);
     }
 
     char bpmBuf[64]{};
-    const int styleIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::style) + 0.5f), 0, kDrumStyleCount - 1);
+    const int styleIdx =
+        std::clamp(static_cast<int>(context_.model.get(ParamId::style) + 0.5f), 0, kDrumStyleCount - 1);
     const int rateIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::seqRate) + 0.5f), 0, 2);
     if (rateIdx == 1)
         std::snprintf(bpmBuf, sizeof(bpmBuf), "%.0f BPM \u00b7 %s", vis.bpm,
@@ -162,11 +162,12 @@ void GridStagePanel::drawHeader(visage::Canvas& canvas, const Layout& lay, const
 
 void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, const Visuals& vis) {
     const auto bank = context_.model.patternBank();
-    const int scIdx = vis.playing ? vis.activeScene
-                                  : std::clamp(static_cast<int>(context_.model.get(ParamId::scene) + 0.5f), 0,
-                                               kSceneCount - 1);
+    const int scIdx = vis.playing
+                          ? vis.activeScene
+                          : std::clamp(static_cast<int>(context_.model.get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
     const SceneData sc = effectiveSceneData(bank, scIdx);
-    const auto pocket = static_cast<Attractor>(std::clamp(static_cast<int>(context_.model.get(ParamId::attractor) + 0.5f), 0, 4));
+    const auto pocket =
+        static_cast<Attractor>(std::clamp(static_cast<int>(context_.model.get(ParamId::attractor) + 0.5f), 0, 4));
     const double groove = static_cast<double>(context_.model.get(ParamId::gravity));
     const bool anySolo = std::any_of(sc.lanes.begin(), sc.lanes.end(), [](const LaneConfig& l) { return l.solo; });
 
@@ -262,27 +263,27 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
         const Rect nr = laneNoteRect(l, lay);
         const bool customNote = (laneCfg.midiNote >= 1);
         drawPill(canvas, context_, nr.x, nr.y, nr.w, nr.h, midiNoteLabel(vis.plan.laneMidiNotes[li]),
-                 customNote ? colour::withAlpha(hue, 0.22f) : colour::raised,
-                 customNote ? hue : colour::edge, customNote ? colour::text : colour::textDim, 9.0f, Weight::semibold);
+                 customNote ? colour::withAlpha(hue, 0.22f) : colour::raised, customNote ? hue : colour::edge,
+                 customNote ? colour::text : colour::textDim, 9.0f, Weight::semibold);
 
         // 4. Mute / Solo / Lock pills
         const Rect mr = laneMuteRect(l, lay);
         drawPill(canvas, context_, mr.x, mr.y, mr.w, mr.h, "M",
                  laneCfg.muted ? colour::withAlpha(colour::vermilion, 0.36f) : colour::raised,
-                 laneCfg.muted ? colour::vermilion : colour::edge,
-                 laneCfg.muted ? colour::text : colour::textFaint, 9.0f, Weight::semibold);
+                 laneCfg.muted ? colour::vermilion : colour::edge, laneCfg.muted ? colour::text : colour::textFaint,
+                 9.0f, Weight::semibold);
 
         const Rect sr = laneSoloRect(l, lay);
         drawPill(canvas, context_, sr.x, sr.y, sr.w, sr.h, "S",
                  laneCfg.solo ? colour::withAlpha(colour::amber, 0.36f) : colour::raised,
-                 laneCfg.solo ? colour::amber : colour::edge,
-                 laneCfg.solo ? colour::text : colour::textFaint, 9.0f, Weight::semibold);
+                 laneCfg.solo ? colour::amber : colour::edge, laneCfg.solo ? colour::text : colour::textFaint, 9.0f,
+                 Weight::semibold);
 
         const Rect lr = laneLockRect(l, lay);
         drawPill(canvas, context_, lr.x, lr.y, lr.w, lr.h, "L",
                  laneCfg.locked ? colour::withAlpha(colour::iris, 0.36f) : colour::raised,
-                 laneCfg.locked ? colour::iris : colour::edge,
-                 laneCfg.locked ? colour::text : colour::textFaint, 9.0f, Weight::semibold);
+                 laneCfg.locked ? colour::iris : colour::edge, laneCfg.locked ? colour::text : colour::textFaint, 9.0f,
+                 Weight::semibold);
 
         // 5. Polymetric Length readout badge
         char lenBuf[8]{};
@@ -360,7 +361,8 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
                     canvas.setColor(0xd80d1018);
                     canvas.roundedRectangle(cx + px(2.0f), cy + px(1.0f), cw - px(4.0f), px(12.0f), px(2.5f));
                     canvas.setColor(colour::amber);
-                    canvas.text(rBuf, font(context_, 8.5f, Weight::semibold), visage::Font::kCenter, cx, cy, cw, px(13.0f));
+                    canvas.text(rBuf, font(context_, 8.5f, Weight::semibold), visage::Font::kCenter, cx, cy, cw,
+                                px(13.0f));
                 }
             } else if (edit.state == StepState::forceOff) {
                 // Explicitly muted auto step marker
@@ -404,8 +406,9 @@ void GridStagePanel::drawSlicerStage(visage::Canvas& canvas, const Layout& lay, 
                           "LIVE CLIP RE-SLICER \u00b7 %d captured MIDI events in 1-bar ring buffer",
                           vis.capturedClipCount);
         } else {
-            std::snprintf(clipBuf, sizeof(clipBuf),
-                          "LIVE CLIP RE-SLICER \u00b7 Feed any MIDI clip from Ableton Live 12 to slice, swing & pad-perform");
+            std::snprintf(
+                clipBuf, sizeof(clipBuf),
+                "LIVE CLIP RE-SLICER \u00b7 Feed any MIDI clip from Ableton Live 12 to slice, swing & pad-perform");
         }
         drawLabel(canvas, context_, clipBuf, vr.x + px(14.0f), vr.y + px(10.0f), vr.w - px(28.0f), px(20.0f),
                   vis.capturedClipCount > 0 ? colour::cyan : colour::textDim, visage::Font::kLeft, 11.5f,
@@ -457,8 +460,8 @@ void GridStagePanel::drawSlicerStage(visage::Canvas& canvas, const Layout& lay, 
     char lenInfo[48]{};
     const int slLen = std::clamp(static_cast<int>(vis.plan.slicerLength), 1, kMaxLaneSteps);
     std::snprintf(lenInfo, sizeof(lenInfo), "Loop: %d steps (drag handle)", slLen);
-    drawLabel(canvas, context_, lenInfo, lay.sidebarX + px(8.0f), gr.y + px(30.0f), lay.sidebarW - px(12.0f),
-              px(16.0f), colour::textDim, visage::Font::kLeft, 9.5f, Weight::medium);
+    drawLabel(canvas, context_, lenInfo, lay.sidebarX + px(8.0f), gr.y + px(30.0f), lay.sidebarW - px(12.0f), px(16.0f),
+              colour::textDim, visage::Font::kLeft, 9.5f, Weight::medium);
     drawLabel(canvas, context_, "Click: toggle slice\nDrag Y: accent velocity\nR-click: ratchet / strum",
               lay.sidebarX + px(8.0f), gr.y + px(56.0f), lay.sidebarW - px(12.0f), px(52.0f), colour::textFaint,
               visage::Font::kLeft, 9.5f, Weight::regular);
@@ -527,10 +530,11 @@ void GridStagePanel::draw(visage::Canvas& canvas) {
     else
         drawSlicerStage(canvas, lay, vis);
 
-    const char* footer =
-        mode == EngineMode::drum
-            ? "Click/drag: paint hits \u00b7 Drag Y on hit: velocity \u00b7 Right-click: ratchet/flam/Euclidean \u00b7 Drag right edge: per-lane polymeter (1\u201332)"
-            : "Slicer Mode: 100% pitch-transparent rhythmic slicing of your Live 12 chords, basslines & clips \u00b7 Drag right edge for polymetric gate length";
+    const char* footer = mode == EngineMode::drum
+                             ? "Click/drag: paint hits \u00b7 Drag Y on hit: velocity \u00b7 Right-click: "
+                               "ratchet/flam/Euclidean \u00b7 Drag right edge: per-lane polymeter (1\u201332)"
+                             : "Slicer Mode: 100% pitch-transparent rhythmic slicing of your Live 12 chords, basslines "
+                               "& clips \u00b7 Drag right edge for polymetric gate length";
     drawLabel(canvas, context_, footer, lay.sidebarX, lay.footerY, width() - 2.0f * lay.sidebarX, px(16.0f),
               colour::textFaint, visage::Font::kLeft, 9.5f, Weight::regular);
 }

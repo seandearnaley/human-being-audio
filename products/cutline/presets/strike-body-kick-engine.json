@@ -1,46 +1,46 @@
 {
-  "name": "Strike Body: Kick Engine",
-  "category": "Strike Body",
-  "style": "Neuro",
-  "noteMap": "Strike Body",
-  "gravity": 0.16,
-  "ghosts": 0.25,
-  "chop": 0.2,
-  "ratchet": 0.18,
-  "complexity": 0.64,
-  "fills": 0.3,
-  "dynamics": 0.78,
-  "attractor": "Downbeat",
-  "fillType": "Half Drop",
-  "bank": {
-    "scenes": [
-      {
-        "custom": true,
-        "lanes": [
-          {},
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          }
+    "name": "Strike Body: Kick Engine",
+    "category": "Strike Body",
+    "style": "Neuro",
+    "noteMap": "Strike Body",
+    "gravity": 0.16,
+    "ghosts": 0.25,
+    "chop": 0.2,
+    "ratchet": 0.18,
+    "complexity": 0.64,
+    "fills": 0.3,
+    "dynamics": 0.78,
+    "attractor": "Downbeat",
+    "fillType": "Half Drop",
+    "bank": {
+        "scenes": [
+            {
+                "custom": true,
+                "lanes": [
+                    {},
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    }
+                ]
+            }
         ]
-      }
-    ]
-  }
+    }
 }

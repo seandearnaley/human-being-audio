@@ -39,8 +39,8 @@ void GridStagePanel::mouseMove(const visage::MouseEvent& e) {
     if (mode == EngineMode::drum) {
         if (my >= lay.gridY && my <= lay.gridY + lay.gridH) {
             const int l = std::clamp(static_cast<int>((my - lay.gridY) / lay.rowH), 0, kDrumLaneCount - 1);
-            const int laneLen = std::clamp(static_cast<int>(vis.plan.laneLengths[static_cast<std::size_t>(l)]), 1,
-                                           kMaxLaneSteps);
+            const int laneLen =
+                std::clamp(static_cast<int>(vis.plan.laneLengths[static_cast<std::size_t>(l)]), 1, kMaxLaneSteps);
             const float hx = laneEndHandleX(laneLen, lay);
             if (std::abs(mx - hx) <= px(7.0f)) {
                 hoverLengthLane_ = l;
@@ -151,8 +151,8 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
             auto& sc = ensureSceneCustom();
             sc.lanes[li].locked = !sc.lanes[li].locked;
             if (sc.lanes[li].locked)
-                sc.lanes[li].lockedVar =
-                    static_cast<std::uint8_t>(std::clamp(static_cast<int>(context_.model.get(ParamId::variation) + 0.5f), 1, 64));
+                sc.lanes[li].lockedVar = static_cast<std::uint8_t>(
+                    std::clamp(static_cast<int>(context_.model.get(ParamId::variation) + 0.5f), 1, 64));
             context_.model.setPatternBank(bank);
             return;
         }

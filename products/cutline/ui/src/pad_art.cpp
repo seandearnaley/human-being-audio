@@ -140,7 +140,8 @@ void drawSlice(visage::Canvas& canvas, float x, float y, float w, float h, const
             if (activeWeight > (0.28f + 0.72f * m.y))
                 continue;
 
-            // Path coordinates MUST be local to (0, 0)..(w, h) because canvas.fill(path, x, y, w, h) translates by (x, y)!
+            // Path coordinates MUST be local to (0, 0)..(w, h) because canvas.fill(path, x, y, w, h) translates by (x,
+            // y)!
             const float lx0 = x0 - x;
             const float lry = ry - y;
             visage::Path p;
@@ -190,7 +191,8 @@ void drawRoll(visage::Canvas& canvas, float x, float y, float w, float h, const 
         const float distWave = std::abs(u - pulseWave);
         const float crest = std::exp(-distWave * distWave * 18.0f);
         const float rise = std::pow(u, 1.35f) * (0.28f + 0.72f * m.y);
-        const float bh = std::max(14.0f * scale, h * std::clamp(rise + 0.24f * crest + 0.16f * m.impulse, 0.08f, 0.96f));
+        const float bh =
+            std::max(14.0f * scale, h * std::clamp(rise + 0.24f * crest + 0.16f * m.impulse, 0.08f, 0.96f));
         const float bx = x + static_cast<float>(i) * barW + 1.8f * scale;
         const float bw = std::max(3.0f * scale, barW - 3.6f * scale);
         const float by = y + h - bh;
@@ -262,7 +264,8 @@ void drawBounce(visage::Canvas& canvas, float x, float y, float w, float h, cons
         const float orbT = frac(phase + static_cast<float>(i) * 0.14f);
         const float ox = cursorX + orbT * segW;
         const float oy = baseY - 4.0f * peakH * orbT * (1.0f - orbT);
-        const float rad = (9.0f + 14.0f * (weights[static_cast<std::size_t>(i)] / weights[0]) + 5.0f * m.impulse) * scale;
+        const float rad =
+            (9.0f + 14.0f * (weights[static_cast<std::size_t>(i)] / weights[0]) + 5.0f * m.impulse) * scale;
         canvas.setColor(card.tone(0.35f, 0.22f));
         canvas.circle(ox - rad * 1.6f, oy - rad * 1.6f, rad * 3.2f);
         canvas.setColor(card.tone(0.28f + 0.35f * m.impulse));
@@ -272,7 +275,8 @@ void drawBounce(visage::Canvas& canvas, float x, float y, float w, float h, cons
 
         // Floor impact flash ring
         canvas.setColor(card.tone(0.50f, 0.55f));
-        canvas.roundedRectangle(cursorX - 6.0f * scale, baseY - 2.0f * scale, 12.0f * scale, 4.0f * scale, 2.0f * scale);
+        canvas.roundedRectangle(cursorX - 6.0f * scale, baseY - 2.0f * scale, 12.0f * scale, 4.0f * scale,
+                                2.0f * scale);
         cursorX += segW;
     }
 }
@@ -551,8 +555,7 @@ void drawDrop(visage::Canvas& canvas, float x, float y, float w, float h, const 
         const float ry = cy - rh * 0.5f;
 
         canvas.setColor(card.tone(-0.40f + 0.85f * t * (0.4f + 0.6f * m.y), 0.16f + 0.65f * t));
-        canvas.roundedRectangleBorder(rx, ry, rw, rh, (10.0f + 24.0f * inv) * scale,
-                                      (1.6f + 3.0f * t * m.y) * scale);
+        canvas.roundedRectangleBorder(rx, ry, rw, rh, (10.0f + 24.0f * inv) * scale, (1.6f + 3.0f * t * m.y) * scale);
     }
 
     // Glowing converging focal beacon

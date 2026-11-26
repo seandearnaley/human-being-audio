@@ -144,9 +144,9 @@ void PluginModel::dragMidiPhrase() {
     processor_.telemetry.peek(snap);
     const double bpm = processor_.telemetry.lastBpm();
     const int scIdx = snap.playing ? snap.activeScene : std::clamp(params.choice(ParamId::scene), 0, kSceneCount - 1);
-    const auto file = processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.get(),
-                                                        snap.heldNotes, bpm, scIdx,
-                                                        toJuce(processor_.presets.currentName()));
+    const auto file =
+        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.get(), snap.heldNotes,
+                                          bpm, scIdx, toJuce(processor_.presets.currentName()));
     if (!file.existsAsFile())
         return;
     juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);

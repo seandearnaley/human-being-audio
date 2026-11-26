@@ -123,10 +123,10 @@ void TopBar::draw(visage::Canvas& canvas) {
     computeRightRects(rates, scenes, drumRect, slicerRect, playRect, gridRect);
 
     const auto& v = context_.model.visuals();
-    const int prog = std::clamp(
-        (v.padEngaged || v.pendingPadProgram >= 0) ? v.activePadProgram
-                                                   : static_cast<int>(context_.model.get(ParamId::padProgram) + 0.5f),
-        0, kPerfPadCount - 1);
+    const int prog = std::clamp((v.padEngaged || v.pendingPadProgram >= 0)
+                                    ? v.activePadProgram
+                                    : static_cast<int>(context_.model.get(ParamId::padProgram) + 0.5f),
+                                0, kPerfPadCount - 1);
     const unsigned progCol = colour::programArgb(prog);
     const unsigned activeCol = gridMode_ ? colour::iris : progCol;
 
@@ -154,10 +154,9 @@ void TopBar::draw(visage::Canvas& canvas) {
         const bool isActive = (v.playing ? v.activeScene : reqScene) == i;
         const bool isPending = v.playing && (v.pendingScene == i);
         const bool hov = (hoveredTag_ == i);
-        const unsigned bg = isActive
-                                ? colour::withAlpha(activeCol, 0.34f)
-                                : (isPending ? colour::withAlpha(colour::cyan, 0.25f)
-                                             : (hov ? colour::withAlpha(activeCol, 0.16f) : colour::raised));
+        const unsigned bg = isActive ? colour::withAlpha(activeCol, 0.34f)
+                                     : (isPending ? colour::withAlpha(colour::cyan, 0.25f)
+                                                  : (hov ? colour::withAlpha(activeCol, 0.16f) : colour::raised));
         const unsigned bd = isActive ? activeCol : (isPending ? colour::cyan : colour::edge);
         const unsigned fg = isActive ? colour::text : (isPending ? colour::cyan : colour::textDim);
         drawPill(canvas, context_, r.x, r.y, r.w, r.h, scLabels[i], bg, bd, fg, 11.0f, Weight::semibold);

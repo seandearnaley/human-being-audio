@@ -1,15 +1,15 @@
 {
-  "name": "Minimal Dark Roller",
-  "category": "Neuro",
-  "style": "Neuro",
-  "gravity": 0.22,
-  "ghosts": 0.48,
-  "chop": 0.12,
-  "ratchet": 0.16,
-  "complexity": 0.36,
-  "fills": 0.28,
-  "dynamics": 0.72,
-  "attractor": "MPC Swing",
-  "fillType": "Air Cut",
-  "variation": 2
+    "name": "Minimal Dark Roller",
+    "category": "Neuro",
+    "style": "Neuro",
+    "gravity": 0.22,
+    "ghosts": 0.48,
+    "chop": 0.12,
+    "ratchet": 0.16,
+    "complexity": 0.36,
+    "fills": 0.28,
+    "dynamics": 0.72,
+    "attractor": "MPC Swing",
+    "fillType": "Air Cut",
+    "variation": 2
 }

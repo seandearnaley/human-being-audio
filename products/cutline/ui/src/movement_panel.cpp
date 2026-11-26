@@ -61,8 +61,8 @@ class ExprCurveView final : public visage::Frame {
             vals[static_cast<std::size_t>(i)] = static_cast<float>(laneOutput(p, cs, lane_, phs * lenQ));
         }
 
-        drawCurve(canvas, ctx_, vals, padX, padY, pw, ph, on ? hue : colour::textFaint, -1.0f, 1.0f,
-                  on ? 0.14f : 0.04f, 0.0f, 1.8f);
+        drawCurve(canvas, ctx_, vals, padX, padY, pw, ph, on ? hue : colour::textFaint, -1.0f, 1.0f, on ? 0.14f : 0.04f,
+                  0.0f, 1.8f);
 
         // Live phase cursor
         const auto& vis = ctx_.model.visuals();

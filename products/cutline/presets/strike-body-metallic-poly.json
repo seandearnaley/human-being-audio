@@ -1,44 +1,44 @@
 {
-  "name": "Strike Body: Metallic Poly",
-  "category": "Strike Body",
-  "style": "Euclidean",
-  "noteMap": "Strike Body",
-  "gravity": 0.24,
-  "ghosts": 0.72,
-  "chop": 0.3,
-  "ratchet": 0.52,
-  "complexity": 0.74,
-  "fills": 0.48,
-  "dynamics": 0.8,
-  "attractor": "MPC Swing",
-  "fillType": "Tom Run",
-  "bank": {
-    "scenes": [
-      {
-        "custom": true,
-        "lanes": [
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {},
-          {},
-          {
-            "mute": true
-          },
-          {
-            "mute": true
-          },
-          {
-            "len": 7
-          },
-          {
-            "len": 5
-          }
+    "name": "Strike Body: Metallic Poly",
+    "category": "Strike Body",
+    "style": "Euclidean",
+    "noteMap": "Strike Body",
+    "gravity": 0.24,
+    "ghosts": 0.72,
+    "chop": 0.3,
+    "ratchet": 0.52,
+    "complexity": 0.74,
+    "fills": 0.48,
+    "dynamics": 0.8,
+    "attractor": "MPC Swing",
+    "fillType": "Tom Run",
+    "bank": {
+        "scenes": [
+            {
+                "custom": true,
+                "lanes": [
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {},
+                    {},
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {
+                        "len": 7
+                    },
+                    {
+                        "len": 5
+                    }
+                ]
+            }
         ]
-      }
-    ]
-  }
+    }
 }

@@ -63,8 +63,7 @@ class SetupPanel final : public Panel {
           pocket_(context, ParamId::attractor, colour::vermilion),
           fillType_(context, ParamId::fillType, colour::emerald),
           variation_(context, ParamId::variation, colour::amber, {}, true),
-          noteMap_(context, ParamId::noteMap, colour::iris),
-          slicerStyle_(context, ParamId::slicerStyle, colour::cyan),
+          noteMap_(context, ParamId::noteMap, colour::iris), slicerStyle_(context, ParamId::slicerStyle, colour::cyan),
           strum_(context, ParamId::strumMs, colour::cyan, {}, true),
           gate_(context, ParamId::gateLen, colour::teal, {}, true) {
         for (auto* r : {&bars_, &pocket_, &fillType_, &variation_, &noteMap_, &slicerStyle_, &strum_, &gate_})

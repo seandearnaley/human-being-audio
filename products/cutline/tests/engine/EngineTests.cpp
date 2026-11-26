@@ -190,7 +190,8 @@ TEST_CASE("Clip Slice captures live MIDI events and replays them cleanly", "[eng
     CHECK(replayed >= 2);
 }
 
-TEST_CASE("SMF Type 0 export produces a valid 960-PPQ MIDI file and scales cleanly with 0.5x / 1x / 2x rate", "[engine]") {
+TEST_CASE("SMF Type 0 export produces a valid 960-PPQ MIDI file and scales cleanly with 0.5x / 1x / 2x rate",
+          "[engine]") {
     Params p;
     p[ParamId::style] = static_cast<float>(DrumStyle::neuro);
     HeldNotes held;

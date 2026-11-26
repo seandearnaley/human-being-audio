@@ -133,14 +133,7 @@ inline constexpr int kNoteMapCount = 10;
 enum class SlicerStyle : std::uint8_t { stabChop = 0, strumFlam = 1, breakArp = 2, bassStab = 3, clipSlice = 4 };
 enum class SeqRate : std::uint8_t { half = 0, normal = 1, doubleTime = 2 };
 enum class Attractor : std::uint8_t { mpcSwing = 0, backbeat = 1, downbeat = 2, offbeat16 = 3, triplet = 4 };
-enum class FillType : std::uint8_t {
-    autoFill = 0,
-    snareRoll = 1,
-    tomRun = 2,
-    drillChop = 3,
-    halfDrop = 4,
-    airCut = 5
-};
+enum class FillType : std::uint8_t { autoFill = 0, snareRoll = 1, tomRun = 2, drillChop = 3, halfDrop = 4, airCut = 5 };
 enum class Quantize : std::uint8_t { instant = 0, sixteenth = 1, quarter = 2, oneBar = 3 };
 enum class PadProgram : std::uint8_t {
     slice = 0,
@@ -173,31 +166,32 @@ struct ParamSpec {
 
 namespace choices {
 inline constexpr std::array<std::string_view, 2> offOn{"Off", "On"};
-inline constexpr std::array<std::string_view, 12> style{
-    "Amen", "Think", "Neuro", "Halftime", "UKG", "Footwork", "Stepper", "Electro", "Drill", "Afro", "Trap", "Euclidean"};
+inline constexpr std::array<std::string_view, 12> style{"Amen",    "Think",   "Neuro", "Halftime", "UKG",  "Footwork",
+                                                        "Stepper", "Electro", "Drill", "Afro",     "Trap", "Euclidean"};
 inline constexpr std::array<std::string_view, 2> engineMode{"Drum Engine", "MIDI Slicer"};
 inline constexpr std::array<std::string_view, kNoteMapCount> noteMap{
-    "Live Rack / GM",  "Strike Body",        "Chromatic",  "Addictive Drums 2", "Toontrack (SD3/EZD)",
-    "BFD3",            "GetGood Drums",      "Slate SSD5", "NI Studio / Abbey", "XLN XO"};
-inline constexpr std::array<std::string_view, 5> slicerStyle{
-    "Stab Chop", "Strum / Flam", "Break Arp", "Bass / Stab", "Clip Slice"};
+    "Live Rack / GM", "Strike Body",   "Chromatic",  "Addictive Drums 2", "Toontrack (SD3/EZD)",
+    "BFD3",           "GetGood Drums", "Slate SSD5", "NI Studio / Abbey", "XLN XO"};
+inline constexpr std::array<std::string_view, 5> slicerStyle{"Stab Chop", "Strum / Flam", "Break Arp", "Bass / Stab",
+                                                             "Clip Slice"};
 inline constexpr std::array<std::string_view, 3> phraseBars{"2 bars", "4 bars", "8 bars"};
 inline constexpr std::array<std::string_view, 3> seqRate{"0.5\u00d7", "1\u00d7", "2\u00d7"};
-inline constexpr std::array<std::string_view, 5> attractor{"MPC Swing", "Backbeat", "Downbeat", "Offbeat 16", "Triplet"};
-inline constexpr std::array<std::string_view, 6> fillType{
-    "Auto", "Snare Roll", "Tom Run", "Drill Chop", "Half Drop", "Air Cut"};
+inline constexpr std::array<std::string_view, 5> attractor{"MPC Swing", "Backbeat", "Downbeat", "Offbeat 16",
+                                                           "Triplet"};
+inline constexpr std::array<std::string_view, 6> fillType{"Auto",       "Snare Roll", "Tom Run",
+                                                          "Drill Chop", "Half Drop",  "Air Cut"};
 inline constexpr std::array<std::string_view, 4> scene{"A", "B", "C", "D"};
 inline constexpr std::array<std::string_view, 4> sceneQuantize{"Instant", "1/16", "1/4", "1 Bar"};
-inline constexpr std::array<std::string_view, 8> padProgram{
-    "Slice", "Roll", "Bounce", "Swing", "Poly", "Stutter", "Morph", "Drop"};
+inline constexpr std::array<std::string_view, 8> padProgram{"Slice", "Roll",    "Bounce", "Swing",
+                                                            "Poly",  "Stutter", "Morph",  "Drop"};
 inline constexpr std::array<std::string_view, 4> padCcMode{"Off", "CC74 + CC1", "CC74 + Vel", "CC1 + AT"};
 inline constexpr std::array<std::string_view, 4> ccThinMs{"1 ms", "2 ms", "4 ms", "8 ms"};
 inline constexpr std::array<std::string_view, 12> laneRate{"8 bars", "4 bars", "2 bars", "1 bar", "1/2",   "1/4",
                                                            "1/4T",   "1/8",    "1/8T",   "1/16",  "1/16T", "1/32"};
 inline constexpr std::array<std::string_view, 7> laneShape{"Sine",   "Triangle", "Ramp up", "Ramp down",
                                                            "Square", "Steps",    "Custom"};
-inline constexpr std::array<std::string_view, 7> laneTarget{
-    "CC74 Slide", "CC1 Mod", "CC11 Expr", "Pressure", "CC71 Res", "Velocity", "Pitch Scoop"};
+inline constexpr std::array<std::string_view, 7> laneTarget{"CC74 Slide", "CC1 Mod",  "CC11 Expr",  "Pressure",
+                                                            "CC71 Res",   "Velocity", "Pitch Scoop"};
 inline constexpr std::array<std::string_view, 3> laneFollow{"Own", "Lane 1", "Lane 2"};
 inline constexpr std::array<std::string_view, 7> laneRatio{"\u00f74", "\u00f73", "\u00f72", "\u00d71",
                                                            "\u00d72", "\u00d73", "\u00d74"};

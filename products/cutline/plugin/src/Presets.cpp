@@ -17,8 +17,8 @@ constexpr const char* kUserCategory = "User";
 constexpr const char* kDefaultPreset = "Amen Chop 172";
 
 std::ptrdiff_t categoryRank(const std::string& category) {
-    static constexpr std::array<std::string_view, 6> kOrder{
-        "Breaks", "Neuro", "Club", "Polyrhythm", "Strike Body", "MIDI Slicer"};
+    static constexpr std::array<std::string_view, 6> kOrder{"Breaks",     "Neuro",       "Club",
+                                                            "Polyrhythm", "Strike Body", "MIDI Slicer"};
     return std::find(kOrder.begin(), kOrder.end(), category) - kOrder.begin();
 }
 } // namespace

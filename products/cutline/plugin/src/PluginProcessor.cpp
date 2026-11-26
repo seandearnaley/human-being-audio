@@ -60,7 +60,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (metadata.numBytes > 3)
             continue;
         const auto msg = metadata.getMessage();
-        const double evPpq = std::max(0.0, transport.ppq + static_cast<double>(metadata.samplePosition) * beatsPerSample);
+        const double evPpq =
+            std::max(0.0, transport.ppq + static_cast<double>(metadata.samplePosition) * beatsPerSample);
         if (msg.isNoteOn())
             engine_.inputNoteOn(msg.getNoteNumber(), msg.getVelocity(), evPpq);
         else if (msg.isNoteOff())

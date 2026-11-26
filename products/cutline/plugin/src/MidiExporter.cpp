@@ -13,7 +13,7 @@ juce::File MidiExporter::writeTempFile(const Params& params, const LaneCurves& c
                                        const HeldNotes& held, double bpm, int sceneIdx,
                                        const juce::String& presetName) {
     const auto bytes = exportPhraseSmf(params, curves, held, bpm, sceneIdx, bank);
-    const char sceneChar = static_cast<char>('A' + std::clamp(sceneIdx, 0, kSceneCount - 1));
+    const auto sceneChar = static_cast<juce::juce_wchar>('A' + std::clamp(sceneIdx, 0, kSceneCount - 1));
     const auto safeName = juce::File::createLegalFileName(presetName.isEmpty() ? juce::String("Cutline") : presetName);
     const auto filename = safeName + " " + juce::String(juce::roundToInt(bpm)) + "bpm Scene-" +
                           juce::String::charToString(sceneChar) + " " +

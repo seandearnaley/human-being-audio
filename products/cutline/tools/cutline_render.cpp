@@ -65,9 +65,8 @@ int main(int argc, char** argv) {
     }
 
     if (!midiOut.empty()) {
-        const auto bytes =
-            cl::exportPhraseSmf(preset.params, preset.curves, held, bpm, preset.params.choice(cl::ParamId::scene),
-                                preset.bank);
+        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm,
+                                               preset.params.choice(cl::ParamId::scene), preset.bank);
         std::ofstream out(midiOut, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!out) {

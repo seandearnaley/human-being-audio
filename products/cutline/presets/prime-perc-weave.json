@@ -1,15 +1,15 @@
 {
-  "name": "Prime Perc Weave",
-  "category": "Polyrhythm",
-  "style": "Euclidean",
-  "gravity": 0.32,
-  "ghosts": 0.7,
-  "chop": 0.26,
-  "ratchet": 0.38,
-  "complexity": 0.78,
-  "fills": 0.44,
-  "dynamics": 0.74,
-  "attractor": "Triplet",
-  "fillType": "Drill Chop",
-  "variation": 7
+    "name": "Prime Perc Weave",
+    "category": "Polyrhythm",
+    "style": "Euclidean",
+    "gravity": 0.32,
+    "ghosts": 0.7,
+    "chop": 0.26,
+    "ratchet": 0.38,
+    "complexity": 0.78,
+    "fills": 0.44,
+    "dynamics": 0.74,
+    "attractor": "Triplet",
+    "fillType": "Drill Chop",
+    "variation": 7
 }
