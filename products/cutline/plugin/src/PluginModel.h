@@ -8,6 +8,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <cstdint>
 #include <memory>
 
 namespace cl {
@@ -28,13 +29,13 @@ class PluginModel final : public ui::Model {
     Curve laneCurve(int lane) const override;
     void setLaneCurve(int lane, const Curve& curve) override;
 
-    PhraseOverrides overrides() const override;
-    void setOverrides(const PhraseOverrides& overrides) override;
-    void clearOverrides() override;
+    PatternBank patternBank() const override;
+    void setPatternBank(const PatternBank& bank) override;
 
-    void rollSeed() override;
-    bool canStepSeedHistory(int delta) const override;
-    void stepSeedHistory(int delta) override;
+    void mutateActiveScene() override;
+    void polymeterActiveScene() override;
+    void cloneActiveSceneToNext() override;
+    void clearActiveScene() override;
 
     void dragMidiPhrase() override;
     std::string exportStatus() const override;
@@ -60,12 +61,12 @@ class PluginModel final : public ui::Model {
 
     Snapshot captureSnapshot() const;
     void applySnapshot(const Snapshot& snapshot);
-    void pushSeedHistory(int seed);
 
     PluginProcessor& processor_;
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
     bool applyingSnapshot_ = false;
+    std::uint32_t actionCounter_ = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     juce::Component* dragSource_ = nullptr;

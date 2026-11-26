@@ -9,15 +9,21 @@ add_library(cl_ui STATIC
     src/delivery_panel.cpp
     src/editor.cpp
     src/fake_model.cpp
+    src/grid_stage.h
+    src/grid_stage_draw.cpp
+    src/grid_stage_input.cpp
     src/movement_edit.cpp
     src/movement_edit.h
     src/movement_panel.cpp
+    src/pad_art.cpp
+    src/pad_art.h
     src/panel.cpp
     src/panels.h
-    src/phrase_panel.cpp
-    src/phrase_stage.h
-    src/phrase_stage_draw.cpp
-    src/phrase_stage_input.cpp
+    src/play_panel.cpp
+    src/play_panel.h
+    src/pulse_ribbon.cpp
+    src/pulse_ribbon.h
+    src/setup_panel.cpp
     src/theme.h
     src/top_bar.cpp
     src/top_bar.h)

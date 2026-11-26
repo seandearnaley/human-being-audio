@@ -1,0 +1,15 @@
+{
+    "name": "Amen Chop 172",
+    "category": "Breaks",
+    "style": "Amen",
+    "gravity": 0.24,
+    "ghosts": 0.68,
+    "chop": 0.34,
+    "ratchet": 0.38,
+    "complexity": 0.66,
+    "fills": 0.54,
+    "dynamics": 0.72,
+    "attractor": "MPC Swing",
+    "fillType": "Drill Chop",
+    "variation": 1
+}

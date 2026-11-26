@@ -8,8 +8,14 @@ add_library(tg_ui STATIC
     src/controls.h
     src/controls_strip.cpp
     src/editor.cpp
+    src/manifold_art.cpp
+    src/manifold_art.h
+    src/manifold_ribbon.cpp
+    src/manifold_ribbon.h
     src/movement_panel.cpp
     src/panels.h
+    src/play_panel.cpp
+    src/play_panel.h
     src/stage_panel.cpp
     src/theme.h
     src/top_bar.cpp

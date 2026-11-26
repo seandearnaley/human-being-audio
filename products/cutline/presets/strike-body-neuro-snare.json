@@ -1,0 +1,40 @@
+{
+    "name": "Strike Body: Neuro Snare",
+    "category": "Strike Body",
+    "style": "Neuro",
+    "noteMap": "Strike Body",
+    "gravity": 0.2,
+    "ghosts": 0.82,
+    "chop": 0.26,
+    "ratchet": 0.44,
+    "complexity": 0.68,
+    "fills": 0.6,
+    "dynamics": 0.84,
+    "attractor": "Backbeat",
+    "fillType": "Snare Roll",
+    "bank": {
+        "scenes": [
+            {
+                "custom": true,
+                "lanes": [
+                    {
+                        "mute": true
+                    },
+                    {},
+                    {},
+                    {},
+                    {
+                        "mute": true
+                    },
+                    {
+                        "mute": true
+                    },
+                    {},
+                    {
+                        "mute": true
+                    }
+                ]
+            }
+        ]
+    }
+}

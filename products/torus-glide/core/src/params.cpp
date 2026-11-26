@@ -27,13 +27,14 @@ constexpr std::array<std::string_view, 8> kVoicingChoices{"Phrygian Tension", "U
                                                           "Mobius Dim7",      "Mobius Whole-Tone"};
 constexpr std::array<std::string_view, 3> kGravityChoices{"Scale Wells", "Just Intonation", "Hybrid"};
 constexpr std::array<std::string_view, 4> kStaggerChoices{"Inner First", "Low to High", "High to Low", "Outside In"};
-constexpr std::array<std::string_view, 5> kTimbreChoices{"Reese Saw", "Pure Sine", "Formant Choir", "Wavefold FM",
-                                                         "Pulse Sub"};
+constexpr std::array<std::string_view, 7> kTimbreChoices{"Reese Saw", "Pure Sine",  "Formant Choir", "Wavefold FM",
+                                                         "Pulse Sub", "Glass Bell", "Super Organ"};
 constexpr std::array<std::string_view, 5> kDriveModelChoices{"Tube", "Buchla Fold", "Tri Fold", "Sine Fold", "Clip"};
 constexpr std::array<std::string_view, 4> kFilterModeChoices{"LP 12", "LP 24", "Bandpass", "Neuro Notch"};
 constexpr std::array<std::string_view, 7> kLaneTargetChoices{"Morph",   "Bell Center", "Filter", "Drive",
                                                              "Gravity", "Risset Gate", "Space"};
 constexpr std::array<std::string_view, 3> kMpeRangeChoices{"12 st", "24 st", "48 st"};
+constexpr std::array<std::string_view, 6> kPadProgramChoices{"Spiral", "Mobius", "Copedent", "Abyss", "Risset", "Void"};
 
 ParamSpec cont(ParamId id, std::string_view key, std::string_view name, float low, float high, float def,
                float skew = 1.0f, std::string_view unit = {}) {
@@ -106,8 +107,32 @@ const std::array<ParamSpec, kParamCount>& paramSpecs() {
         toggle(ParamId::limiter, "limiter", "True-Peak Lim", true),
         cont(ParamId::outputDb, "outputDb", "Output", -24.0f, 6.0f, -3.0f, 1.0f, "dB"),
         toggle(ParamId::bypass, "bypass", "Bypass", false),
+
+        choice(ParamId::padProgram, "padProgram", "Manifold Pad", kPadProgramChoices, 0),
+        cont(ParamId::padX, "padX", "Pad X", 0.0f, 100.0f, 50.0f, 1.0f, "%"),
+        cont(ParamId::padY, "padY", "Pad Y", 0.0f, 100.0f, 50.0f, 1.0f, "%"),
+        toggle(ParamId::padTouch, "padTouch", "Pad Touch", false),
+        toggle(ParamId::padHold, "padHold", "Drone Hold", false),
     };
     return kSpecs;
+}
+
+PadCaptions padCaptions(PadProgram program) noexcept HBA_NONBLOCKING {
+    switch (program) {
+    case PadProgram::spiral:
+        return {"Spiral", "Velocity", "Bell & Air"};
+    case PadProgram::mobius:
+        return {"Mobius", "Torus Flow", "Gravity & Halo"};
+    case PadProgram::copedent:
+        return {"Copedent", "Chord Morph", "Stagger & Air"};
+    case PadProgram::abyss:
+        return {"Abyss", "Sub Dive", "Drive & Bite"};
+    case PadProgram::risset:
+        return {"Risset", "Pulse Gate", "Filter Focus"};
+    case PadProgram::voidSpace:
+        return {"Void", "Manifold Halo", "Detune & Width"};
+    }
+    return {"Spiral", "Velocity", "Bell & Air"};
 }
 
 const ParamSpec& specOf(ParamId id) { return paramSpecs()[static_cast<std::size_t>(id)]; }

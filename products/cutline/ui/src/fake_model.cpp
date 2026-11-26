@@ -1,27 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/ui/fake_model.h"
 
+#include "cl/engine.h"
 #include <hba/dsp/lane_math.h>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace cl::ui {
 
 FakeModel::FakeModel() {
-    params_[ParamId::lane1Shape] = static_cast<float>(LaneShape::custom);
-    params_[ParamId::lane2Shape] = static_cast<float>(LaneShape::custom);
-    // Lock Span 0 and dial a signature 4-bar chord progression + per-step ratchet
-    // so the 1.0 showcase snapshot surfaces Cutline's full tactile surface cleanly.
-    overrides_.spans[0].locked = true;
-    overrides_.spans[0].lockedSeed = 407;
-    overrides_.barChordOffsets = {0, 0, -2, -1, 0, 0, 0, 0};
+    // Showcase a vibrant polymetric Jungle/Amen breakbeat on Cutline 2.0's signature POLY X/Y world!
+    params_[ParamId::style] = static_cast<float>(DrumStyle::amen);
+    params_[ParamId::gravity] = 0.28f;
+    params_[ParamId::ghosts] = 0.66f;
+    params_[ParamId::chop] = 0.34f;
+    params_[ParamId::ratchet] = 0.42f;
+    params_[ParamId::complexity] = 0.68f;
+    params_[ParamId::fills] = 0.50f;
+    params_[ParamId::dynamics] = 0.72f;
+
+    params_[ParamId::padProgram] = static_cast<float>(PadProgram::poly);
+    params_[ParamId::padX] = 0.64f;
+    params_[ParamId::padY] = 0.66f;
+    params_[ParamId::padTouch] = 1.0f;
+    params_[ParamId::padCcMode] = static_cast<float>(PadCcMode::cc74AndCc1);
+
+    auto& sc0 = bank_.scenes[0];
+    sc0.customized = true;
+    sc0.lanes[0].locked = true;
+    sc0.lanes[1].locked = true;
+    sc0.lanes[4].stepLength = 16;
+    sc0.lanes[6].stepLength = 7;
+    sc0.lanes[7].stepLength = 5;
+    sc0.lanes[4].steps[15].state = StepState::forceOn;
+    sc0.lanes[4].steps[15].ratchet = 3;
+    sc0.lanes[1].steps[12].flam = true;
     recompile();
-    if (visuals_.plan.noteCount > 6) {
-        const auto key = visuals_.plan.notes[6].key;
-        if (auto* ov = overrides_.findOrCreateNote(key))
-            ov->ratchetCount = 3;
-        recompile();
-    }
 }
 
 void FakeModel::set(ParamId id, float real) {
@@ -29,41 +44,55 @@ void FakeModel::set(ParamId id, float real) {
     recompile();
 }
 
-void FakeModel::rollSeed() {
-    const auto cur = static_cast<std::uint32_t>(params_.integer(ParamId::seed));
-    const int next = 1 + static_cast<int>(hba::dsp::laneHash(cur * 2654435761U + 17U) % 999U);
-    if (seedCursor_ + 1 < seedHistory_.size())
-        seedHistory_.resize(seedCursor_ + 1);
-    seedHistory_.push_back(next);
-    seedCursor_ = seedHistory_.size() - 1;
-    set(ParamId::seed, static_cast<float>(next));
+void FakeModel::mutateActiveScene() {
+    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    auto& sc = bank_.scenes[static_cast<std::size_t>(scIdx)];
+    if (!sc.customized)
+        sc = effectiveSceneData(bank_, scIdx);
+    mutateUnlockedLanes(sc, ++actionSeed_);
+    recompile();
 }
 
-bool FakeModel::canStepSeedHistory(int delta) const {
-    if (delta < 0)
-        return seedCursor_ > 0;
-    if (delta > 0)
-        return seedCursor_ + 1 < seedHistory_.size();
-    return false;
+void FakeModel::polymeterActiveScene() {
+    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    auto& sc = bank_.scenes[static_cast<std::size_t>(scIdx)];
+    if (!sc.customized)
+        sc = effectiveSceneData(bank_, scIdx);
+    applyPolymeterToUnlocked(sc, ++actionSeed_);
+    recompile();
 }
 
-void FakeModel::stepSeedHistory(int delta) {
-    if (!canStepSeedHistory(delta))
-        return;
-    seedCursor_ = static_cast<std::size_t>(static_cast<int>(seedCursor_) + (delta < 0 ? -1 : 1));
-    set(ParamId::seed, static_cast<float>(seedHistory_[seedCursor_]));
+void FakeModel::cloneActiveSceneToNext() {
+    const int cur = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    const int next = (cur + 1) % kSceneCount;
+    cloneSceneSlot(bank_, cur, next, true, ++actionSeed_);
+    set(ParamId::scene, static_cast<float>(next));
+}
+
+void FakeModel::clearActiveScene() {
+    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    clearSceneEdits(bank_.scenes[static_cast<std::size_t>(scIdx)]);
+    recompile();
 }
 
 void FakeModel::recompile() {
     HeldNotes held;
-    compilePhrase(params_, 0, held, visuals_.plan, overrides_);
+    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    compilePhrase(params_, scIdx, 0, held, visuals_.plan, bank_, 172.0);
     visuals_.bpm = 172.0;
     visuals_.phraseIndex = 0;
-    visuals_.playheadBeats = 5.25;
-    visuals_.ppq = 5.25;
+    visuals_.activeScene = scIdx;
+    visuals_.pendingScene = -1;
+    visuals_.activePadProgram = std::clamp(params_.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
+    visuals_.pendingPadProgram = -1;
+    visuals_.padEngaged = params_.on(ParamId::padTouch) || params_.on(ParamId::padHold);
+    visuals_.midiPadMask = 0;
+    visuals_.playheadBeats = 3.0; // Step 12 — snare backbeat hit!
+    visuals_.ppq = 3.0;
     visuals_.playing = true;
-    visuals_.lastBlockEvents = 28;
-    visuals_.activityMask = 0x1Fu; // All 5 live MIDI LEDs lit in showcase screenshot
+    visuals_.lastBlockEvents = 18;
+    visuals_.activityMask = kActNote | kActCc | (visuals_.padEngaged ? kActPad : 0);
+    visuals_.laneFlash = {0.35f, 0.96f, 0.48f, 0.82f, 0.68f, 0.22f, 0.74f, 0.52f};
     for (int l = 0; l < kLaneCount; ++l) {
         const auto idx = static_cast<std::size_t>(l);
         visuals_.lanePhase[idx] = static_cast<float>(

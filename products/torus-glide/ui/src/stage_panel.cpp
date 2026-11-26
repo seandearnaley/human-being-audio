@@ -26,12 +26,14 @@ std::string midiNoteName(float midi) {
 class StagePanel final : public Panel, public Live {
   public:
     explicit StagePanel(Context& ctx)
-        : Panel(ctx), capA_(ctx, "Cap A", [this] { context_.model.captureHeldChord(0); }),
+        : Panel(ctx), modeChip_(ctx, ParamId::mode, colour::spiral, "Mode"),
+          capA_(ctx, "Cap A", [this] { context_.model.captureHeldChord(0); }),
           capB_(ctx, "Cap B", [this] { context_.model.captureHeldChord(1); }),
           capC_(ctx, "Cap C", [this] { context_.model.captureHeldChord(2); }),
           capD_(ctx, "Cap D", [this] { context_.model.captureHeldChord(3); }),
           optBtn_(ctx, "Auto-Lead", [this] { context_.model.optimizeVoiceLeading(); }),
           resetBtn_(ctx, "Reset", [this] { context_.model.resetSceneMatrix(); }) {
+        addChild(&modeChip_);
         optBtn_.setAccent(colour::copedent);
         resetBtn_.setAccent(colour::textDim);
         for (auto* b : {&capA_, &capB_, &capC_, &capD_, &optBtn_, &resetBtn_})
@@ -43,6 +45,7 @@ class StagePanel final : public Panel, public Live {
 
     void tick() override {
         const int modeIdx = std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::mode))), 0, 2);
+        modeChip_.setAccent(modeAccent(modeIdx));
         const bool showCopedentTools = (modeIdx != 0);
         const bool hasHeld = context_.model.visuals().heldNoteCount > 0;
         const unsigned capCol = hasHeld ? colour::mobius : colour::textFaint;
@@ -62,6 +65,8 @@ class StagePanel final : public Panel, public Live {
         const float bh = px(22.0f);
         const float y = px(8.0f);
         const float gap = px(4.0f);
+
+        modeChip_.setBounds(px(14.0f), y, px(112.0f), bh);
 
         float rx = width() - px(14.0f);
         const float resetW = px(52.0f);
@@ -201,7 +206,7 @@ class StagePanel final : public Panel, public Live {
             : modeIdx == 1 ? "COPEDENT RIBBONS  ·  DRAG NODES TO EDIT CHORDS · DRAG SPACE TO SCRUB MORPH"
                            : "M\xc3\x96"
                              "BIUS TORUS  ·  INFINITE SHEPARD-CHORD GLIDE · CLICK A-D OR HOLD CHORD TO CAPTURE";
-        drawLabel(canvas, context_, modeTitle, context_.px(14.0f), context_.px(9.0f), width() * 0.52f,
+        drawLabel(canvas, context_, modeTitle, context_.px(134.0f), context_.px(9.0f), width() * 0.44f,
                   context_.px(20.0f), accent, visage::Font::kLeft, 10.0f, Weight::semibold);
 
         char hud[96]{};
@@ -576,6 +581,7 @@ class StagePanel final : public Panel, public Live {
         }
     }
 
+    Chip modeChip_;
     ActionButton capA_, capB_, capC_, capD_;
     ActionButton optBtn_;
     ActionButton resetBtn_;

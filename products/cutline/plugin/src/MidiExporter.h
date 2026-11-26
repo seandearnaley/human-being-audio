@@ -2,23 +2,18 @@
 #pragma once
 
 #include "cl/lanes.h"
-#include "cl/overrides.h"
 #include "cl/params.h"
+#include "cl/pattern.h"
 #include "cl/phrase.h"
 
 #include <juce_core/juce_core.h>
-
-#include <cstdint>
 
 namespace cl {
 
 class MidiExporter {
   public:
-    // Writes the exact currently displayed/playing phrase to a clean temporary .mid file
-    // ready for OS drag-to-DAW (including active held/latched notes, overrides, and phrase index).
-    juce::File writeTempFile(const Params& params, const LaneCurves& curves, const PhraseOverrides& overrides,
-                             const HeldNotes& held, double bpm, std::int64_t phraseIndex,
-                             const juce::String& presetName);
+    juce::File writeTempFile(const Params& params, const LaneCurves& curves, const PatternBank& bank,
+                             const HeldNotes& held, double bpm, int sceneIdx, const juce::String& presetName);
 };
 
 } // namespace cl

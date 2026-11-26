@@ -154,7 +154,8 @@ void PluginModel::dragExportedMidi() {
 PluginModel::Snapshot PluginModel::captureSnapshot() const {
     Snapshot s;
     for (std::size_t i = 0; i < kParamCount; ++i) {
-        if (static_cast<ParamId>(i) == ParamId::quality)
+        const auto id = static_cast<ParamId>(i);
+        if (id == ParamId::quality || id == ParamId::padTouch || id == ParamId::padHold)
             continue;
         s.params[i] = params_[i] != nullptr ? params_[i]->convertFrom0to1(params_[i]->getValue()) : paramSpecs()[i].def;
     }
@@ -167,7 +168,8 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
 void PluginModel::applySnapshot(const Snapshot& snapshot) {
     applyingSnapshot_ = true;
     for (std::size_t i = 0; i < kParamCount; ++i) {
-        if (static_cast<ParamId>(i) == ParamId::quality || params_[i] == nullptr)
+        const auto id = static_cast<ParamId>(i);
+        if (id == ParamId::quality || id == ParamId::padTouch || id == ParamId::padHold || params_[i] == nullptr)
             continue;
         params_[i]->setValueNotifyingHost(params_[i]->convertTo0to1(snapshot.params[i]));
     }
