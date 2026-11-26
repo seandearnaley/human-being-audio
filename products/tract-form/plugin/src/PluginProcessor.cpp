@@ -180,6 +180,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     status.gainReductionDb = engine_.gainReductionDb();
     status.ppq = engine_.lanePpq();
     status.notePpq = engine_.notePpq();
+    status.freeSec = engine_.freeSeconds();
+    status.noteSec = engine_.noteSeconds();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();
     status.effective = engine_.effectiveState();

@@ -17,6 +17,8 @@ void Analysis::setStatus(const Status& status) noexcept {
     gainReductionDb_.store(status.gainReductionDb, std::memory_order_relaxed);
     ppq_.store(status.ppq, std::memory_order_relaxed);
     notePpq_.store(status.notePpq, std::memory_order_relaxed);
+    freeSec_.store(status.freeSec, std::memory_order_relaxed);
+    noteSec_.store(status.noteSec, std::memory_order_relaxed);
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanePhase_[i].store(status.lanePhase[i], std::memory_order_relaxed);
         laneValue_[i].store(status.laneValue[i], std::memory_order_relaxed);
@@ -84,6 +86,8 @@ void Analysis::update(ui::Visuals& visuals, float seconds) {
     visuals.gainReductionDb = gainReductionDb_.load(std::memory_order_relaxed);
     visuals.ppq = ppq_.load(std::memory_order_relaxed);
     visuals.notePpq = notePpq_.load(std::memory_order_relaxed);
+    visuals.freeSec = freeSec_.load(std::memory_order_relaxed);
+    visuals.noteSec = noteSec_.load(std::memory_order_relaxed);
     visuals.hz = hz;
     visuals.note = note_.load(std::memory_order_relaxed);
     visuals.gate = gate_.load(std::memory_order_relaxed);

@@ -53,6 +53,7 @@ public:
     };
     Performance lastPerformance() const noexcept;
     Params currentParams() const noexcept { return values_.snapshot(); }
+    int engineOversamplingFactor() const noexcept { return engine_.oversamplingFactor(); }
     void setAudition(bool down) noexcept { auditionWanted_.store(down, std::memory_order_relaxed); }
 
     struct HistorySnapshot {

@@ -45,6 +45,12 @@ inline double lanePhase(double ppq, double lengthInQuarters, double phaseDegrees
     return position - std::floor(position);
 }
 
+// Free-running lane phase in [0, 1) for elapsed time in seconds at `hz` cycles/sec.
+inline double lanePhaseHz(double seconds, double hz, double phaseDegrees) noexcept HBA_NONBLOCKING {
+    const double position = seconds * std::max(0.0, hz) + phaseDegrees / 360.0;
+    return position - std::floor(position);
+}
+
 // Built-in waveform value in [-1, 1] at `phase` in [0, 1).
 inline double laneWaveform(LaneWaveform shape, double phase, int lane) noexcept HBA_NONBLOCKING {
     switch (shape) {

@@ -91,5 +91,9 @@
     "lane1Mode": "1-Shot",
     "lane2Mode": "1-Shot",
     "lane3Mode": "Sync",
-    "lane4Mode": "Sync"
+    "lane4Mode": "Sync",
+    "lane1Hz": 0.5,
+    "lane2Hz": 0.5,
+    "lane3Hz": 0.5,
+    "lane4Hz": 0.5
 }

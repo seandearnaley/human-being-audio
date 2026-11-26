@@ -113,6 +113,43 @@ private:
     hiir::Downsampler2xFpu<10> down_;
 };
 
+// Steep 4x up/down trip (130 dB + 144 dB HIIR stopband) around a base-rate nonlinearity.
+class BaseRate4x {
+  public:
+    static constexpr int kFactor = 4;
+    void prepare() {
+        u2_.set_coefs(decimator_coefs::k2.data());
+        u4_.set_coefs(decimator_coefs::k4.data());
+        d2_.set_coefs(decimator_coefs::k2.data());
+        d4_.set_coefs(decimator_coefs::k4.data());
+        reset();
+    }
+    void reset() noexcept HBA_NONBLOCKING {
+        u2_.clear_buffers();
+        u4_.clear_buffers();
+        d2_.clear_buffers();
+        d4_.clear_buffers();
+    }
+    void up(float x, float* out) noexcept HBA_NONBLOCKING {
+        float mid[2];
+        halfBandUp(u2_, x, mid);
+        halfBandUp(u4_, mid[0], out + 0);
+        halfBandUp(u4_, mid[1], out + 2);
+    }
+    float down(const float* in) noexcept HBA_NONBLOCKING {
+        float mid[2];
+        mid[0] = halfBand(d4_, in + 0);
+        mid[1] = halfBand(d4_, in + 2);
+        return halfBand(d2_, mid);
+    }
+
+  private:
+    hiir::Upsampler2xFpu<10> u2_;
+    hiir::Upsampler2xFpu<5> u4_;
+    hiir::Downsampler2xFpu<10> d2_;
+    hiir::Downsampler2xFpu<5> d4_;
+};
+
 // Matched 2x/4x/8x up/down oversampler for audio effects.
 class Oversampler {
 public:

@@ -26,6 +26,7 @@ struct MovementTraits {
     static constexpr int kLaneFieldCount = tf::kLaneFieldCount;
     static constexpr bool kHasEnvLane = false;
     static constexpr bool kHasModeChip = true;
+    static constexpr bool kHasFreeHz = true;
     static constexpr bool kDynamicOnAccent = false;
 
     static constexpr hba::ui::MovementColumnWidths kColumns{
@@ -46,10 +47,15 @@ struct MovementTraits {
     };
 
     static unsigned defaultAccent() { return colour::motion; }
+    static unsigned freeAccent() { return colour::master; }
     static ParamId field(int lane, LaneField f) { return laneParam(lane, f); }
     static Params paramsOf(const Model& m) { return tf::ui::paramsOf(m); }
     static LaneCurves curvesOf(const Model& m) { return tf::ui::curvesOf(m); }
     static bool following(const Params& p, int lane) { return laneSource(p, lane) != lane; }
+    static bool isFreeLane(const Params& p, int lane) { return laneUsesFreeClock(p, lane); }
+    static bool isFreeRetrig(const Params& p, int lane) { return laneEffectiveMode(p, lane) == LaneMode::freeRetrig; }
+    static double freeSeconds(Model& m) { return m.visuals().freeSec; }
+    static double noteSeconds(Model& m) { return m.visuals().noteSec; }
     static unsigned laneHue(const Params&, int) { return colour::motion; }
 
     static LaneShape shapeOf(const Params& p, int lane) {
@@ -65,11 +71,11 @@ struct MovementTraits {
 
     static float editorPhase(Model& m, const Params& p, int lane) {
         const auto& v = m.visuals();
-        return static_cast<float>(lanePhaseFor(p, lane, v.ppq, v.notePpq));
+        return static_cast<float>(lanePhaseFor(p, lane, v.ppq, v.notePpq, v.freeSec, v.noteSec));
     }
 
     static NoteTiming noteTiming(const Params& p, int lane, double notePpq, double windowQuarters) {
-        const LaneMode mode = laneModeOf(p, lane);
+        const LaneMode mode = laneEffectiveMode(p, lane);
         const bool noteClock = mode != LaneMode::sync;
         const double noteWindow =
             mode == LaneMode::oneShot ? 0.0 : std::floor(notePpq / windowQuarters) * windowQuarters;
@@ -82,8 +88,13 @@ struct MovementTraits {
         return laneOutput(p, curves, lane, samplePpq, sampleNotePpq);
     }
 
+    static double sampleLaneFree(const Params& p, const LaneCurves& curves, int lane, double sampleFreeSec,
+                                 double sampleNoteSec) {
+        return laneOutput(p, curves, lane, 0.0, 0.0, sampleFreeSec, sampleNoteSec);
+    }
+
     static unsigned modeAccent(const Params& p, int lane, bool on, unsigned dim) {
-        return (on && laneModeOf(p, lane) != LaneMode::sync) ? colour::master : dim;
+        return (on && laneEffectiveMode(p, lane) != LaneMode::sync) ? colour::master : dim;
     }
 };
 } // namespace

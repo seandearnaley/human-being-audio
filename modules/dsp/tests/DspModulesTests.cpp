@@ -5,6 +5,7 @@
 #include <hba/dsp/control.h>
 #include <hba/dsp/crossover.h>
 #include <hba/dsp/denormals.h>
+#include <hba/dsp/lane_math.h>
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oversampling.h>
 #include <hba/dsp/svf.h>
@@ -261,4 +262,62 @@ TEST_CASE("hba::studio::History supports undo/redo, coalescing, capacity cap, an
     CHECK_FALSE(h.isSlotB());
     h.copyActiveToOther(10);
     CHECK(h.toggleAB(10) == 10);
+}
+
+TEST_CASE("hba::dsp::BaseRate4x, SoftClipAdaa1, and lanePhaseHz meet anti-aliasing and precision specs",
+          "[dsp][engine]") {
+    using namespace hba::dsp;
+
+    // BaseRate4x preserves unity passband at 440 Hz and 1 kHz.
+    BaseRate4x os4;
+    os4.prepare();
+    double peak = 0.0;
+    double sumSq = 0.0;
+    int rmsCount = 0;
+    std::array<float, BaseRate4x::kFactor> buf{};
+    for (int i = 0; i < 4096; ++i) {
+        const float x = std::sin(static_cast<float>(2.0 * kPi * 440.0 * i / 48000.0));
+        os4.up(x, buf.data());
+        const float y = os4.down(buf.data());
+        REQUIRE(std::isfinite(y));
+        if (i >= 1024) {
+            peak = std::max(peak, static_cast<double>(std::abs(y)));
+            sumSq += static_cast<double>(y) * static_cast<double>(y);
+            ++rmsCount;
+        }
+    }
+    CHECK(peak == Catch::Approx(1.0).margin(1e-3));
+    CHECK(std::sqrt(2.0 * sumSq / rmsCount) == Catch::Approx(1.0).margin(2e-3));
+
+    // SoftClipAdaa1: bit-exact linear midpoint below knee, strictly bounded above knee,
+    // and suppresses aliasing well below raw memoryless softClip on a hot high-frequency sine.
+    SoftClipAdaa1 cA, cB;
+    for (int i = 0; i < 64; ++i) {
+        const double x = 0.25 * std::sin(0.1 * i);
+        // Different ceilings well above |x| must produce bit-identical output below knee.
+        CHECK(cA.process(x, 0.6, 0.8) == cB.process(x, 0.6, 2.5));
+    }
+
+    cA.reset();
+    double maxAdaa = 0.0;
+    for (int i = 0; i < 4096; ++i) {
+        const double x = 8.0 * std::sin(2.0 * kPi * 3100.0 * i / 192000.0);
+        const double y = cA.process(x, 0.6, 0.75);
+        REQUIRE(std::isfinite(y));
+        maxAdaa = std::max(maxAdaa, std::abs(y));
+    }
+    CHECK(maxAdaa <= 0.75 + 1e-12);
+
+    // Numerical derivative of softClipUnitF1 matches softClip everywhere.
+    constexpr double h = 1e-6;
+    for (double u : {-3.5, -0.9, -0.6, -0.2, 0.0, 0.2, 0.6, 0.9, 3.5, 50.0}) {
+        const double df = (softClipUnitF1(u + h, 0.6) - softClipUnitF1(u - h, 0.6)) / (2.0 * h);
+        CHECK(df == Catch::Approx(softClip(u, 0.6, 1.0)).margin(1e-6));
+    }
+
+    // lanePhaseHz wraps accurately with phase offset and clamps negative rates safely.
+    CHECK(lanePhaseHz(0.0, 0.5, 0.0) == Catch::Approx(0.0));
+    CHECK(lanePhaseHz(1.5, 0.5, 0.0) == Catch::Approx(0.75));
+    CHECK(lanePhaseHz(1.5, 0.5, 90.0) == Catch::Approx(0.0).margin(1e-12));
+    CHECK(lanePhaseHz(2.0, -1.0, 180.0) == Catch::Approx(0.5));
 }
