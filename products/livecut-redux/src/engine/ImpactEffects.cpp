@@ -518,8 +518,8 @@ void ImpactEffects::processBand(double& left, double& right, double envelope, do
     const auto* table = sweep ? sweepPowerTableData : bandPowerTable;
     const auto width = std::log2 (std::min (high, makeupHighestHz) / low);
     const auto pink = table != nullptr ? std::exp(0.5 * (table->logOpen - table->interpolate(width, bandQ))) : 1.0;
-    const auto hold = sweep ? std::min ({ sweepMakeupCeiling, pink, sweepPeakCeiling / lowPassPeak (bandQ) })
-                            : std::min (makeupCeiling, pink);
+    const auto hold = sweep ? std::min(sweepMakeupCeiling, std::min(pink, sweepPeakCeiling / lowPassPeak(bandQ)))
+                            : std::min(makeupCeiling, pink);
     state.levelHoldGain = hold;
     if (sweep)
     {

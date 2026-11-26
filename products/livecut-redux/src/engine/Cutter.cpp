@@ -283,7 +283,7 @@ void Cutter::startLoopsBlock(const Timing& timing) noexcept HBA_NONBLOCKING {
         std::array<std::int64_t, 4> lengths {};
         for (std::size_t level = 0; level < lengths.size(); ++level)
             lengths[level] = std::max<std::int64_t> (1, std::lround (loopFrames / std::exp2 (static_cast<double> (level))));
-        const auto recorded = std::min ({ lengths[0], frame + 1 - loop.readFrame, hold.next });
+        const auto recorded = std::min(lengths[0], std::min(frame + 1 - loop.readFrame, hold.next));
         const auto whole = loopHoldSumTo (recorded, frame) / static_cast<double> (std::max<std::int64_t> (recorded, 1));
         for (std::size_t level = 1; level < lengths.size(); ++level)
         {

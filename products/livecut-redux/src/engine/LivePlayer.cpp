@@ -349,7 +349,8 @@ void LivePlayer::renderFrame(float& left, float& right, bool advanceBySamples) n
     const auto& cut = playing[current];
     auto outLeft = 0.0f;
     auto outRight = 0.0f;
-    const auto sounding = transform ? std::min ({ cut.soundingFrames, cut.size, transform->outputFrames }) : cut.playable;
+    const auto sounding =
+        transform ? std::min(cut.soundingFrames, std::min(cut.size, transform->outputFrames)) : cut.playable;
 
     if (position < sounding)
     {
