@@ -5,7 +5,12 @@
 //   stage://app/      the app's own page. It alone gets the bridge in preload.cjs.
 //   stage://output/   the picture: the engine page and, under /home/, the person's files. It runs
 //                     in a frame inside the app's page, and has no bridge at all.
-import { app, BrowserWindow, ipcMain, protocol, shell } from "electron";
+//
+// A scene shares the output origin with the engine page, so it can use that page's fetch and read
+// the person's files. What it must not do is send them anywhere. So no page in this app can reach
+// the network at all: every request that is not stage:// is cancelled, and no frame may navigate
+// away or open a window. The only thing that talks to the network is the agent, from this process.
+import { app, BrowserWindow, ipcMain, protocol, session, shell } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { startHub } from "./hub.mjs";
@@ -22,7 +27,16 @@ const TYPES = {
 };
 // Scenes get no network and nothing external. A scene can only draw.
 const SCENE_POLICY = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'";
+// The engine pages get a policy too. The request filter below is what stops the network; this is a
+// second lock on the same door.
+const ENGINE_POLICY = "default-src 'self' data: blob: 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' data: blob:";
 const MODEL = process.env.STAGE_MODEL ?? "claude-opus-5-5";
+// In development the app's own page comes from Vite on localhost. Nothing else is ever allowed.
+const DEV = process.env.STAGE_DEV_URL ? new URL(process.env.STAGE_DEV_URL) : null;
+const allowed = (address) => {
+  const url = new URL(address);
+  return ["stage:", "data:", "blob:", "devtools:", "about:"].includes(url.protocol) || (DEV !== null && url.host === DEV.host);
+};
 
 app.setName("Stage");
 protocol.registerSchemesAsPrivileged([{ scheme: "stage", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -33,8 +47,21 @@ async function serve(file, headers = {}) {
   return new Response(body, { headers: { "Content-Type": TYPES[path.extname(file)] ?? "application/octet-stream", "Cache-Control": "no-store", ...headers } });
 }
 
+app.on("web-contents-created", (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // WebRTC is not an ordinary request, so the filter never sees it. This makes it use the proxy
+  // set below, which goes nowhere.
+  contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
+  contents.on("will-frame-navigate", (event) => allowed(event.url) || event.preventDefault());
+});
+
 app.whenReady().then(async () => {
-  const library = await openLibrary(process.env.STAGE_HOME ?? path.join(app.getPath("music"), "Stage"), path.join(ROOT, "starter"));
+  session.defaultSession.webRequest.onBeforeRequest((details, respond) => respond({ cancel: !allowed(details.url) }));
+  // A proxy that is not there: anything that slips past the filter has nowhere to go. stage:// is
+  // served by this process and never touches it. Chromium leaves localhost unproxied, which is
+  // what development needs.
+  await session.defaultSession.setProxy({ proxyRules: "127.0.0.1:9" });
+  const library =await openLibrary(process.env.STAGE_HOME ?? path.join(app.getPath("music"), "Stage"), path.join(ROOT, "starter"));
   let setFile = await library.lastSet();
   let set = await library.readSet(setFile);
   const open = async (name) => {
@@ -59,7 +86,7 @@ app.whenReady().then(async () => {
     }
     if (url.pathname.startsWith("/home/")) return serve(library.resolve(url.pathname), url.pathname.endsWith(".html") ? { "Content-Security-Policy": SCENE_POLICY } : {});
     if (url.pathname === "/vendor/mediabunny.min.mjs") return serve(path.join(ROOT, "node_modules/mediabunny/dist/bundles/mediabunny.min.mjs"));
-    return serve(path.join(ROOT, "engine", path.normalize(url.pathname)));
+    return serve(path.join(ROOT, "engine", path.normalize(url.pathname)), url.pathname.endsWith(".html") ? { "Content-Security-Policy": ENGINE_POLICY } : {});
   });
 
   const window = new BrowserWindow({
@@ -124,31 +151,36 @@ app.whenReady().then(async () => {
       } catch (error) {
         await fs.rm(file, { force: true });
         return { error: String(error.message ?? error) };
+      } finally {
+        check.dispose();   // its hidden window; the next job opens a fresh one
       }
     },
     async "agent:discard"({ url }) {
       const file = library.resolve(url);
       if (file) await Promise.all([fs.rm(file, { force: true }), fs.rm(file.replace(/\.\w+$/, ".jpg"), { force: true })]);
     },
-    // A take is named for when it started. Its header says which set it was played on.
+    // A take is named for when it started. Its header carries the set as it was at that moment, so
+    // a later change to the set does not change what the take exports.
     async "take:record"({ soundId }) {
       const stamp = new Date();
       const pad = (value) => String(value).padStart(2, "0");
       const name = `${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())} ${pad(stamp.getHours())}.${pad(stamp.getMinutes())}.${pad(stamp.getSeconds())}`;
-      await hub.record(library.file("takes"), name, soundId, { set: setFile });
+      await hub.record(library.file("takes"), name, soundId, { set: { file: setFile, ...set } });
       return { name };
     },
     "take:finish": () => hub.finish(),
     "take:list": () => library.takes(),
     async "take:export"({ take, height, fps }) {
       const header = JSON.parse((await fs.readFile(library.file("takes", `${take}.take`), "utf8")).split("\n", 1)[0]);
-      const played = await library.readSet(header.set ?? setFile);
+      // Takes made before the set was stored in the header only name its file.
+      const played = header.set && typeof header.set === "object" ? header.set : await library.readSet(header.set ?? setFile);
+      await fs.writeFile(library.file(".drafts", "take-set.json"), JSON.stringify(played));
       const name = `${take} ${height}p${fps}.mp4`;
       expectedUpload = name;
       try {
         const result = await exportTake({
           origin: OUTPUT, name, fps, height, width: Math.round((height * 16) / 9), look: Boolean(played.look),
-          takeUrl: library.address("takes", `${take}.take`), setUrl: library.address("sets", header.set ?? setFile),
+          takeUrl: library.address("takes", `${take}.take`), setUrl: library.address(".drafts", "take-set.json"),
         });
         return { file: library.file("exports", name), ...result };
       } catch (error) {
@@ -161,7 +193,8 @@ app.whenReady().then(async () => {
   };
   for (const [channel, handler] of Object.entries(handlers)) ipcMain.handle(channel, (event, payload) => handler(payload ?? {}, event.sender));
 
-  app.on("window-all-closed", () => app.quit());
+  // One window: when it closes the app is done, whatever hidden windows a job may still hold.
+  window.on("closed", () => app.quit());
   app.on("will-quit", () => hub.stop());
   await window.loadURL(process.env.STAGE_DEV_URL ?? "stage://app/");
 });

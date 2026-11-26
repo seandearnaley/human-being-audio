@@ -1,6 +1,7 @@
 // The plugins' lines, as the app's page needs them: forwarded untouched to the output frame, and
 // boiled down a few times a second to what the top bar, the drums row and the knob strip show.
 import { useEffect, useRef, useState } from "react";
+import { pickSound } from "./sound";
 
 type Track = { role: number; bpm: number; ppq: number; playing: boolean; sig: [number, number]; macros: number[]; sound: boolean; us: number };
 export type Transport = {
@@ -43,7 +44,7 @@ export function useHub(forward: (line: string) => void): Transport {
           position: `${Math.floor(beat / perBar) + 1} . ${Math.floor(inBar) + 1} . ${Math.floor((inBar % 1) * 4) + 1}`,
           knobs: Object.fromEntries(heard.map(([, track]) => [track.role, track.macros.map((value) => Math.round(value * 100) / 100)])),
           hit: { kick: now - lastHit.kick < 12e4, snare: now - lastHit.snare < 12e4, hat: now - lastHit.hat < 8e4 },
-          soundId: heard.find(([, track]) => track.sound)?.[0] ?? null,
+          soundId: pickSound(heard.map(([id, track]) => ({ id, ...track }))),
         };
       }
       const key = JSON.stringify(next);

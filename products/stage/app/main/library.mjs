@@ -82,7 +82,7 @@ export async function openLibrary(home, starter) {
         const stat = await fs.stat(file("takes", name));
         const sound = header.sound && (await fs.stat(file("takes", header.sound.file)).catch(() => null));
         return {
-          name: name.slice(0, -5), set: header.set ?? null, made: stat.mtimeMs,
+          name: name.slice(0, -5), set: header.set?.name ?? header.set ?? null, made: stat.mtimeMs,
           seconds: sound ? (sound.size - 44) / (header.sound.channels * 4) / header.sound.rate : null,
         };
       }));

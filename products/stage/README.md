@@ -22,6 +22,8 @@ Not in `studio.json` yet, so the studio's CI and release tooling ignore it.
 - **Four rules play them.** A track is a layer. A note is a scene. A note that starts while the last is held is a Cut. Each layer has eight knobs.
 - **The plugins connect to the app.** The app runs a hub on loopback and writes its ports and a token to `hub.json` in its data folder. Each plugin instance connects and sends one line per audio block.
 - **Scenes cannot reach the app.** The picture runs in a frame on its own origin (`stage://output`) with no bridge to the main process. The app's page (`stage://app`) is the only one with a bridge.
+- **No page can reach the network.** A scene shares the output origin with the engine page and can borrow its `fetch`, so the block is on the whole app: every request that is not `stage://` is cancelled, frames cannot navigate away, and WebRTC is forced through a proxy that goes nowhere. Only the agent talks to the network, from the main process.
+- **A take carries its set.** The set as it was when the take started is stored in the take's header, so later edits to the set do not change what the take exports.
 - **Everything a person owns is plain files** in `~/Music/Stage`: `library/`, `sets/`, `takes/`, `exports/`.
 - **A set's file name never changes.** Its own name is inside the file, so renaming a set does not break the takes that refer to it.
 

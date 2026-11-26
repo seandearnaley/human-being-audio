@@ -4,6 +4,7 @@
 // agent for a scene (this spends on the Anthropic key).
 import { _electron as electron } from "playwright";
 import { spawn } from "node:child_process";
+import dgram from "node:dgram";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,10 +17,10 @@ await fs.mkdir(out, { recursive: true });
 const app = await electron.launch({ args: [here], env: { ...process.env, STAGE_HOME: home } });
 const page = await app.firstWindow();
 const problems = [];
-page.on("console", (message) => message.type() === "error" && problems.push(message.text()));
+// The network checks below try to reach example.com on purpose; the refusals they log are the point.
+page.on("console", (message) => message.type() === "error" && !message.text().includes("example.com") && problems.push(message.text()));
 page.on("pageerror", (error) => problems.push(String(error)));
 const shot = (name) => page.screenshot({ path: path.join(out, `${name}.png`) });
-const output = page.frameLocator("iframe.screen");
 const report = {};
 
 try {
@@ -28,6 +29,31 @@ try {
   report.pads = await page.locator(".pad img").count();
   report.outputErrors = await page.frames().find((frame) => frame.url().startsWith("stage://output"))?.evaluate(() => window.report?.errors);
   await shot("01-idle");
+
+  // A scene can borrow the engine page's fetch. Neither may reach the network, by any road.
+  // WebRTC is the road a request filter cannot see, so a local UDP listener stands in for a STUN
+  // server: if a single datagram arrives, WebRTC got out.
+  const stun = dgram.createSocket("udp4");
+  let datagrams = 0;
+  stun.on("message", () => { datagrams += 1; });
+  await new Promise((resolve) => stun.bind(0, "127.0.0.1", resolve));
+  report.network = await page.frames().find((frame) => frame.url().startsWith("stage://output")).evaluate(async (stunPort) => {
+    const tried = (attempt) => attempt.then(() => "reached", () => "blocked");
+    const scene = [...document.querySelectorAll("iframe")][0].contentWindow;
+    const peer = new RTCPeerConnection({ iceServers: [{ urls: `stun:127.0.0.1:${stunPort}` }] });
+    peer.createDataChannel("out");
+    await peer.setLocalDescription(await peer.createOffer());
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    peer.close();
+    return {
+      engineFetch: await tried(fetch("https://example.com/", { mode: "no-cors" })),
+      sceneViaParent: await tried(scene.parent.fetch("https://example.com/", { mode: "no-cors" })),
+      image: await new Promise((resolve) => { const image = new Image(); image.onload = () => resolve("reached"); image.onerror = () => resolve("blocked"); image.src = "https://example.com/favicon.ico"; }),
+      ownFiles: await tried(fetch("/home/sets/night-drive.json").then((response) => response.ok || Promise.reject())),
+    };
+  }, stun.address().port);
+  report.network.webrtc = datagrams ? "reached" : "blocked";
+  stun.close();
 
   // No plugin connected: a pad holds its scene over the built-in loop.
   await page.locator(".pad").first().click();
@@ -56,6 +82,9 @@ try {
     host?.kill();
     await page.waitForTimeout(1500);
     report.takes = (await fs.readdir(path.join(home, "takes"))).sort();
+    // The take carries the set as it was played, not just its file name.
+    const header = JSON.parse((await fs.readFile(path.join(home, "takes", report.takes[0]), "utf8")).split("\n", 1)[0]);
+    report.takeCarriesSet = { file: header.set.file, name: header.set.name, layers: header.set.layers.length, sound: header.sound?.rate ?? null };
 
     await page.locator("nav button", { hasText: "Export" }).click();
     await page.waitForSelector(".sheet .choice");
@@ -90,6 +119,8 @@ try {
     await page.locator(".making .actions .primary").click();
     await page.waitForTimeout(2500);
     report.padsAfterKeep = await page.locator(".pad img").count();
+    // The agent's hidden check window is gone once the job is done.
+    report.windowsAfterAgent = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
     await shot("09-kept");
   }
   // Sets: make one, name it, fill a pad from the library, and switch back.

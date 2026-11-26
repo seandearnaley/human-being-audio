@@ -33,9 +33,13 @@ export const createChecker = (origin) => limited(() => openChecker(origin));
 // The same for a Cut, played between the two scenes of `setUrl` (a set whose clip overlaps them).
 export const createCutChecker = (origin, setUrl) => limited(() => openCutChecker(origin, setUrl));
 
+// A checker opens its window on first use and keeps it for the job. `dispose` closes it; a hidden
+// window left open would keep the app alive after its own window had closed.
 function limited(open) {
   let checking = null;
-  return async function check(url, source) {
+  check.dispose = () => { checking?.window.destroy(); checking = null; };
+  return check;
+  async function check(url, source) {
     checking ??= await open();
     let timer;
     const frozen = new Promise((resolve) => { timer = setTimeout(() => resolve(null), LIMIT_MS); });
@@ -45,7 +49,7 @@ function limited(open) {
     checking.window.destroy();
     checking = null;
     return { report: { passed: false, errors: [`it froze: it had not finished playing after ${LIMIT_MS / 1000} seconds`] }, pictures: [] };
-  };
+  }
 }
 
 // A Cut is a piece of the Stage's own shader, so it is checked in the Stage itself: load the set
