@@ -1,4 +1,4 @@
-add_executable(cl-core-tests core/CoreTests.cpp)
+add_executable(cl-core-tests core/CoreTests.cpp core/GrooveTests.cpp)
 hba_build_for_host_only(cl-core-tests)
 target_link_libraries(cl-core-tests PRIVATE cl_core Catch2::Catch2WithMain cl_warnings)
 catch_discover_tests(cl-core-tests DISCOVERY_MODE PRE_TEST)

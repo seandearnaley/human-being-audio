@@ -1,5 +1,6 @@
 add_library(cl_core STATIC
     include/cl/curve.h
+    include/cl/groove.h
     include/cl/lanes.h
     include/cl/nonblocking.h
     include/cl/params.h
