@@ -86,11 +86,11 @@ test("all showcase decks decode, switch tracks, and play exclusively on request"
 }) => {
   await page.goto("/");
   const decks = page.locator("figure[data-showcase]");
-  await expect(decks).toHaveCount(6);
-  await expect(page.locator(".showcase__track")).toHaveCount(36);
+  await expect(decks).toHaveCount(PRODUCTS.length);
+  await expect(page.locator(".showcase__track")).toHaveCount(PRODUCTS.length * 6);
 
   const examples = page.locator("audio");
-  await expect(examples).toHaveCount(6);
+  await expect(examples).toHaveCount(PRODUCTS.length);
   for (const example of await examples.all()) {
     await expect(example).toHaveAttribute("preload", "none");
     expect(await example.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
@@ -158,12 +158,12 @@ test("catalogue and navigation work without JavaScript", async ({
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto(baseURL!);
-  await expect(page.locator("article[data-plugin]")).toHaveCount(6);
-  await expect(page.locator("audio[controls]")).toHaveCount(6);
+  await expect(page.locator("article[data-plugin]")).toHaveCount(PRODUCTS.length);
+  await expect(page.locator("audio[controls]")).toHaveCount(PRODUCTS.length);
   await expect(page.locator("audio[controls]").first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Source and build instructions" }),
-  ).toHaveCount(6);
+  ).toHaveCount(PRODUCTS.length);
   const hashLinks = await page
     .locator('a[href^="#"]')
     .evaluateAll((links) => links.map((el) => el.getAttribute("href")!));
