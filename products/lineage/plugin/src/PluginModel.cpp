@@ -79,7 +79,8 @@ void PluginModel::startWavExport() {
     req.note = perf.note;
     req.bpm = perf.bpm;
     req.sampleRate = processor_.getSampleRate() > 8000.0 ? processor_.getSampleRate() : 48000.0;
-    const int barIdx = std::clamp(req.params.choice(ParamId::printBars), 0, static_cast<int>(kPrintBarCounts.size()) - 1);
+    const int barIdx =
+        std::clamp(req.params.choice(ParamId::printBars), 0, static_cast<int>(kPrintBarCounts.size()) - 1);
     req.bars = kPrintBarCounts[static_cast<std::size_t>(barIdx)];
     processor_.resampler.start(req, juce::String(processor_.presets.currentName()));
 }

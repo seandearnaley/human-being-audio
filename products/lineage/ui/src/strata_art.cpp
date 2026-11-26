@@ -88,8 +88,8 @@ void drawSculptWorld(visage::Canvas& canvas, float x, float y, float w, float h,
             const float wave = 0.14f * std::sin(u * kTwoPi * 4.0f - m.phase * 1.4f + depth * 4.8f) +
                                0.08f * std::cos(u * kTwoPi * 7.5f + m.phase * 0.9f - depth * 3.1f);
             const float scopeIdx = u * static_cast<float>(TelemetrySnapshot::kScopePoints - 1);
-            const float sc = m.scope[static_cast<std::size_t>(std::clamp(static_cast<int>(scopeIdx), 0,
-                                                                          TelemetrySnapshot::kScopePoints - 1))];
+            const float sc = m.scope[static_cast<std::size_t>(
+                std::clamp(static_cast<int>(scopeIdx), 0, TelemetrySnapshot::kScopePoints - 1))];
             const float elev = (peak1 - 0.58f * notch2 + wave + 0.22f * sc * depth) * std::sin(kPi * u);
             const float sx = xOff + u * xSpan;
             const float sy = std::clamp(baseY - elev * amp, 14.0f * scale, h - 10.0f * scale);
@@ -149,8 +149,8 @@ void drawReeseWorld(visage::Canvas& canvas, float x, float y, float w, float h, 
 
     // 7 braided unison plasma ribbons driven by real live voicePhases[0..6]
     constexpr int kSteps = 110;
-    constexpr std::array<unsigned, 7> kStrandCols{
-        colour::abyss, colour::reese, colour::sub, 0xffffffffu, colour::sub, colour::reese, colour::strata};
+    constexpr std::array<unsigned, 7> kStrandCols{colour::abyss, colour::reese, colour::sub,   0xffffffffu,
+                                                  colour::sub,   colour::reese, colour::strata};
 
     for (int v = 0; v < 7; ++v) {
         const auto vi = static_cast<std::size_t>(v);
@@ -274,8 +274,8 @@ void drawStrataWorld(visage::Canvas& canvas, float x, float y, float w, float h,
             }
             // Crisp vertical mineral strata bars inside active loop
             if ((i & 1) == 0) {
-                const unsigned barCol = inside ? colour::lerpArgb(col, colour::sculpt, pk * 0.45f)
-                                               : colour::withAlpha(col, 0.25f);
+                const unsigned barCol =
+                    inside ? colour::lerpArgb(col, colour::sculpt, pk * 0.45f) : colour::withAlpha(col, 0.25f);
                 canvas.setColor(colour::withAlpha(barCol, (inside ? (0.28f + 0.42f * pk) : 0.14f) * alpha));
                 canvas.rectangle(x + sx, y + topY - amp, std::max(1.2f * scale, waveW / static_cast<float>(kN) * 1.1f),
                                  std::max(1.5f * scale, 2.0f * amp));
@@ -323,8 +323,8 @@ void drawDisperseWorld(visage::Canvas& canvas, float x, float y, float w, float 
         visage::Path caustic;
         for (int s = 0; s <= kSegs; ++s) {
             const float ang = (static_cast<float>(s) / static_cast<float>(kSegs)) * kTwoPi;
-            const float smear = (0.04f + 0.22f * m.disperse) *
-                                std::sin(4.0f * ang - m.phase * 2.0f + u * 8.0f * (0.5f + m.density));
+            const float smear =
+                (0.04f + 0.22f * m.disperse) * std::sin(4.0f * ang - m.phase * 2.0f + u * 8.0f * (0.5f + m.density));
             const float warp2 = 0.06f * m.density * std::cos(7.0f * ang + m.phase * 1.5f);
             const float rr = rad * (1.0f + smear + warp2);
             const float sx = cx + std::cos(ang) * rr * 1.24f;

@@ -20,9 +20,7 @@ float freqToNorm(float hz) {
     return std::log(clamped / kMinFreq) / std::log(kMaxFreq / kMinFreq);
 }
 
-float normToFreq(float norm) {
-    return kMinFreq * std::pow(kMaxFreq / kMinFreq, std::clamp(norm, 0.0f, 1.0f));
-}
+float normToFreq(float norm) { return kMinFreq * std::pow(kMaxFreq / kMinFreq, std::clamp(norm, 0.0f, 1.0f)); }
 
 // Visual approximation of Filter 1 & Filter 2 magnitude responses in [0, 1] display height
 float evalFilter1Visual(Filt1Mode mode, float f, float fc, float res) {
@@ -59,8 +57,8 @@ float evalFilter1Visual(Filt1Mode mode, float f, float fc, float res) {
         const float lB = std::log2(std::max(f / std::max(fB, 20.0f), 1e-4f));
         const float lC = std::log2(std::max(f / std::max(fC, 20.0f), 1e-4f));
         const float w = 4.0f + res * 7.0f;
-        const float sum = 0.55f * std::exp(-lA * lA * w) + 0.72f * std::exp(-lB * lB * w) +
-                          0.42f * std::exp(-lC * lC * (w * 1.2f));
+        const float sum =
+            0.55f * std::exp(-lA * lA * w) + 0.72f * std::exp(-lB * lB * w) + 0.42f * std::exp(-lC * lC * (w * 1.2f));
         return std::clamp(0.18f + sum * (0.72f + qBoost * 0.45f), 0.06f, 0.96f);
     }
     }

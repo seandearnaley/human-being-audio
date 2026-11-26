@@ -14,9 +14,8 @@ hba::host::StudioAboutConfig makeAboutConfig() {
     cfg.monogramSize = static_cast<std::size_t>(ui::brand::lineage_mark_on_dark_svg.size);
     cfg.accessibilitySuffix = ". Non-destructive resampling Reese and bass sculpting synthesizer.";
     cfg.headline = "Non-destructive resampling Reese & bass sculpting synthesizer";
-    cfg.body =
-        "Seven-voice zero-aliasing Reese, Soft/Hard Sync, and TZFM core feeding a serial ADAA2 sculpting bench, "
-        "phase-locked clean mono sub re-injection, and live multi-generation Strata resampling.";
+    cfg.body = "Seven-voice zero-aliasing Reese, Soft/Hard Sync, and TZFM core feeding a serial ADAA2 sculpting bench, "
+               "phase-locked clean mono sub re-injection, and live multi-generation Strata resampling.";
     cfg.backgroundArgb = 0xff090c12u;
     cfg.wordmarkWidth = 280.0f;
     cfg.wordmarkHeight = 62.0f;

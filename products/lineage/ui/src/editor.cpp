@@ -40,26 +40,25 @@ struct Editor::Impl final {
           topBar(context, std::move(showAbout), [this](bool studio) { applyView(studio); }),
           ribbon(makeStrataRibbon(context)), playPad(makePlayPanel(context)), studioStage(makeStudioStage(context)),
           studioDeck(makeStudioDeck(context)), movement(makeMovementPanel(context)),
-          voiceBar(
-              context, colour::reese, "VOICE",
-              {
-                  {ParamId::playMode, "Mode", colour::reese, 118.0f, false, false},
-                  {ParamId::glide, "Glide", colour::reese, 136.0f, true, false},
-                  {ParamId::glideMode, "Portamento", colour::reese, 134.0f, false, false},
-                  {ParamId::bendRange, "Bend", colour::sculpt, 106.0f, false, false},
-                  {ParamId::octave, "Octave", colour::sub, 108.0f, false, false},
-                  {ParamId::quality, "OS", colour::reese, 74.0f, false, true},
-              },
-              [this]() -> std::string {
-                  const auto& v = context.model.visuals();
-                  const int note = v.activeNote >= 0 ? v.activeNote : 29;
-                  const bool isPoly =
-                      static_cast<int>(std::lround(context.model.get(ParamId::playMode))) == static_cast<int>(PlayMode::poly4);
-                  const std::string n = hba::core::midiNoteName(note, false);
-                  if (isPoly)
-                      return n + " \xc2\xb7 " + std::to_string(std::max(0, v.activeVoices)) + "/4v";
-                  return n + (v.sounding ? " \xc2\xb7 1v" : "");
-              }) {
+          voiceBar(context, colour::reese, "VOICE",
+                   {
+                       {ParamId::playMode, "Mode", colour::reese, 118.0f, false, false},
+                       {ParamId::glide, "Glide", colour::reese, 136.0f, true, false},
+                       {ParamId::glideMode, "Portamento", colour::reese, 134.0f, false, false},
+                       {ParamId::bendRange, "Bend", colour::sculpt, 106.0f, false, false},
+                       {ParamId::octave, "Octave", colour::sub, 108.0f, false, false},
+                       {ParamId::quality, "OS", colour::reese, 74.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const auto& v = context.model.visuals();
+                       const int note = v.activeNote >= 0 ? v.activeNote : 29;
+                       const bool isPoly = static_cast<int>(std::lround(context.model.get(ParamId::playMode))) ==
+                                           static_cast<int>(PlayMode::poly4);
+                       const std::string n = hba::core::midiNoteName(note, false);
+                       if (isPoly)
+                           return n + " \xc2\xb7 " + std::to_string(std::max(0, v.activeVoices)) + "/4v";
+                       return n + (v.sounding ? " \xc2\xb7 1v" : "");
+                   }) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {
             // Use D (leaving Space free for Ableton Live / DAW transport!)
             if (key.keyCode() == visage::KeyCode::D && !key.isMainModifier()) {

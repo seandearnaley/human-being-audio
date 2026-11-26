@@ -30,22 +30,21 @@ struct Editor::Impl final {
         : context(model), host(context, static_cast<float>(kDefaultWidth)), topBar(context, std::move(showAbout)),
           graph(makeGraphPanel(context)), analysis(makeAnalysisPanel(context)), movement(makeMovementPanel(context)),
           output(makeOutputPanel(context)),
-          voiceBar(
-              context, colour::master, "VOICE",
-              {
-                  {ParamId::playMode, "Mode", colour::master, 114.0f, false, false},
-                  {ParamId::glide, "Glide", colour::master, 136.0f, true, false},
-                  {ParamId::glideMode, "Portamento", colour::master, 134.0f, false, false},
-                  {ParamId::bendRange, "Bend", colour::growl, 106.0f, false, false},
-                  {ParamId::octave, "Octave", colour::text, 108.0f, false, false},
-                  {ParamId::quality, "OS", colour::master, 74.0f, false, true},
-              },
-              [this]() -> std::string {
-                  const auto& v = context.model.visuals();
-                  if (v.note >= 0)
-                      return hba::core::midiNoteName(v.note, false) + (v.gate ? " \xc2\xb7 1v" : "");
-                  return "Mono";
-              }) {
+          voiceBar(context, colour::master, "VOICE",
+                   {
+                       {ParamId::playMode, "Mode", colour::master, 114.0f, false, false},
+                       {ParamId::glide, "Glide", colour::master, 136.0f, true, false},
+                       {ParamId::glideMode, "Portamento", colour::master, 134.0f, false, false},
+                       {ParamId::bendRange, "Bend", colour::growl, 106.0f, false, false},
+                       {ParamId::octave, "Octave", colour::text, 108.0f, false, false},
+                       {ParamId::quality, "OS", colour::master, 74.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const auto& v = context.model.visuals();
+                       if (v.note >= 0)
+                           return hba::core::midiNoteName(v.note, false) + (v.gate ? " \xc2\xb7 1v" : "");
+                       return "Mono";
+                   }) {
         host.addPlaced(&topBar, kTopBar);
         host.addPlaced(graph.get(), kGraph);
         host.addPlaced(analysis.get(), kAnalysis);

@@ -28,19 +28,18 @@ struct Editor::Impl final {
     Impl(Model& model, std::function<void()> showAbout)
         : context(model), host(context, static_cast<float>(kDefaultWidth)), topBar(context, std::move(showAbout)),
           zplane(makeZPlanePanel(context)), movement(makeMovementPanel(context)), output(makeOutputPanel(context)),
-          voiceBar(
-              context, colour::poles, "VOICE",
-              {
-                  {ParamId::pitchTrack, "Track", colour::sub, 92.0f, false, false},
-                  {ParamId::glide, "Glide", colour::sub, 136.0f, true, false},
-                  {ParamId::stereoMode, "Stereo", colour::poles, 118.0f, false, false},
-                  {ParamId::subLock, "Sub Lock", colour::sub, 102.0f, false, false},
-                  {ParamId::quality, "OS", colour::poles, 74.0f, false, true},
-              },
-              [this]() -> std::string {
-                  const auto& v = context.model.visuals();
-                  return v.activeNote >= 0 ? hba::core::midiNoteName(v.activeNote, false) : "MIDI";
-              }) {
+          voiceBar(context, colour::poles, "VOICE",
+                   {
+                       {ParamId::pitchTrack, "Track", colour::sub, 92.0f, false, false},
+                       {ParamId::glide, "Glide", colour::sub, 136.0f, true, false},
+                       {ParamId::stereoMode, "Stereo", colour::poles, 118.0f, false, false},
+                       {ParamId::subLock, "Sub Lock", colour::sub, 102.0f, false, false},
+                       {ParamId::quality, "OS", colour::poles, 74.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const auto& v = context.model.visuals();
+                       return v.activeNote >= 0 ? hba::core::midiNoteName(v.activeNote, false) : "MIDI";
+                   }) {
         host.addPlaced(&topBar, kTopBar);
         host.addPlaced(zplane.get(), kMainDeck);
         host.addPlaced(movement.get(), kMovement);

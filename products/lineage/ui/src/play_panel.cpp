@@ -34,15 +34,15 @@ std::string formatPct(float norm01) {
 } // namespace
 
 PlayPanel::PlayPanel(Context& ctx)
-    : Panel(ctx), coreChip_(ctx, ParamId::coreMode, colour::reese),
-      filt1Chip_(ctx, ParamId::filt1Mode, colour::sculpt), driveChip_(ctx, ParamId::driveType, colour::sculpt),
-      dirChip_(ctx, ParamId::strataDir, colour::strata), filt1Row_(ctx, ParamId::filt1Hz, colour::sculpt, "Filter", true),
+    : Panel(ctx), coreChip_(ctx, ParamId::coreMode, colour::reese), filt1Chip_(ctx, ParamId::filt1Mode, colour::sculpt),
+      driveChip_(ctx, ParamId::driveType, colour::sculpt), dirChip_(ctx, ParamId::strataDir, colour::strata),
+      filt1Row_(ctx, ParamId::filt1Hz, colour::sculpt, "Filter", true),
       driveRow_(ctx, ParamId::drive, colour::sculpt, "Drive", true),
       genMixRow_(ctx, ParamId::genMix, colour::strata, "Gen Mix", true),
       subRow_(ctx, ParamId::subLevel, colour::sub, "Sub", true) {
     setAcceptsKeystrokes(true);
-    for (visage::Frame* child : std::initializer_list<visage::Frame*>{
-             &coreChip_, &filt1Chip_, &driveChip_, &dirChip_, &filt1Row_, &driveRow_, &genMixRow_, &subRow_}) {
+    for (visage::Frame* child : std::initializer_list<visage::Frame*>{&coreChip_, &filt1Chip_, &driveChip_, &dirChip_,
+                                                                      &filt1Row_, &driveRow_, &genMixRow_, &subRow_}) {
         addChild(child);
     }
 

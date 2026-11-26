@@ -62,11 +62,11 @@ struct FormantVowel {
     std::array<double, 3> gain;
 };
 constexpr std::array<FormantVowel, 5> kVowels{{
-    {{730.0, 1090.0, 2440.0}, {6.0, 8.0, 10.0}, {1.0, 0.68, 0.32}}, // a
-    {{660.0, 1720.0, 2410.0}, {6.0, 8.5, 10.0}, {1.0, 0.74, 0.36}}, // ae
-    {{270.0, 2290.0, 3010.0}, {6.5, 9.5, 11.0}, {0.95, 0.72, 0.38}},// i
-    {{570.0, 840.0, 2410.0}, {6.0, 8.0, 10.0}, {1.0, 0.72, 0.28}},  // o
-    {{300.0, 870.0, 2240.0}, {6.5, 8.0, 10.0}, {1.0, 0.62, 0.24}},  // u
+    {{730.0, 1090.0, 2440.0}, {6.0, 8.0, 10.0}, {1.0, 0.68, 0.32}},  // a
+    {{660.0, 1720.0, 2410.0}, {6.0, 8.5, 10.0}, {1.0, 0.74, 0.36}},  // ae
+    {{270.0, 2290.0, 3010.0}, {6.5, 9.5, 11.0}, {0.95, 0.72, 0.38}}, // i
+    {{570.0, 840.0, 2410.0}, {6.0, 8.0, 10.0}, {1.0, 0.72, 0.28}},   // o
+    {{300.0, 870.0, 2240.0}, {6.5, 8.0, 10.0}, {1.0, 0.62, 0.24}},   // u
 }};
 
 // Smooth 4-point Catmull-Rom / Hermite interpolation for click-free pitch-tracked Gen-2 resampling
@@ -126,7 +126,8 @@ struct CombUnit {
         const int i0 = static_cast<int>(readPos) & (kCombMaxDelay - 1);
         const int i1 = (i0 + 1) & (kCombMaxDelay - 1);
         const double f = readPos - std::floor(readPos);
-        const double delayed = delay[static_cast<std::size_t>(i0)] * (1.0 - f) + delay[static_cast<std::size_t>(i1)] * f;
+        const double delayed =
+            delay[static_cast<std::size_t>(i0)] * (1.0 - f) + delay[static_cast<std::size_t>(i1)] * f;
         // Gentle high-frequency damping inside comb loop for organic metallic singing
         lpState += 0.35 * (delayed - lpState);
         const double fb = std::clamp(0.15 + 0.78 * res01, 0.0, 0.93);
@@ -450,7 +451,8 @@ struct Engine::Impl {
         int chosen = -1;
         for (int i = 0; i < kMaxPolyVoices; ++i) {
             if (polyVoices[static_cast<std::size_t>(i)].midiNote == clamped &&
-                (polyVoices[static_cast<std::size_t>(i)].gate || polyVoices[static_cast<std::size_t>(i)].ampEnv > 1.0e-4)) {
+                (polyVoices[static_cast<std::size_t>(i)].gate ||
+                 polyVoices[static_cast<std::size_t>(i)].ampEnv > 1.0e-4)) {
                 chosen = i;
                 break;
             }
@@ -677,14 +679,19 @@ struct Engine::Impl {
                     const double u = local / wallFade;
                     const double w = 0.5 - 0.5 * std::cos(u * kPi);
                     const double mirror = winStart + std::clamp(2.0 * wallFade - local, 0.0, winLen - 1.0);
-                    sL = static_cast<float>((0.7 + 0.3 * w) * sL + (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
-                    sR = static_cast<float>((0.7 + 0.3 * w) * sR + (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
+                    sL = static_cast<float>((0.7 + 0.3 * w) * sL +
+                                            (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
+                    sR = static_cast<float>((0.7 + 0.3 * w) * sR +
+                                            (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
                 } else if (local > winLen - wallFade) {
                     const double u = (winLen - local) / wallFade;
                     const double w = 0.5 - 0.5 * std::cos(u * kPi);
-                    const double mirror = winStart + std::clamp(winLen - 2.0 * wallFade + (winLen - local), 0.0, winLen - 1.0);
-                    sL = static_cast<float>((0.7 + 0.3 * w) * sL + (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
-                    sR = static_cast<float>((0.7 + 0.3 * w) * sR + (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
+                    const double mirror =
+                        winStart + std::clamp(winLen - 2.0 * wallFade + (winLen - local), 0.0, winLen - 1.0);
+                    sL = static_cast<float>((0.7 + 0.3 * w) * sL +
+                                            (0.3 * (1.0 - w)) * hermiteRead(slot.left.data(), slot.length, mirror));
+                    sR = static_cast<float>((0.7 + 0.3 * w) * sR +
+                                            (0.3 * (1.0 - w)) * hermiteRead(slot.right.data(), slot.length, mirror));
                 }
             }
         }
@@ -779,10 +786,10 @@ struct Engine::Impl {
 
         const double glideSec = static_cast<double>(params[ParamId::glide]) * 0.001;
         const double glideCoef = glideSec > 1.0e-4 ? hba::dsp::onePoleCoef(glideSec, 1.0 / sampleRate) : 1.0;
-        const double atkCoef =
-            hba::dsp::onePoleCoef(std::max(0.0005, static_cast<double>(params[ParamId::attack]) * 0.001), 1.0 / sampleRate);
-        const double relCoef =
-            hba::dsp::onePoleCoef(std::max(0.005, static_cast<double>(params[ParamId::release]) * 0.001), 1.0 / sampleRate);
+        const double atkCoef = hba::dsp::onePoleCoef(
+            std::max(0.0005, static_cast<double>(params[ParamId::attack]) * 0.001), 1.0 / sampleRate);
+        const double relCoef = hba::dsp::onePoleCoef(
+            std::max(0.005, static_cast<double>(params[ParamId::release]) * 0.001), 1.0 / sampleRate);
         const double densityAtk = hba::dsp::onePoleCoef(0.006, 1.0 / sampleRate);
         const double densityRel = hba::dsp::onePoleCoef(0.075, 1.0 / sampleRate);
 
@@ -899,58 +906,56 @@ struct Engine::Impl {
             }
 
             // Combine base params + 4 Movement Lanes + MIDI Expression + X/Y Pad
-            const double rawF1 =
-                static_cast<double>(laneApply(LaneTarget::filt1Hz, params[ParamId::filt1Hz],
-                                              laneSum(params, sends, LaneTarget::filt1Hz))) *
-                std::exp2(padFilt1Oct + (timbreCtrl - 0.5) * 2.4);
-            const double rawF2 =
-                static_cast<double>(laneApply(LaneTarget::filt2Hz, params[ParamId::filt2Hz],
-                                              laneSum(params, sends, LaneTarget::filt2Hz))) *
-                std::exp2(padFilt2Oct + modWheel * 1.8);
+            const double rawF1 = static_cast<double>(laneApply(LaneTarget::filt1Hz, params[ParamId::filt1Hz],
+                                                               laneSum(params, sends, LaneTarget::filt1Hz))) *
+                                 std::exp2(padFilt1Oct + (timbreCtrl - 0.5) * 2.4);
+            const double rawF2 = static_cast<double>(laneApply(LaneTarget::filt2Hz, params[ParamId::filt2Hz],
+                                                               laneSum(params, sends, LaneTarget::filt2Hz))) *
+                                 std::exp2(padFilt2Oct + modWheel * 1.8);
             const double tF1 = std::clamp(rawF1, 24.0, 18000.0);
             const double tF2 = std::clamp(rawF2, 55.0, 16000.0);
             const double tF1Res = std::clamp(static_cast<double>(params[ParamId::filt1Res]) + padRes1, 0.0, 0.96);
             const double tF2Res = std::clamp(static_cast<double>(params[ParamId::filt2Res]) + padRes2, 0.0, 0.95);
-            const double tTone = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::tone, params[ParamId::tone], laneSum(params, sends, LaneTarget::tone))) +
-                    padTone + 0.35 * modWheel,
-                0.0, 1.0);
-            const double tDrive = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::drive, params[ParamId::drive], laneSum(params, sends, LaneTarget::drive))) +
-                    padDrive + 0.30 * aftertouch,
-                0.0, 1.0);
-            const double tDisperse = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::disperse, params[ParamId::disperse],
-                                              laneSum(params, sends, LaneTarget::disperse))) +
-                    padDisperse,
-                0.0, 1.0);
-            const double tDensity = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::density, params[ParamId::density],
-                                              laneSum(params, sends, LaneTarget::density))) +
-                    padDensity,
-                0.0, 1.0);
-            const double tWidth = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::width, params[ParamId::width], laneSum(params, sends, LaneTarget::width))) +
-                    padWidth,
-                0.0, 1.0);
-            const double tGenMix = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::genMix, params[ParamId::genMix], laneSum(params, sends, LaneTarget::genMix))) +
-                    padGenMix,
-                0.0, 1.0);
-            const double tStrataPos = hba::dsp::frac(
-                static_cast<double>(laneApply(LaneTarget::strataPos, params[ParamId::strataPos],
-                                              laneSum(params, sends, LaneTarget::strataPos))) +
-                padStrataPos);
-            const double tStrataSpan = std::clamp(
-                static_cast<double>(laneApply(LaneTarget::strataSpan, params[ParamId::strataSpan],
-                                              laneSum(params, sends, LaneTarget::strataSpan))) +
-                    padStrataSpan,
-                0.05, 1.0);
+            const double tTone = std::clamp(static_cast<double>(laneApply(LaneTarget::tone, params[ParamId::tone],
+                                                                          laneSum(params, sends, LaneTarget::tone))) +
+                                                padTone + 0.35 * modWheel,
+                                            0.0, 1.0);
+            const double tDrive = std::clamp(static_cast<double>(laneApply(LaneTarget::drive, params[ParamId::drive],
+                                                                           laneSum(params, sends, LaneTarget::drive))) +
+                                                 padDrive + 0.30 * aftertouch,
+                                             0.0, 1.0);
+            const double tDisperse =
+                std::clamp(static_cast<double>(laneApply(LaneTarget::disperse, params[ParamId::disperse],
+                                                         laneSum(params, sends, LaneTarget::disperse))) +
+                               padDisperse,
+                           0.0, 1.0);
+            const double tDensity =
+                std::clamp(static_cast<double>(laneApply(LaneTarget::density, params[ParamId::density],
+                                                         laneSum(params, sends, LaneTarget::density))) +
+                               padDensity,
+                           0.0, 1.0);
+            const double tWidth = std::clamp(static_cast<double>(laneApply(LaneTarget::width, params[ParamId::width],
+                                                                           laneSum(params, sends, LaneTarget::width))) +
+                                                 padWidth,
+                                             0.0, 1.0);
+            const double tGenMix =
+                std::clamp(static_cast<double>(laneApply(LaneTarget::genMix, params[ParamId::genMix],
+                                                         laneSum(params, sends, LaneTarget::genMix))) +
+                               padGenMix,
+                           0.0, 1.0);
+            const double tStrataPos =
+                hba::dsp::frac(static_cast<double>(laneApply(LaneTarget::strataPos, params[ParamId::strataPos],
+                                                             laneSum(params, sends, LaneTarget::strataPos))) +
+                               padStrataPos);
+            const double tStrataSpan =
+                std::clamp(static_cast<double>(laneApply(LaneTarget::strataSpan, params[ParamId::strataSpan],
+                                                         laneSum(params, sends, LaneTarget::strataSpan))) +
+                               padStrataSpan,
+                           0.05, 1.0);
             const double tSubWarm = std::clamp(static_cast<double>(params[ParamId::subWarmth]) + padSubWarm, 0.0, 1.0);
-            const double rawSubPhase =
-                static_cast<double>(laneApply(LaneTarget::subPhase, params[ParamId::subPhase],
-                                              laneSum(params, sends, LaneTarget::subPhase))) +
-                padSubPhase;
+            const double rawSubPhase = static_cast<double>(laneApply(LaneTarget::subPhase, params[ParamId::subPhase],
+                                                                     laneSum(params, sends, LaneTarget::subPhase))) +
+                                       padSubPhase;
 
             // Smooth control signals (in Poly 4, sub locks cleanly to lowest active chord note!)
             const double sNote = smNoteMidi.step(static_cast<double>(activeNote + octSt), glideCoef);
@@ -969,15 +974,17 @@ struct Engine::Impl {
             const double sDensity = smDensity.step(tDensity, controlCoef);
             const double sWidth = smWidth.step(tWidth, controlCoef);
             const double sUnison = smUnison.step(static_cast<double>(params[ParamId::unison]), controlCoef);
-            const double sDetune = smDetune.step(std::clamp(static_cast<double>(params[ParamId::detune]) + padDetune, 0.0, 80.0),
-                                                 controlCoef);
+            const double sDetune = smDetune.step(
+                std::clamp(static_cast<double>(params[ParamId::detune]) + padDetune, 0.0, 80.0), controlCoef);
             const double sSubLvl = smSubLevel.step(static_cast<double>(params[ParamId::subLevel]), controlCoef);
             const double sSubWarm = smSubWarmth.step(tSubWarm, controlCoef);
             const double sSubSplit = smSubSplit.step(static_cast<double>(params[ParamId::subSplit]), controlCoef);
-            const double sGenMix = hasValidPrint ? smGenMix.step(tGenMix, controlCoef) : smGenMix.step(0.0, controlCoef);
+            const double sGenMix =
+                hasValidPrint ? smGenMix.step(tGenMix, controlCoef) : smGenMix.step(0.0, controlCoef);
             const double sStrataPos = smStrataPos.step(tStrataPos, controlCoef);
             const double sStrataSpan = smStrataSpan.step(tStrataSpan, controlCoef);
-            const double sStrataPitch = smStrataPitch.step(static_cast<double>(params[ParamId::strataPitch]), controlCoef);
+            const double sStrataPitch =
+                smStrataPitch.step(static_cast<double>(params[ParamId::strataPitch]), controlCoef);
             const double sStrataFade = smStrataFade.step(static_cast<double>(params[ParamId::strataFade]), controlCoef);
             const double sPostDrive = smPostDrive.step(static_cast<double>(params[ParamId::postDrive]), controlCoef);
             const double sPostTone = smPostTone.step(static_cast<double>(params[ParamId::postTone]), controlCoef);
@@ -1278,8 +1285,7 @@ struct Engine::Impl {
                         f2A[ci].tick(c, x, v1, v2);
                         const double n1 = x - c.k * v1;
                         const auto cHi = hba::dsp::SvfCoefs::make(
-                            std::clamp(sF2 * (ch == 0 ? 1.52 : 1.78), 80.0, 0.44 * osRate),
-                            0.9 + sF2Res * 9.0, osRate);
+                            std::clamp(sF2 * (ch == 0 ? 1.52 : 1.78), 80.0, 0.44 * osRate), 0.9 + sF2Res * 9.0, osRate);
                         f2B[ci].tick(cHi, n1, v1, v2);
                         return n1 - cHi.k * v1;
                     }
@@ -1551,7 +1557,8 @@ PrintBuffer Engine::renderPrint(const Params& params, const LaneCurves& curves, 
     const int bars = kPrintBarCounts[static_cast<std::size_t>(barIdx)];
     const double quarters = static_cast<double>(bars) * 4.0;
     const double seconds = quarters * (60.0 / safeBpm);
-    const int targetSamples = std::clamp(static_cast<int>(std::lround(seconds * sr)), 4096, PrintBuffer::kMaxPrintSamples);
+    const int targetSamples =
+        std::clamp(static_cast<int>(std::lround(seconds * sr)), 4096, PrintBuffer::kMaxPrintSamples);
 
     Engine baker;
     baker.prepare(sr, 512, 8); // High-precision 8x oversampled bake!

@@ -260,7 +260,8 @@ class ControlsStrip final : public Panel, public Live {
         const float eRowH = px(25.0f);
         const float eStep = eRowH + px(9.0f);
         const float eTotalH = 2.0f * eStep + eRowH;
-        const float eY = std::round(topY + outKnobH + std::max(px(10.0f), (height() - pad - (topY + outKnobH) - eTotalH) * 0.5f));
+        const float eY =
+            std::round(topY + outKnobH + std::max(px(10.0f), (height() - pad - (topY + outKnobH) - eTotalH) * 0.5f));
         const float eHalf = (colW - 2.0f * pad - px(10.0f)) * 0.5f;
         attackMs_.setBounds(x2 + pad, eY, eHalf, eRowH);
         releaseMs_.setBounds(x2 + pad + eHalf + px(10.0f), eY, eHalf, eRowH);

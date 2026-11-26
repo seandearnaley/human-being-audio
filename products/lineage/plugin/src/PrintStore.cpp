@@ -131,8 +131,8 @@ bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) 
     const double dstRate = targetSampleRate > 8000.0 ? targetSampleRate : 48000.0;
     const double ratio = srcRate / dstRate;
 
-    const int maxSrcSamples = static_cast<int>(
-        std::min<juce::int64>(reader->lengthInSamples, static_cast<juce::int64>(std::ceil(PrintBuffer::kMaxPrintSamples * ratio))));
+    const int maxSrcSamples = static_cast<int>(std::min<juce::int64>(
+        reader->lengthInSamples, static_cast<juce::int64>(std::ceil(PrintBuffer::kMaxPrintSamples * ratio))));
     const int srcCh = std::clamp(static_cast<int>(reader->numChannels), 1, 2);
 
     juce::AudioBuffer<float> tmp(srcCh, maxSrcSamples);
@@ -197,9 +197,9 @@ bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) 
 }
 
 void PrintStore::browseLoadWavAsync(double targetSampleRate) {
-    chooser_ = std::make_unique<juce::FileChooser>(
-        "Load Audio into Lineage Strata",
-        juce::File::getSpecialLocation(juce::File::userMusicDirectory), "*.wav;*.aif;*.aiff;*.flac");
+    chooser_ = std::make_unique<juce::FileChooser>("Load Audio into Lineage Strata",
+                                                   juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                                                   "*.wav;*.aif;*.aiff;*.flac");
     const auto alive = alive_;
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this, alive, targetSampleRate](const juce::FileChooser& fc) {
@@ -292,9 +292,9 @@ void PrintStore::run() {
         if (ticketCounter_.load(std::memory_order_acquire) != job.ticket)
             continue;
 
-        PrintBuffer buf = Engine::renderPrint(job.params, job.curves, job.sampleRate, job.bpm, job.rootNote,
-                                              (job.stackGeneration && prev.valid()) ? &prev : nullptr,
-                                              job.stackGeneration);
+        PrintBuffer buf =
+            Engine::renderPrint(job.params, job.curves, job.sampleRate, job.bpm, job.rootNote,
+                                (job.stackGeneration && prev.valid()) ? &prev : nullptr, job.stackGeneration);
 
         if (threadShouldExit() || ticketCounter_.load(std::memory_order_acquire) != job.ticket)
             continue;

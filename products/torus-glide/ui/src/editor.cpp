@@ -38,23 +38,22 @@ struct Editor::Impl final {
           topBar(context, std::move(showAbout), [this](bool studio) { applyView(studio); }),
           ribbon(makeManifoldRibbon(context)), playPad(makePlayPanel(context)), stage(makeStagePanel(context)),
           controls(makeControlsStrip(context)), movement(makeMovementPanel(context)),
-          voiceBar(
-              context, colour::spiral, "VOICE",
-              {
-                  {ParamId::retrig, "Retrig", colour::spiral, 88.0f, false, false},
-                  {ParamId::glideMs, "Glide", colour::spiral, 136.0f, true, false},
-                  {ParamId::mpeRange, "Bend", colour::copedent, 108.0f, false, false},
-                  {ParamId::keySwitch, "Key Switch", colour::mobius, 114.0f, false, false},
-                  {ParamId::quality, "OS", colour::spiral, 116.0f, false, true},
-              },
-              [this]() -> std::string {
-                  const auto& v = context.model.visuals();
-                  if (v.heldNoteCount > 0) {
-                      return hba::core::midiNoteName(v.heldNotes[0], false) + " \xc2\xb7 " +
-                             std::to_string(v.heldNoteCount) + "/5v";
-                  }
-                  return v.sounding ? "5v" : "Poly 5";
-              }) {
+          voiceBar(context, colour::spiral, "VOICE",
+                   {
+                       {ParamId::retrig, "Retrig", colour::spiral, 88.0f, false, false},
+                       {ParamId::glideMs, "Glide", colour::spiral, 136.0f, true, false},
+                       {ParamId::mpeRange, "Bend", colour::copedent, 108.0f, false, false},
+                       {ParamId::keySwitch, "Key Switch", colour::mobius, 114.0f, false, false},
+                       {ParamId::quality, "OS", colour::spiral, 116.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const auto& v = context.model.visuals();
+                       if (v.heldNoteCount > 0) {
+                           return hba::core::midiNoteName(v.heldNotes[0], false) + " \xc2\xb7 " +
+                                  std::to_string(v.heldNoteCount) + "/5v";
+                       }
+                       return v.sounding ? "5v" : "Poly 5";
+                   }) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {
             if (key.keyCode() == visage::KeyCode::Space && !key.isMainModifier()) {
                 const bool next = context.model.get(ParamId::padHold) < 0.5f;

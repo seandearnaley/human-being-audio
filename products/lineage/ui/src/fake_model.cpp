@@ -36,8 +36,8 @@ FakeModel::FakeModel() {
 
     for (std::size_t i = 0; i < TelemetrySnapshot::kScopePoints; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(TelemetrySnapshot::kScopePoints - 1);
-        visuals_.scope[i] = 0.52f * std::sin(t * 12.566f) + 0.24f * std::sin(t * 31.4f + 0.7f) +
-                            0.12f * std::cos(t * 50.2f);
+        visuals_.scope[i] =
+            0.52f * std::sin(t * 12.566f) + 0.24f * std::sin(t * 31.4f + 0.7f) + 0.12f * std::cos(t * 50.2f);
     }
     for (std::size_t v = 0; v < 7; ++v)
         visuals_.voicePhases[v] = std::fmod(0.17f * static_cast<float>(v) + 0.31f, 1.0f);

@@ -46,8 +46,9 @@ class PillButton final : public visage::Frame {
 
     void draw(visage::Canvas& canvas) override {
         const float px = context_.scale;
-        const unsigned fill = active_ ? colour::withAlpha(accent_, pressed_ ? 0.92f : 0.85f)
-                                      : (pressed_ ? colour::track : (hovered_ ? colour::withAlpha(accent_, 0.16f) : colour::raised));
+        const unsigned fill =
+            active_ ? colour::withAlpha(accent_, pressed_ ? 0.92f : 0.85f)
+                    : (pressed_ ? colour::track : (hovered_ ? colour::withAlpha(accent_, 0.16f) : colour::raised));
         const unsigned ink = active_ ? colour::onColour : (hovered_ ? colour::text : accent_);
         hba::ui::drawPanel(canvas, px, 0.0f, 0.0f, width(), height(), fill, metric::radiusSmall);
         if (active_ || hovered_) {

@@ -29,18 +29,18 @@ struct Editor::Impl final {
     Impl(Model& model, std::function<void()> showAbout)
         : context(model), host(context, static_cast<float>(kDefaultWidth)), topBar(context, std::move(showAbout)),
           stage(makeStagePanel(context)), macro(makeMacroPanel(context)), rack(makeRackPanel(context)),
-          voiceBar(
-              context, colour::body, "VOICE",
-              {
-                  {ParamId::chokeMode, "Mode", colour::body, 148.0f, false, false},
-                  {ParamId::keyTrack, "Key", colour::shell, 136.0f, false, false},
-                  {ParamId::subMono, "Sub Mono", colour::locked, 104.0f, false, false},
-                  {ParamId::quality, "OS", colour::body, 116.0f, false, true},
-              },
-              [this]() -> std::string {
-                  const int mode = std::clamp(static_cast<int>(std::lround(context.model.get(ParamId::chokeMode))), 0, 2);
-                  return mode == 1 ? "Poly 4v" : (mode == 2 ? "Mono" : "Split");
-              }) {
+          voiceBar(context, colour::body, "VOICE",
+                   {
+                       {ParamId::chokeMode, "Mode", colour::body, 148.0f, false, false},
+                       {ParamId::keyTrack, "Key", colour::shell, 136.0f, false, false},
+                       {ParamId::subMono, "Sub Mono", colour::locked, 104.0f, false, false},
+                       {ParamId::quality, "OS", colour::body, 116.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const int mode =
+                           std::clamp(static_cast<int>(std::lround(context.model.get(ParamId::chokeMode))), 0, 2);
+                       return mode == 1 ? "Poly 4v" : (mode == 2 ? "Mono" : "Split");
+                   }) {
         host.onDrawBackground = [](visage::Canvas& canvas, float w, float h) {
             canvas.setBrush(visage::Brush::vertical(colour::obsidianBgTop, colour::obsidianBgBot));
             canvas.fill(0, 0, w, h);

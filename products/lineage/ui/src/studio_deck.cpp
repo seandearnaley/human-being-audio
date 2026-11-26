@@ -17,8 +17,7 @@ class StudioDeck final : public Panel {
           coreMode_(add<Row>(ctx, ParamId::coreMode, colour::reese, "Core")),
           droneNote_(add<Row>(ctx, ParamId::droneNote, colour::reese, "Drone Key")),
           unison_(add<Knob>(ctx, ParamId::unison, colour::reese)),
-          detune_(add<Knob>(ctx, ParamId::detune, colour::reese)),
-          tone_(add<Knob>(ctx, ParamId::tone, colour::reese)),
+          detune_(add<Knob>(ctx, ParamId::detune, colour::reese)), tone_(add<Knob>(ctx, ParamId::tone, colour::reese)),
           subLevel_(add<Knob>(ctx, ParamId::subLevel, colour::sub)),
           attack_(add<Row>(ctx, ParamId::attack, colour::reese, "Attack", true)),
           release_(add<Row>(ctx, ParamId::release, colour::reese, "Release", true)),
@@ -60,8 +59,7 @@ class StudioDeck final : public Panel {
         tone_.setModProvider([this] { return toNormalised(spec(ParamId::tone), context_.model.visuals().effTone); });
         filt1Hz_.setModProvider(
             [this] { return toNormalised(spec(ParamId::filt1Hz), context_.model.visuals().effFilt1Hz); });
-        drive_.setModProvider(
-            [this] { return toNormalised(spec(ParamId::drive), context_.model.visuals().effDrive); });
+        drive_.setModProvider([this] { return toNormalised(spec(ParamId::drive), context_.model.visuals().effDrive); });
         filt2Hz_.setModProvider(
             [this] { return toNormalised(spec(ParamId::filt2Hz), context_.model.visuals().effFilt2Hz); });
         density_.setModProvider(
@@ -119,8 +117,8 @@ class StudioDeck final : public Panel {
             const float knobGap = px(6.0f);
             const float knobW = (innerW - 3.0f * knobGap) / 4.0f;
             for (int k = 0; k < 4; ++k) {
-                knobs[static_cast<std::size_t>(k)]->setBounds(
-                    cx + pad + static_cast<float>(k) * (knobW + knobGap), knobY, knobW, knobH);
+                knobs[static_cast<std::size_t>(k)]->setBounds(cx + pad + static_cast<float>(k) * (knobW + knobGap),
+                                                              knobY, knobW, knobH);
             }
 
             // 2 columns x 3 precision rows (Card 0 spans Sub Phase full-width on row 3 for fine phase alignment!)

@@ -241,7 +241,8 @@ TEST_CASE("Strata sub-split protection, Hi/Lo band-split crossover, Loop Xfade, 
     CHECK(diff > 1.0);
 }
 
-TEST_CASE("Lineage Poly 4 tracks chords cleanly with lowest-note sub lock and Legato mode preserves phase", "[engine]") {
+TEST_CASE("Lineage Poly 4 tracks chords cleanly with lowest-note sub lock and Legato mode preserves phase",
+          "[engine]") {
     constexpr double fs = 48000.0;
     ln::Engine eng;
     eng.prepare(fs, 256, 4);

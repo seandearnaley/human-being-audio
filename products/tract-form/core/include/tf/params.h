@@ -170,8 +170,16 @@ inline constexpr std::array<std::string_view, 3> sculptMode{"Bell", "Phaser", "C
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
 inline constexpr std::array<std::string_view, 2> playMode{"Mono", "Legato"};
 inline constexpr std::array<std::string_view, 2> glideMode{"Always", "Legato"};
-inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1" "2 st",  "\xc2\xb1" "7 st", "\xc2\xb1" "12 st",
-                                                           "\xc2\xb1" "24 st", "\xc2\xb1" "48 st"};
+inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1"
+                                                           "2 st",
+                                                           "\xc2\xb1"
+                                                           "7 st",
+                                                           "\xc2\xb1"
+                                                           "12 st",
+                                                           "\xc2\xb1"
+                                                           "24 st",
+                                                           "\xc2\xb1"
+                                                           "48 st"};
 inline constexpr std::array<std::string_view, 4> octave{"-2 oct", "-1 oct", "0 oct", "+1 oct"};
 inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 // "Custom" plays the lane's drawn curve.

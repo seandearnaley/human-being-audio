@@ -188,17 +188,25 @@ inline constexpr std::array<std::string_view, 12> droneNote{"C1",  "C#1", "D1", 
                                                             "F#1", "G1",  "G#1", "A1",  "A#1", "B1"};
 inline constexpr std::array<std::string_view, 3> playMode{"Mono", "Legato", "Poly 4"};
 inline constexpr std::array<std::string_view, 2> glideMode{"Always", "Legato"};
-inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1" "2 st",  "\xc2\xb1" "7 st", "\xc2\xb1" "12 st",
-                                                           "\xc2\xb1" "24 st", "\xc2\xb1" "48 st"};
+inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1"
+                                                           "2 st",
+                                                           "\xc2\xb1"
+                                                           "7 st",
+                                                           "\xc2\xb1"
+                                                           "12 st",
+                                                           "\xc2\xb1"
+                                                           "24 st",
+                                                           "\xc2\xb1"
+                                                           "48 st"};
 inline constexpr std::array<std::string_view, 5> padProgram{"Sculpt", "Reese", "Strata", "Disperse", "Abyss"};
 inline constexpr std::array<std::string_view, 3> quality{"2\u00d7", "4\u00d7", "8\u00d7"};
 
 inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 inline constexpr std::array<std::string_view, 7> laneShape{"Sine",   "Triangle", "Ramp up", "Ramp down",
                                                            "Square", "Steps",    "Custom"};
-inline constexpr std::array<std::string_view, 11> laneTarget{
-    "Filter 1", "Filter 2", "Tone", "Drive", "Strata Pos", "Strata Span", "Gen Mix", "Disperse", "Sub Phase", "Width",
-    "Density"};
+inline constexpr std::array<std::string_view, 11> laneTarget{"Filter 1",   "Filter 2",    "Tone",    "Drive",
+                                                             "Strata Pos", "Strata Span", "Gen Mix", "Disperse",
+                                                             "Sub Phase",  "Width",       "Density"};
 inline constexpr auto& laneFollow = hba::dsp::kLaneFollowLabels;
 inline constexpr auto& laneRatio = hba::dsp::kLaneRatioLabels;
 inline constexpr auto& laneMode = hba::dsp::kLaneModeLabels;

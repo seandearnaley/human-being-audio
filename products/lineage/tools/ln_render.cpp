@@ -15,7 +15,8 @@
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: ln-render <out.wav> [--preset <file.json>] [--note <midi>] [--bpm <bpm>] [--bars <n>]\n");
+        std::fprintf(stderr,
+                     "usage: ln-render <out.wav> [--preset <file.json>] [--note <midi>] [--bpm <bpm>] [--bars <n>]\n");
         return 2;
     }
     const std::string outPath = argv[1];

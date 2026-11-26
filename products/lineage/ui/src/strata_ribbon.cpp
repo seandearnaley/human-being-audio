@@ -80,9 +80,9 @@ class StrataRibbon final : public Panel {
         canvas.rectangle(pad, pillY + px(4.0f), px(3.0f), pillH - px(8.0f));
         drawLabel(canvas, context_, "GEN 0 \xc2\xb7 SOURCE", pad + px(10.0f), pillY + px(3.0f), g0W - px(14.0f),
                   px(13.0f), colour::reese, visage::Font::kLeft, 8.8f, Weight::semibold);
-        drawLabel(canvas, context_, std::string(choices::coreMode[static_cast<std::size_t>(coreIdx)]),
-                  pad + px(10.0f), pillY + px(16.0f), g0W - px(14.0f), px(15.0f), colour::text, visage::Font::kLeft,
-                  10.8f, Weight::medium);
+        drawLabel(canvas, context_, std::string(choices::coreMode[static_cast<std::size_t>(coreIdx)]), pad + px(10.0f),
+                  pillY + px(16.0f), g0W - px(14.0f), px(15.0f), colour::text, visage::Font::kLeft, 10.8f,
+                  Weight::medium);
 
         // Connector 0 -> 1
         float cx = pad + g0W;

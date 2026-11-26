@@ -124,8 +124,7 @@ void TopBar::tick() {
     }
 
     const bool droneOn = context_.model.get(ParamId::padHold) >= 0.5f;
-    const int droneKeyIdx =
-        std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::droneNote))), 0, 11);
+    const int droneKeyIdx = std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::droneNote))), 0, 11);
     const std::string keyName(choices::droneNote[static_cast<std::size_t>(droneKeyIdx)]);
     drone_.setActive(droneOn);
     drone_.setLabel(droneOn ? ("ON \xc2\xb7 " + keyName) : ("DRONE \xc2\xb7 " + keyName));

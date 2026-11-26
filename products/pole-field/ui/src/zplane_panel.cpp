@@ -529,7 +529,8 @@ class ZPlanePanel final : public Panel {
         const float plotH = (height() - 2.0f * pad) - footH - footGap - axisH;
         response_.setBounds(midX + pad, pad, midW - 2.0f * pad, plotH);
 
-        // Right: Parameter control column (12 spacious rows across 4 sections; Track/Glide/Stereo/Sub Lock live in VoiceBar)
+        // Right: Parameter control column (12 spacious rows across 4 sections; Track/Glide/Stereo/Sub Lock live in
+        // VoiceBar)
         const float rightLeft = width() - px(kRightWidth) + pad;
         const float colW = px(kRightWidth) - 2.0f * pad;
         const float rowH = px(25.0f);

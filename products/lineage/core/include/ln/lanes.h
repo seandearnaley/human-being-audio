@@ -103,17 +103,17 @@ struct LaneSpan {
 };
 
 inline constexpr std::array<LaneSpan, kLaneTargetCount> kLaneSpans{{
-    {3.0f, true},   // filt1Hz: +/- 3 octaves
-    {3.0f, true},   // filt2Hz: +/- 3 octaves
-    {0.55f, false}, // tone
-    {0.55f, false}, // drive
-    {0.50f, false}, // strataPos
-    {0.50f, false}, // strataSpan
-    {0.50f, false}, // genMix
-    {0.55f, false}, // disperse
-    {180.0f, false},// subPhase (degrees)
-    {0.50f, false}, // width
-    {0.50f, false}, // density
+    {3.0f, true},    // filt1Hz: +/- 3 octaves
+    {3.0f, true},    // filt2Hz: +/- 3 octaves
+    {0.55f, false},  // tone
+    {0.55f, false},  // drive
+    {0.50f, false},  // strataPos
+    {0.50f, false},  // strataSpan
+    {0.50f, false},  // genMix
+    {0.55f, false},  // disperse
+    {180.0f, false}, // subPhase (degrees)
+    {0.50f, false},  // width
+    {0.50f, false},  // density
 }};
 
 inline float laneSum(const Params& params, const std::array<float, kLaneCount>& sends, LaneTarget target) noexcept {
