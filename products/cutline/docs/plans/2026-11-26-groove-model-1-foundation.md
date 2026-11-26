@@ -24,7 +24,7 @@
 - Commit messages have no attribution trailer lines.
 - Lane order is fixed: 0 kick, 1 snare, 2 ghost, 3 clap, 4 closed hat, 5 open hat, 6 perc A, 7 perc B.
 
-The code in this plan was compiled with those flags and its 21 test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. If a step's code fails to compile as written, stop and report it instead of improvising.
+The code in this plan was compiled with those flags and its test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. The code blocks below match what was committed, including one fix made during execution: Task 4's reader and writer drop fill steps that sit before the fill window, as the spec requires. If a step's code fails to compile as written, stop and report it instead of improvising.
 
 ## File Structure
 
@@ -1005,6 +1005,7 @@ Rules the code implements:
 - A step string has 16 characters per bar. `|` and spaces are separators and are ignored. `X` is 118, `x` is 96, `o` is 56, `.` is off.
 - A main-pattern string must be exactly `bars * 16` steps. A fill string must be exactly 16. A slicer string may be shorter than 32.
 - A step set in two layer strings is an error.
+- Only the fill window is part of the fill. Characters and edits before it are dropped on read and are not written.
 - `edits` carries exact `velocity`, `ratchet`, `nudge` and `flam`. `"fill": true` targets the fill bar.
 - The writer emits the nearest character and adds an edit only when the velocity is not exactly 118, 96 or 56, or the step has a ratchet, nudge or flam.
 - The writer emits only the pattern's current length. Steps stored beyond it are not saved.
@@ -1113,6 +1114,30 @@ TEST_CASE("Bad pattern files are rejected with a reason", "[groove][json]") {
     CHECK_FALSE(parsePattern(R"({"format":3,"lanes":{"kick":{"core":"x......?........"}}})", &error));
     CHECK_FALSE(parsePattern("not json", &error));
 }
+
+TEST_CASE("Fill steps before the fill window are ignored on read and not written", "[groove][json]") {
+    std::string error;
+    const auto p = parsePattern(R"({
+        "format": 3,
+        "fill": { "beats": 1, "lanes": { "snare": "x.......x.....xX" } },
+        "edits": [ { "lane": "snare", "step": 2, "fill": true, "velocity": 100 } ]
+    })",
+                                &error);
+    REQUIRE(p.has_value());
+    for (std::size_t step = 0; step < 12; ++step)
+        CHECK_FALSE(p->fill.steps[1][step].on());
+    CHECK(p->fill.steps[1][14].on());
+    CHECK(p->fill.steps[1][15].velocity == kVelocityAccent);
+
+    Pattern drawn{};
+    drawn.fill.beats = 2;
+    drawn.fill.steps[0][4] = hit(96, Layer::groove); // before the 2-beat window
+    drawn.fill.steps[0][8] = hit(96, Layer::groove); // inside it
+    const auto back = parsePattern(serialisePattern(drawn), &error);
+    REQUIRE(back.has_value());
+    CHECK_FALSE(back->fill.steps[0][4].on());
+    CHECK(back->fill.steps[0][8].on());
+}
 ```
 
 In `tests/CMakeLists.txt`, change line 1 to:
@@ -1207,9 +1232,11 @@ Create `core/src/groove_json.cpp`:
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace cl {
 
@@ -1435,6 +1462,12 @@ std::optional<Pattern> readPattern(const Json& value, std::string* error) {
             applyEdit(edit, inFill ? p.fill.steps[li][si] : p.lanes[li].steps[si]);
         }
     }
+    // Only the fill window is part of the fill: characters and edits before it are ignored.
+    const auto fillFrom = static_cast<std::size_t>(fillWindowStart(p.fill));
+    for (auto& row : p.fill.steps) {
+        for (std::size_t step = 0; step < fillFrom; ++step)
+            row[step] = {};
+    }
     return p;
 }
 
@@ -1483,7 +1516,9 @@ Json writePattern(const Pattern& pattern) {
     fill["beats"] = kStepsPerBar / 4 - fillWindowStart(pattern.fill) / 4;
     Json fillLanes = Json::object();
     for (int lane = 0; lane < kDrumLaneCount; ++lane) {
-        const auto& row = pattern.fill.steps[static_cast<std::size_t>(lane)];
+        auto row = pattern.fill.steps[static_cast<std::size_t>(lane)];
+        for (int step = 0; step < fillWindowStart(pattern.fill); ++step)
+            row[static_cast<std::size_t>(step)] = {};
         const std::string key(kLaneKeys[static_cast<std::size_t>(lane)]);
         bool any = false;
         std::string text = stepString(row.data(), kStepsPerBar, true, Layer::groove, any);
@@ -1629,7 +1664,7 @@ In `core/CMakeLists.txt`, add the three files to the `cl_core` source list. Put 
 cmake --build --preset engine --target cl-core-tests && ./build/engine/tests/cl-core-tests "[json]"
 ```
 
-Expected: `All tests passed (` followed by an assertion count, `in 3 test cases)`.
+Expected: `All tests passed (` followed by an assertion count, `in 4 test cases)`.
 
 - [ ] **Step 7: Commit**
 
@@ -2107,7 +2142,7 @@ git commit -m "test(cutline): lint factory patterns for anchor and note budgets"
 cmake --build --preset engine && ctest --preset engine
 ```
 
-Expected: `100% tests passed`. The count is the 2.0 total plus the 21 new test cases.
+Expected: `100% tests passed`. The count is the 2.0 total plus the 22 new test cases.
 
 - [ ] **Step 2: Build and test the plugin and UI**
 
@@ -2117,13 +2152,13 @@ cmake --preset dev -DCPM_SOURCE_CACHE="$HOME/.cache/CPM" && cmake --build --pres
 
 Expected: `100% tests passed`. Nothing in the plugin or UI changed, so a failure here means an existing file was edited by mistake: check `git diff main --stat` and revert anything outside the File Structure table.
 
-- [ ] **Step 3: Run the RealtimeSanitizer workflow**
+- [ ] **Step 3: Run the RealtimeSanitizer workflow (Linux only)**
 
 ```bash
 cmake --workflow --preset rtsan
 ```
 
-Expected: the workflow finishes with `100% tests passed`.
+Expected on Linux: the workflow finishes with `100% tests passed`. The `rtsan` preset is disabled on macOS (it needs `clang++-22` on Linux), where the command stops with `Cannot use disabled preset`. On a Mac, skip this step: CI runs it on every pull request, and the compile-time `-Werror=function-effects` check already ran in Step 1.
 
 - [ ] **Step 4: Check formatting of the new C++ files**
 

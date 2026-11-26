@@ -329,7 +329,8 @@ A pattern:
 - A step string has 16 characters per bar; bars may be separated by `|`. `X` = 118,
   `x` = 96, `o` = 56, `.` = off.
 - A step set in more than one layer string is an error.
-- A fill string is always 16 characters; characters before the fill window are ignored.
+- A fill string is always 16 characters. Only the fill window is part of the fill: characters and
+  edits before it are ignored on read and are not written back.
 - `edits` carries what a character cannot: exact `velocity`, `ratchet`, `nudge`, `flam`.
   `"fill": true` on an edit targets the fill bar. The slicer object takes its own `edits`
   list, keyed by `step` alone.
