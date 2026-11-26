@@ -84,14 +84,13 @@ inline double laneRateHz(const Params& params, int lane) noexcept {
     return hba::dsp::resolveLaneRateHz(extractLaneConfigs(params), lane);
 }
 
-inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq = 0.0,
-                           double freeSec = 0.0, double noteSec = 0.0) noexcept {
+inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq = 0.0, double freeSec = 0.0,
+                           double noteSec = 0.0) noexcept {
     return hba::dsp::resolveLanePhase(extractLaneConfigs(params), lane, {hostPpq, notePpq, freeSec, noteSec});
 }
 
-inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                         double envValue = 0.0, double notePpq = 0.0, double freeSec = 0.0,
-                         double noteSec = 0.0) noexcept {
+inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq, double envValue = 0.0,
+                         double notePpq = 0.0, double freeSec = 0.0, double noteSec = 0.0) noexcept {
     const auto lanes = extractLaneConfigs(params);
     const int source = hba::dsp::resolveLaneSource(lanes, lane);
     const auto shape = static_cast<LaneShape>(
@@ -101,9 +100,8 @@ inline double laneOutput(const Params& params, const LaneCurves& curves, int lan
     return hba::dsp::evaluateLaneOutput(lanes, curves, lane, {ppq, notePpq, freeSec, noteSec});
 }
 
-inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                       double envValue = 0.0, double notePpq = 0.0, double freeSec = 0.0,
-                       double noteSec = 0.0) noexcept {
+inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq, double envValue = 0.0,
+                       double notePpq = 0.0, double freeSec = 0.0, double noteSec = 0.0) noexcept {
     if (!params.on(laneParam(lane, LaneField::on)))
         return 0.0;
     return laneOutput(params, curves, lane, ppq, envValue, notePpq, freeSec, noteSec) *

@@ -65,7 +65,7 @@ struct LaneConfig {
     double phaseDeg = 0.0;
     double depth = 0.0;
     int shape = 0;
-    int follow = 0; // 0 = Own, 1..N = follow lane (follow - 1)
+    int follow = 0;     // 0 = Own, 1..N = follow lane (follow - 1)
     int ratioIndex = 3; // index into kLaneRatios (3 = x1)
     LaneMode mode = LaneMode::sync;
     double hz = static_cast<double>(kLaneDefaultHz);
@@ -169,8 +169,8 @@ inline bool resolveLaneUsesFreeClock(const std::array<LaneConfig, N>& lanes, int
 template <std::size_t N>
 inline double resolveLaneLengthQuarters(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
     const int source = resolveLaneSource(lanes, lane);
-    const auto rate = static_cast<std::size_t>(
-        std::clamp(lanes[static_cast<std::size_t>(source)].rateIndex, 0, static_cast<int>(kLaneRateQuarters.size()) - 1));
+    const auto rate = static_cast<std::size_t>(std::clamp(lanes[static_cast<std::size_t>(source)].rateIndex, 0,
+                                                          static_cast<int>(kLaneRateQuarters.size()) - 1));
     if (source == lane)
         return kLaneRateQuarters[rate];
     const auto ratio = static_cast<std::size_t>(

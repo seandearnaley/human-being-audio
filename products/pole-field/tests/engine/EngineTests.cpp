@@ -638,8 +638,9 @@ TEST_CASE("PDC latency includes oversampling HIIR group delay plus limiter looka
     CHECK(eng8.latencySamples() == eng4.latencySamples() + 1);
 }
 
-TEST_CASE("Free Hz lanes are BPM-independent, phase-locked across Follow+Ratio, retrigger on MIDI, and block-size exact",
-          "[engine]") {
+TEST_CASE(
+    "Free Hz lanes are BPM-independent, phase-locked across Follow+Ratio, retrigger on MIDI, and block-size exact",
+    "[engine]") {
     constexpr double fs = 48000.0;
     constexpr int total = 4800; // 0.1 s
 

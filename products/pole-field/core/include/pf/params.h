@@ -179,23 +179,30 @@ constexpr ParamSpec choice(std::string_view key, std::string_view name, std::spa
 }
 constexpr ParamSpec ranged(std::string_view key, std::string_view name, float min, float max, float def, Unit unit,
                            float skew = 1.0f, bool automatable = true) {
-    return { .key = key, .name = name, .min = min, .max = max, .def = def, .unit = unit, .skew = skew,
-             .automatable = automatable };
+    return {.key = key,
+            .name = name,
+            .min = min,
+            .max = max,
+            .def = def,
+            .unit = unit,
+            .skew = skew,
+            .automatable = automatable};
 }
 }
 
-#define PF_LANE(n, onDef, target, rate, phase, depth)                                                              \
-    detail::toggle("lane" #n "On", "Lane " #n, onDef),                                                             \
-    detail::choice("lane" #n "Rate", "Lane " #n " rate", choices::laneRate, rate, false),                          \
-    detail::ranged("lane" #n "Phase", "Lane " #n " phase", 0.0f, 360.0f, phase, Unit::degrees),                    \
-    detail::bipolar("lane" #n "Depth", "Lane " #n " depth", depth),                                                \
-    detail::choice("lane" #n "Shape", "Lane " #n " shape", choices::laneShape, 0, false),                          \
-    detail::choice("lane" #n "Target", "Lane " #n " target", choices::laneTarget, static_cast<int>(target), false),\
-    detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
-    detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false),                          \
-    detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false),                             \
-    detail::ranged("lane" #n "Hz", "Lane " #n " Hz", hba::dsp::kLaneMinHz, hba::dsp::kLaneMaxHz,                   \
-                   hba::dsp::kLaneDefaultHz, Unit::hz, 0.0f, false)
+#define PF_LANE(n, onDef, target, rate, phase, depth)                                                                  \
+    detail::toggle("lane" #n "On", "Lane " #n, onDef),                                                                 \
+        detail::choice("lane" #n "Rate", "Lane " #n " rate", choices::laneRate, rate, false),                          \
+        detail::ranged("lane" #n "Phase", "Lane " #n " phase", 0.0f, 360.0f, phase, Unit::degrees),                    \
+        detail::bipolar("lane" #n "Depth", "Lane " #n " depth", depth),                                                \
+        detail::choice("lane" #n "Shape", "Lane " #n " shape", choices::laneShape, 0, false),                          \
+        detail::choice("lane" #n "Target", "Lane " #n " target", choices::laneTarget, static_cast<int>(target),        \
+                       false),                                                                                         \
+        detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
+        detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false),                          \
+        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false),                             \
+        detail::ranged("lane" #n "Hz", "Lane " #n " Hz", hba::dsp::kLaneMinHz, hba::dsp::kLaneMaxHz,                   \
+                       hba::dsp::kLaneDefaultHz, Unit::hz, 0.0f, false)
 
 // Order must match ParamId.
 inline constexpr std::array<ParamSpec, kParamCount> kParams{{
