@@ -400,4 +400,67 @@ export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpe
       if (moving) group.rotation.y += dt * 0.12;
     };
   });
+
+  /* ---- Strata: stacked obsidian-glass geological slabs with counter-shearing resonance veins (Lineage) ---- */
+  defineForm("strata", ({ group, solid, wireOpacity, accent }) => {
+    const emerald = vec3(0.08, 0.92, 0.68);
+    const amber = vec3(0.98, 0.68, 0.22);
+    const layers = 7;
+    const slabGeo = new THREE.BoxGeometry(1.9, 0.11, 1.35, 36, 1, 24);
+    const idx = instanceIndex.toFloat();
+    const normIdx = idx.div(float(layers - 1)).sub(0.5);
+    const wave = Fn(() => {
+      const k = mix(float(2.4), float(7.0), U.formant);
+      const ridge = sin(positionGeometry.x.mul(k).add(U.time.mul(1.1)).add(idx.mul(0.85)))
+        .mul(cos(positionGeometry.z.mul(k.mul(0.75)).sub(U.time.mul(0.65))))
+        .mul(mix(float(0.03), float(0.14), U.open));
+      const shear = sin(U.bars.mul(TWO_PI.div(4)).add(idx.mul(0.9))).mul(normIdx).mul(mix(float(0.08), float(0.42), U.slice));
+      const pulse = U.hit.mul(0.22).mul(normIdx);
+      return vec3(shear, ridge.add(pulse), cos(U.time.mul(0.7).add(idx)).mul(U.chaos).mul(0.18));
+    })();
+    const pos = deform(positionLocal.add(wave));
+    const { mask, edge } = crystal(solid, vec3(idx.mul(1.7)));
+    const mat = glassMaterial({ color: 0x131d22, metalness: 0.84, roughness: 0.14 });
+    mat.positionNode = pos;
+    mat.opacityNode = mask;
+    mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(240, 880);
+    const veinMix = smoothstep(float(-0.4), float(0.4), normIdx);
+    mat.emissiveNode = mix(emerald, amber, veinMix)
+      .mul(abs(wave.y).mul(5.0).add(0.12))
+      .add(accent.mul(edge.mul(3.0)))
+      .add(emerald.mul(U.hit.mul(0.85)));
+
+    const slabs = new THREE.InstancedMesh(slabGeo, mat, layers);
+    const wire = new THREE.InstancedMesh(slabGeo, wireMaterial(emerald, wireOpacity), layers);
+    wire.material.positionNode = pos;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < layers; j++) {
+      const t = j / (layers - 1) - 0.5;
+      const scale = 1.0 - Math.abs(t) * 0.34;
+      v.set(0, t * 1.48, 0);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t * 0.36);
+      s.set(scale, 1, scale);
+      m.compose(v, q, s);
+      slabs.setMatrixAt(j, m);
+    }
+    wire.instanceMatrix = slabs.instanceMatrix;
+
+    const spineGeo = new THREE.CylinderGeometry(0.035, 0.035, 2.05, 16);
+    const spineMat = new THREE.MeshStandardNodeMaterial({ color: 0x091316, roughness: 0.25, metalness: 0.3 });
+    const spineMask = crystal(solid, vec3(9.0));
+    spineMat.emissiveNode = emerald.mul(float(1.5).add(U.hit.mul(1.2)));
+    spineMat.opacityNode = spineMask.mask;
+    spineMat.alphaTest = 0.5;
+    const spine = new THREE.Mesh(spineGeo, spineMat);
+
+    group.add(slabs, wire, spine);
+    group.rotation.x = 0.34;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.11;
+    };
+  });
 }

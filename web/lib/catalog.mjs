@@ -155,6 +155,30 @@ const PRODUCT_DETAILS = {
     ],
     credits: "Includes 24 factory presets, six Quick-Start Archetypes, Mutate, Undo/Redo and A/B compare.",
   },
+  lineage: {
+    kind: "Resampling bass synth",
+    hue: 166,
+    bpm: 172,
+    form: "strata",
+    formLabel: "Strata",
+    alt: "Lineage’s glowing geological strata pad, non-destructive Print/Stack Gen-2 resampler ribbon, PLAY/STUDIO view switch, and unified studio Voice footer bar",
+    body: "Sculpt analog, sync and TZFM Reese basses, then print and stack them non-destructively into a live Strata resampler without leaving the synth. Lock a phase-pure mono sub beneath 4-voice polyphonic chords, crossfade-scrub reversed or pitched Gen-2 layers across an LR4 crossover, or drop in your own audio.",
+    features: [
+      [
+        "Non-destructive Gen-2 Strata resampler",
+        "Print 1–4 bar loops in-plugin, stack up to 4 generations with instant undo, scrub loop windows with equal-power crossfades, split Blend / Hi-Strata / Lo-Strata at 460 Hz, or drag-and-drop external WAV/AIFF/FLAC stems.",
+      ],
+      [
+        "Mono, Legato & Poly 4 with lowest-note sub lock",
+        "Run six zero-aliasing Reese/Sync/TZFM cores through dual morphing filters, 4× ADAA1 waveshapers, phase dispersion and harmonic density while a dedicated LR4 mono sub tracks the lowest active chord note.",
+      ],
+      [
+        "Sculptural PLAY & STUDIO workflow",
+        "Perform across six expressive XY programs in PLAY or dial every filter rail, modulation lane and Voice bar control in STUDIO, backed by 64-step Undo/Redo, A/B compare and instant drag-out WAV export.",
+      ],
+    ],
+    credits: "Includes 24 factory presets, four modulation lanes, Undo/Redo and A/B compare.",
+  },
 };
 
 export const PRODUCT_SLUGS = Object.keys(studio.products);
@@ -174,6 +198,7 @@ export const SCULPTURE_FORMS = [
   { id: "prisms", label: "Prisms" },
   { id: "helix", label: "Helix" },
   { id: "membrane", label: "Membrane" },
+  { id: "strata", label: "Strata" },
 ];
 
 export const FIELD_GUIDE_CHAPTERS = [
@@ -278,6 +303,23 @@ export const FIELD_GUIDE_CHAPTERS = [
       "24-Mode Nonlinear Tensioned Shells",
       "16-Stage Series Allpass Disperser",
       "Sympathetic Wire Buzz & Hadamard Room",
+    ],
+  },
+  {
+    num: "Chapter 07",
+    slug: "lineage",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG.lineage.hue,
+    title: "Non-Destructive Resampling: Lock-Free Strata Printing & Lowest-Note Sub Lock",
+    summary:
+      "Replace manual DAW bounce-and-reimport loops with lock-free triple-buffered generation stacking, equal-power wrap crossfading, LR4 band-split Strata crossovers, and polyphonic Reese voicings anchored to the lowest active chord note.",
+    topics: [
+      "Lock-Free Triple-Buffered Print Ring",
+      "Equal-Power Loop Crossfade & Scrub",
+      "LR4 Strata Band-Split Crossover",
+      "Poly 4 Lowest-Note Mono Sub Lock",
     ],
   },
   {

@@ -492,15 +492,11 @@ class ZPlanePanel final : public Panel {
           stages_(add<Row>(context, ParamId::stages, colour::poles, "Poles")),
           transform_(add<Row>(context, ParamId::transform, colour::poles, "Transform", true)),
           spread_(add<Row>(context, ParamId::spread, colour::poles, "Spread", true)),
-          stereoMode_(add<Row>(context, ParamId::stereoMode, colour::poles, "Routing")),
-          pitchTrack_(add<Row>(context, ParamId::pitchTrack, colour::sub, "Pitch track")),
-          glide_(add<Row>(context, ParamId::glide, colour::sub, "Glide", true)),
           fmAmount_(add<Row>(context, ParamId::fmAmount, colour::drive, "FM", true)),
           fmSource_(add<Row>(context, ParamId::fmSource, colour::drive, "FM src")),
           drivePos_(add<Row>(context, ParamId::drivePos, colour::drive, "Drive pos")),
           foldType_(add<Row>(context, ParamId::foldType, colour::drive, "Shaper")),
           asym_(add<Row>(context, ParamId::asym, colour::drive, "Asym", true)),
-          subLock_(add<Row>(context, ParamId::subLock, colour::sub, "Sub lock")),
           subSplit_(add<Row>(context, ParamId::subSplit, colour::sub, "Sub split", true)),
           fit_(add<Row>(context, ParamId::fit, colour::sub, "Fit", true)) {}
 
@@ -533,34 +529,36 @@ class ZPlanePanel final : public Panel {
         const float plotH = (height() - 2.0f * pad) - footH - footGap - axisH;
         response_.setBounds(midX + pad, pad, midW - 2.0f * pad, plotH);
 
-        // Right: Parameter control column (16 compact rows across 4 logical sections)
+        // Right: Parameter control column (12 spacious rows across 4 sections; Track/Glide/Stereo/Sub Lock live in
+        // VoiceBar)
         const float rightLeft = width() - px(kRightWidth) + pad;
         const float colW = px(kRightWidth) - 2.0f * pad;
-        const float rowH = px(20.5f);
-        const float rowGap = px(3.0f);
+        const float rowH = px(25.0f);
+        const float rowGap = px(4.5f);
         const float step = rowH + rowGap;
-        const float sectionGap = px(12.0f);
+        const float sectionGap = px(16.0f);
+        const float totalH = 12.0f * rowH + 11.0f * rowGap + 3.0f * sectionGap;
 
-        float y = pad;
-        for (Row* r : {&cube_, &topology_, &stages_, &transform_, &spread_, &stereoMode_}) {
+        float y = std::round(pad + std::max(0.0f, (height() - 2.0f * pad - totalH) * 0.5f));
+        for (Row* r : {&cube_, &topology_, &stages_, &transform_, &spread_}) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
         div1Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
         y += sectionGap;
-        for (Row* r : {&pitchTrack_, &glide_, &fmAmount_, &fmSource_}) {
+        for (Row* r : {&fmAmount_, &fmSource_}) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
         div2Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
         y += sectionGap;
-        for (Row* r : { &drivePos_, &foldType_, &asym_ }) {
+        for (Row* r : {&drivePos_, &foldType_, &asym_}) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
         div3Y_ = std::round(y + (sectionGap - rowGap) * 0.5f);
         y += sectionGap;
-        for (Row* r : { &subLock_, &subSplit_, &fit_ }) {
+        for (Row* r : {&subSplit_, &fit_}) {
             r->setBounds(rightLeft, y, colW, rowH);
             y += step;
         }
@@ -711,15 +709,11 @@ private:
     Row& stages_;
     Row& transform_;
     Row& spread_;
-    Row& stereoMode_;
-    Row& pitchTrack_;
-    Row& glide_;
     Row& fmAmount_;
     Row& fmSource_;
     Row& drivePos_;
     Row& foldType_;
     Row& asym_;
-    Row& subLock_;
     Row& subSplit_;
     Row& fit_;
     float div1Y_ = 0.0f;

@@ -11,9 +11,9 @@
 namespace tf::ui {
 
 inline constexpr int kDefaultWidth = 1280;
-inline constexpr int kDefaultHeight = 720;
+inline constexpr int kDefaultHeight = 762;
 inline constexpr int kMinWidth = 960;
-inline constexpr int kMinHeight = 540;
+inline constexpr int kMinHeight = 572;
 
 class Editor {
 public:

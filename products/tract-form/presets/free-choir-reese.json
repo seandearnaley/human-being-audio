@@ -95,5 +95,9 @@
     "lane1Hz": 0.26,
     "lane2Hz": 0.5,
     "lane3Hz": 0.5,
-    "lane4Hz": 0.5
+    "lane4Hz": 0.5,
+    "playMode": "Legato",
+    "glideMode": "Legato",
+    "bendRange": "±2 st",
+    "octave": "0 oct"
 }

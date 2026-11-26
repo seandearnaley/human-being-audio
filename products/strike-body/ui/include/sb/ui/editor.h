@@ -10,9 +10,9 @@
 namespace sb::ui {
 
 inline constexpr int kDefaultWidth = 1280;
-inline constexpr int kDefaultHeight = 820;
+inline constexpr int kDefaultHeight = 862;
 inline constexpr int kMinWidth = 960;
-inline constexpr int kMinHeight = 615;
+inline constexpr int kMinHeight = 646;
 
 class Editor {
   public:

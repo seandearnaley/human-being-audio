@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="334" viewBox="0 0 1520 334">
+  <g transform="translate(56, 256)" fill="none" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">
+    <!-- strata glyph mark on left -->
+    <path d="M12,-42 C54,-42 66,-90 112,-90 C158,-90 172,-42 214,-42" stroke="#3ee5a0" stroke-width="26"/>
+    <path d="M12,-102 C54,-102 66,-150 112,-150 C158,-150 172,-102 214,-102" stroke="#3be2f0" stroke-width="26"/>
+    <path d="M12,-162 C54,-162 66,-210 112,-210 C158,-210 172,-162 214,-162" stroke="#ec58c6" stroke-width="26"/>
+    <!-- l (amber molten spine) -->
+    <path d="M312,-222 V0" stroke="#f5a638"/>
+    <!-- i -->
+    <path d="M396,-136 V0" stroke="#e6ebf0"/>
+    <circle cx="396" cy="-210" r="17" fill="#3be2f0" stroke="none"/>
+    <!-- n -->
+    <path d="M478,0 V-140 M478,-84 A62,56 0 0 1 602,-84 V0" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M680,-72 H820 A70,70 0 1 0 798,-18" stroke="#e6ebf0"/>
+    <!-- a (magenta strata loop) -->
+    <circle cx="964" cy="-72" r="68" stroke="#ec58c6"/>
+    <path d="M1032,-140 V0" stroke="#ec58c6"/>
+    <!-- g -->
+    <circle cx="1174" cy="-72" r="68" stroke="#e6ebf0"/>
+    <path d="M1242,-140 V12 Q1242,62 1176,62 Q1136,62 1114,44" stroke="#e6ebf0"/>
+    <!-- e -->
+    <path d="M1320,-72 H1460 A70,70 0 1 0 1438,-18" stroke="#e6ebf0"/>
+  </g>
+</svg>

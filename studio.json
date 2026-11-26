@@ -50,6 +50,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Stbd",
       "license": "AGPL-3.0-or-later"
+    },
+    "lineage": {
+      "name": "Lineage",
+      "artifacts": "plugin/Lineage_artefacts/Release",
+      "bundle": "com.humanbeingmusic.lineage",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Lng1",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

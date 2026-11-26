@@ -9,6 +9,7 @@ if(NOT TARGET hba_visage_ui)
         include/hba/ui/movement_panel.h
         include/hba/ui/theme.h
         include/hba/ui/top_bar.h
+        include/hba/ui/voice_bar.h
         src/movement_edit.cpp)
     target_include_directories(hba_visage_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(hba_visage_ui PUBLIC cxx_std_20)

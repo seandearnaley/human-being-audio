@@ -50,6 +50,7 @@ class ProductIdentityTests(unittest.TestCase):
             "cutline": ("ABCDEF019182FAEB48626D7543746C6E", "ABCDEF011234ABCD48626D7543746C6E"),
             "torus-glide": ("ABCDEF019182FAEB48626D755472676C", "ABCDEF011234ABCD48626D755472676C"),
             "strike-body": ("ABCDEF019182FAEB48626D7553746264", "ABCDEF011234ABCD48626D7553746264"),
+            "lineage": ("ABCDEF019182FAEB48626D754C6E6731", "ABCDEF011234ABCD48626D754C6E6731"),
         }
         for slug, pair in expected.items():
             self.assertEqual(verify_product.class_ids(slug), pair)

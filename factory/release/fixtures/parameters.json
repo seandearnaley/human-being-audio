@@ -22,5 +22,9 @@
   "strike-body": {
     "tension": 0.78,
     "disperser": 0.64
+  },
+  "lineage": {
+    "filter_1": 0.68,
+    "drive": 0.54
   }
 }

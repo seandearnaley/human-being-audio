@@ -184,6 +184,9 @@ void Engine::Impl::process(const Params& p, const Transport& transport, float* l
     glideMs = p[ParamId::glide];
     phaseResetOn = p.on(ParamId::phaseReset);
     beatLockOn = p.on(ParamId::beatLock);
+    playModeCur = static_cast<PlayMode>(std::clamp(p.choice(ParamId::playMode), 0, 1));
+    glideModeCur = static_cast<GlideMode>(std::clamp(p.choice(ParamId::glideMode), 0, 1));
+    octaveSt = kOctaveSemitones[static_cast<std::size_t>(std::clamp(p.choice(ParamId::octave), 0, 3))];
     gate.setEnvelope(p[ParamId::ampAttack], p[ParamId::ampDecay], p[ParamId::ampSustain], p[ParamId::ampRelease]);
     updateClock(transport);
 

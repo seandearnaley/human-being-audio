@@ -90,6 +90,7 @@ public:
     std::atomic<double> lastBpm_ { 174.0 };
     std::atomic<bool> auditionWanted_{false};
     bool auditionPlaying_ = false;
+    int lastBendChoice_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };

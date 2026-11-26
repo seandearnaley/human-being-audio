@@ -158,6 +158,7 @@ void Engine::Impl::reset() noexcept TF_NONBLOCKING {
     notes.clear();
     physicalNotes.clear();
     sustainDown = false;
+    hasPlayedNote = false;
     pendingNote = -1;
     pendingVelocity = 1.0;
     noteVelocity = 1.0;
@@ -221,7 +222,11 @@ void Engine::Impl::beginNote(int note, double velocity) noexcept TF_NONBLOCKING 
         phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
     noteVelocity = std::clamp(velocity, 0.01, 1.0);
     punch.trigger(0.4 + 0.6 * noteVelocity);
-    glide.jump(note);
+    if (glideModeCur == GlideMode::always && hasPlayedNote && glideMs > 0.05)
+        glide.glideTo(note, glideMs * 1e-3 * fs);
+    else
+        glide.jump(note);
+    hasPlayedNote = true;
     sinceNoteStart = 0;
     if (!snapNext)
         retargetPitchNow();
@@ -234,9 +239,19 @@ void Engine::Impl::noteOn(int note, float velocity) noexcept TF_NONBLOCKING {
     physicalNotes.push(note);
     const bool legato = !notes.empty();
     notes.push(note);
-    if (legato && pendingNote < 0) {
+    if (legato && pendingNote < 0 && playModeCur == PlayMode::legato) {
         noteVelocity = vel;
         glide.glideTo(note, glideMs * 1e-3 * fs);
+        hasPlayedNote = true;
+    } else if (legato && pendingNote < 0 && playModeCur == PlayMode::mono) {
+        noteVelocity = vel;
+        punch.trigger(0.4 + 0.6 * noteVelocity);
+        if (glideModeCur == GlideMode::always && glideMs > 0.05)
+            glide.glideTo(note, glideMs * 1e-3 * fs);
+        else
+            glide.jump(note);
+        sinceNoteStart = 0;
+        hasPlayedNote = true;
     } else {
         startNote(note, vel);
     }
@@ -288,6 +303,7 @@ void Engine::Impl::allNotesOff() noexcept TF_NONBLOCKING {
     notes.clear();
     physicalNotes.clear();
     sustainDown = false;
+    hasPlayedNote = false;
     pendingNote = -1;
     if (gate.stage() != Gate::Stage::fade)
         gate.close();
@@ -301,7 +317,7 @@ void Engine::Impl::allNotesOff() noexcept TF_NONBLOCKING {
 // amount and the whole spectrum beats at one rate.
 void Engine::Impl::pitchIncrements(double& master, double& a, double& b) const noexcept TF_NONBLOCKING {
     const double punchSt = sm(punchAmt_) * punch.value();
-    const double f0 = noteToHz(glide.current() + sm(bend) + punchSt);
+    const double f0 = noteToHz(glide.current() + static_cast<double>(octaveSt) + sm(bend) + punchSt);
     const double beatMod = moved(LaneTarget::beat, sm(beat), 0.0, 1.0);
     master = f0 / fo;
     if (beatLockOn) {
