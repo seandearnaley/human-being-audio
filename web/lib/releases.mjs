@@ -1,8 +1,8 @@
-import studio from "../../studio.json" with { type: "json" };
-const prefix = studio.repository + "/releases/";
+import { PRODUCT_SLUGS, PRODUCTS_BY_SLUG, STUDIO } from "./catalog.mjs";
+const prefix = STUDIO.repository + "/releases/";
 const api =
   "https://api.github.com/repos/" +
-  new URL(studio.repository).pathname.slice(1);
+  new URL(STUDIO.repository).pathname.slice(1);
 const suffix = {
   macos: ".pkg",
   windows: "-windows-x64.exe",
@@ -50,7 +50,7 @@ async function publishedRelease({ row, slug, version }, read) {
   ) {
     throw new Error("Release record and source disagree for " + row.tag_name);
   }
-  const stem = studio.products[slug].name.replaceAll(" ", "-") + "-" + version;
+  const stem = PRODUCTS_BY_SLUG[slug].name.replaceAll(" ", "-") + "-" + version;
   const downloads = Object.entries(suffix).map(([os, ext]) => {
     const file = stem + ext;
     const asset = assetFor(row, file);
@@ -90,7 +90,7 @@ export async function readCatalog(read = readJson) {
       const match = /^([\w-]+)\/v(\d+\.\d+\.\d+)$/.exec(row?.tag_name ?? "");
       if (
         !match ||
-        !Object.hasOwn(studio.products, match[1]) ||
+        !Object.hasOwn(PRODUCTS_BY_SLUG, match[1]) ||
         row.draft ||
         row.prerelease
       )
@@ -105,9 +105,8 @@ export async function readCatalog(read = readJson) {
     }
     if (rows.length < 100) break;
   }
-  const order = Object.keys(studio.products);
   const sorted = [...latest.values()].sort(
-    (a, b) => order.indexOf(a.slug) - order.indexOf(b.slug),
+    (a, b) => PRODUCT_SLUGS.indexOf(a.slug) - PRODUCT_SLUGS.indexOf(b.slug),
   );
   return Promise.all(sorted.map((entry) => publishedRelease(entry, read)));
 }

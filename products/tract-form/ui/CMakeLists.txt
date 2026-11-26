@@ -7,7 +7,6 @@ add_library(tf_ui STATIC
     include/tf/ui/fake_model.h
     include/tf/ui/model.h
     src/analysis_panel.cpp
-    src/controls.cpp
     src/controls.h
     src/editor.cpp
     src/fake_model.cpp

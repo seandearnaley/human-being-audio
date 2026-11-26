@@ -2,6 +2,7 @@
 #include "top_bar.h"
 
 #include <embedded/tg_brand.h>
+#include <hba/ui/top_bar.h>
 
 #include <algorithm>
 #include <cmath>
@@ -31,11 +32,8 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
                }),
       dragMid_(ctx, "Drag .mid", [this] { context_.model.dragExportedMidi(); }) {
     addChild(&wordmark_);
-    wordmark_.onDraw() += [this](visage::Canvas& canvas) { drawWordmark(canvas); };
-    wordmark_.onToggle() = [open = std::move(showAbout)](visage::Button*, bool) {
-        if (open)
-            open();
-    };
+    hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
+                                 [this](visage::Canvas& canvas) { drawWordmark(canvas); });
 
     modeSpiral_.setAccent(colour::spiral);
     modeCopedent_.setAccent(colour::copedent);
@@ -54,13 +52,7 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
     dragMid_.setOnDragOut([this] { context_.model.dragExportedMidi(); });
 
     ab_.setOnRightClick([this] {
-        visage::PopupMenu menu;
-        menu.addOption(1, context_.model.isSlotB() ? "Copy B -> A" : "Copy A -> B");
-        menu.onSelection() = [this](int opt) {
-            if (opt == 1)
-                context_.model.copyAB();
-        };
-        menu.show(&ab_);
+        hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
 
     for (visage::Frame* child : std::initializer_list<visage::Frame*>{
@@ -106,12 +98,8 @@ void TopBar::tick() {
         presetName_.setLabel(shownPreset_.empty() ? "Init" : shownPreset_);
     }
 
-    undo_.setAccent(context_.model.canUndo() ? colour::textDim : colour::textFaint);
-    redo_.setAccent(context_.model.canRedo() ? colour::textDim : colour::textFaint);
-
-    const bool isB = context_.model.isSlotB();
-    ab_.setLabel(isB ? "B" : "A");
-    ab_.setAccent(isB ? colour::copedent : colour::spiral);
+    hba::ui::syncHistoryButtons(undo_, redo_, ab_, context_.model.canUndo(), context_.model.canRedo(),
+                                context_.model.isSlotB(), colour::spiral, colour::copedent);
 
     const bool aud = context_.model.isAuditioning();
     audition_.setActive(aud);
@@ -131,34 +119,14 @@ void TopBar::tick() {
 }
 
 void TopBar::showPresetMenu() {
-    visage::PopupMenu menu;
-    const auto list = context_.model.presets();
-    std::size_t i = 0;
-    while (i < list.size()) {
-        const std::string& cat = list[i].category;
-        visage::PopupMenu sub(cat);
-        for (; i < list.size() && list[i].category == cat; ++i)
-            sub.addOption(static_cast<int>(i), list[i].name);
-        menu.addSubMenu(std::move(sub));
-    }
-    menu.addBreak();
-    menu.addOption(10000, "Save User Preset...");
-    menu.onSelection() = [this](int idx) {
-        if (idx == 10000)
-            context_.model.savePreset();
-        else if (idx >= 0)
-            context_.model.loadPreset(idx);
-    };
-    menu.show(&presetName_);
+    hba::ui::showCategorizedPresetMenu(
+        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
+        [this] { context_.model.savePreset(); });
 }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
-    constexpr float aspect = 2100.0f / 334.0f;
-    const float h = context_.px(24.0f);
-    const float w = h * aspect;
-    visage::Svg svg(brand::torus_glide_logotype_on_dark_svg);
-    svg.setDimensions(static_cast<int>(std::ceil(w)), static_cast<int>(std::ceil(h)), canvas.dpiScale());
-    canvas.svg(svg, context_.px(6.0f), (wordmark_.height() - h) * 0.5f, w, h);
+    hba::ui::drawBrandWordmark(canvas, wordmark_, brand::torus_glide_logotype_on_dark_svg, 2100.0f / 334.0f, 24.0f,
+                               6.0f, context_.scale);
 }
 
 void TopBar::draw(visage::Canvas& canvas) {

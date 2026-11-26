@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import studio from "../../studio.json";
 import Image from "next/image";
+import { PRODUCTS, STUDIO } from "../lib/catalog.mjs";
 import mark from "../../design/studio/mark.svg";
 import "./globals.css";
-const productNames = new Intl.ListFormat("en").format(
-  Object.values(studio.products).map((product) => product.name),
-);
+
+const productNames = new Intl.ListFormat("en").format(PRODUCTS.map((product) => product.name));
 
 export const metadata: Metadata = {
-  metadataBase: new URL(studio.website),
+  metadataBase: new URL(STUDIO.website),
   title: "Human Being Audio · Free audio plugins",
   description: `${productNames}. Open-source audio effects and instruments for macOS, Windows and Ubuntu.`,
   alternates: { canonical: "/" },
@@ -44,7 +43,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <Link href="/learn">Learn</Link>
                 </li>
                 <li>
-                  <a href={studio.repository}>GitHub ↗</a>
+                  <a href={STUDIO.repository}>GitHub ↗</a>
                 </li>
               </ul>
             </nav>
@@ -53,10 +52,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {children}
         <footer className="site-footer">
           <div className="wrap studio-footer">
-            <strong>{studio.publisher}</strong>
+            <strong>{STUDIO.publisher}</strong>
             <Link href="/learn">DSP Field Guides</Link>
-            <a href={studio.repository}>Studio source ↗</a>
-            <a href={studio.repository + "/issues"}>Report a problem ↗</a>
+            <a href={STUDIO.repository}>Studio source ↗</a>
+            <a href={STUDIO.repository + "/issues"}>Report a problem ↗</a>
           </div>
         </footer>
       </body>

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { PRODUCTS, STUDIO } from "../../lib/catalog.mjs";
 test("browse the studio products, inspect images and open install notes", async ({
   page,
   request,
@@ -15,15 +16,8 @@ test("browse the studio products, inspect images and open install notes", async 
   await expect(studioMark).toHaveAttribute("src", tabIcon!);
   await page.getByRole("link", { name: "Browse the plugins" }).click();
   const cards = page.locator("article[data-plugin]");
-  await expect(cards).toHaveCount(6);
-  for (const [index, slug, name] of [
-    [0, "livecut-redux", "Livecut Redux"],
-    [1, "tract-form", "Tract Form"],
-    [2, "pole-field", "Pole Field"],
-    [3, "cutline", "Cutline"],
-    [4, "torus-glide", "Torus Glide"],
-    [5, "strike-body", "Strike Body"],
-  ] as const) {
+  await expect(cards).toHaveCount(PRODUCTS.length);
+  for (const [index, { slug, name }] of PRODUCTS.entries()) {
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", new RegExp(name));
     const card = cards.nth(index);
     await expect(
@@ -33,8 +27,7 @@ test("browse the studio products, inspect images and open install notes", async 
       card.getByRole("link", { name: "Source and build instructions" }),
     ).toHaveAttribute(
       "href",
-      "https://github.com/seandearnaley/human-being-audio/tree/main/products/" +
-        slug,
+      `${STUDIO.repository}/tree/main/products/${slug}`,
     );
     const image = card.getByRole("img");
     await image.scrollIntoViewIfNeeded();

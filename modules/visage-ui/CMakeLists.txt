@@ -3,8 +3,12 @@ if(NOT TARGET hba_visage_ui)
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-Regular.ttf;${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/fonts/Inter-SemiBold.ttf")
 
     add_library(hba_visage_ui STATIC
+        include/hba/ui/controls.h
+        include/hba/ui/editor_window.h
         include/hba/ui/movement_edit.h
+        include/hba/ui/movement_panel.h
         include/hba/ui/theme.h
+        include/hba/ui/top_bar.h
         src/movement_edit.cpp)
     target_include_directories(hba_visage_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(hba_visage_ui PUBLIC cxx_std_20)

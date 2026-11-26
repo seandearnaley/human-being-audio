@@ -1,8 +1,7 @@
 #include "top_bar.h"
 
 #include <embedded/tf_brand.h>
-
-#include <cmath>
+#include <hba/ui/top_bar.h>
 
 #include "tf/feel.h"
 
@@ -39,26 +38,13 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
       redo_(context, "Redo", [this] { context_.model.redo(); }),
       ab_(context, "A", [this] { context_.model.toggleAB(); }) {
     addChild(&wordmark_);
-    wordmark_.onDraw() += [this](visage::Canvas& canvas) { drawWordmark(canvas); };
-    wordmark_.onToggle() = [open = std::move(showAbout)](visage::Button*, bool) { if (open) open(); };
-    wordmark_.setAcceptsKeystrokes(true);
-    wordmark_.onKeyPress() = [this](const visage::KeyEvent& key) {
-        if (key.keyCode() != visage::KeyCode::Return && key.keyCode() != visage::KeyCode::Space) return false;
-        wordmark_.notify(false);
-        return true;
-    };
+    hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
+                                 [this](visage::Canvas& canvas) { drawWordmark(canvas); });
     for (auto* button : {&previous_, &name_, &next_, &save_, &undo_, &redo_, &ab_})
         addChild(button);
     save_.setAccent(colour::textDim);
-    ab_.setOnRightClick([this] {
-        visage::PopupMenu menu;
-        menu.addOption(1, context_.model.isSlotB() ? "Copy B \u2192 A" : "Copy A \u2192 B");
-        menu.onSelection() = [this](int opt) {
-            if (opt == 1)
-                context_.model.copyAB();
-        };
-        menu.show(&ab_);
-    });
+    ab_.setOnRightClick(
+        [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
     for (std::size_t i = 0; i < kMacros.size(); ++i) {
         auto knob = std::make_unique<Knob>(context, kMacros[i].id, kMacros[i].accent);
         const auto id = kMacros[i].id;
@@ -110,41 +96,20 @@ void TopBar::tick() {
         shownPreset_ = std::move(current);
         name_.setLabel(shownPreset_);
     }
-    undo_.setAccent(context_.model.canUndo() ? colour::textDim : colour::textFaint);
-    redo_.setAccent(context_.model.canRedo() ? colour::textDim : colour::textFaint);
-    const bool isB = context_.model.isSlotB();
-    ab_.setLabel(isB ? "B" : "A");
-    ab_.setAccent(isB ? colour::growl : colour::master);
+    hba::ui::syncHistoryButtons(undo_, redo_, ab_, context_.model.canUndo(), context_.model.canRedo(),
+                                context_.model.isSlotB(), colour::master, colour::growl);
 }
 
 // One submenu per category, in the order the model lists them.
 void TopBar::showPresetMenu() {
-    visage::PopupMenu menu;
-    const auto presets = context_.model.presets();
-    std::size_t i = 0;
-    while (i < presets.size()) {
-        const std::string& category = presets[i].category;
-        visage::PopupMenu group(category);
-        for (; i < presets.size() && presets[i].category == category; ++i)
-            group.addOption(static_cast<int>(i), presets[i].name);
-        menu.addSubMenu(std::move(group));
-    }
-    menu.onSelection() = [this](int index) { context_.model.loadPreset(index); };
-    menu.show(&name_);
+    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &name_,
+                                       [this](int i) { context_.model.loadPreset(i); });
 }
 
 // The logotype is the brand asset itself, drawn as a vector at any size.
 void TopBar::drawWordmark(visage::Canvas& canvas) {
-    constexpr float aspect = 1908.0f / 334.0f;  // the logotype's ink box
-    const float logoHeight = context_.px(26.0f);
-    const float logoWidth = logoHeight * aspect;
-    visage::Svg logotype(brand::tract_form_logotype_on_dark_svg);
-    logotype.setDimensions(static_cast<int>(std::ceil(logoWidth)), static_cast<int>(std::ceil(logoHeight)), canvas.dpiScale());
-    canvas.svg(logotype, 0.0f, (wordmark_.height() - logoHeight) * 0.5f, logoWidth, logoHeight);
-    if (wordmark_.hasKeyboardFocus()) {
-        canvas.setColor(colour::master);
-        canvas.roundedRectangleBorder(0, 0, wordmark_.width(), wordmark_.height(), context_.px(4), context_.px(1));
-    }
+    hba::ui::drawBrandWordmark(canvas, wordmark_, brand::tract_form_logotype_on_dark_svg, 1908.0f / 334.0f, 26.0f, 0.0f,
+                               context_.scale, colour::master);
 }
 
 void TopBar::resized() {

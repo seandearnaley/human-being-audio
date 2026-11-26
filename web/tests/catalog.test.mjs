@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { FIELD_GUIDE_CHAPTERS, PRODUCTS, PRODUCT_SLUGS, SCULPTURE_FORMS, STUDIO } from "../lib/catalog.mjs";
 import { readCatalog } from "../lib/releases.mjs";
+import audioManifest from "../app/audioManifest.json" with { type: "json" };
+
+test("catalog SSOT stays in strict parity with studio.json, sculpture forms, field guides, and audioManifest", () => {
+  assert.deepEqual(PRODUCT_SLUGS, Object.keys(STUDIO.products));
+  assert.equal(PRODUCTS.length, PRODUCT_SLUGS.length);
+  const validForms = new Set(SCULPTURE_FORMS.map((f) => f.id));
+  for (const product of PRODUCTS) {
+    assert.ok(product.name && product.kind && product.body && product.alt && product.credits);
+    assert.ok(Number.isFinite(product.hue) && product.hue >= 0 && product.hue < 360);
+    assert.ok(validForms.has(product.form), `Unknown form ${product.form} for ${product.slug}`);
+    assert.ok(Array.isArray(audioManifest[product.slug]) && audioManifest[product.slug].length >= 5);
+    assert.ok(
+      FIELD_GUIDE_CHAPTERS.some((ch) => ch.slug === product.slug && ch.hue === product.hue),
+      `Missing or hue-drifted field guide chapter for ${product.slug}`,
+    );
+  }
+});
 const repo = "https://github.com/seandearnaley/human-being-audio";
 const sha = "a".repeat(40),
   digest = "b".repeat(64);

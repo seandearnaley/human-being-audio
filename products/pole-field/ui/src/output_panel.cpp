@@ -1,23 +1,15 @@
 #include "panels.h"
 
+#include <hba/ui/controls.h>
+
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace pf::ui {
 
 namespace {
-constexpr float kMeterHeight = 5.0f;
-constexpr float kMeterPitch = 11.0f;
-constexpr float kReductionHeight = 3.0f;
-constexpr float kReadoutWidth = 54.0f;
 constexpr float kColumnGap = 12.0f;
 constexpr float kButtonHeight = 28.0f;
-constexpr float kMeterFloorDb = -48.0f;
-constexpr float kReductionRangeDb = 12.0f;
-constexpr float kReductionVisibleDb = 0.1f;
-
-float meterPosition(float db) { return std::clamp((db - kMeterFloorDb) / -kMeterFloorDb, 0.0f, 1.0f); }
 
 class OutputPanel final : public Panel {
 public:
@@ -56,7 +48,7 @@ public:
         const float rowHeight = px(metric::row);
         const float buttonY = height() - pad - px(kButtonHeight);
 
-        const float meterBottom = pad + px(2.0f * kMeterPitch + kReductionHeight);
+        const float meterBottom = pad + px(hba::ui::meter::kTotalDesignHeight);
         const float avail = buttonY - meterBottom;
         const float step = rowHeight + px(4.0f);
         const float firstRow = std::round(meterBottom + 0.5f * (avail - (3.0f * rowHeight + 8.0f * px(1.0f))));
@@ -90,52 +82,12 @@ public:
     void draw(visage::Canvas& canvas) override {
         drawChrome(canvas);
         const Visuals& visuals = context_.model.visuals();
-        const float ceiling = context_.model.get(ParamId::ceiling);
-
-        const float pad = px(metric::pad);
-        const float barWidth = width() - 2.0f * pad - px(kReadoutWidth);
-        const float barHeight = px(kMeterHeight);
-
-        meter(canvas, pad, pad, barWidth, barHeight, visuals.peakDbLeft, ceiling);
-        meter(canvas, pad, pad + px(kMeterPitch), barWidth, barHeight, visuals.peakDbRight, ceiling);
-
-        const float reduction = std::clamp(visuals.gainReductionDb, 0.0f, kReductionRangeDb);
-        if (reduction > kReductionVisibleDb) {
-            const float thickness = px(kReductionHeight);
-            const float length = barWidth * reduction / kReductionRangeDb;
-            canvas.setColor(colour::alert);
-            canvas.roundedRectangle(pad + barWidth - length, pad + px(2.0f * kMeterPitch), length, thickness,
-                                    0.5f * thickness);
-        }
-
-        const float peak = std::max(visuals.peakDbLeft, visuals.peakDbRight);
-        char text[16];
-        if (peak <= kMeterFloorDb * 2.0f)
-            std::snprintf(text, sizeof text, "-inf dB");
-        else
-            std::snprintf(text, sizeof text, "%.1f dB", static_cast<double>(peak));
-        drawLabel(canvas, context_, text, pad + barWidth, pad, px(kReadoutWidth), px(kMeterPitch + kMeterHeight),
-                  peak > ceiling ? colour::alert : colour::text, visage::Font::kRight, type::label, Weight::regular);
+        hba::ui::drawStereoOutputMeter(canvas, context_.scale, px(metric::pad), width(), visuals.peakDbLeft,
+                                       visuals.peakDbRight, visuals.gainReductionDb,
+                                       context_.model.get(ParamId::ceiling), colour::alert);
     }
 
-private:
-    void meter(visage::Canvas& canvas, float x, float y, float w, float h, float db, float ceiling) {
-        const float radius = 0.5f * h;
-        canvas.setColor(colour::track);
-        canvas.roundedRectangle(x, y, w, h, radius);
-
-        const float level = w * meterPosition(db);
-        if (level <= 0.0f) return;
-        canvas.setColor(colour::withAlpha(colour::text, 0.85f));
-        canvas.roundedRectangle(x, y, level, h, radius);
-
-        const float limit = w * meterPosition(ceiling);
-        if (db > ceiling && level > limit) {
-            canvas.setColor(colour::alert);
-            canvas.rightRoundedRectangle(x + limit, y, level - limit, h, radius);
-        }
-    }
-
+  private:
     Row& input_;
     Row& output_;
     Row& limit_;
@@ -147,7 +99,7 @@ private:
     Button& clear_;
     bool hadImprint_ = false;
 };
-}
+} // namespace
 
 std::unique_ptr<Panel> makeOutputPanel(Context& context) { return std::make_unique<OutputPanel>(context); }
 
