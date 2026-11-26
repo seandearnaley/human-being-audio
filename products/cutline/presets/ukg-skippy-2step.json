@@ -1,0 +1,15 @@
+{
+  "name": "UKG Skippy 2-Step",
+  "category": "Club",
+  "style": "UKG",
+  "gravity": 0.58,
+  "ghosts": 0.76,
+  "chop": 0.14,
+  "ratchet": 0.18,
+  "complexity": 0.62,
+  "fills": 0.34,
+  "dynamics": 0.78,
+  "attractor": "MPC Swing",
+  "fillType": "Air Cut",
+  "variation": 1
+}

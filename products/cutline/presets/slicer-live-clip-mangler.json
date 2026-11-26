@@ -1,0 +1,16 @@
+{
+  "name": "Slicer: Live Clip Re-Slicer",
+  "category": "MIDI Slicer",
+  "engineMode": "MIDI Slicer",
+  "slicerStyle": "Clip Slice",
+  "style": "Drill",
+  "gravity": 0.3,
+  "ghosts": 0.4,
+  "chop": 0.44,
+  "ratchet": 0.36,
+  "complexity": 0.64,
+  "dynamics": 0.7,
+  "gateLen": 0.62,
+  "strumMs": 10.0,
+  "attractor": "MPC Swing"
+}

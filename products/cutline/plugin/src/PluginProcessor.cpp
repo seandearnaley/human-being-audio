@@ -9,8 +9,8 @@ namespace cl {
 
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      state(*this, nullptr, "Cutline", makeParameterLayout()), curves(state), overrides(state),
-      presets(state, curves, overrides), values_(state) {}
+      state(*this, nullptr, "Cutline", makeParameterLayout()), curves(state), patterns(state),
+      presets(state, curves, patterns), values_(state) {}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
@@ -36,8 +36,6 @@ Transport PluginProcessor::readTransport(int numSamples) {
             return transport;
         }
     }
-    // Standalone app has no DAW playhead: run an internal 172 BPM transport clock so
-    // auditioning and phrase visualization animate immediately.
     if (wrapperType == wrapperType_Standalone) {
         transport.bpm = 172.0;
         transport.ppq = standalonePpq_;
@@ -54,15 +52,19 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (numSamples <= 0)
         return;
 
-    // Ingest live incoming MIDI notes before replacing the buffer with generated output.
+    const Transport transport = readTransport(numSamples);
+    const double beatsPerSample = std::clamp(transport.bpm, 20.0, 400.0) / 60.0 / sampleRate_;
+
+    // Ingest live incoming MIDI notes with sample-accurate PPQ timestamp for Performance Pads & Clip Slicer.
     for (const auto metadata : midi) {
         if (metadata.numBytes > 3)
             continue;
         const auto msg = metadata.getMessage();
+        const double evPpq = std::max(0.0, transport.ppq + static_cast<double>(metadata.samplePosition) * beatsPerSample);
         if (msg.isNoteOn())
-            engine_.inputNoteOn(msg.getNoteNumber(), msg.getVelocity());
+            engine_.inputNoteOn(msg.getNoteNumber(), msg.getVelocity(), evPpq);
         else if (msg.isNoteOff())
-            engine_.inputNoteOff(msg.getNoteNumber());
+            engine_.inputNoteOff(msg.getNoteNumber(), evPpq);
         else if (msg.isSustainPedalOn())
             engine_.inputSustain(true);
         else if (msg.isSustainPedalOff())
@@ -75,10 +77,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
-    if (overrides.pull(audioOverrides_))
-        engine_.setOverrides(audioOverrides_);
-
-    const Transport transport = readTransport(numSamples);
+    if (patterns.pull(audioBank_))
+        engine_.setPatternBank(audioBank_);
 
     const int numChannels = buffer.getNumChannels();
     const bool pureMidiHost = (numChannels < 1) || (wrapperType == wrapperType_AudioUnit);
@@ -126,7 +126,7 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
         if (xml->hasTagName(state.state.getType())) {
             state.replaceState(juce::ValueTree::fromXml(*xml));
             curves.reloadFromState();
-            overrides.reloadFromState();
+            patterns.reloadFromState();
         }
     }
 }

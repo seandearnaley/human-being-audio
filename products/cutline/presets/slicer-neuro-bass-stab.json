@@ -1,0 +1,17 @@
+{
+  "name": "Slicer: Neuro Bass + Stab",
+  "category": "MIDI Slicer",
+  "engineMode": "MIDI Slicer",
+  "slicerStyle": "Bass / Stab",
+  "style": "Neuro",
+  "gravity": 0.22,
+  "ghosts": 0.36,
+  "chop": 0.28,
+  "ratchet": 0.26,
+  "complexity": 0.64,
+  "dynamics": 0.76,
+  "gateLen": 0.52,
+  "strumMs": 12.0,
+  "slicerLatch": true,
+  "attractor": "Backbeat"
+}

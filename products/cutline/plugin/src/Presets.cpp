@@ -14,18 +14,19 @@ namespace cl {
 namespace {
 const juce::Identifier kPresetName{"presetName"};
 constexpr const char* kUserCategory = "User";
-constexpr const char* kDefaultPreset = "Neuro Whip";
+constexpr const char* kDefaultPreset = "Amen Chop 172";
 
 std::ptrdiff_t categoryRank(const std::string& category) {
-    static constexpr std::array<std::string_view, 5> kOrder{"Neuro", "Breaks", "Ratchet", "Halftime", "MPE"};
+    static constexpr std::array<std::string_view, 6> kOrder{
+        "Breaks", "Neuro", "Club", "Polyrhythm", "Strike Body", "MIDI Slicer"};
     return std::find(kOrder.begin(), kOrder.end(), category) - kOrder.begin();
 }
 } // namespace
 
 juce::File Presets::userDirectory() { return hba::host::studioUserDirectory("Cutline", "Presets", false); }
 
-Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, OverrideStore& overrides)
-    : state_(state), curves_(curves), overrides_(overrides) {
+Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, PatternStore& patterns)
+    : state_(state), curves_(curves), patterns_(patterns) {
     scan();
 }
 
@@ -57,7 +58,7 @@ void Presets::load(int index) {
             parameter->setValueNotifyingHost(parameter->convertTo0to1(preset.params.values[i]));
     }
     curves_.setAll(preset.curves);
-    overrides_.set(preset.overrides);
+    patterns_.set(preset.bank);
     setCurrentName(preset.name);
 }
 
@@ -80,7 +81,7 @@ bool Presets::save(const juce::String& name) {
             preset.params.values[i] = parameter->convertFrom0to1(parameter->getValue());
     }
     preset.curves = curves_.all();
-    preset.overrides = overrides_.get();
+    preset.bank = patterns_.get();
 
     const auto directory = userDirectory();
     if (!directory.createDirectory())

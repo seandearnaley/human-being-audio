@@ -12,11 +12,11 @@ hba::host::StudioAboutConfig makeAboutConfig() {
     cfg.wordmarkSize = static_cast<std::size_t>(ui::brand::cutline_logotype_on_dark_svg.size);
     cfg.monogramData = ui::brand::cutline_mark_on_dark_svg.data;
     cfg.monogramSize = static_cast<std::size_t>(ui::brand::cutline_mark_on_dark_svg.size);
-    cfg.accessibilitySuffix = ". Expressive phrase grammar, microtiming and MPE/CC MIDI articulator.";
-    cfg.headline = "Phrase grammar & microtiming MIDI articulator";
-    cfg.body = "Compile deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases bent through "
-               "a continuous gravitational microtiming field, wrapped in four tempo-locked MPE and CC expression "
-               "lanes with one-drag .mid capture.";
+    cfg.accessibilitySuffix = ". Live MIDI breakbeat, polymeter, and rhythmic articulation slicer.";
+    cfg.headline = "Live MIDI breakbeat, polymeter & articulation slicer";
+    cfg.body = "Drive Drum Racks and Strike Body with 12 multi-bar breakbeat styles, 8 polymetric lanes, 4 instant "
+               "scenes, and 8 quantized performance pads — or switch to MIDI Slicer to chop, strum, and re-groove "
+               "your own live chords and clips with zero pitch drift.";
     cfg.backgroundArgb = 0xff0b0e13u;
     cfg.bodyHeight = 84.0f;
     cfg.bodyMaxLines = 4;

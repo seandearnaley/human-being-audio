@@ -1,0 +1,15 @@
+{
+  "name": "Euclidean Clockwork",
+  "category": "Polyrhythm",
+  "style": "Euclidean",
+  "gravity": 0.22,
+  "ghosts": 0.6,
+  "chop": 0.18,
+  "ratchet": 0.28,
+  "complexity": 0.64,
+  "fills": 0.38,
+  "dynamics": 0.7,
+  "attractor": "MPC Swing",
+  "fillType": "Tom Run",
+  "variation": 1
+}

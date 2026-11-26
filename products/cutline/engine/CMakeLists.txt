@@ -6,7 +6,9 @@ add_library(cl_engine STATIC
     src/audition.h
     src/engine.cpp
     src/phrase.cpp
-    src/smf.cpp)
+    src/smf.cpp
+    src/styles.cpp
+    src/styles.h)
 
 target_include_directories(cl_engine
     PUBLIC include

@@ -24,6 +24,7 @@ class Editor {
     void attach(void* parentView, int width, int height);
     void detach();
     void setSize(int width, int height);
+    void setGridMode(bool grid);
 
 #if defined(__linux__)
     int eventFd() const;

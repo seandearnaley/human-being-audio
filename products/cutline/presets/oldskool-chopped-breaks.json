@@ -1,0 +1,15 @@
+{
+  "name": "Oldskool Chopped Breaks",
+  "category": "Breaks",
+  "style": "Electro",
+  "gravity": 0.28,
+  "ghosts": 0.6,
+  "chop": 0.54,
+  "ratchet": 0.44,
+  "complexity": 0.74,
+  "fills": 0.64,
+  "dynamics": 0.74,
+  "attractor": "Backbeat",
+  "fillType": "Drill Chop",
+  "variation": 7
+}

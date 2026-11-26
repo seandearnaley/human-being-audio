@@ -2,8 +2,8 @@
 #pragma once
 
 #include "cl/lanes.h"
-#include "cl/overrides.h"
 #include "cl/params.h"
+#include "cl/pattern.h"
 #include "cl/phrase.h"
 
 #include <array>
@@ -22,11 +22,19 @@ struct Visuals {
     PhrasePlan plan{};
     HeldNotes heldNotes{};
     std::int64_t phraseIndex = 0;
+    int activeScene = 0;
+    int pendingScene = -1;
+    int activePadProgram = 4;
+    int pendingPadProgram = -1;
+    bool padEngaged = false;
+    std::uint8_t midiPadMask = 0;
+    int capturedClipCount = 0;
     double bpm = 172.0;
     double playheadBeats = 0.0;
     double ppq = 0.0;
     std::array<float, kLaneCount> lanePhase{};
     std::array<float, kLaneCount> laneValue{};
+    std::array<float, kDrumLaneCount> laneFlash{};
     std::uint64_t activeNotesLow = 0;
     std::uint64_t activeNotesHigh = 0;
     int lastBlockEvents = 0;
@@ -48,13 +56,13 @@ struct Model {
     virtual Curve laneCurve(int lane) const = 0;
     virtual void setLaneCurve(int lane, const Curve& curve) = 0;
 
-    virtual PhraseOverrides overrides() const = 0;
-    virtual void setOverrides(const PhraseOverrides& overrides) = 0;
-    virtual void clearOverrides() = 0;
+    virtual PatternBank patternBank() const = 0;
+    virtual void setPatternBank(const PatternBank& bank) = 0;
 
-    virtual void rollSeed() = 0;
-    virtual bool canStepSeedHistory(int delta) const = 0;
-    virtual void stepSeedHistory(int delta) = 0;
+    virtual void mutateActiveScene() = 0;
+    virtual void polymeterActiveScene() = 0;
+    virtual void cloneActiveSceneToNext() = 0;
+    virtual void clearActiveScene() = 0;
 
     virtual void dragMidiPhrase() = 0;
     virtual std::string exportStatus() const = 0;

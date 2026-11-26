@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Studio-grade 8-voice PolyBLEP audition synth + 6-voice polyphonic breakbeat
-// drum kit for VST3/AU/Standalone preview. Supports per-channel MPE Pitch Bend,
-// CC74 Slide (brightness), and Channel Pressure (resonance).
+// Cutline 2.0 built-in studio preview engine:
+//  - 8-voice polyphonic electronic drum kit (Kick, Snare, Ghost, Clap/Rim,
+//    choked Closed/Open Hats, resonant Perc A, metallic Ride/Crash Perc B)
+//  - 8-voice strictly in-tune polyphonic warm stab synth for MIDI Slicer preview
 // Pure C++20, zero heap allocations, [[clang::nonblocking]].
 #pragma once
 
 #include "cl/nonblocking.h"
 #include "cl/params.h"
+#include "cl/pattern.h"
 
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/control.h>
@@ -29,33 +31,40 @@ class AuditionSynth {
 
     void prepare(double sampleRate) noexcept CL_NONBLOCKING {
         fs_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
-        cutoffCoef_ = hba::dsp::onePoleCoef(0.008, 1.0 / fs_);
-        gainCoef_ = hba::dsp::onePoleCoef(0.012, 1.0 / fs_);
-        bendCoef_ = hba::dsp::onePoleCoef(0.006, 1.0 / fs_);
+        cutoffCoef_ = hba::dsp::onePoleCoef(0.006, 1.0 / fs_);
+        gainCoef_ = hba::dsp::onePoleCoef(0.010, 1.0 / fs_);
         qCoef_ = hba::dsp::onePoleCoef(0.010, 1.0 / fs_);
-        atkPluck_ = hba::dsp::onePoleCoef(0.0012, 1.0 / fs_);
-        relPluck_ = hba::dsp::onePoleCoef(0.032, 1.0 / fs_);
-        atkStd_ = hba::dsp::onePoleCoef(0.0035, 1.0 / fs_);
-        relStd_ = hba::dsp::onePoleCoef(0.022, 1.0 / fs_);
-        pluckDecay_ = std::exp(-1.0 / (0.088 * fs_));
-        subPunchDecay_ = std::exp(-1.0 / (0.022 * fs_));
+        atkStab_ = hba::dsp::onePoleCoef(0.0018, 1.0 / fs_);
+        relStab_ = hba::dsp::onePoleCoef(0.028, 1.0 / fs_);
+        stabEnvDecay_ = std::exp(-1.0 / (0.140 * fs_));
 
-        // 6-voice polyphonic drum kit decay constants & filters.
-        kickPitchDecay_ = std::exp(-1.0 / (0.020 * fs_));
-        kickEnvDecay_ = std::exp(-1.0 / (0.125 * fs_));
-        kickClickDecay_ = std::exp(-1.0 / (0.004 * fs_));
-        snareBodyDecay_ = std::exp(-1.0 / (0.055 * fs_));
-        snareSnapDecay_ = std::exp(-1.0 / (0.072 * fs_));
-        ghostDecay_ = std::exp(-1.0 / (0.036 * fs_));
-        closedHatDecay_ = std::exp(-1.0 / (0.030 * fs_));
-        openHatDecay_ = std::exp(-1.0 / (0.145 * fs_));
-        percDecay_ = std::exp(-1.0 / (0.042 * fs_));
+        // 8-voice drum kit envelope constants
+        kickPitchDecay_ = std::exp(-1.0 / (0.018 * fs_));
+        kickEnvDecay_ = std::exp(-1.0 / (0.135 * fs_));
+        kickClickDecay_ = std::exp(-1.0 / (0.0032 * fs_));
 
-        snareHpCoefs_ = hba::dsp::SvfCoefs::make(1900.0, 1.25, fs_);
-        ghostBpCoefs_ = hba::dsp::SvfCoefs::make(2400.0, 1.6, fs_);
-        closedHatCoefs_ = hba::dsp::SvfCoefs::make(7400.0, 1.5, fs_);
-        openHatCoefs_ = hba::dsp::SvfCoefs::make(6200.0, 1.3, fs_);
-        percBpCoefs_ = hba::dsp::SvfCoefs::make(1250.0, 2.2, fs_);
+        snarePitchDecay_ = std::exp(-1.0 / (0.012 * fs_));
+        snareBodyDecay_ = std::exp(-1.0 / (0.056 * fs_));
+        snareSnapDecay_ = std::exp(-1.0 / (0.078 * fs_));
+
+        ghostDecay_ = std::exp(-1.0 / (0.032 * fs_));
+        clapTailDecay_ = std::exp(-1.0 / (0.068 * fs_));
+        rimDecay_ = std::exp(-1.0 / (0.024 * fs_));
+
+        closedHatDecay_ = std::exp(-1.0 / (0.028 * fs_));
+        openHatDecay_ = std::exp(-1.0 / (0.175 * fs_));
+
+        percPitchDecay_ = std::exp(-1.0 / (0.026 * fs_));
+        percDecay_ = std::exp(-1.0 / (0.068 * fs_));
+        crashDecay_ = std::exp(-1.0 / (0.310 * fs_));
+
+        snareHpCoefs_ = hba::dsp::SvfCoefs::make(1850.0, 1.15, fs_);
+        ghostBpCoefs_ = hba::dsp::SvfCoefs::make(2500.0, 1.5, fs_);
+        clapBpCoefs_ = hba::dsp::SvfCoefs::make(1350.0, 1.85, fs_);
+        closedHatCoefs_ = hba::dsp::SvfCoefs::make(7800.0, 1.4, fs_);
+        openHatCoefs_ = hba::dsp::SvfCoefs::make(6400.0, 1.25, fs_);
+        percBpCoefs_ = hba::dsp::SvfCoefs::make(980.0, 2.0, fs_);
+        crashHpCoefs_ = hba::dsp::SvfCoefs::make(4600.0, 1.1, fs_);
         reset();
     }
 
@@ -63,62 +72,63 @@ class AuditionSynth {
         for (auto& v : voices_)
             v.reset();
         kit_.reset();
-        drumMode_ = false;
-        drive_ = 1.8;
-        channelBend_.fill(0.0);
-        channelSlide_.fill(0.45);
-        channelPressure_.fill(0.20);
+        drumMode_ = true;
+        slide_ = 0.56;
+        drive_ = 1.35;
+        pressure_ = 0.22;
+        pitchScoopSt_ = 0.0;
         gainSmooth_.snap(0.0);
         ageCounter_ = 0;
     }
 
-    void noteOn(int channel, int note, int velocity, bool useKit, bool isDrumMode = false) noexcept CL_NONBLOCKING {
+    void triggerDrumLane(int lane, int velocity) noexcept CL_NONBLOCKING {
         const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
-        if (useKit && !drumMode_)
-            allNotesOff();
-        drumMode_ = useKit;
-        if (useKit) {
-            int row = 0;
-            if (isDrumMode) {
-                if (note == 36)
-                    row = 0; // Kick
-                else if (note == 38)
-                    row = 1; // Snare
-                else if (note == 39)
-                    row = 2; // Ghost Snare
-                else if (note == 42)
-                    row = 3; // Closed Hat
-                else if (note == 46)
-                    row = 4; // Open Hat
-                else
-                    row = 5; // Ratchet Perc
-            } else {
-                // Allow Tone: Kit in Mono/MPE modes to articulate melodic pitches across the 6 drum voices.
-                if (note < 40)
-                    row = 0;
-                else if (note < 48)
-                    row = 1;
-                else if (note < 54)
-                    row = 2;
-                else if (note < 62)
-                    row = 3;
-                else if (note < 70)
-                    row = 4;
-                else
-                    row = 5;
+        drumMode_ = true;
+        kit_.trigger(std::clamp(lane, 0, kDrumLaneCount - 1), v, fs_);
+    }
+
+    void noteOn(int note, int velocity, bool isDrum, int laneHint = -1) noexcept CL_NONBLOCKING {
+        if (isDrum) {
+            int lane = laneHint;
+            if (lane < 0 || lane >= kDrumLaneCount) {
+                switch (note) {
+                case 36:
+                    lane = 0;
+                    break;
+                case 38:
+                    lane = 1;
+                    break;
+                case 37:
+                    lane = 2;
+                    break;
+                case 39:
+                    lane = 3;
+                    break;
+                case 42:
+                    lane = 4;
+                    break;
+                case 46:
+                    lane = 5;
+                    break;
+                case 43:
+                    lane = 6;
+                    break;
+                default:
+                    lane = 7;
+                    break;
+                }
             }
-            kit_.trigger(row, v);
+            triggerDrumLane(lane, velocity);
             return;
         }
 
-        const int ch = std::clamp(channel, 1, 16);
+        drumMode_ = false;
         const int clampedNote = std::clamp(note, 12, 120);
+        const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
 
-        // Reuse matching (channel, note), else free voice, else oldest voice.
         int slot = -1;
         for (int i = 0; i < kNumVoices; ++i) {
-            if (voices_[static_cast<std::size_t>(i)].gate && voices_[static_cast<std::size_t>(i)].note == clampedNote &&
-                voices_[static_cast<std::size_t>(i)].channel == ch) {
+            if (voices_[static_cast<std::size_t>(i)].gate && voices_[static_cast<std::size_t>(i)].note == clampedNote) {
                 slot = i;
                 break;
             }
@@ -139,25 +149,20 @@ class AuditionSynth {
             }
         }
 
-        const auto chIdx = static_cast<std::size_t>(ch - 1);
         auto& voice = voices_[static_cast<std::size_t>(slot)];
         voice.note = clampedNote;
-        voice.channel = ch;
         voice.vel = v;
         voice.gate = true;
-        voice.pluckEnv = 1.0;
-        voice.punchEnv = 1.0;
+        voice.stabEnv = 1.0;
         voice.age = ++ageCounter_;
-        voice.bendSmooth.snap(channelBend_[chIdx]);
-        voice.cutoffSmooth.snap(slideToCutoff(channelSlide_[chIdx]));
-        voice.qSmooth.snap(pressureToQ(channelPressure_[chIdx]));
+        voice.cutoffSmooth.snap(slideToCutoff(slide_));
+        voice.qSmooth.snap(pressureToQ(pressure_));
     }
 
-    void noteOff(int channel, int note) noexcept CL_NONBLOCKING {
-        const int ch = std::clamp(channel, 1, 16);
+    void noteOff(int note) noexcept CL_NONBLOCKING {
         const int clampedNote = std::clamp(note, 12, 120);
         for (auto& v : voices_) {
-            if (v.gate && v.note == clampedNote && v.channel == ch)
+            if (v.gate && v.note == clampedNote)
                 v.gate = false;
         }
     }
@@ -167,37 +172,12 @@ class AuditionSynth {
             v.gate = false;
     }
 
-    void setBendSemitones(int channel, double semitones) noexcept CL_NONBLOCKING {
-        const auto idx = static_cast<std::size_t>(std::clamp(channel, 1, 16) - 1);
-        channelBend_[idx] = std::clamp(semitones, -48.0, 48.0);
-    }
+    void setBrightness(double norm01) noexcept CL_NONBLOCKING { slide_ = std::clamp(norm01, 0.0, 1.0); }
+    void setDrive(double norm01) noexcept CL_NONBLOCKING { drive_ = 1.0 + 1.8 * std::clamp(norm01, 0.0, 1.0); }
+    void setPressure(double norm01) noexcept CL_NONBLOCKING { pressure_ = std::clamp(norm01, 0.0, 1.0); }
+    void setPitchScoop(double semitones) noexcept CL_NONBLOCKING { pitchScoopSt_ = std::clamp(semitones, -12.0, 12.0); }
 
-    // Channel 1 updates master default (and Ch 1); MPE member channels 2..16 update per-channel brightness.
-    void setBrightness(int channel, double norm01) noexcept CL_NONBLOCKING {
-        const double clamped = std::clamp(norm01, 0.0, 1.0);
-        const int ch = std::clamp(channel, 1, 16);
-        if (ch == 1)
-            channelSlide_.fill(clamped);
-        else
-            channelSlide_[static_cast<std::size_t>(ch - 1)] = clamped;
-    }
-
-    void setBrightness(double norm01) noexcept CL_NONBLOCKING { setBrightness(1, norm01); }
-
-    void setDrive(double norm01) noexcept CL_NONBLOCKING { drive_ = 1.0 + 3.4 * std::clamp(norm01, 0.0, 1.0); }
-
-    void setPressure(int channel, double norm01) noexcept CL_NONBLOCKING {
-        const double clamped = std::clamp(norm01, 0.0, 1.0);
-        const int ch = std::clamp(channel, 1, 16);
-        if (ch == 1)
-            channelPressure_.fill(clamped);
-        else
-            channelPressure_[static_cast<std::size_t>(ch - 1)] = clamped;
-    }
-
-    void setPressure(double norm01) noexcept CL_NONBLOCKING { setPressure(1, norm01); }
-
-    void renderSample(float gainDb, bool enabled, AuditionTone tone, float& outL, float& outR) noexcept CL_NONBLOCKING {
+    void renderSample(float gainDb, bool enabled, float& outL, float& outR) noexcept CL_NONBLOCKING {
         const double targetGain = enabled ? hba::dsp::dbToGain(static_cast<double>(gainDb)) : 0.0;
         const double g = gainSmooth_.step(targetGain, gainCoef_);
 
@@ -211,154 +191,122 @@ class AuditionSynth {
             return;
         }
 
-        const bool useKit = drumMode_ || (tone == AuditionTone::kit);
-        if (useKit) {
-            if (tone == AuditionTone::kit)
-                allNotesOff();
-            double kl = 0.0, kr = 0.0;
-            renderKitSample(kl, kr);
-            outL = static_cast<float>(std::tanh(kl * g * 0.90));
-            outR = static_cast<float>(std::tanh(kr * g * 0.90));
-            return;
-        }
-
-        const double atk = tone == AuditionTone::pluck ? atkPluck_ : atkStd_;
-        const double rel = tone == AuditionTone::pluck ? relPluck_ : relStd_;
-
         double sumL = 0.0;
         double sumR = 0.0;
 
-        constexpr std::array<double, kNumVoices> kPan{-0.24, 0.24, -0.38, 0.38, -0.18, 0.18, -0.44, 0.44};
+        if (kit_.active()) {
+            double kl = 0.0, kr = 0.0;
+            renderKitSample(kl, kr);
+            sumL += kl;
+            sumR += kr;
+        }
 
+        // Clean, strictly in-tune polyphonic warm chord/bass stab preview
+        constexpr std::array<double, kNumVoices> kPan{-0.22, 0.22, -0.34, 0.34, -0.14, 0.14, -0.40, 0.40};
         for (int vi = 0; vi < kNumVoices; ++vi) {
             auto& v = voices_[static_cast<std::size_t>(vi)];
             if (!v.gate && v.env < 1.0e-5)
                 continue;
 
-            const auto chIdx = static_cast<std::size_t>(v.channel - 1);
-            v.env += ((v.gate ? 1.0 : 0.0) - v.env) * (v.gate ? atk : rel);
-            v.pluckEnv *= pluckDecay_;
-            v.punchEnv *= subPunchDecay_;
+            v.env += ((v.gate ? 1.0 : 0.0) - v.env) * (v.gate ? atkStab_ : relStab_);
+            v.stabEnv *= stabEnvDecay_;
 
-            const double bend = v.bendSmooth.step(channelBend_[chIdx], bendCoef_);
-            const double subPunchSt = (tone == AuditionTone::sub) ? (9.0 * v.punchEnv) : 0.0;
-            const double freq = hba::dsp::midiToHz(static_cast<double>(v.note) + bend + subPunchSt);
-            const double inc = std::clamp(freq / fs_, 1.0e-5, 0.45);
-            const double detUp = std::clamp(inc * 1.0064, 1.0e-5, 0.45);   // +11 cents
-            const double detDown = std::clamp(inc * 0.9936, 1.0e-5, 0.45); // -11 cents
+            // Subtle ±3.5 cent warm chorus detune — ALWAYS dead-center in tune!
+            const double freq = hba::dsp::midiToHz(static_cast<double>(v.note) + pitchScoopSt_);
+            const double inc = std::clamp(freq / fs_, 1.0e-5, 0.44);
+            const double incUp = std::clamp(inc * 1.0020, 1.0e-5, 0.44);
+            const double incDn = std::clamp(inc * 0.9980, 1.0e-5, 0.44);
 
             v.phase += inc;
             if (v.phase >= 1.0)
                 v.phase -= 1.0;
-            v.detPhase += detUp;
+            v.detPhase += incUp;
             if (v.detPhase >= 1.0)
                 v.detPhase -= 1.0;
-            v.detPhase2 += detDown;
+            v.detPhase2 += incDn;
             if (v.detPhase2 >= 1.0)
                 v.detPhase2 -= 1.0;
-            v.subPhase += inc * 0.5;
-            if (v.subPhase >= 1.0)
-                v.subPhase -= 1.0;
 
-            const double cutoff = v.cutoffSmooth.step(slideToCutoff(channelSlide_[chIdx]), cutoffCoef_);
-            const double q = v.qSmooth.step(pressureToQ(channelPressure_[chIdx]), qCoef_);
+            const double sawL = hba::dsp::polyBlepSaw(v.detPhase, incUp);
+            const double sawR = hba::dsp::polyBlepSaw(v.detPhase2, incDn);
+            const double tri = 1.0 - 4.0 * std::abs(v.phase - 0.5);
+            const double osc = 0.38 * (sawL + sawR) + 0.34 * tri;
 
-            double voiceL = 0.0;
-            double voiceR = 0.0;
+            const double baseCut = v.cutoffSmooth.step(slideToCutoff(slide_), cutoffCoef_);
+            const double envCut = std::clamp(baseCut * (0.42 + (1.1 + 1.2 * v.vel) * v.stabEnv), 160.0, 0.40 * fs_);
+            const double q = v.qSmooth.step(pressureToQ(pressure_), qCoef_);
+            const auto coefs = hba::dsp::SvfCoefs::make(envCut, q, fs_);
+            const double body = v.filter.lowpass(coefs, v.shaper.process(osc * drive_));
 
-            if (tone == AuditionTone::sub) {
-                // Phase-locked pitch-punched sub sine with warm 2nd harmonic.
-                const double p = 6.283185307179586 * v.phase;
-                const double fund = std::sin(p);
-                const double warm = 0.18 * std::sin(2.0 * p);
-                const double s = (fund + warm) * v.env * v.vel * 0.88;
-                voiceL = s;
-                voiceR = s;
-            } else if (tone == AuditionTone::pluck) {
-                // PolyBLEP saw + pulse blend through fast exponential pluck SVF.
-                const double saw = hba::dsp::polyBlepSaw(v.phase, inc);
-                const double sq = hba::dsp::polyBlepSquare(v.phase, inc);
-                const double osc = 0.72 * saw + 0.28 * sq;
-                const double plCutoff =
-                    std::clamp(cutoff * (0.38 + (1.4 + 0.9 * v.vel) * v.pluckEnv), 120.0, 0.42 * fs_);
-                const auto coefs = hba::dsp::SvfCoefs::make(plCutoff, q * 0.85, fs_);
-                const double body = v.filter.lowpass(coefs, v.shaper.process(osc * (1.1 + 0.35 * drive_)));
-                const double amp = v.env * (0.24 + 0.76 * v.pluckEnv) * v.vel;
-                const double pan = kPan[static_cast<std::size_t>(vi)];
-                voiceL = body * amp * (1.0 - pan * 0.45);
-                voiceR = body * amp * (1.0 + pan * 0.45);
-            } else {
-                // Reese: 3-osc unison PolyBLEP saws (L/C/R detuned +-11 ct) + ADAA1 Tanh + stereo SVF + mono sub.
-                const double sC = hba::dsp::polyBlepSaw(v.phase, inc);
-                const double sL = hba::dsp::polyBlepSaw(v.detPhase, detUp);
-                const double sR = hba::dsp::polyBlepSaw(v.detPhase2, detDown);
-                const double midOsc = 0.42 * sC + 0.29 * (sL + sR);
-                const double sideOsc = 0.55 * (sL - sR);
-                const double sub = std::sin(6.283185307179586 * v.subPhase);
-                const auto reeseCoefs = hba::dsp::SvfCoefs::make(std::min(cutoff, 0.42 * fs_), q, fs_);
-                const double growl = v.filter.lowpass(reeseCoefs, v.shaper.process(midOsc * drive_));
-                const double side = v.sideFilter.lowpass(reeseCoefs, sideOsc * 0.48);
-                const double amp = v.env * v.vel;
-                voiceL = (0.44 * sub + 0.56 * (growl + side)) * amp;
-                voiceR = (0.44 * sub + 0.56 * (growl - side)) * amp;
-            }
-
-            sumL += voiceL * 0.56;
-            sumR += voiceR * 0.56;
+            const double amp = v.env * (0.35 + 0.65 * v.stabEnv) * v.vel * 0.46;
+            const double pan = kPan[static_cast<std::size_t>(vi)];
+            sumL += body * amp * (1.0 - pan * 0.45);
+            sumR += body * amp * (1.0 + pan * 0.45);
         }
 
-        outL = static_cast<float>(std::tanh(sumL * g * 0.86));
-        outR = static_cast<float>(std::tanh(sumR * g * 0.86));
+        outL = static_cast<float>(std::tanh(sumL * g * 0.92));
+        outR = static_cast<float>(std::tanh(sumR * g * 0.92));
     }
 
   private:
     static double slideToCutoff(double norm01) noexcept CL_NONBLOCKING {
-        return 170.0 * std::pow(26.0, std::clamp(norm01, 0.0, 1.0));
+        return 320.0 * std::pow(18.0, std::clamp(norm01, 0.0, 1.0));
     }
 
     static double pressureToQ(double norm01) noexcept CL_NONBLOCKING {
-        return 1.3 + 4.4 * std::clamp(norm01, 0.0, 1.0);
+        return 0.85 + 2.2 * std::clamp(norm01, 0.0, 1.0);
     }
 
     struct DrumKit {
-        // 6 independent polyphonic drum voices: Kick, Snare, Ghost, Closed Hat, Open Hat, Ratchet Perc
-        double kickEnv = 0.0, kickPitch = 180.0, kickPhase = 0.0, kickClick = 0.0, kickVel = 1.0;
-        double snareBodyEnv = 0.0, snareSnapEnv = 0.0, snarePhase1 = 0.0, snarePhase2 = 0.0, snareVel = 1.0;
+        double kickEnv = 0.0, kickPitch = 190.0, kickPhase = 0.0, kickClick = 0.0, kickVel = 1.0;
+        double snareBodyEnv = 0.0, snareSnapEnv = 0.0, snarePitch = 240.0, snarePhase1 = 0.0, snarePhase2 = 0.0,
+               snareVel = 1.0;
         double ghostEnv = 0.0, ghostPhase = 0.0, ghostVel = 1.0;
+        double clapEnv = 0.0, clapVel = 1.0, rimEnv = 0.0, rimPhase = 0.0;
+        int clapSample = 0;
         double chEnv = 0.0, chVel = 1.0;
         double ohEnv = 0.0, ohVel = 1.0;
-        double percEnv = 0.0, percPhase = 0.0, percPitch = 620.0, percVel = 1.0;
-        std::array<double, 4> hatPhases{};
-        hba::dsp::SvfState snareFilter{}, ghostFilter{}, chFilter{}, ohFilter{}, percFilter{};
+        double percEnv = 0.0, percPhase = 0.0, percPitch = 300.0, percVel = 1.0;
+        double crashEnv = 0.0, crashVel = 1.0;
+        std::array<double, 6> hatPhases{};
+        hba::dsp::SvfState snareFilter{}, ghostFilter{}, clapFilter{}, chFilter{}, ohFilter{}, percFilter{},
+            crashFilter{};
+        hba::dsp::Adaa1<hba::dsp::TanhShaper> kickShaper{};
 
         void reset() noexcept CL_NONBLOCKING {
-            kickEnv = kickClick = snareBodyEnv = snareSnapEnv = ghostEnv = chEnv = ohEnv = percEnv = 0.0;
-            kickPhase = snarePhase1 = snarePhase2 = ghostPhase = percPhase = 0.0;
+            kickEnv = kickClick = snareBodyEnv = snareSnapEnv = ghostEnv = clapEnv = rimEnv = chEnv = ohEnv = percEnv =
+                crashEnv = 0.0;
+            kickPhase = snarePhase1 = snarePhase2 = ghostPhase = rimPhase = percPhase = 0.0;
+            clapSample = 0;
             hatPhases.fill(0.0);
             snareFilter.reset();
             ghostFilter.reset();
+            clapFilter.reset();
             chFilter.reset();
             ohFilter.reset();
             percFilter.reset();
+            crashFilter.reset();
+            kickShaper.reset();
         }
 
         bool active() const noexcept CL_NONBLOCKING {
-            return kickEnv > 1e-5 || snareSnapEnv > 1e-5 || snareBodyEnv > 1e-5 || ghostEnv > 1e-5 || chEnv > 1e-5 ||
-                   ohEnv > 1e-5 || percEnv > 1e-5;
+            return kickEnv > 1e-5 || snareSnapEnv > 1e-5 || snareBodyEnv > 1e-5 || ghostEnv > 1e-5 || clapEnv > 1e-5 ||
+                   rimEnv > 1e-5 || chEnv > 1e-5 || ohEnv > 1e-5 || percEnv > 1e-5 || crashEnv > 1e-5;
         }
 
-        void trigger(int row, double vel) noexcept CL_NONBLOCKING {
-            switch (row) {
+        void trigger(int lane, double vel, double /*fs*/) noexcept CL_NONBLOCKING {
+            switch (lane) {
             case 0: // Kick
                 kickEnv = 1.0;
                 kickClick = 1.0;
-                kickPitch = 185.0;
+                kickPitch = 195.0;
                 kickPhase = 0.0;
                 kickVel = vel;
                 break;
             case 1: // Snare
                 snareBodyEnv = 1.0;
                 snareSnapEnv = 1.0;
+                snarePitch = 255.0;
                 snarePhase1 = snarePhase2 = 0.0;
                 snareVel = vel;
                 break;
@@ -367,20 +315,31 @@ class AuditionSynth {
                 ghostPhase = 0.0;
                 ghostVel = vel;
                 break;
-            case 3: // Closed Hat (chokes Open Hat like a real kit!)
+            case 3: // Clap / Rim
+                clapEnv = 1.0;
+                clapSample = 0;
+                clapVel = vel;
+                rimEnv = 0.85;
+                rimPhase = 0.0;
+                break;
+            case 4: // Closed Hat (chokes Open Hat!)
                 chEnv = 1.0;
                 chVel = vel;
-                ohEnv *= 0.08;
+                ohEnv *= 0.06;
                 break;
-            case 4: // Open Hat
+            case 5: // Open Hat
                 ohEnv = 1.0;
                 ohVel = vel;
                 break;
-            default: // Ratchet Perc
+            case 6: // Perc A (resonant tom/wood)
                 percEnv = 1.0;
                 percPhase = 0.0;
-                percPitch = 680.0;
+                percPitch = 320.0;
                 percVel = vel;
+                break;
+            default: // Perc B / Crash
+                crashEnv = 1.0;
+                crashVel = vel;
                 break;
             }
         }
@@ -389,97 +348,131 @@ class AuditionSynth {
     void renderKitSample(double& outL, double& outR) noexcept CL_NONBLOCKING {
         const double noise = noise_.nextBipolar();
 
-        // Shared inharmonic TR-808 metallic hat ring (4 square oscillators)
-        constexpr std::array<double, 4> kHatHz{296.0, 415.0, 543.0, 800.0};
+        // 6-oscillator classic metallic TR-808/909 square cluster for hats & crash
+        constexpr std::array<double, 6> kHatHz{205.3, 304.4, 369.6, 522.7, 540.0, 800.0};
         double metal = 0.0;
-        if (kit_.chEnv > 1e-5 || kit_.ohEnv > 1e-5) {
-            for (std::size_t i = 0; i < 4; ++i) {
+        if (kit_.chEnv > 1e-5 || kit_.ohEnv > 1e-5 || kit_.crashEnv > 1e-5) {
+            for (std::size_t i = 0; i < 6; ++i) {
                 kit_.hatPhases[i] += kHatHz[i] / fs_;
                 if (kit_.hatPhases[i] >= 1.0)
                     kit_.hatPhases[i] -= 1.0;
-                metal += kit_.hatPhases[i] < 0.5 ? 0.25 : -0.25;
+                metal += kit_.hatPhases[i] < 0.5 ? (1.0 / 6.0) : (-1.0 / 6.0);
             }
         }
 
         double l = 0.0, r = 0.0;
 
-        // 0. Kick (mono punch)
+        // 0. Kick (sub-locked punchy drop + warm 2nd harmonic + crisp transient click)
         if (kit_.kickEnv > 1e-5) {
-            kit_.kickPitch = 46.0 + (kit_.kickPitch - 46.0) * kickPitchDecay_;
+            kit_.kickPitch = 47.0 + (kit_.kickPitch - 47.0) * kickPitchDecay_;
             kit_.kickPhase += kit_.kickPitch / fs_;
             if (kit_.kickPhase >= 1.0)
                 kit_.kickPhase -= 1.0;
-            const double body = std::sin(6.283185307179586 * kit_.kickPhase) * kit_.kickEnv;
-            const double click = noise * kit_.kickClick * 0.24;
-            const double k = (body * 1.15 + click) * kit_.kickVel;
+            const double th = 6.283185307179586 * kit_.kickPhase;
+            const double body = (std::sin(th) + 0.16 * std::sin(2.0 * th)) * kit_.kickEnv;
+            const double click = noise * kit_.kickClick * 0.28;
+            const double k = kit_.kickShaper.process((body * 1.18 + click) * 1.35) * kit_.kickVel * 0.96;
             l += k;
             r += k;
             kit_.kickEnv *= kickEnvDecay_;
             kit_.kickClick *= kickClickDecay_;
         }
 
-        // 1. Snare (center tonal dual-body + crisp stereo wire snap)
+        // 1. Snare (tight pitched dual-shell body + crisp highpassed wires)
         if (kit_.snareSnapEnv > 1e-5 || kit_.snareBodyEnv > 1e-5) {
-            kit_.snarePhase1 += 192.0 / fs_;
+            kit_.snarePitch = 186.0 + (kit_.snarePitch - 186.0) * snarePitchDecay_;
+            kit_.snarePhase1 += kit_.snarePitch / fs_;
             if (kit_.snarePhase1 >= 1.0)
                 kit_.snarePhase1 -= 1.0;
-            kit_.snarePhase2 += 331.0 / fs_;
+            kit_.snarePhase2 += (kit_.snarePitch * 1.72) / fs_;
             if (kit_.snarePhase2 >= 1.0)
                 kit_.snarePhase2 -= 1.0;
-            const double body = (0.65 * std::sin(6.283185307179586 * kit_.snarePhase1) +
-                                 0.35 * std::sin(6.283185307179586 * kit_.snarePhase2)) *
+            const double body = (0.70 * std::sin(6.283185307179586 * kit_.snarePhase1) +
+                                 0.30 * std::sin(6.283185307179586 * kit_.snarePhase2)) *
                                 kit_.snareBodyEnv;
             const double snap = kit_.snareFilter.highpass(snareHpCoefs_, noise) * kit_.snareSnapEnv;
-            const double s = (0.48 * body + 0.68 * snap) * kit_.snareVel;
+            const double s = (0.54 * body + 0.72 * snap) * kit_.snareVel;
             l += s;
             r += s;
             kit_.snareBodyEnv *= snareBodyDecay_;
             kit_.snareSnapEnv *= snareSnapDecay_;
         }
 
-        // 2. Ghost Snare (slightly left-panned crisp woody tap)
+        // 2. Ghost Snare (crisp woody tap, slightly left)
         if (kit_.ghostEnv > 1e-5) {
-            kit_.ghostPhase += 265.0 / fs_;
+            kit_.ghostPhase += 262.0 / fs_;
             if (kit_.ghostPhase >= 1.0)
                 kit_.ghostPhase -= 1.0;
-            const double gBody = std::sin(6.283185307179586 * kit_.ghostPhase) * 0.35;
-            const double gSnap = kit_.ghostFilter.bandpass(ghostBpCoefs_, noise) * 0.75;
+            const double gBody = std::sin(6.283185307179586 * kit_.ghostPhase) * 0.32;
+            const double gSnap = kit_.ghostFilter.bandpass(ghostBpCoefs_, noise) * 0.78;
             const double gSig = (gBody + gSnap) * kit_.ghostEnv * kit_.ghostVel * 0.78;
-            l += gSig * 1.08;
-            r += gSig * 0.92;
+            l += gSig * 1.10;
+            r += gSig * 0.90;
             kit_.ghostEnv *= ghostDecay_;
         }
 
-        // 3. Closed Hat (slightly right-panned crisp metallic sizzle)
+        // 3. Clap / Rim (3-tap micro-flam filtered clap burst + woody rim crack)
+        if (kit_.clapEnv > 1e-5 || kit_.rimEnv > 1e-5) {
+            const double ms = static_cast<double>(kit_.clapSample++) * (1000.0 / fs_);
+            double burst = 1.0;
+            if (ms < 10.0)
+                burst = 0.85;
+            else if (ms < 19.0)
+                burst = 0.95;
+            else if (ms < 28.0)
+                burst = 1.10;
+            else
+                kit_.clapEnv *= clapTailDecay_;
+            const double cNoise = kit_.clapFilter.bandpass(clapBpCoefs_, noise) * kit_.clapEnv * burst * 0.76;
+            kit_.rimPhase += 840.0 / fs_;
+            if (kit_.rimPhase >= 1.0)
+                kit_.rimPhase -= 1.0;
+            const double rim = std::sin(6.283185307179586 * kit_.rimPhase) * kit_.rimEnv * 0.24;
+            const double sig = (cNoise + rim) * kit_.clapVel;
+            l += sig * 0.92;
+            r += sig * 1.08;
+            kit_.rimEnv *= rimDecay_;
+        }
+
+        // 4. Closed Hat (crisp right-shifted metallic tick)
         if (kit_.chEnv > 1e-5) {
             const double h =
-                kit_.chFilter.highpass(closedHatCoefs_, 0.55 * noise + 0.45 * metal) * kit_.chEnv * kit_.chVel * 0.65;
-            l += h * 0.88;
-            r += h * 1.12;
+                kit_.chFilter.highpass(closedHatCoefs_, 0.52 * noise + 0.48 * metal) * kit_.chEnv * kit_.chVel * 0.60;
+            l += h * 0.86;
+            r += h * 1.14;
             kit_.chEnv *= closedHatDecay_;
         }
 
-        // 4. Open Hat (wide right shimmer)
+        // 5. Open Hat (wide shimmer, choked by CH)
         if (kit_.ohEnv > 1e-5) {
             const double oh =
-                kit_.ohFilter.highpass(openHatCoefs_, 0.50 * noise + 0.50 * metal) * kit_.ohEnv * kit_.ohVel * 0.62;
-            l += oh * 0.84;
-            r += oh * 1.16;
+                kit_.ohFilter.highpass(openHatCoefs_, 0.46 * noise + 0.54 * metal) * kit_.ohEnv * kit_.ohVel * 0.58;
+            l += oh * 0.82;
+            r += oh * 1.18;
             kit_.ohEnv *= openHatDecay_;
         }
 
-        // 5. Ratchet Perc (left-panned woody rim/bongo transient)
+        // 6. Perc A (pitched resonant tom/bongo, left)
         if (kit_.percEnv > 1e-5) {
-            kit_.percPitch = 340.0 + (kit_.percPitch - 340.0) * kickPitchDecay_;
+            kit_.percPitch = 148.0 + (kit_.percPitch - 148.0) * percPitchDecay_;
             kit_.percPhase += kit_.percPitch / fs_;
             if (kit_.percPhase >= 1.0)
                 kit_.percPhase -= 1.0;
             const double pTone = std::sin(6.283185307179586 * kit_.percPhase);
-            const double pClick = kit_.percFilter.bandpass(percBpCoefs_, noise) * 0.45;
-            const double pSig = (0.68 * pTone + pClick) * kit_.percEnv * kit_.percVel * 0.82;
-            l += pSig * 1.15;
-            r += pSig * 0.85;
+            const double pClick = kit_.percFilter.bandpass(percBpCoefs_, noise) * 0.42;
+            const double pSig = (0.72 * pTone + pClick) * kit_.percEnv * kit_.percVel * 0.78;
+            l += pSig * 1.16;
+            r += pSig * 0.84;
             kit_.percEnv *= percDecay_;
+        }
+
+        // 7. Perc B / Crash (airy metallic ride/crash shimmer, right)
+        if (kit_.crashEnv > 1e-5) {
+            const double cr = kit_.crashFilter.highpass(crashHpCoefs_, 0.56 * noise + 0.44 * metal) * kit_.crashEnv *
+                              kit_.crashVel * 0.48;
+            l += cr * 0.78;
+            r += cr * 1.22;
+            kit_.crashEnv *= crashDecay_;
         }
 
         outL = l;
@@ -490,74 +483,71 @@ class AuditionSynth {
         double phase = 0.0;
         double detPhase = 0.0;
         double detPhase2 = 0.0;
-        double subPhase = 0.0;
         double env = 0.0;
-        double pluckEnv = 0.0;
-        double punchEnv = 0.0;
+        double stabEnv = 0.0;
         double vel = 0.8;
-        int note = 41;
-        int channel = 1;
+        int note = 60;
         bool gate = false;
         std::uint64_t age = 0;
-        hba::dsp::Smoother bendSmooth{};
         hba::dsp::Smoother cutoffSmooth{};
         hba::dsp::Smoother qSmooth{};
         hba::dsp::SvfState filter{};
-        hba::dsp::SvfState sideFilter{};
         hba::dsp::Adaa1<hba::dsp::TanhShaper> shaper{};
 
         void reset() noexcept CL_NONBLOCKING {
-            phase = detPhase = detPhase2 = subPhase = 0.0;
-            env = pluckEnv = punchEnv = 0.0;
+            phase = detPhase = detPhase2 = 0.0;
+            env = stabEnv = 0.0;
             gate = false;
             age = 0;
-            bendSmooth.snap(0.0);
-            cutoffSmooth.snap(900.0);
-            qSmooth.snap(1.8);
+            cutoffSmooth.snap(1400.0);
+            qSmooth.snap(1.1);
             filter.reset();
-            sideFilter.reset();
             shaper.reset();
         }
     };
 
     double fs_ = 48000.0;
-    double cutoffCoef_ = 0.003;
+    double cutoffCoef_ = 0.004;
     double gainCoef_ = 0.002;
-    double bendCoef_ = 0.004;
     double qCoef_ = 0.003;
-    double atkPluck_ = 0.014;
-    double relPluck_ = 0.0006;
-    double atkStd_ = 0.005;
-    double relStd_ = 0.0009;
-    double pluckDecay_ = 0.9998;
-    double subPunchDecay_ = 0.999;
+    double atkStab_ = 0.012;
+    double relStab_ = 0.0008;
+    double stabEnvDecay_ = 0.9998;
 
     double kickPitchDecay_ = 0.999;
     double kickEnvDecay_ = 0.9998;
-    double kickClickDecay_ = 0.994;
+    double kickClickDecay_ = 0.993;
+    double snarePitchDecay_ = 0.998;
     double snareBodyDecay_ = 0.9995;
     double snareSnapDecay_ = 0.9996;
-    double ghostDecay_ = 0.9993;
+    double ghostDecay_ = 0.9992;
+    double clapTailDecay_ = 0.9996;
+    double rimDecay_ = 0.9990;
     double closedHatDecay_ = 0.9992;
     double openHatDecay_ = 0.9998;
-    double percDecay_ = 0.9994;
+    double percPitchDecay_ = 0.9991;
+    double percDecay_ = 0.9996;
+    double crashDecay_ = 0.9999;
 
-    double drive_ = 1.8;
+    double slide_ = 0.56;
+    double drive_ = 1.35;
+    double pressure_ = 0.22;
+    double pitchScoopSt_ = 0.0;
 
     std::array<Voice, kNumVoices> voices_{};
-    std::array<double, 16> channelBend_{};
-    std::array<double, 16> channelSlide_{};
-    std::array<double, 16> channelPressure_{};
     hba::dsp::Smoother gainSmooth_{};
     DrumKit kit_{};
-    bool drumMode_ = false;
+    bool drumMode_ = true;
     std::uint64_t ageCounter_ = 0;
     hba::dsp::Lcg32 noise_{0x12345678u};
+
     hba::dsp::SvfCoefs snareHpCoefs_{};
     hba::dsp::SvfCoefs ghostBpCoefs_{};
+    hba::dsp::SvfCoefs clapBpCoefs_{};
     hba::dsp::SvfCoefs closedHatCoefs_{};
     hba::dsp::SvfCoefs openHatCoefs_{};
     hba::dsp::SvfCoefs percBpCoefs_{};
+    hba::dsp::SvfCoefs crashHpCoefs_{};
 };
 
 } // namespace cl

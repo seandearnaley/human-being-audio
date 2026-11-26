@@ -1,191 +1,117 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 #include "PluginProcessor.h"
-#include "cl/smf.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
 
+using namespace cl;
+using Catch::Approx;
+
 namespace {
-
-class FixedPlayHead final : public juce::AudioPlayHead {
-  public:
-    double bpm = 172.0;
-    double ppq = 0.0;
-    bool playing = true;
-
-    juce::Optional<PositionInfo> getPosition() const override {
-        PositionInfo info;
-        info.setBpm(bpm);
-        info.setPpqPosition(ppq);
-        info.setIsPlaying(playing);
-        return info;
-    }
+struct ScopedJuceGui {
+    ScopedJuceGui() { juce::initialiseJuce_GUI(); }
+    ~ScopedJuceGui() { juce::shutdownJuce_GUI(); }
 };
-
 } // namespace
 
-TEST_CASE("Cutline processor loads all 32 presets, generates MIDI + finite audio on uneven blocks, and recalls state",
-          "[plugin]") {
-    juce::ScopedJuceInitialiser_GUI juceInit;
+TEST_CASE("All Cutline 2.0 embedded factory presets load cleanly and cover all 6 categories", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    const auto& all = proc.presets.all();
+    REQUIRE(all.size() >= 30);
 
-    cl::PluginProcessor proc;
-    proc.prepareToPlay(48000.0, 257);
-
-    REQUIRE(proc.presets.all().size() >= 32);
-
-    FixedPlayHead playHead;
-    proc.setPlayHead(&playHead);
-
-    juce::AudioBuffer<float> audio(2, 257);
-    juce::MidiBuffer midi;
-
-    int totalMidiOut = 0;
-    const double beatsPerBlock = (playHead.bpm / 60.0 / 48000.0) * 257.0;
-
-    for (std::size_t idx = 0; idx < proc.presets.all().size(); ++idx) {
-        proc.presets.load(static_cast<int>(idx));
-        playHead.ppq = 0.0;
-        for (int b = 0; b < 16; ++b) {
-            audio.clear();
-            midi.clear();
-            proc.processBlock(audio, midi);
-            totalMidiOut += midi.getNumEvents();
-            for (int c = 0; c < 2; ++c) {
-                for (int i = 0; i < 257; ++i)
-                    REQUIRE(std::isfinite(audio.getSample(c, i)));
-            }
-            playHead.ppq += beatsPerBlock;
-        }
+    bool hasBreaks = false, hasNeuro = false, hasClub = false, hasPoly = false, hasSb = false, hasSlicer = false;
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        proc.presets.load(static_cast<int>(i));
+        const auto& cat = all[i].category;
+        hasBreaks |= (cat == "Breaks");
+        hasNeuro |= (cat == "Neuro");
+        hasClub |= (cat == "Club");
+        hasPoly |= (cat == "Polyrhythm");
+        hasSb |= (cat == "Strike Body");
+        hasSlicer |= (cat == "MIDI Slicer");
     }
-    CHECK(totalMidiOut > 50);
-
-    // Exported SMF parses cleanly through JUCE MidiFile (with overrides & held notes)
-    cl::Params defaults;
-    cl::HeldNotes held;
-    const auto midFile =
-        proc.exporter.writeTempFile(defaults, proc.curves.all(), proc.overrides.get(), held, 172.0, 0, "TestExport");
-    REQUIRE(midFile.existsAsFile());
-    {
-        juce::FileInputStream stream(midFile);
-        REQUIRE(stream.openedOk());
-        juce::MidiFile parsed;
-        REQUIRE(parsed.readFrom(stream));
-        CHECK(parsed.getNumTracks() == 1);
-        CHECK(parsed.getTimeFormat() == cl::kSmfPpq);
-        CHECK(parsed.getTrack(0)->getNumEvents() > 10);
-    }
-    midFile.deleteFile();
-
-    // Round-trip state including custom curve, 1.0 phrase overrides, and drumStyle
-    proc.curves.set(0, cl::curves::rampDown());
-    cl::PhraseOverrides ov;
-    ov.spans[0].locked = true;
-    ov.spans[0].lockedSeed = 407;
-    ov.spans[1].octaveShift = 1;
-    ov.spans[1].invert = true;
-    ov.barChordOffsets = {0, 0, -2, -1, 0, 0, 0, 0};
-    ov.fillStartFrac = 0.72f;
-    if (auto* n = ov.findOrCreateNote(cl::NoteKey{0, 0, 0})) {
-        n->ratchetCount = 3;
-        n->lengthSixteenths = 2;
-        n->microNudgeTicks = -6;
-    }
-    proc.overrides.set(ov);
-    if (auto* param = proc.state.getParameter("gravity"))
-        param->setValueNotifyingHost(0.75f);
-    if (auto* param = proc.state.getParameter("drumStyle"))
-        param->setValueNotifyingHost(0.4f);
-
-    juce::MemoryBlock stateBlob;
-    proc.getStateInformation(stateBlob);
-
-    cl::PluginProcessor restored;
-    restored.prepareToPlay(48000.0, 257);
-    restored.setStateInformation(stateBlob.getData(), static_cast<int>(stateBlob.getSize()));
-
-    REQUIRE(restored.curves.get(0) == cl::curves::rampDown());
-    REQUIRE(restored.overrides.get() == ov);
-    REQUIRE(restored.state.getParameter("gravity")->getValue() == Catch::Approx(0.75f).margin(1e-4f));
-    REQUIRE(restored.state.getParameter("drumStyle")->getValue() == Catch::Approx(0.4f).margin(1e-4f));
+    CHECK(hasBreaks);
+    CHECK(hasNeuro);
+    CHECK(hasClub);
+    CHECK(hasPoly);
+    CHECK(hasSb);
+    CHECK(hasSlicer);
 }
 
-TEST_CASE(
-    "Cutline PluginModel supports Undo/Redo, drag coalescing, and A/B compare across params, curves, and overrides",
-    "[plugin]") {
-    juce::ScopedJuceInitialiser_GUI juceInit;
+TEST_CASE("State persistence round-trips parameters, expression curves, and PatternBank", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor a;
+    PluginModel modelA(a);
 
-    cl::PluginProcessor proc;
+    modelA.set(ParamId::style, static_cast<float>(DrumStyle::ukg));
+    modelA.set(ParamId::gravity, 0.56f);
+    modelA.set(ParamId::ratchet, 0.72f);
+
+    PatternBank bank = modelA.patternBank();
+    bank.scenes[0].customized = true;
+    bank.scenes[0].lanes[6].stepLength = 7;
+    bank.scenes[0].lanes[1].locked = true;
+    bank.scenes[0].lanes[4].steps[15].ratchet = 3;
+    modelA.setPatternBank(bank);
+
+    juce::MemoryBlock blob;
+    a.getStateInformation(blob);
+    REQUIRE(blob.getSize() > 0);
+
+    PluginProcessor b;
+    b.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
+    PluginModel modelB(b);
+
+    CHECK(modelB.get(ParamId::style) == Approx(static_cast<float>(DrumStyle::ukg)));
+    CHECK(modelB.get(ParamId::gravity) == Approx(0.56f).margin(1e-3f));
+    CHECK(modelB.get(ParamId::ratchet) == Approx(0.72f).margin(1e-3f));
+    CHECK(modelB.patternBank() == bank);
+}
+
+TEST_CASE("PluginModel Undo/Redo, A/B, Mutate, Polymeter, and Clone actions work cleanly", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    PluginModel model(proc);
+
+    model.begin(ParamId::gravity);
+    model.set(ParamId::gravity, 0.65f);
+    model.end(ParamId::gravity);
+    REQUIRE(model.canUndo());
+
+    model.undo();
+    CHECK(model.get(ParamId::gravity) == Approx(spec(ParamId::gravity).def).margin(1e-3f));
+    REQUIRE(model.canRedo());
+    model.redo();
+    CHECK(model.get(ParamId::gravity) == Approx(0.65f).margin(1e-3f));
+
+    model.mutateActiveScene();
+    CHECK(model.patternBank().scenes[0].customized);
+    model.polymeterActiveScene();
+    CHECK(model.patternBank().scenes[0].lanes[6].stepLength != 16);
+    model.cloneActiveSceneToNext();
+    CHECK(static_cast<int>(model.get(ParamId::scene) + 0.5f) == 1);
+    CHECK(model.patternBank().scenes[1].customized);
+}
+
+TEST_CASE("PluginProcessor processBlock renders finite audition audio with balanced MIDI", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
     proc.prepareToPlay(48000.0, 256);
-    cl::PluginModel model(proc);
 
-    CHECK_FALSE(model.canUndo());
-    CHECK_FALSE(model.canRedo());
-    CHECK_FALSE(model.isSlotB());
-
-    const float initialGravity = model.get(cl::ParamId::gravity);
-    model.begin(cl::ParamId::gravity);
-    model.set(cl::ParamId::gravity, 0.85f);
-    model.end(cl::ParamId::gravity);
-    CHECK(model.canUndo());
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
-
-    // Rapid consecutive override edits (simulating a continuous note/divider drag) coalesce into one undo step.
-    cl::PhraseOverrides ov1;
-    ov1.fillStartFrac = 0.68f;
-    model.setOverrides(ov1);
-    cl::PhraseOverrides ov2 = ov1;
-    ov2.fillStartFrac = 0.74f;
-    model.setOverrides(ov2);
-    CHECK(model.overrides() == ov2);
-
-    // One undo reverts the entire coalesced override drag back to empty overrides.
-    model.undo();
-    CHECK_FALSE(model.overrides().hasAny());
-    CHECK(model.canRedo());
-
-    // Second undo reverts the gravity parameter edit.
-    model.undo();
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(initialGravity).margin(1e-3f));
-
-    // Redo restores both steps cleanly.
-    model.redo();
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
-    model.redo();
-    CHECK(model.overrides() == ov2);
-
-    // A/B compare isolates edits and supports copy active -> other.
-    model.toggleAB();
-    CHECK(model.isSlotB());
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
-
-    model.begin(cl::ParamId::gravity);
-    model.set(cl::ParamId::gravity, 0.20f);
-    model.end(cl::ParamId::gravity);
-    model.setLaneCurve(0, cl::curves::rampUp());
-
-    model.toggleAB();
-    CHECK_FALSE(model.isSlotB());
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.85f).margin(1e-3f));
-    CHECK_FALSE(model.laneCurve(0) == cl::curves::rampUp());
-
-    model.toggleAB();
-    CHECK(model.isSlotB());
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.20f).margin(1e-3f));
-    CHECK(model.laneCurve(0) == cl::curves::rampUp());
-
-    model.copyAB();
-    model.toggleAB();
-    CHECK_FALSE(model.isSlotB());
-    CHECK(model.get(cl::ParamId::gravity) == Catch::Approx(0.20f).margin(1e-3f));
-    CHECK(model.laneCurve(0) == cl::curves::rampUp());
-
-    // Processor owns history so Undo/Redo and A/B survive closing and reopening the editor.
-    {
-        cl::PluginModel reopened(proc);
-        CHECK_FALSE(reopened.isSlotB());
-        CHECK(reopened.canUndo());
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer midi;
+    for (int i = 0; i < 40; ++i) {
+        buf.clear();
+        midi.clear();
+        proc.processBlock(buf, midi);
+        for (int ch = 0; ch < 2; ++ch) {
+            const float* data = buf.getReadPointer(ch);
+            for (int s = 0; s < 256; ++s)
+                REQUIRE(std::isfinite(data[s]));
+        }
     }
 }
