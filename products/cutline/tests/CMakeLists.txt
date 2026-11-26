@@ -7,10 +7,12 @@ add_executable(cl-engine-tests
     engine/EngineTests.cpp
     engine/ResolveTests.cpp
     engine/HitsTests.cpp
+    engine/PatternLintTests.cpp
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/GainTests.cpp"
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/CurveTests.cpp")
 hba_build_for_host_only(cl-engine-tests)
 target_link_libraries(cl-engine-tests PRIVATE cl_engine_internal Catch2::Catch2WithMain cl_warnings)
+target_compile_definitions(cl-engine-tests PRIVATE CL_PATTERNS_DIR="${PROJECT_SOURCE_DIR}/patterns")
 if(HBA_RTSAN)
     hba_realtime_suite(cl-engine-tests "[engine]")
 else()
