@@ -8,4 +8,4 @@ add_library(cl_core STATIC
     src/preset.cpp)
 target_include_directories(cl_core PUBLIC include)
 target_compile_features(cl_core PUBLIC cxx_std_20)
-target_link_libraries(cl_core PUBLIC hba_dsp PRIVATE hba_core cl_warnings)
+target_link_libraries(cl_core PUBLIC hba_dsp hba_core PRIVATE cl_warnings)

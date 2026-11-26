@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Unified Human Being Audio web showcase renderer.
-// Links all 5 pure C++20 engines (LivecutEngine, tf_engine, pf_engine, cl_engine, tg_engine)
-// to render 30 composed, parameter-automated, record-ready musical clips (6 per product)
+// Links all 6 pure C++20 engines (LivecutEngine, tf_engine, pf_engine, cl_engine, tg_engine, sb_engine)
+// to render 36 composed, parameter-automated, record-ready musical clips (6 per product)
 // at 48 kHz stereo float WAV + catalog metadata JSON.
 
 #include "cl/engine.h"
@@ -17,6 +17,8 @@
 #include "tg/engine.h"
 #include "tg/preset.h"
 
+#include <hba/core/wav.h>
+#include <hba/dsp/pitch.h>
 #include <hba/dsp/svf.h>
 #include <nlohmann/json.hpp>
 
@@ -40,7 +42,7 @@ constexpr double kSr = 48000.0;
 constexpr int kBlock = 64;
 constexpr double kTwoPi = 6.28318530717959;
 
-double midiToHz(double note) { return 440.0 * std::pow(2.0, (note - 69.0) / 12.0); }
+double midiToHz(double note) { return hba::dsp::midiToHz(note); }
 
 float lerpF(float a, float b, double t) {
     const double c = std::clamp(t, 0.0, 1.0);
@@ -60,35 +62,10 @@ std::string readTextFile(const fs::path& p) {
     return ss.str();
 }
 
-// Write 48 kHz 32-bit IEEE float stereo WAV
+// Write 48 kHz 32-bit IEEE float stereo WAV via shared spec-compliant hba::core::writeWavFloat
 bool writeWavFloat32(const fs::path& path, const std::vector<float>& stereo, int sampleRate) {
     fs::create_directories(path.parent_path());
-    std::ofstream out(path, std::ios::binary);
-    if (!out) return false;
-    const auto dataBytes = static_cast<std::uint32_t>(stereo.size() * sizeof(float));
-    const std::uint32_t riffSize = 36u + dataBytes;
-    const std::uint16_t formatTag = 3u; // IEEE float
-    const std::uint16_t channels = 2u;
-    const auto sr = static_cast<std::uint32_t>(sampleRate);
-    const std::uint32_t byteRate = sr * channels * 4u;
-    const std::uint16_t blockAlign = channels * 4u;
-    const std::uint16_t bits = 32u;
-    const std::uint32_t fmtSize = 16u;
-
-    out.write("RIFF", 4);
-    out.write(reinterpret_cast<const char*>(&riffSize), 4);
-    out.write("WAVEfmt ", 8);
-    out.write(reinterpret_cast<const char*>(&fmtSize), 4);
-    out.write(reinterpret_cast<const char*>(&formatTag), 2);
-    out.write(reinterpret_cast<const char*>(&channels), 2);
-    out.write(reinterpret_cast<const char*>(&sr), 4);
-    out.write(reinterpret_cast<const char*>(&byteRate), 4);
-    out.write(reinterpret_cast<const char*>(&blockAlign), 2);
-    out.write(reinterpret_cast<const char*>(&bits), 2);
-    out.write("data", 4);
-    out.write(reinterpret_cast<const char*>(&dataBytes), 4);
-    out.write(reinterpret_cast<const char*>(stereo.data()), static_cast<std::streamsize>(dataBytes));
-    return static_cast<bool>(out);
+    return hba::core::writeWavFloat(path.string(), stereo, 2, sampleRate);
 }
 
 // Gentle studio polish: DC block, RMS-aware target normalization, soft safety ceiling (-1.2 dBFS), clean fades

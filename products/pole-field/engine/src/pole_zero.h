@@ -9,7 +9,9 @@
 
 #include "fold.h"
 #include "pf/cubes.h"
-#include "svf.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/svf.h>
 
 #include <algorithm>
 #include <array>
@@ -18,22 +20,22 @@
 namespace pf::dsp {
 
 struct PoleZeroCoefs {
-    SvfCoefs svf {};
+    hba::dsp::SvfCoefs svf{};
     double m0 = 1.0;
     double m1 = 0.0;
     double m2 = 0.0;
     double bpGain = 1.0;
 
     static PoleZeroCoefs make(const SectionSpec& s, double sampleRate) noexcept PF_NONBLOCKING {
-        const double gp = SvfCoefs::prewarp(static_cast<double>(s.poleHz), sampleRate);
-        const double gz = SvfCoefs::prewarp(static_cast<double>(s.zeroHz), sampleRate);
+        const double gp = hba::dsp::SvfCoefs::prewarp(static_cast<double>(s.poleHz), sampleRate);
+        const double gz = hba::dsp::SvfCoefs::prewarp(static_cast<double>(s.zeroHz), sampleRate);
         const double kp = 1.0 / std::clamp(static_cast<double>(s.poleQ), 0.5, 45.0);
         const double kz = 1.0 / std::clamp(static_cast<double>(s.zeroQ), 0.5, 24.0);
         const double r = gz / gp;
         const double norm = 1.0 / std::max(0.25, r);
 
         PoleZeroCoefs c;
-        c.svf = SvfCoefs::fromGK(gp, kp);
+        c.svf = hba::dsp::SvfCoefs::fromGK(gp, kp);
         c.m0 = norm;
         c.m1 = norm * (r * kz - kp);
         c.m2 = norm * (r * r - 1.0);
@@ -189,10 +191,10 @@ public:
     }
 
 private:
-    std::array<SvfState, kNumStages> states_ {};
-    std::array<Saturator, 2> sat_ {};
-    DcBlocker exitDc_;
-    double padDelay_ = 0.0;
+  std::array<hba::dsp::SvfState, kNumStages> states_{};
+  std::array<Saturator, 2> sat_{};
+  hba::dsp::DcBlocker exitDc_;
+  double padDelay_ = 0.0;
 };
 
 }

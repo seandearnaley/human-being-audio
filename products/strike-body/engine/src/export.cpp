@@ -1,30 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "sb/export.h"
 
+#include <hba/core/wav.h>
 #include <hba/dsp/gain.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 
 namespace sb {
-
-namespace {
-void writeLe16(std::ofstream& f, std::uint16_t v) {
-    const char b[2] = {static_cast<char>(v & 0xFFu), static_cast<char>((v >> 8) & 0xFFu)};
-    f.write(b, 2);
-}
-
-void writeLe32(std::ofstream& f, std::uint32_t v) {
-    const char b[4] = {static_cast<char>(v & 0xFFu), static_cast<char>((v >> 8) & 0xFFu),
-                       static_cast<char>((v >> 16) & 0xFFu), static_cast<char>((v >> 24) & 0xFFu)};
-    f.write(b, 4);
-}
-} // namespace
 
 std::vector<float> renderOneShot(const OneShotRequest& req) {
     const double sr = req.sampleRate > 8000.0 ? req.sampleRate : 48000.0;
@@ -124,34 +110,7 @@ std::vector<float> renderOneShot(const OneShotRequest& req) {
 }
 
 bool writeWavFloat(const std::string& path, const std::vector<float>& interleavedStereo, int sampleRate) {
-    const std::filesystem::path fsPath(std::u8string_view(reinterpret_cast<const char8_t*>(path.data()), path.size()));
-    std::ofstream f(fsPath, std::ios::binary);
-    if (!f)
-        return false;
-    const std::uint32_t sampleFrames = static_cast<std::uint32_t>(interleavedStereo.size() / 2u);
-    const std::uint32_t dataBytes = static_cast<std::uint32_t>(interleavedStereo.size() * sizeof(float));
-    // Spec-compliant IEEE float WAV: 18-byte fmt chunk (cbSize=0) + mandatory 4-byte fact chunk.
-    const std::uint32_t riffSize = 4u + (8u + 18u) + (8u + 4u) + (8u + dataBytes);
-
-    f.write("RIFF", 4);
-    writeLe32(f, riffSize);
-    f.write("WAVE", 4);
-    f.write("fmt ", 4);
-    writeLe32(f, 18u);
-    writeLe16(f, 3u); // IEEE float
-    writeLe16(f, 2u); // Stereo
-    writeLe32(f, static_cast<std::uint32_t>(sampleRate));
-    writeLe32(f, static_cast<std::uint32_t>(sampleRate * 2 * 4));
-    writeLe16(f, 8u);
-    writeLe16(f, 32u);
-    writeLe16(f, 0u); // cbSize = 0
-    f.write("fact", 4);
-    writeLe32(f, 4u);
-    writeLe32(f, sampleFrames);
-    f.write("data", 4);
-    writeLe32(f, dataBytes);
-    f.write(reinterpret_cast<const char*>(interleavedStereo.data()), static_cast<std::streamsize>(dataBytes));
-    return f.good();
+    return hba::core::writeWavFloat(path, interleavedStereo, 2, sampleRate);
 }
 
 std::string keyTaggedStem(const std::string& presetName, float bodyHz) {

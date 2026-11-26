@@ -3,16 +3,11 @@ add_library(tf_engine STATIC
     include/tf/nonblocking.h
     include/tf/render.h
     include/tf/voice_pitch.h
-    src/control.h
-    src/crossover.h
-    src/decimator.h
-    src/denormals.h
     src/feedback_delay.h
     src/fold.h
     src/harmonic.h
     src/limiter.h
     src/squash.h
-    src/svf.h
     src/tract.h
     src/voice.h
     src/engine.cpp

@@ -2,10 +2,10 @@
 // and post-lattice saturation, backed by hba::dsp::MultiShaperAdaa2.
 #pragma once
 
-#include "control.h"
 #include "pf/params.h"
 
 #include <hba/dsp/adaa.h>
+#include <hba/dsp/control.h>
 
 #include <algorithm>
 
@@ -65,7 +65,7 @@ public:
             xfade_ = 0.0;
         }
 
-        const double gain = dbToGain(drive01 * 24.0);
+        const double gain = hba::dsp::dbToGain(drive01 * 24.0);
         const double offset = 0.45 * asym01 * drive01;
         double dry = 0.0;
         const double shaped =
@@ -80,7 +80,7 @@ public:
     }
 
   private:
-    DcBlocker dc_;
+    hba::dsp::DcBlocker dc_;
     hba::dsp::MultiShaperAdaa2 shaper_{};
     double xfade_ = 1.0;
     double xfadeInc_ = 1.0 / 960.0;

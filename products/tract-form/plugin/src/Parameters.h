@@ -3,25 +3,24 @@
 
 #include "tf/params.h"
 
-#include <juce_audio_processors/juce_audio_processors.h>
+#include <hba/host/parameters.h>
 
-#include <array>
-#include <atomic>
+#include <string_view>
 
 namespace tf {
 
-juce::String toJuce(std::string_view utf8);
+inline juce::String toJuce(std::string_view utf8) { return hba::host::toJuce(utf8); }
 
 juce::AudioProcessorValueTreeState::ParameterLayout makeParameterLayout();
 
 // Raw parameter values in table order, for reading on the audio thread.
 class ParameterValues {
-public:
+  public:
     explicit ParameterValues(juce::AudioProcessorValueTreeState& state);
     Params snapshot() const noexcept;
 
-private:
-    std::array<std::atomic<float>*, kParamCount> values_ {};
+  private:
+    hba::host::ParameterSnapshotter<Params, decltype(kParams)> snap_;
 };
 
-}
+} // namespace tf

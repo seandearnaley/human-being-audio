@@ -26,6 +26,7 @@ add_executable(hba_modules_tests
     dsp/tests/CurveTests.cpp
     dsp/tests/DspModulesTests.cpp
     dsp/tests/GainTests.cpp
+    core/tests/CorePrimitivesTests.cpp
     core/tests/PresetJsonTests.cpp)
 hba_build_for_host_only(hba_modules_tests)
 target_include_directories(hba_modules_tests PRIVATE "${PROJECT_SOURCE_DIR}/studio-ui")

@@ -3,52 +3,14 @@
 
 #include "tg/engine.h"
 
+#include <hba/core/smf.h>
+#include <hba/core/wav.h>
+
 #include <algorithm>
 #include <cmath>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 
 namespace tg {
-
-namespace {
-void pushBe16(std::vector<std::uint8_t>& out, std::uint16_t v) {
-    out.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFFu));
-    out.push_back(static_cast<std::uint8_t>(v & 0xFFu));
-}
-
-void pushBe32(std::vector<std::uint8_t>& out, std::uint32_t v) {
-    out.push_back(static_cast<std::uint8_t>((v >> 24) & 0xFFu));
-    out.push_back(static_cast<std::uint8_t>((v >> 16) & 0xFFu));
-    out.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFFu));
-    out.push_back(static_cast<std::uint8_t>(v & 0xFFu));
-}
-
-void pushVlq(std::vector<std::uint8_t>& out, std::uint32_t value) {
-    std::uint8_t buf[5]{};
-    int n = 0;
-    buf[n++] = static_cast<std::uint8_t>(value & 0x7Fu);
-    value >>= 7;
-    while (value > 0) {
-        buf[n++] = static_cast<std::uint8_t>((value & 0x7Fu) | 0x80u);
-        value >>= 7;
-    }
-    for (int i = n - 1; i >= 0; --i)
-        out.push_back(buf[i]);
-}
-
-void writeLe16(std::ofstream& f, std::uint16_t v) {
-    const char b[2] = {static_cast<char>(v & 0xFFu), static_cast<char>((v >> 8) & 0xFFu)};
-    f.write(b, 2);
-}
-
-void writeLe32(std::ofstream& f, std::uint32_t v) {
-    const char b[4] = {static_cast<char>(v & 0xFFu), static_cast<char>((v >> 8) & 0xFFu),
-                       static_cast<char>((v >> 16) & 0xFFu), static_cast<char>((v >> 24) & 0xFFu)};
-    f.write(b, 4);
-}
-} // namespace
 
 std::vector<float> renderOfflineLoop(const RenderRequest& request) {
     const double sr = request.sampleRate > 8000.0 ? request.sampleRate : 48000.0;
@@ -103,34 +65,7 @@ std::vector<float> renderOfflineLoop(const RenderRequest& request) {
 }
 
 bool writeWavFloat(const std::string& path, const std::vector<float>& interleavedStereo, int sampleRate) {
-    const std::filesystem::path fsPath(std::u8string_view(reinterpret_cast<const char8_t*>(path.data()), path.size()));
-    std::ofstream f(fsPath, std::ios::binary);
-    if (!f)
-        return false;
-    const std::uint32_t sampleFrames = static_cast<std::uint32_t>(interleavedStereo.size() / 2u);
-    const std::uint32_t dataBytes = static_cast<std::uint32_t>(interleavedStereo.size() * sizeof(float));
-    // Spec-compliant IEEE float WAV: 18-byte fmt chunk (cbSize=0) + mandatory 4-byte fact chunk.
-    const std::uint32_t riffSize = 4u + (8u + 18u) + (8u + 4u) + (8u + dataBytes);
-
-    f.write("RIFF", 4);
-    writeLe32(f, riffSize);
-    f.write("WAVE", 4);
-    f.write("fmt ", 4);
-    writeLe32(f, 18u);
-    writeLe16(f, 3u); // IEEE float
-    writeLe16(f, 2u); // Stereo
-    writeLe32(f, static_cast<std::uint32_t>(sampleRate));
-    writeLe32(f, static_cast<std::uint32_t>(sampleRate * 2 * 4));
-    writeLe16(f, 8u);
-    writeLe16(f, 32u);
-    writeLe16(f, 0u); // cbSize = 0
-    f.write("fact", 4);
-    writeLe32(f, 4u);
-    writeLe32(f, sampleFrames);
-    f.write("data", 4);
-    writeLe32(f, dataBytes);
-    f.write(reinterpret_cast<const char*>(interleavedStereo.data()), static_cast<std::streamsize>(dataBytes));
-    return f.good();
+    return hba::core::writeWavFloat(path, interleavedStereo, 2, sampleRate);
 }
 
 std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& curves, const SceneMatrix& matrix,
@@ -163,16 +98,11 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
         std::clamp(params.choice(ParamId::spiralRatio), 0, static_cast<int>(kSpiralRatioSemitones.size()) - 1);
     const double ratioSemi = kSpiralRatioSemitones[static_cast<std::size_t>(ratioIdx)];
 
-    struct MidiEvt {
-        std::uint32_t tick;
-        int order;
-        std::uint8_t d0, d1, d2;
-        int size;
-    };
-    std::vector<MidiEvt> evs;
+    std::vector<hba::core::SmfEvent> evs;
     int seqOrder = 0;
-    const auto addMsg = [&](std::uint32_t tick, std::uint8_t b0, std::uint8_t b1, std::uint8_t b2, int sz = 3) {
-        evs.push_back({tick, seqOrder++, b0, b1, b2, sz});
+    const auto addMsg = [&](std::uint32_t tick, std::uint8_t b0, std::uint8_t b1, std::uint8_t b2,
+                            std::uint8_t sz = 3) {
+        evs.push_back(hba::core::SmfEvent::msg(tick, seqOrder++, b0, b1, b2, sz));
     };
 
     // MPE Lower Zone MCM + per-channel RPN 00 00 at tick 0
@@ -227,8 +157,8 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
         addMsg(0, static_cast<std::uint8_t>(0x90 | ch), static_cast<std::uint8_t>(baseNotes[vi]), 110);
     }
 
-    // Sample smooth 14-bit pitch-bend trajectories every 1/32nd note (120 ticks)
-    constexpr std::uint32_t kStepTicks = 60; // 1/64th note resolution!
+    // Sample smooth 14-bit pitch-bend trajectories every 1/64th note (60 ticks at 960 PPQ)
+    constexpr std::uint32_t kStepTicks = 60;
     for (std::uint32_t tick = kStepTicks; tick < totalTicks; tick += kStepTicks) {
         const auto pitches = samplePitchesAt(static_cast<double>(tick) / kPpq);
         for (int v = 0; v < kVoiceCount; ++v) {
@@ -246,7 +176,7 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
         }
     }
 
-    // Note-Offs just before loop end so Ableton clips loop cleanly
+    // Note-Offs just before loop end so DAW clips loop cleanly
     const std::uint32_t offTick = totalTicks > 10 ? totalTicks - 4 : totalTicks;
     for (int v = 0; v < kVoiceCount; ++v) {
         const auto ch = static_cast<std::uint8_t>(v + 1);
@@ -254,43 +184,7 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
                static_cast<std::uint8_t>(baseNotes[static_cast<std::size_t>(v)]), 0);
     }
 
-    std::sort(evs.begin(), evs.end(), [](const MidiEvt& a, const MidiEvt& b) {
-        return a.tick != b.tick ? a.tick < b.tick : a.order < b.order;
-    });
-
-    // Build track bytes
-    std::vector<std::uint8_t> track;
-    // Tempo meta-event at tick 0
-    const std::uint32_t usPerBeat = static_cast<std::uint32_t>(std::llround(60'000'000.0 / safeBpm));
-    pushVlq(track, 0);
-    track.insert(track.end(),
-                 {0xFF, 0x51, 0x03, static_cast<std::uint8_t>((usPerBeat >> 16) & 0xFFu),
-                  static_cast<std::uint8_t>((usPerBeat >> 8) & 0xFFu), static_cast<std::uint8_t>(usPerBeat & 0xFFu)});
-
-    std::uint32_t prevTick = 0;
-    for (const auto& e : evs) {
-        pushVlq(track, e.tick - prevTick);
-        prevTick = e.tick;
-        track.push_back(e.d0);
-        if (e.size >= 2)
-            track.push_back(e.d1);
-        if (e.size >= 3)
-            track.push_back(e.d2);
-    }
-    // End of track at exact totalTicks so DAW loop length matches loopBars!
-    pushVlq(track, totalTicks >= prevTick ? (totalTicks - prevTick) : 0u);
-    track.insert(track.end(), {0xFF, 0x2F, 0x00});
-
-    std::vector<std::uint8_t> smf;
-    smf.insert(smf.end(), {'M', 'T', 'h', 'd'});
-    pushBe32(smf, 6u);
-    pushBe16(smf, 0u); // Format 0
-    pushBe16(smf, 1u); // 1 track
-    pushBe16(smf, kPpq);
-    smf.insert(smf.end(), {'M', 'T', 'r', 'k'});
-    pushBe32(smf, static_cast<std::uint32_t>(track.size()));
-    smf.insert(smf.end(), track.begin(), track.end());
-    return smf;
+    return hba::core::encodeSmfType0(std::move(evs), kPpq, safeBpm, totalTicks);
 }
 
 } // namespace tg

@@ -4,10 +4,10 @@
 // parameters, follow another lane, and play drawn curves.
 #include "helpers.h"
 
-#include "control.h"
-
 #include "tf/lanes.h"
 #include "tf/render.h"
+
+#include <hba/dsp/control.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -55,12 +55,12 @@ std::size_t at(double seconds, double fs) { return static_cast<std::size_t>(seco
 
 // Phase (radians) of the component at `hz` in x[from, to), whole periods.
 double phaseAt(const Signal& x, double hz, double fs, std::size_t from, std::size_t to) {
-    const double w = 2.0 * dsp::kPi * hz / fs;
-    const double periods = std::floor(static_cast<double>(to - from) * w / (2.0 * dsp::kPi));
-    to = from + static_cast<std::size_t>(std::floor(periods * 2.0 * dsp::kPi / w));
+    const double w = 2.0 * hba::dsp::kPi * hz / fs;
+    const double periods = std::floor(static_cast<double>(to - from) * w / (2.0 * hba::dsp::kPi));
+    to = from + static_cast<std::size_t>(std::floor(periods * 2.0 * hba::dsp::kPi / w));
     std::complex<double> acc { 0, 0 };
     for (std::size_t n = from; n < to; ++n) acc += x[n] * std::polar(1.0, -w * static_cast<double>(n));
-    return std::arg(acc) + dsp::kPi / 2;
+    return std::arg(acc) + hba::dsp::kPi / 2;
 }
 
 // Frequency below which all but 1 % of x[from, to)'s power above `low` lies.
@@ -203,10 +203,11 @@ TEST_CASE("lanes: a lane on Fit rotates the sub by its value x 180 degrees, leve
     const double bar = quartersToSeconds(4.0);
     setLane(s.params, 0, LaneTarget::fit, LaneShape::square, kRateBar, 0.5f);
     const auto out = render(s, held(note), frames(2.0 * bar, fs));
-    const double w = 2.0 * dsp::kPi * f0 / fs;
+    const double w = 2.0 * hba::dsp::kPi * f0 / fs;
     const double master = w * (1.0 / s.oversampling - out.latency);
     const auto degreesIn = [&](double from, double to) {
-        return std::remainder(phaseAt(out.left, f0, fs, at(from, fs), at(to, fs)) - master, 2.0 * dsp::kPi) * 180.0 / dsp::kPi;
+        return std::remainder(phaseAt(out.left, f0, fs, at(from, fs), at(to, fs)) - master, 2.0 * hba::dsp::kPi) *
+               180.0 / hba::dsp::kPi;
     };
     const auto rmsIn = [&](double from) {
         const auto period = fs / f0;
@@ -233,11 +234,12 @@ TEST_CASE("lanes: two lanes on one target add", "[engine][lanes]") {
     setLane(s.params, 0, LaneTarget::fit, LaneShape::square, kRateBar, 0.25f);
     setLane(s.params, 2, LaneTarget::fit, LaneShape::square, kRateBar, 0.25f);
     const auto out = render(s, held(note), frames(2.0 * bar, fs));
-    const double w = 2.0 * dsp::kPi * f0 / fs;
+    const double w = 2.0 * hba::dsp::kPi * f0 / fs;
     const double master = w * (1.0 / s.oversampling - out.latency);
     const double high =
-        std::remainder(phaseAt(out.left, f0, fs, at(bar + 0.1 * bar, fs), at(bar + 0.45 * bar, fs)) - master, 2.0 * dsp::kPi) *
-        180.0 / dsp::kPi;
+        std::remainder(phaseAt(out.left, f0, fs, at(bar + 0.1 * bar, fs), at(bar + 0.45 * bar, fs)) - master,
+                       2.0 * hba::dsp::kPi) *
+        180.0 / hba::dsp::kPi;
     std::printf("[lanes] two squares at 0.25 on fit: %+.2f deg\n", high);
     CHECK(std::abs(high - 90.0) <= 3.0);
 }
@@ -308,15 +310,16 @@ TEST_CASE("lanes: a two-level hold curve plays two levels, switching at its poin
     const double fs = s.sampleRate, f0 = noteHz(note);
     const double bar = quartersToSeconds(4.0);
     const auto out = render(s, held(note), frames(2.0 * bar, fs));
-    const double w = 2.0 * dsp::kPi * f0 / fs;
+    const double w = 2.0 * hba::dsp::kPi * f0 / fs;
     const double master = w * (1.0 / s.oversampling - out.latency);
     // Two whole periods at a time, every 5 ms through the second cycle.
     const double window = 2.0 / f0;
     std::vector<double> times, degrees;
     for (double t = bar; t + window < 2.0 * bar; t += 0.005) {
         times.push_back(t + 0.5 * window);
-        degrees.push_back(std::remainder(phaseAt(out.left, f0, fs, at(t, fs), at(t + window, fs)) - master, 2.0 * dsp::kPi) *
-                          180.0 / dsp::kPi);
+        degrees.push_back(
+            std::remainder(phaseAt(out.left, f0, fs, at(t, fs), at(t + window, fs)) - master, 2.0 * hba::dsp::kPi) *
+            180.0 / hba::dsp::kPi);
     }
     // Away from the switches (more than the window plus 4 smoothing time
     // constants), every reading is one of the two levels.

@@ -5,8 +5,11 @@
 // vowel; it is computed from the actual digital response in prepare().
 #pragma once
 
-#include "svf.h"
+#include "tf/nonblocking.h"
 #include "tf/vowels.h"
+
+#include <hba/dsp/control.h>
+#include <hba/dsp/svf.h>
 
 #include <algorithm>
 #include <array>
@@ -40,16 +43,17 @@ inline double clampFormantHz(double hz, double sampleRate) noexcept TF_NONBLOCKI
 // Magnitude response of the comp-less formant sum at `hz`, for the digital bank.
 inline double formantSumPower(const FormantTargets& t, double hz, double sampleRate) {
     std::complex<double> sum { 0.0, 0.0 };
-    const double w = std::tan(kPi * hz / sampleRate);
+    const double w = std::tan(hba::dsp::kPi * hz / sampleRate);
     for (int i = 0; i < kFormantCount; ++i) {
         const double f = clampFormantHz(std::exp(t.logHz[static_cast<std::size_t>(i)]), sampleRate);
         const double bw = std::exp(t.logBandwidth[static_cast<std::size_t>(i)]);
-        const double g = std::tan(kPi * f / sampleRate);
+        const double g = std::tan(hba::dsp::kPi * f / sampleRate);
         const double k = bw / f;
         const double omega = w / g;
         const std::complex<double> s { 0.0, omega };
         const std::complex<double> h = k * s / (s * s + k * s + 1.0);
-        sum += kFormantSign[static_cast<std::size_t>(i)] * dbToGain(t.gainDb[static_cast<std::size_t>(i)]) * h;
+        sum +=
+            kFormantSign[static_cast<std::size_t>(i)] * hba::dsp::dbToGain(t.gainDb[static_cast<std::size_t>(i)]) * h;
     }
     return std::norm(sum);
 }
@@ -127,11 +131,11 @@ public:
         for (std::size_t i = 0; i < kFormantCount; ++i) {
             const double f = clampFormantHz(std::exp(t.logHz[i]), sampleRate);
             const double bw = std::exp(t.logBandwidth[i]);
-            g_[i].to(SvfCoefs::prewarp(f, sampleRate), steps);
+            g_[i].to(hba::dsp::SvfCoefs::prewarp(f, sampleRate), steps);
             k_[i].to(bw / f, steps);
-            gain_[i].to(kFormantSign[i] * dbToGain(t.gainDb[i]), steps);
+            gain_[i].to(kFormantSign[i] * hba::dsp::dbToGain(t.gainDb[i]), steps);
         }
-        comp_.to(dbToGain(t.compDb), steps);
+        comp_.to(hba::dsp::dbToGain(t.compDb), steps);
     }
     void snap(const FormantTargets& t, double sampleRate) noexcept TF_NONBLOCKING {
         setTarget(t, sampleRate, 0);
@@ -151,21 +155,21 @@ public:
         comp_.next();
         refresh();
     }
-    const std::array<SvfCoefs, kFormantCount>& coefs() const noexcept TF_NONBLOCKING { return coefs_; }
+    const std::array<hba::dsp::SvfCoefs, kFormantCount>& coefs() const noexcept TF_NONBLOCKING { return coefs_; }
     const std::array<double, kFormantCount>& gains() const noexcept TF_NONBLOCKING { return gains_; }
     double comp() const noexcept TF_NONBLOCKING { return comp_.value; }
 
 private:
     void refresh() noexcept TF_NONBLOCKING {
         for (std::size_t i = 0; i < kFormantCount; ++i) {
-            coefs_[i] = SvfCoefs::fromGK(g_[i].value, k_[i].value);
+            coefs_[i] = hba::dsp::SvfCoefs::fromGK(g_[i].value, k_[i].value);
             gains_[i] = gain_[i].value;
         }
     }
 
-    std::array<Ramp, kFormantCount> g_ {}, k_ {}, gain_ {};
-    Ramp comp_ {};
-    std::array<SvfCoefs, kFormantCount> coefs_ {};
+    std::array<hba::dsp::Ramp, kFormantCount> g_{}, k_{}, gain_{};
+    hba::dsp::Ramp comp_{};
+    std::array<hba::dsp::SvfCoefs, kFormantCount> coefs_{};
     std::array<double, kFormantCount> gains_ {};
 };
 
@@ -184,7 +188,7 @@ public:
     }
 
 private:
-    std::array<SvfState, kFormantCount> state_ {};
+  std::array<hba::dsp::SvfState, kFormantCount> state_{};
 };
 
 }

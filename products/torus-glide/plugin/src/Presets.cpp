@@ -3,7 +3,11 @@
 
 #include "TorusGlidePresetsData.h"
 
+#include <hba/host/preset_bank.h>
+
 #include <algorithm>
+#include <array>
+#include <string_view>
 
 namespace tg {
 
@@ -11,22 +15,12 @@ namespace {
 const juce::Identifier kPresetProp{"TorusGlidePresetName"};
 
 int categoryOrder(const std::string& cat) {
-    if (cat == "Spiral")
-        return 0;
-    if (cat == "Copedent")
-        return 1;
-    if (cat == "Mobius")
-        return 2;
-    return 3;
+    static constexpr std::array<std::string_view, 3> kOrder{"Spiral", "Copedent", "Mobius"};
+    return static_cast<int>(std::find(kOrder.begin(), kOrder.end(), cat) - kOrder.begin());
 }
 } // namespace
 
-juce::File Presets::userDirectory() {
-    return juce::File::getSpecialLocation(juce::File::userMusicDirectory)
-        .getChildFile("Human Being Audio")
-        .getChildFile("Torus Glide")
-        .getChildFile("Presets");
-}
+juce::File Presets::userDirectory() { return hba::host::studioUserDirectory("Torus Glide", "Presets"); }
 
 Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, MatrixStore& matrix)
     : state_(state), curves_(curves), matrix_(matrix) {
@@ -38,43 +32,11 @@ Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, 
 Presets::~Presets() { *alive_ = false; }
 
 void Presets::scanPresets() {
-    presets_.clear();
-    struct NamedRaw {
-        std::string origName;
-        PresetData data;
-    };
-    std::vector<NamedRaw> factory;
-    for (int i = 0; i < TorusGlidePresetsData::namedResourceListSize; ++i) {
-        int size = 0;
-        const char* raw = TorusGlidePresetsData::getNamedResource(TorusGlidePresetsData::namedResourceList[i], size);
-        if (raw == nullptr || size <= 0)
-            continue;
-        if (auto parsed = parsePresetJson(std::string_view(raw, static_cast<std::size_t>(size)))) {
-            std::string orig = TorusGlidePresetsData::originalFilenames[i];
-            factory.push_back({std::move(orig), std::move(*parsed)});
-        }
-    }
-    std::sort(factory.begin(), factory.end(), [](const NamedRaw& a, const NamedRaw& b) {
-        const int ca = categoryOrder(a.data.category);
-        const int cb = categoryOrder(b.data.category);
-        return ca != cb ? ca < cb : a.origName < b.origName;
-    });
-    for (auto& item : factory)
-        presets_.push_back(std::move(item.data));
-
-    // Append any user presets cleanly under "User"
-    const auto dir = userDirectory();
-    if (dir.isDirectory()) {
-        const auto files = dir.findChildFiles(juce::File::findFiles, false, "*.json");
-        for (const auto& f : files) {
-            if (auto parsed = parsePresetJson(f.loadFileAsString().toStdString())) {
-                parsed->category = "User";
-                if (parsed->name.empty())
-                    parsed->name = f.getFileNameWithoutExtension().toStdString();
-                presets_.push_back(std::move(*parsed));
-            }
-        }
-    }
+    presets_ = hba::host::scanFactoryPresets<PresetData>(
+        TorusGlidePresetsData::namedResourceList, TorusGlidePresetsData::originalFilenames,
+        TorusGlidePresetsData::namedResourceListSize, TorusGlidePresetsData::getNamedResource, parsePresetJson,
+        categoryOrder, true);
+    hba::host::appendUserPresets(presets_, userDirectory(), parsePresetJson, "User", false);
 }
 
 std::vector<ui::PresetEntry> Presets::entries() const {
@@ -126,11 +88,9 @@ void Presets::load(int index) {
 }
 
 void Presets::step(int delta) {
-    if (presets_.empty())
-        return;
-    const int count = static_cast<int>(presets_.size());
-    const int next = ((currentIndex_ + delta) % count + count) % count;
-    load(next);
+    const int next = hba::host::wrappedStepIndex(currentIndex_, delta, static_cast<int>(presets_.size()));
+    if (next >= 0)
+        load(next);
 }
 
 void Presets::saveUserPresetAsync() {

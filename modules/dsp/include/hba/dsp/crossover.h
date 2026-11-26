@@ -33,6 +33,30 @@ private:
     SvfState a_, b_;
 };
 
+// 4th-order Butterworth high-pass (2 cascaded TPT SVF sections: Q 0.54 and 1.31).
+struct Bw4Coefs {
+    SvfCoefs first, second;
+
+    static Bw4Coefs make(double hz, double sampleRate) noexcept HBA_NONBLOCKING {
+        const double g = SvfCoefs::prewarp(hz, sampleRate);
+        return {SvfCoefs::fromGK(g, 1.8477590650225735), SvfCoefs::fromGK(g, 0.7653668647301796)};
+    }
+};
+
+class Bw4Highpass {
+  public:
+    void reset() noexcept HBA_NONBLOCKING {
+        a_.reset();
+        b_.reset();
+    }
+    double process(const Bw4Coefs& c, double x) noexcept HBA_NONBLOCKING {
+        return b_.highpass(c.second, a_.highpass(c.first, x));
+    }
+
+  private:
+    SvfState a_, b_;
+};
+
 // The all-pass that an LR4 pair at the same frequency sums to.
 class Lr4Allpass {
 public:

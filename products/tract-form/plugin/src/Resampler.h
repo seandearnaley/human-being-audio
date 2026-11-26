@@ -5,33 +5,26 @@
 #include "tf/render.h"
 #include "tf/ui/model.h"
 
-#include <juce_core/juce_core.h>
-
-#include <atomic>
+#include <hba/host/offline_export.h>
 
 namespace tf {
 
-class Resampler final : private juce::Thread {
-public:
+class Resampler {
+  public:
     Resampler();
-    ~Resampler() override;
 
     // Ignored while a render is running.
     void start(const RenderRequest& request, const juce::String& presetName);
+    void invalidate() noexcept { worker_.invalidate(); }
 
-    ui::ResampleState state() const noexcept { return state_.load(); }
+    ui::ResampleState state() const noexcept { return worker_.state(); }
     // The finished file. Empty unless the state is `ready`.
-    juce::File file() const;
+    juce::File file() const { return worker_.file(); }
 
     static juce::File directory();
 
-private:
-    void run() override;
-
-    std::atomic<ui::ResampleState> state_ { ui::ResampleState::idle };
-    RenderRequest request_;
-    juce::File target_;
-    juce::CriticalSection lock_;
+  private:
+    hba::host::OfflineWavWorker<RenderRequest, ui::ResampleState> worker_;
 };
 
-}
+} // namespace tf

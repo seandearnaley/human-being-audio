@@ -3,11 +3,11 @@
 
 #include "Parameters.h"
 #include <CutlinePresetsData.h>
+#include <hba/host/preset_bank.h>
 
 #include <algorithm>
 #include <array>
 #include <string_view>
-#include <tuple>
 
 namespace cl {
 
@@ -15,13 +15,14 @@ namespace {
 const juce::Identifier kPresetName{"presetName"};
 constexpr const char* kUserCategory = "User";
 constexpr const char* kDefaultPreset = "Neuro Whip";
+
+std::ptrdiff_t categoryRank(const std::string& category) {
+    static constexpr std::array<std::string_view, 5> kOrder{"Neuro", "Breaks", "Ratchet", "Halftime", "MPE"};
+    return std::find(kOrder.begin(), kOrder.end(), category) - kOrder.begin();
+}
 } // namespace
 
-juce::File Presets::userDirectory() {
-    return juce::File::getSpecialLocation(juce::File::userMusicDirectory)
-        .getChildFile("Cutline")
-        .getChildFile("Presets");
-}
+juce::File Presets::userDirectory() { return hba::host::studioUserDirectory("Cutline", "Presets", false); }
 
 Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, OverrideStore& overrides)
     : state_(state), curves_(curves), overrides_(overrides) {
@@ -29,37 +30,10 @@ Presets::Presets(juce::AudioProcessorValueTreeState& state, CurveStore& curves, 
 }
 
 void Presets::scan() {
-    presets_.clear();
-
-    for (int i = 0; i < CutlinePresetsData::namedResourceListSize; ++i) {
-        int size = 0;
-        const char* data = CutlinePresetsData::getNamedResource(CutlinePresetsData::namedResourceList[i], size);
-        if (auto preset = parsePreset(std::string_view(data, static_cast<std::size_t>(size))))
-            presets_.push_back(std::move(*preset));
-        else
-            jassertfalse;
-    }
-
-    const auto rank = [](const std::string& category) {
-        static const std::array<std::string_view, 5> order{"Neuro", "Breaks", "Ratchet", "Halftime", "MPE"};
-        return std::find(order.begin(), order.end(), category) - order.begin();
-    };
-    std::stable_sort(presets_.begin(), presets_.end(), [&](const Preset& a, const Preset& b) {
-        return std::make_tuple(rank(a.category), std::string_view(a.name)) <
-               std::make_tuple(rank(b.category), std::string_view(b.name));
-    });
-
-    std::vector<Preset> user;
-    for (const auto& file : userDirectory().findChildFiles(juce::File::findFiles, false, "*.json")) {
-        if (auto preset = parsePreset(file.loadFileAsString().toStdString())) {
-            if (preset->name.empty())
-                preset->name = file.getFileNameWithoutExtension().toStdString();
-            preset->category = kUserCategory;
-            user.push_back(std::move(*preset));
-        }
-    }
-    std::sort(user.begin(), user.end(), [](const Preset& a, const Preset& b) { return a.name < b.name; });
-    presets_.insert(presets_.end(), std::make_move_iterator(user.begin()), std::make_move_iterator(user.end()));
+    presets_ = hba::host::scanFactoryPresets<Preset>(
+        CutlinePresetsData::namedResourceList, nullptr, CutlinePresetsData::namedResourceListSize,
+        CutlinePresetsData::getNamedResource, parsePreset, categoryRank, false);
+    hba::host::appendUserPresets(presets_, userDirectory(), parsePreset, kUserCategory, true);
 }
 
 std::string Presets::currentName() const {
@@ -88,11 +62,9 @@ void Presets::load(int index) {
 }
 
 void Presets::step(int delta) {
-    if (presets_.empty())
-        return;
-    const int count = static_cast<int>(presets_.size());
-    const int current = currentIndex();
-    load(current < 0 ? 0 : ((current + delta) % count + count) % count);
+    const int next = hba::host::wrappedStepIndex(currentIndex(), delta, static_cast<int>(presets_.size()));
+    if (next >= 0)
+        load(next);
 }
 
 bool Presets::save(const juce::String& name) {
