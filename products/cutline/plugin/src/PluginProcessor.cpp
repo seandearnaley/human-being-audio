@@ -121,11 +121,12 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginE
 
 namespace {
 const juce::Identifier kFormatProp{"format"};
-const juce::Identifier kGrooveBankProp{"grooveBank"}; // the same property PatternStore writes
 } // namespace
 
-// Saving must not change the plugin: hosts call this often, and not always on the message thread.
-// Stamp the format and the bank on a COPY of the state, so nothing is re-published to the audio thread.
+// Saving does not change the plugin: hosts call this often. The format and the bank are stamped on a COPY of the
+// state, so saving neither edits the live state nor republishes the bank to the audio thread. It is not a full
+// guarantee for a call off the message thread: copyState() takes the value tree's lock, but the stores' setProperty
+// calls on the message thread do not, so a save that races an edit can read the tree mid-change.
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
     juce::ValueTree copy = state.copyState();
     copy.setProperty(kFormatProp, kGrooveFormat, nullptr);

@@ -33,6 +33,11 @@ int sampleOffsetOf(double eventBeat, double windowStart, double beatsPerSample,
     return std::clamp(raw, 0, numSamples - 1);
 }
 
+// Transport continuity: how far the host may land from where the last block said it would and still be the same
+// run. Behind it by more than kJumpBackBeats is a loop or a jump back; off by more than kJumpBeats is a jump.
+constexpr double kJumpBackBeats = 1.0 / 64.0;
+constexpr double kJumpBeats = 0.125;
+
 double quantizeStepBeats(Quantize q) noexcept CL_NONBLOCKING {
     switch (q) {
     case Quantize::instant:
@@ -95,6 +100,8 @@ void Engine::Impl::reset() noexcept CL_NONBLOCKING {
     slicerPlanData.noteCount = 0;
     wasPlaying = false;
     expectedNextPpq = 0.0;
+    nextWindowStart = 0.0;
+    lastBlockRate = 0.0;
     lastTransportPpq = 0.0;
     lastEngineMode = EngineMode::drum;
     lastSlicerStyle = SlicerStyle::stabChop;
@@ -556,15 +563,18 @@ void Engine::Impl::releaseEndingBy(const Block& b, double beat, bool strict,
 // the same time order: a note that ends after a hit starts is still active when the hit retriggers it, so its
 // note-off comes before the new note-on rather than cutting it. `silenceAt` (Drop's left half committing in this
 // block; the double maximum when none) releases everything still sounding at that beat, after the hits before it have
-// started.
+// started. A hit before the block's first sample (the window can start there, after tempo or Shift automation) is
+// sent on that sample and keeps its full length from there.
 void Engine::Impl::emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING {
     // A silence is requested whenever silenceAt is given, even when it lands on (or within kBeatEps past) the block's
     // end, where the pad commits too; the flush offset then clamps to the block's last sample.
-    bool silenced = silenceAt == std::numeric_limits<double>::max();
+    bool silencePending = silenceAt != std::numeric_limits<double>::max();
+    const int silenceOffset =
+        silencePending ? sampleOffsetOf(silenceAt, b.rawStart, b.beatsPerSample, b.numSamples) : b.numSamples;
     const auto silenceNow = [&]() noexcept CL_NONBLOCKING {
         releaseEndingBy(b, silenceAt, true, outMidi);
-        flushAllActive(outMidi, sampleOffsetOf(silenceAt, b.rawStart, b.beatsPerSample, b.numSamples));
-        silenced = true;
+        flushAllActive(outMidi, silenceOffset);
+        silencePending = false;
     };
     for (int i = 1; i < blockHitCount; ++i) {
         const BlockHit key = blockHits[static_cast<std::size_t>(i)];
@@ -599,14 +609,17 @@ void Engine::Impl::emitBlockHits(const Block& b, double silenceAt, MidiEventBuff
         const BlockHit& hit = blockHits[static_cast<std::size_t>(i)];
         if (hit.velocity == 0)
             continue;
-        if (!silenced && hit.beat >= silenceAt - kBeatEps)
+        const int offset = offsetOf(hit);
+        if (silencePending && hit.beat >= silenceAt - kBeatEps)
             silenceNow();
+        else if (silencePending && offset >= silenceOffset)
+            continue; // it would start on the sample the silence lands on, and be cut there
         releaseEndingBy(b, hit.beat, false, outMidi);
-        const int offset = sampleOffsetOf(hit.beat, b.rawStart, b.beatsPerSample, b.numSamples);
         const int velocity = static_cast<int>(hit.velocity) + evalVelBias(*b.params, hit.beat, hit.padOn, b.padY);
-        triggerNote(hit.note, velocity, hit.lane, hit.beat + std::max(0.03, hit.durBeats), offset, outMidi, hit.drum);
+        const double onBeat = std::max(hit.beat, b.rawStart);
+        triggerNote(hit.note, velocity, hit.lane, onBeat + std::max(0.03, hit.durBeats), offset, outMidi, hit.drum);
     }
-    if (!silenced)
+    if (silencePending)
         silenceNow();
     releaseEndingBy(b, b.windowEnd - kBeatEps, true, outMidi);
     blockHitCount = 0;
@@ -659,8 +672,17 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     // sounds. Hit times are not clamped: the window follows the transport below beat 0 too.
     const double shiftBeats = static_cast<double>(params[ParamId::shiftMs]) * 1.0e-3 * (bpm / 60.0);
     const double rawStart = rawPpq - shiftBeats;
-    const double windowStart = rawStart;
-    const double windowEnd = rawStart + static_cast<double>(numSamples) * beatsPerSample;
+
+    // A start, a loop or a jump breaks the transport's continuity; it is detected on the host position alone. A small
+    // step back is tempo automation (the host integrates the tempo, while a block's length in beats uses the tempo at
+    // its start), not a loop.
+    const bool continuous = transport.playing && wasPlaying && transport.ppq >= expectedNextPpq - kJumpBackBeats &&
+                            std::abs(transport.ppq - expectedNextPpq) <= kJumpBeats;
+    // While the transport is continuous, a block's window starts where the last one ended, so under tempo or Shift
+    // automation every pattern instant belongs to exactly one block. Sample offsets stay relative to the block's own
+    // start (rawStart) and clamp into it.
+    const double windowStart = continuous ? nextWindowStart : rawStart;
+    const double windowEnd = std::max(windowStart, rawStart + static_cast<double>(numSamples) * beatsPerSample);
 
     // A pad that starts sounding at window beat `beat`. Returns true when it silences what is sounding (Drop's left
     // half); the caller does that in time order.
@@ -754,7 +776,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     }
 
     // A start, a loop or a jump: nothing carries over from before it, and a held Repeat loops from here.
-    if (!wasPlaying || transport.ppq < expectedNextPpq - 1.0e-4 || std::abs(transport.ppq - expectedNextPpq) > 0.125) {
+    if (!continuous) {
         flushAllActive(outMidi, 0);
         clearDedupe();
         fillLatch = {};
@@ -770,6 +792,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     }
     wasPlaying = true;
     expectedNextPpq = transport.ppq + static_cast<double>(numSamples) * beatsPerSample;
+    nextWindowStart = windowEnd;
 
     // Commit quantized scene and pad switches on their boundary.
     if (pendingSceneIdx >= 0 && windowEnd >= sceneSwitchBeat - kBeatEps) {
@@ -816,6 +839,12 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
         return part;
     };
     const Block b = makeBlock(engaged, activeProg, windowStart, windowEnd);
+    // The fill latches are keyed by bar in rate-scaled time, so a bar decided at one rate says nothing about the bar
+    // with the same number at another.
+    if (b.rate != lastBlockRate) {
+        fillLatch = {};
+        lastBlockRate = b.rate;
+    }
     {
         const auto absBar = static_cast<std::int64_t>(std::floor(windowStart * b.rate / 4.0));
         updatePosition(

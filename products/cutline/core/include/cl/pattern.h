@@ -25,7 +25,7 @@ inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadYLabels{"Ga
                                                                              ""};
 inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadHints{"C3", "C#3", "D3", "D#3"};
 
-// Ten built-in MIDI output maps for the 8 drum lanes (preserving indices 0..2 for preset compatibility):
+// Ten built-in MIDI output maps for the 8 drum lanes, in the order of the noteMap parameter's choices:
 //   0 = Live Rack / GM:     Kick 36, Snare 38, Sidestick 37, Clap 39, CH 42, OH 46, Floor Tom 43, Crash 49
 //   1 = Strike Body:        Native articulation map (Main 36, Ghost 37, Rim 38, Roll 39/40)
 //   2 = Chromatic (C1..G1): 36..43 for Simpler Slice / Atlas 2 / 8-pad Drum Racks

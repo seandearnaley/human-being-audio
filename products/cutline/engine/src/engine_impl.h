@@ -129,6 +129,8 @@ struct Engine::Impl {
     // Transport tracking
     bool wasPlaying = false;
     double expectedNextPpq = 0.0;
+    double nextWindowStart = 0.0; // window clock: where the last block's window ended
+    double lastBlockRate = 0.0;   // the last block's effective rate, which the fill latches were decided at
     double lastTransportPpq = 0.0;
     EngineMode lastEngineMode = EngineMode::drum;
     SlicerStyle lastSlicerStyle = SlicerStyle::stabChop;

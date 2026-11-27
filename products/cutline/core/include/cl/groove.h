@@ -184,8 +184,10 @@ constexpr void sanitise(GrooveBank& bank) noexcept CL_NONBLOCKING {
     }
 }
 
-// Sets the pattern length to 1, 2 or 4 bars. Growing repeats the existing bars into the new ones,
-// so the pattern sounds the same until it is edited. Shrinking clears the bars that are no longer played.
+// Sets the pattern length to 1, 2 or 4 bars. Growing repeats the existing bars into the new ones, so a lane that
+// follows the pattern sounds the same until it is edited. A lane with its own loop length keeps that length and now
+// loops across the longer pattern instead of restarting each bar: a 12-step lane in a 1-bar pattern plays 0..11, 0..3
+// every bar; grown to 2 bars it plays 0..11, 0..11, 0..7. Shrinking clears the bars that are no longer played.
 constexpr void setPatternBars(Pattern& p, int bars) noexcept CL_NONBLOCKING {
     const int from = patternSteps(p);
     p.bars = static_cast<std::uint8_t>(bars >= 4 ? 4 : (bars >= 2 ? 2 : 1));

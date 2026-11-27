@@ -136,3 +136,15 @@ TEST_CASE("Growing a pattern repeats it and shrinking drops the hidden bars", "[
     setPatternBars(p, 1);
     CHECK(p.lanes[6].length == 0);
 }
+
+TEST_CASE("Growing a pattern keeps a looped lane's length, so its loop runs on across the new bars", "[groove]") {
+    Pattern p = defaultBeat();
+    p.lanes[6].length = 12;
+    CHECK(storedStep(p, 6, 15) == 3);
+    setPatternBars(p, 2);
+    CHECK(p.lanes[6].length == 12);
+    CHECK(storedStep(p, 6, 16) == 4); // bar 2 continues the loop, which played stored steps 0..3 on steps 12..15
+    CHECK(storedStep(p, 6, 23) == 11);
+    CHECK(storedStep(p, 6, 24) == 0);
+    CHECK(storedStep(p, 6, 31) == 7);
+}

@@ -13,6 +13,10 @@
 
 namespace cl {
 
+// The plugin-state property that holds the bank as JSON. PatternStore writes and reads it; getStateInformation stamps
+// it on the saved copy.
+extern const juce::Identifier kGrooveBankProp;
+
 class PatternStore {
   public:
     explicit PatternStore(juce::AudioProcessorValueTreeState& state);

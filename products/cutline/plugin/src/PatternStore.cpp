@@ -6,9 +6,7 @@
 
 namespace cl {
 
-namespace {
 const juce::Identifier kGrooveBankProp{"grooveBank"};
-} // namespace
 
 PatternStore::PatternStore(juce::AudioProcessorValueTreeState& state) : state_(state) {}
 

@@ -8,8 +8,9 @@
 
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 5) {
-        std::fprintf(stderr,
-                     "usage: cl-ui-snapshot <out.png> [width height] [grid|grid1|grid4|live|fill|slicer|play|0..3]\n");
+        std::fprintf(
+            stderr,
+            "usage: cl-ui-snapshot <out.png> [width height] [grid|grid1|grid4|live|fill|slicer|play|padmidi|0..3]\n");
         return 2;
     }
     int width = cl::ui::kDefaultWidth;
@@ -39,6 +40,9 @@ int main(int argc, char** argv) {
         showFill = true;
     } else if (mode == "slicer") {
         model.showSlicer();
+    } else if (mode == "padmidi") {
+        showGrid = false; // PLAY with Pad MIDI on
+        model.set(cl::ParamId::padMidi, 1.0f);
     } else if (mode != "grid") {
         showGrid = false; // PLAY: "play" keeps the model's program, a number selects one
         if (mode != "play")

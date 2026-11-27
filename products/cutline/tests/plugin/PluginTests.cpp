@@ -162,6 +162,122 @@ TEST_CASE("State that does not parse loads the default state", "[plugin]") {
     requireDefaultState(broken);
 }
 
+TEST_CASE("State with another root tag, or with no bank, loads the default state", "[plugin]") {
+    ScopedJuceGui gui;
+    const auto load = [](const juce::XmlElement& xml) {
+        PluginProcessor proc;
+        {
+            PluginModel model(proc);
+            disturb(model);
+        }
+        juce::MemoryBlock blob;
+        juce::AudioProcessor::copyXmlToBinary(xml, blob);
+        proc.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
+        requireDefaultState(proc);
+    };
+
+    // The right format and a valid bank, under a root tag that is not Cutline's.
+    juce::XmlElement other("NotCutline");
+    other.setAttribute("format", 3);
+    other.setAttribute("grooveBank", toJuce(serialiseGrooveBank(GrooveBank{})));
+    load(other);
+
+    // Cutline's tag and format 3, a parameter away from its default, and no bank.
+    juce::XmlElement noBank("Cutline");
+    noBank.setAttribute("format", 3);
+    auto* param = noBank.createNewChildElement("PARAM");
+    param->setAttribute("id", "density");
+    param->setAttribute("value", 0.9);
+    load(noBank);
+}
+
+namespace {
+
+// A host transport that is always playing at 120 BPM. The test advances it by each block's length.
+struct FakePlayHead final : juce::AudioPlayHead {
+    double ppq = 0.0;
+    juce::Optional<PositionInfo> getPosition() const override {
+        PositionInfo info;
+        info.setBpm(120.0);
+        info.setPpqPosition(ppq);
+        info.setIsPlaying(true);
+        return info;
+    }
+};
+
+// Plays one bar (4 beats at 120 BPM and 48 kHz: 375 blocks of 256 samples) and returns the note numbers of its
+// note-ons.
+std::multiset<int> playBar(PluginProcessor& proc, FakePlayHead& head) {
+    constexpr int kBlock = 256;
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+    std::multiset<int> notes;
+    for (int i = 0; i < 375; ++i) {
+        buf.clear();
+        midi.clear();
+        proc.processBlock(buf, midi);
+        for (const auto metadata : midi) {
+            const auto msg = metadata.getMessage();
+            if (msg.isNoteOn())
+                notes.insert(msg.getNoteNumber());
+        }
+        head.ppq += 120.0 / 60.0 / 48000.0 * kBlock;
+    }
+    return notes;
+}
+
+int laneNote(int lane) {
+    return kKitNoteMaps[static_cast<std::size_t>(spec(ParamId::noteMap).def)][static_cast<std::size_t>(lane)];
+}
+
+} // namespace
+
+TEST_CASE("With the transport playing, the plugin plays the bank it holds", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    FakePlayHead head;
+    proc.setPlayHead(&head);
+    proc.prepareToPlay(48000.0, 256);
+
+    // The default beat: two kicks, two snares and eight closed hats.
+    const std::multiset<int> first = playBar(proc, head);
+    CHECK(first.size() == 12);
+    CHECK(first.count(laneNote(0)) == 2);
+    CHECK(first.count(laneNote(1)) == 2);
+    CHECK(first.count(laneNote(4)) == 8);
+
+    // An edit through the model: the hat lane cleared. The next bar plays without it.
+    {
+        PluginModel model(proc);
+        GrooveBank bank = model.groove().bank;
+        for (auto& step : bank.scenes[0].lanes[4].steps)
+            step = {};
+        model.setGrooveBank(bank);
+    }
+    const std::multiset<int> edited = playBar(proc, head);
+    CHECK(edited.size() == 4);
+    CHECK(edited.count(laneNote(4)) == 0);
+
+    // A saved session with another bank: four on the floor on the kick only.
+    PluginProcessor other;
+    {
+        PluginModel model(other);
+        GrooveBank bank;
+        bank.scenes[0] = Pattern{};
+        for (const int step : {0, 4, 8, 12}) {
+            bank.scenes[0].lanes[0].steps[static_cast<std::size_t>(step)].velocity = 100;
+            bank.scenes[0].lanes[0].steps[static_cast<std::size_t>(step)].layer = Layer::core;
+        }
+        model.setGrooveBank(bank);
+    }
+    juce::MemoryBlock blob;
+    other.getStateInformation(blob);
+    proc.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
+    const std::multiset<int> loaded = playBar(proc, head);
+    CHECK(loaded == std::multiset<int>{laneNote(0), laneNote(0), laneNote(0), laneNote(0)});
+    proc.setPlayHead(nullptr);
+}
+
 TEST_CASE("Undo, redo, clone and clear work on the groove bank", "[plugin]") {
     ScopedJuceGui gui;
     PluginProcessor proc;

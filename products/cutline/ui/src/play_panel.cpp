@@ -29,7 +29,7 @@ float frac(float v) { return v - std::floor(v); }
 
 PlayPanel::PlayPanel(Context& context)
     : context_(context), holdBtn_(context, "Hold", [this] { toggleHold(); }),
-      quantChip_(context, ParamId::sceneQuantize, colour::text), ccChip_(context, ParamId::padCcMode, colour::cyan),
+      padMidiBtn_(context, "Pad MIDI", [this] { togglePadMidi(); }), ccChip_(context, ParamId::padCcMode, colour::cyan),
       noteMapChip_(context, ParamId::noteMap, colour::text), slicerChip_(context, ParamId::slicerStyle, colour::cyan),
       auditionBtn_(context, "Audition",
                    [this] {
@@ -40,7 +40,7 @@ PlayPanel::PlayPanel(Context& context)
                    }),
       dragMidBtn_(context, context.model.exportStatus() + " \u2197", [this] { context_.model.dragMidiPhrase(); }) {
     setAcceptsKeystrokes(true);
-    for (visage::Frame* child : std::initializer_list<visage::Frame*>{&holdBtn_, &quantChip_, &ccChip_, &noteMapChip_,
+    for (visage::Frame* child : std::initializer_list<visage::Frame*>{&holdBtn_, &padMidiBtn_, &ccChip_, &noteMapChip_,
                                                                       &slicerChip_, &auditionBtn_, &dragMidBtn_})
         addChild(child);
 
@@ -128,6 +128,8 @@ std::string PlayPanel::liveStatusBadge(int prog, float x, float y, bool engaged,
         return modeTag + " \u00b7 " + std::string(kPerfPadLabels[static_cast<std::size_t>(prog)]) + " " + keyVal +
                ccStr;
     (void)y;
+    if (!padMidiOn())
+        return modeTag + ccStr;
     return modeTag + " \u00b7 MIDI " + std::string(kPerfPadHints[static_cast<std::size_t>(prog)]) + ccStr;
 }
 
@@ -153,7 +155,9 @@ void PlayPanel::tick() {
 
     holdBtn_.setLabel(holdOn ? "Hold ON" : "Hold");
     holdBtn_.setAccent(holdOn ? col : colour::textDim);
-    quantChip_.setAccent(col);
+    const bool midiOn = padMidiOn();
+    padMidiBtn_.setLabel(midiOn ? "Pad MIDI ON" : "Pad MIDI");
+    padMidiBtn_.setAccent(midiOn ? col : colour::textDim);
     ccChip_.setAccent(colour::cyan);
     noteMapChip_.setVisible(isDrum);
     slicerChip_.setVisible(!isDrum);
@@ -218,7 +222,8 @@ void PlayPanel::draw(visage::Canvas& canvas) {
     const unsigned sheetCol =
         colour::lerpArgb(colour::programArgb(programBefore_), colour::programArgb(program_), easeOut(change_));
 
-    // 1. Folder Tabs Row: Repeat [C3] .. Drop [D#3]
+    // 1. Folder Tabs Row: Repeat .. Drop, with their keys (C3 .. D#3) while Pad MIDI is on
+    const bool showKeys = padMidiOn();
     for (int i = 0; i < kPerfPadCount; ++i) {
         const Rect tr = tabRect(i);
         const unsigned pCol = colour::programArgb(i);
@@ -261,6 +266,8 @@ void PlayPanel::draw(visage::Canvas& canvas) {
                   tr.w - 38.0f * px, textH, nameCol, visage::Font::kLeft, 13.0f,
                   isPlaying ? Weight::semibold : Weight::medium);
 
+        if (!showKeys)
+            continue;
         const unsigned badgeCol = isPlaying    ? colour::withAlpha(colour::onColour, 0.68f)
                                   : isMidiHeld ? colour::text
                                                : colour::withAlpha(colour::textDim, 0.75f);
@@ -390,13 +397,8 @@ void PlayPanel::draw(visage::Canvas& canvas) {
     const float dockY = height() - context_.px(kDockHeight);
     drawPanel(canvas, context_, 0.0f, dockY, width(), context_.px(kDockHeight), colour::panel, metric::radius);
 
-    // Subtle dock group labels (QUANT / STYLE / XY->CC)
-    const float lblH = 12.0f * px;
-    const float lblY = dockY + 2.0f * px;
-    (void)lblH;
-    (void)lblY;
-    // The hint fills the dock to the right of the controls, which end at 664 design pixels.
-    const float hintX = context_.px(672.0f);
+    // The hint fills the dock to the right of the controls, which end at 680 design pixels.
+    const float hintX = context_.px(688.0f);
     drawLabel(canvas, context_, "Double-click pad to Hold \u00b7 Shift for fine drag", hintX, dockY,
               std::max(0.0f, width() - hintX - context_.px(12.0f)), context_.px(kDockHeight), colour::textFaint,
               visage::Font::kCenter, 9.5f, Weight::regular);
@@ -408,12 +410,13 @@ void PlayPanel::resized() {
     const float bh = px(28.0f);
     const float cy = dockY + (px(kDockHeight) - bh) * 0.5f;
 
-    // Left to right: [Hold] [Quant] [XY->CC] [Kit map / Slicer] [Audition] [Drag .mid]
+    // Left to right: [Hold] [Pad MIDI] [XY->CC] [Kit map / Slicer] [Audition] [Drag .mid]. Scene Quantize lives in
+    // the GRID setup panel: it governs scene switches only, and the pads always land on the next 1/16.
     float x = px(12.0f);
     holdBtn_.setBounds(x, cy, px(76.0f), bh);
     x += px(76.0f + 8.0f);
-    quantChip_.setBounds(x, cy, px(76.0f), bh);
-    x += px(76.0f + 8.0f);
+    padMidiBtn_.setBounds(x, cy, px(92.0f), bh);
+    x += px(92.0f + 8.0f);
     ccChip_.setBounds(x, cy, px(102.0f), bh);
     x += px(102.0f + 8.0f);
     noteMapChip_.setBounds(x, cy, px(142.0f), bh);
@@ -468,6 +471,16 @@ void PlayPanel::toggleHold() {
     context_.model.end(ParamId::padHold);
     if (next)
         ring_ = 0.0f;
+    redraw();
+}
+
+// Pad MIDI: while it is on, C3 to D#3 on the MIDI input play the four pads in drum mode. It is off by default.
+bool PlayPanel::padMidiOn() const { return context_.model.get(ParamId::padMidi) >= 0.5f; }
+
+void PlayPanel::togglePadMidi() {
+    context_.model.begin(ParamId::padMidi);
+    context_.model.set(ParamId::padMidi, padMidiOn() ? 0.0f : 1.0f);
+    context_.model.end(ParamId::padMidi);
     redraw();
 }
 

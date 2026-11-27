@@ -531,9 +531,11 @@ void GridStagePanel::draw(visage::Canvas& canvas) {
     else
         drawSlicerStage(canvas, lay, vis);
 
-    const char* footer = mode == EngineMode::drum
-                             ? "Click: step \u00b7 Drag: velocity \u00b7 Shift-click: ratchet \u00b7 Right-click: layer"
-                             : "MIDI Slicer: your held notes, sliced by the gate strip";
+    const char* footer = "Click: step \u00b7 Drag: velocity \u00b7 Shift-click: ratchet \u00b7 Right-click: layer";
+    if (mode != EngineMode::drum)
+        footer = "MIDI Slicer: your held notes, sliced by the gate strip";
+    else if (fillView())
+        footer = "Click: step \u00b7 Drag: velocity \u00b7 Shift-click: ratchet"; // a fill step has no layer
     drawLabel(canvas, context_, footer, lay.sidebarX, lay.footerY, width() - 2.0f * lay.sidebarX, px(16.0f),
               colour::textFaint, visage::Font::kLeft, 9.5f, Weight::regular);
 }

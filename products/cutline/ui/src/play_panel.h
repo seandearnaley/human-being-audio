@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline 3 PLAY surface: four pad-program folder tabs (C3 to D#3), the 60fps generative X/Y stage
-// and the bottom performance dock.
+// Cutline 3 PLAY surface: four pad-program folder tabs (played from C3 to D#3 while Pad MIDI is on), the 60fps
+// generative X/Y stage and the bottom performance dock.
 #pragma once
 
 #include "controls.h"
@@ -46,13 +46,15 @@ class PlayPanel final : public visage::Frame, public Live {
     void updatePointer(float x, float y, bool shiftDown);
     void endPadTouch();
     void toggleHold();
+    void togglePadMidi();
+    bool padMidiOn() const;
     void selectProgram(int index);
 
     Context& context_;
 
     // Bottom Play Dock Controls
     Button holdBtn_;
-    Chip quantChip_;
+    Button padMidiBtn_;
     Chip ccChip_;
     Chip noteMapChip_;
     Chip slicerChip_;
