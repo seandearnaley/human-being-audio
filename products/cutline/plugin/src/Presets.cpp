@@ -17,7 +17,8 @@ constexpr const char* kUserCategory = "User";
 constexpr const char* kDefaultPreset = "Default Beat";
 
 std::ptrdiff_t categoryRank(const std::string& category) {
-    static constexpr std::array<std::string_view, 4> kOrder{"Breaks", "Neuro", "Club", "MIDI Slicer"};
+    static constexpr std::array<std::string_view, 8> kOrder{"Drum & Bass", "Halftime",   "Jungle",      "Breaks",
+                                                            "Club",        "Bass Music", "Strike Body", "MIDI Slicer"};
     return std::find(kOrder.begin(), kOrder.end(), category) - kOrder.begin();
 }
 } // namespace

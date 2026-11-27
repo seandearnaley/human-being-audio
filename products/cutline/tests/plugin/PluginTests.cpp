@@ -44,7 +44,7 @@ void requireDefaultState(PluginProcessor& proc) {
 }
 } // namespace
 
-TEST_CASE("The factory presets load: patterns and slicer presets in four categories", "[plugin]") {
+TEST_CASE("The factory presets load: drum, Strike Body and slicer presets in eight categories", "[plugin]") {
     ScopedJuceGui gui;
     PluginProcessor proc;
     const auto& all = proc.presets.all();
@@ -59,8 +59,9 @@ TEST_CASE("The factory presets load: patterns and slicer presets in four categor
         CHECK(proc.presets.currentName() == all[i].name);
         CHECK(proc.patterns.bank() == GrooveState(all[i].bank).bank);
     }
-    CHECK(factory == 16);
-    CHECK(categories == std::set<std::string>{"Breaks", "Neuro", "Club", "MIDI Slicer"});
+    CHECK(factory == 22);
+    CHECK(categories == std::set<std::string>{"Drum & Bass", "Halftime", "Jungle", "Breaks", "Club", "Bass Music",
+                                              "Strike Body", "MIDI Slicer"});
 }
 
 TEST_CASE("A new instance opens on the default beat", "[plugin]") {
