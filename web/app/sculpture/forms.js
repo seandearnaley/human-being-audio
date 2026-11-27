@@ -400,4 +400,131 @@ export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpe
       if (moving) group.rotation.y += dt * 0.12;
     };
   });
+
+  /* ---- Strata: stacked obsidian-glass geological slabs with counter-shearing resonance veins (Lineage) ---- */
+  defineForm("strata", ({ group, solid, wireOpacity, accent }) => {
+    const emerald = vec3(0.08, 0.92, 0.68);
+    const amber = vec3(0.98, 0.68, 0.22);
+    const layers = 7;
+    const slabGeo = new THREE.BoxGeometry(1.9, 0.11, 1.35, 36, 1, 24);
+    const idx = instanceIndex.toFloat();
+    const normIdx = idx.div(float(layers - 1)).sub(0.5);
+    const wave = Fn(() => {
+      const k = mix(float(2.4), float(7.0), U.formant);
+      const ridge = sin(positionGeometry.x.mul(k).add(U.time.mul(1.1)).add(idx.mul(0.85)))
+        .mul(cos(positionGeometry.z.mul(k.mul(0.75)).sub(U.time.mul(0.65))))
+        .mul(mix(float(0.03), float(0.14), U.open));
+      const shear = sin(U.bars.mul(TWO_PI.div(4)).add(idx.mul(0.9))).mul(normIdx).mul(mix(float(0.08), float(0.42), U.slice));
+      const pulse = U.hit.mul(0.22).mul(normIdx);
+      return vec3(shear, ridge.add(pulse), cos(U.time.mul(0.7).add(idx)).mul(U.chaos).mul(0.18));
+    })();
+    const pos = deform(positionLocal.add(wave));
+    const { mask, edge } = crystal(solid, vec3(idx.mul(1.7)));
+    const mat = glassMaterial({ color: 0x131d22, metalness: 0.84, roughness: 0.14 });
+    mat.positionNode = pos;
+    mat.opacityNode = mask;
+    mat.alphaTest = 0.5;
+    mat.iridescenceThicknessNode = filmThickness(240, 880);
+    const veinMix = smoothstep(float(-0.4), float(0.4), normIdx);
+    mat.emissiveNode = mix(emerald, amber, veinMix)
+      .mul(abs(wave.y).mul(5.0).add(0.12))
+      .add(accent.mul(edge.mul(3.0)))
+      .add(emerald.mul(U.hit.mul(0.85)));
+
+    const slabs = new THREE.InstancedMesh(slabGeo, mat, layers);
+    const wire = new THREE.InstancedMesh(slabGeo, wireMaterial(emerald, wireOpacity), layers);
+    wire.material.positionNode = pos;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < layers; j++) {
+      const t = j / (layers - 1) - 0.5;
+      const scale = 1.0 - Math.abs(t) * 0.34;
+      v.set(0, t * 1.48, 0);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t * 0.36);
+      s.set(scale, 1, scale);
+      m.compose(v, q, s);
+      slabs.setMatrixAt(j, m);
+    }
+    wire.instanceMatrix = slabs.instanceMatrix;
+
+    const spineGeo = new THREE.CylinderGeometry(0.035, 0.035, 2.05, 16);
+    const spineMat = new THREE.MeshStandardNodeMaterial({ color: 0x091316, roughness: 0.25, metalness: 0.3 });
+    const spineMask = crystal(solid, vec3(9.0));
+    spineMat.emissiveNode = emerald.mul(float(1.5).add(U.hit.mul(1.2)));
+    spineMat.opacityNode = spineMask.mask;
+    spineMat.alphaTest = 0.5;
+    const spine = new THREE.Mesh(spineGeo, spineMat);
+
+    group.add(slabs, wire, spine);
+    group.rotation.x = 0.34;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.11;
+    };
+  });
+
+  /* ---- Piston: phase-locked acoustic drive piston & damped zero-crossing shock rings (Datum) ---- */
+  defineForm("piston", ({ group, solid, wireOpacity, accent }) => {
+    const emerald = vec3(0.24, 0.9, 0.63);
+    const cyan = vec3(0.22, 0.91, 1.0);
+    const amber = vec3(0.96, 0.65, 0.22);
+
+    const coreGeo = new THREE.CylinderGeometry(0.46, 0.52, 1.32, 48, 20);
+    const stroke = Fn(() => {
+      const yNorm = positionGeometry.y.mul(1.5);
+      const pulse = sin(U.bars.mul(TWO_PI).sub(yNorm.mul(2.2))).mul(0.06).mul(U.open.add(0.35));
+      const slam = U.hit.mul(-0.34);
+      const radial = sin(yNorm.mul(mix(float(4.0), float(12.0), U.formant)).sub(U.time.mul(2.4)))
+        .mul(0.035)
+        .mul(U.slice.add(0.25));
+      return vec3(normalLocal.x.mul(radial), pulse.add(slam), normalLocal.z.mul(radial));
+    })();
+    const corePos = deform(positionLocal.add(stroke));
+    const coreMask = crystal(solid, vec3(1.1));
+    const coreMat = glassMaterial({ color: 0x101820, metalness: 0.88, roughness: 0.11 });
+    coreMat.positionNode = corePos;
+    coreMat.opacityNode = coreMask.mask;
+    coreMat.alphaTest = 0.5;
+    coreMat.iridescenceThicknessNode = filmThickness(200, 860);
+    coreMat.emissiveNode = emerald
+      .mul(float(0.18).add(U.hit.mul(1.3)))
+      .add(accent.mul(coreMask.edge.mul(3.2)));
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    const coreWire = new THREE.Mesh(coreGeo, wireMaterial(emerald, wireOpacity));
+    coreWire.material.positionNode = corePos;
+
+    const ringCount = 5;
+    const ringGeo = new THREE.TorusGeometry(1.0, 0.026, 14, 128);
+    const ri = instanceIndex.toFloat();
+    const waveY = sin(U.bars.mul(TWO_PI).sub(ri.mul(0.85)))
+      .mul(mix(float(0.06), float(0.24), U.open))
+      .add(U.hit.mul(0.28).mul(float(1).sub(ri.div(float(ringCount)))));
+    const ringPos = deform(positionLocal.add(vec3(0, waveY, 0)));
+    const ringMask = crystal(solid, vec3(ri.mul(2.3)));
+    const ringMat = new THREE.MeshStandardNodeMaterial({ color: 0x0a0d12, roughness: 0.28, metalness: 0.3 });
+    ringMat.positionNode = ringPos;
+    ringMat.opacityNode = ringMask.mask;
+    ringMat.alphaTest = 0.5;
+    const ringCol = mix(cyan, amber, ri.div(float(ringCount - 1)));
+    ringMat.emissiveNode = mix(emerald, ringCol, float(0.55)).mul(float(1.15).add(U.hit.mul(1.2)));
+    const rings = new THREE.InstancedMesh(ringGeo, ringMat, ringCount);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI * 0.5, 0, 0));
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < ringCount; j++) {
+      const r = 0.68 + j * 0.17;
+      v.set(0, -0.42 + j * 0.21, 0);
+      s.set(r, r, 1);
+      m.compose(v, q, s);
+      rings.setMatrixAt(j, m);
+    }
+
+    group.add(core, coreWire, rings);
+    group.rotation.x = 0.42;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.13;
+    };
+  });
 }

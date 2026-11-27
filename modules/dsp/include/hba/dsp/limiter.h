@@ -3,6 +3,7 @@
 // Geraint Luff's design (https://signalsmith-audio.co.uk/writing/2022/limiter/).
 #pragma once
 
+#include <span>
 #include <hba/dsp/control.h>
 
 #include <algorithm>
@@ -37,6 +38,53 @@ inline double softClipLinked(double& left, double& right, double knee = kSoftCli
     right *= gain;
     return gain;
 }
+
+// First antiderivative F1(u) = integral_0^u softClip(s, knee, 1.0) ds for ADAA1 clipping.
+// Even, C^3-smooth, overflow-free for arbitrarily large |u|.
+inline double softClipUnitF1(double u, double knee = kSoftClipKnee) noexcept HBA_NONBLOCKING {
+    const double a = std::abs(u);
+    if (a <= knee)
+        return 0.5 * a * a;
+    const double r = 1.0 - knee;
+    if (r <= 1.0e-12)
+        return 0.5 * knee * knee + knee * (a - knee);
+    const double t = a - knee;
+    const double z = t / r;
+    constexpr double kLn2 = 0.693147180559945309417232121458176568;
+    const double logCosh = z - kLn2 + std::log1p(std::exp(-2.0 * z));
+    return 0.5 * knee * knee + knee * t + r * r * logCosh;
+}
+
+// First-order anti-aliased (ADAA1) C^2 soft clipper with exact 0.5-sample delay.
+// Below `kneeRatio * bound` on both consecutive samples, reduces bit-identically to
+// `0.5 * (x + prevX)` independent of `bound`, so linear bypass / path alignment stays exact.
+class SoftClipAdaa1 {
+  public:
+    void reset() noexcept HBA_NONBLOCKING { prevX_ = 0.0; }
+
+    double process(double x, double kneeRatio = kSoftClipKnee, double bound = 1.0) noexcept HBA_NONBLOCKING {
+        if (!std::isfinite(x))
+            x = 0.0;
+        const double x0 = prevX_;
+        prevX_ = x;
+        const double safeBound = std::isfinite(bound) ? std::max(bound, 1.0e-9) : 1.0;
+        const double k = std::clamp(kneeRatio, 0.0, 1.0);
+        const double knee = k * safeBound;
+        if (std::abs(x) <= knee && std::abs(x0) <= knee)
+            return 0.5 * (x + x0);
+
+        const double invBound = 1.0 / safeBound;
+        const double u0 = x0 * invBound;
+        const double u1 = x * invBound;
+        const double du = u1 - u0;
+        if (std::abs(du) < 1.0e-6)
+            return safeBound * softClip(0.5 * (u0 + u1), k, 1.0);
+        return safeBound * ((softClipUnitF1(u1, k) - softClipUnitF1(u0, k)) / du);
+    }
+
+  private:
+    double prevX_ = 0.0;
+};
 
 // 4x Kaiser-windowed-sinc true-peak detector.
 class TruePeakDetector {
@@ -100,6 +148,17 @@ private:
     std::array<std::array<float, 2 * kWidth + 1>, 2> history_ {};
     int pos_ = 0;
 };
+
+// Offline peak of a complete interleaved stereo render, including the FIR tail.
+inline double stereoTruePeak(std::span<const float> samples) {
+    TruePeakDetector meter;
+    double peak = 0.0;
+    for (std::size_t i = 1; i < samples.size(); i += 2)
+        peak = std::max(peak, meter.process(samples[i - 1], samples[i]));
+    for (int i = 0; i < TruePeakDetector::kWidth; ++i)
+        peak = std::max(peak, meter.process(0.0, 0.0));
+    return peak;
+}
 
 // Monotonic-queue sliding minimum over the last `window` values.
 class MovingMinimum {

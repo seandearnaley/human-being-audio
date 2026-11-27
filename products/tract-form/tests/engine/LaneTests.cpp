@@ -476,6 +476,89 @@ TEST_CASE("lanes: lanePhases follows a leader at its ratio", "[engine][lanes]") 
     CHECK(e.lanePhases()[3] == Catch::Approx(lanePhase(ppq, 1.0, s.params[laneParam(3, LaneField::phase)])).margin(1e-6));
 }
 
+TEST_CASE("lanes: Free and Free R Hz LFOs are BPM-independent and stay phase-locked across linked followers",
+          "[engine][lanes]") {
+    // Lane 1 runs Free at 2.0 Hz (square wave); Lane 2 follows Lane 1 at x2 (4.0 Hz)
+    // with +90 deg offset; Lane 3 runs Free R at 1.25 Hz.
+    Setup fastBpm;
+    fastBpm.bpm = 174.0;
+    fastBpm.oversampling = 2;
+    fastBpm.params = lanesOff(Params::defaults());
+    fastBpm.params[ParamId::width] = 0.5f;
+    setLane(fastBpm.params, 0, LaneTarget::morph, LaneShape::square, kRateBar, 0.5f);
+    fastBpm.params[laneParam(0, LaneField::mode)] = static_cast<float>(LaneMode::freeRun);
+    fastBpm.params[laneParam(0, LaneField::hz)] = 2.0f;
+
+    setLane(fastBpm.params, 1, LaneTarget::width, LaneShape::sine, kRateBar, -1.0f);
+    fastBpm.params[laneParam(1, LaneField::follow)] = 1.0f; // Follow Lane 1
+    fastBpm.params[laneParam(1, LaneField::ratio)] = 4.0f;  // x2 -> exact 4.0 Hz
+    fastBpm.params[laneParam(1, LaneField::phase)] = 90.0f;
+    // Follower's own mode stays default Sync — it must automatically inherit Lane 1's Free clock!
+    fastBpm.params[laneParam(1, LaneField::mode)] = static_cast<float>(LaneMode::sync);
+
+    setLane(fastBpm.params, 2, LaneTarget::drive, LaneShape::rampUp, kRateBar, 0.4f);
+    fastBpm.params[laneParam(2, LaneField::mode)] = static_cast<float>(LaneMode::freeRetrig);
+    fastBpm.params[laneParam(2, LaneField::hz)] = 1.25f;
+
+    REQUIRE(laneUsesFreeClock(fastBpm.params, 0));
+    REQUIRE(laneUsesFreeClock(fastBpm.params, 1));
+    REQUIRE(laneUsesFreeClock(fastBpm.params, 2));
+    CHECK(laneRateHz(fastBpm.params, 0) == Catch::Approx(2.0));
+    CHECK(laneRateHz(fastBpm.params, 1) == Catch::Approx(4.0));
+    CHECK(laneRateHz(fastBpm.params, 2) == Catch::Approx(1.25));
+
+    // Exact BPM independence: 90 BPM and 174 BPM produce bit-identical audio & phases!
+    Setup slowBpm = fastBpm;
+    slowBpm.bpm = 90.0;
+    const auto rFast = render(fastBpm, held(29), frames(1.5, fastBpm.sampleRate));
+    const auto rSlow = render(slowBpm, held(29), frames(1.5, slowBpm.sampleRate));
+    CHECK(maxAbsDiff(rFast.left, rSlow.left) == 0.0);
+    CHECK(maxAbsDiff(rFast.right, rSlow.right) == 0.0);
+
+    // Block-size independence across 7, 64, and 512 samples, and exact leader/follower phase lock.
+    for (int blk : {7, 64, 512}) {
+        Setup sb = fastBpm;
+        sb.block = blk;
+        Engine e;
+        e.prepare(sb.sampleRate, sb.block, sb.oversampling);
+        render(e, sb, held(29), 48000);
+        const double fSec = e.freeSeconds();
+        const double nSec = e.noteSeconds();
+        CHECK(e.lanePhases()[0] == Catch::Approx(lanePhaseHz(fSec, 2.0, 0.0)).margin(1e-6));
+        CHECK(e.lanePhases()[1] == Catch::Approx(lanePhaseHz(fSec, 4.0, 90.0)).margin(1e-6));
+        CHECK(e.lanePhases()[2] == Catch::Approx(lanePhaseHz(nSec, 1.25, 0.0)).margin(1e-6));
+    }
+
+    // Free R resets cleanly on a new note while Free keeps running monotonically without glitching.
+    Engine e;
+    e.prepare(fastBpm.sampleRate, 64, 2);
+    render(e, fastBpm, held(29), 24000); // 0.5 s elapsed
+    const double freeBefore = e.freeSeconds();
+    CHECK(freeBefore == Catch::Approx(0.5).margin(0.01));
+    // Re-trigger a fresh note (noteOff + noteOn after release/fade or direct new note):
+    // Note start resets noteSeconds while freeSeconds continues monotonically.
+    render(e, fastBpm, {NoteEvent{0, 29, false}, NoteEvent{4800, 31, true}}, 9600, 24000);
+    CHECK(e.freeSeconds() > freeBefore + 0.15);
+    CHECK(e.noteSeconds() < 0.15);
+
+    // Awake == asleep parity on Free lanes.
+    Setup freeOnly = fastBpm;
+    freeOnly.params[laneParam(2, LaneField::on)] = 0.0f;
+    Engine awake, asleep;
+    awake.prepare(freeOnly.sampleRate, 64, 2);
+    asleep.prepare(freeOnly.sampleRate, 64, 2);
+    double worstFreeDiff = 0.0;
+    for (int b = 0; b < 200; ++b) {
+        render(awake, freeOnly, b == 0 ? held(29) : std::vector<NoteEvent>{}, 64, b * 64);
+        render(asleep, freeOnly, {}, 64, b * 64);
+        if (b < 25)
+            continue;
+        worstFreeDiff =
+            std::max(worstFreeDiff, static_cast<double>(std::abs(awake.laneValues()[1] - asleep.laneValues()[1])));
+    }
+    CHECK(worstFreeDiff <= 1e-6);
+}
+
 // ---- Sub stability, every target ------------------------------------------------------------
 
 namespace {

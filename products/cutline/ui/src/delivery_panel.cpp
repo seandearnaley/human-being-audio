@@ -8,17 +8,17 @@ namespace {
 class DeliveryPanel final : public Panel {
   public:
     explicit DeliveryPanel(Context& context)
-        : Panel(context), bendRange_(context, ParamId::bendRange, colour::cyan),
-          legato_(context, ParamId::legato, colour::iris, {}, true),
-          shiftMs_(context, ParamId::shiftMs, colour::vermilion, {}, true),
-          ccThin_(context, ParamId::ccThinMs, colour::textDim), audition_(context, ParamId::audition, colour::emerald),
-          auditionTone_(context, ParamId::auditionTone, colour::emerald),
+        : Panel(context), shiftMs_(context, ParamId::shiftMs, colour::vermilion, {}, true),
+          ccThin_(context, ParamId::ccThinMs, colour::textDim),
+          exprAmt_(context, ParamId::motion, colour::cyan, {}, true),
+          holdMidi_(context, ParamId::slicerLatch, colour::cyan),
+          audition_(context, ParamId::audition, colour::emerald),
           auditionGain_(context, ParamId::auditionGain, colour::emerald, {}, true),
           dragMid_(context, "Drag 4-bar .mid", [this] { context_.model.dragMidiPhrase(); }) {
-        for (auto* r : {&bendRange_, &legato_, &shiftMs_, &ccThin_, &audition_, &auditionTone_, &auditionGain_})
+        for (auto* r : {&shiftMs_, &ccThin_, &exprAmt_, &holdMidi_, &audition_, &auditionGain_})
             addChild(r);
         dragMid_.setAccent(colour::iris);
-        dragMid_.setOnDrag([this] { context_.model.dragMidiPhrase(); });
+        dragMid_.setOnDragOut([this] { context_.model.dragMidiPhrase(); });
         addChild(&dragMid_);
     }
 
@@ -33,33 +33,32 @@ class DeliveryPanel final : public Panel {
     }
 
     void resized() override {
-        const float pad = context_.px(metric::pad);
+        const float pad = px(12.0f);
         const float w = width() - 2.0f * pad;
-        const float rowH = context_.px(19.0f);
-        const float gap = context_.px(2.0f);
-        float y = pad - context_.px(3.0f);
+        const float rowH = px(21.0f);
+        const float gap = px(3.0f);
+        float y = px(10.0f);
 
-        for (auto* r : {&bendRange_, &legato_, &shiftMs_, &ccThin_}) {
+        for (auto* r : {&shiftMs_, &ccThin_, &exprAmt_}) {
             r->setBounds(pad, y, w, rowH);
             y += rowH + gap;
         }
-        const float splitGap = context_.px(12.0f);
+        const float splitGap = px(10.0f);
         const float halfW = (w - splitGap) * 0.5f;
-        audition_.setBounds(pad, y, halfW, rowH);
-        auditionTone_.setBounds(pad + halfW + splitGap, y, halfW, rowH);
+        holdMidi_.setBounds(pad, y, halfW, rowH);
+        audition_.setBounds(pad + halfW + splitGap, y, halfW, rowH);
         y += rowH + gap;
 
         auditionGain_.setBounds(pad, y, w, rowH);
-        dragMid_.setBounds(pad, height() - pad - context_.px(25.0f), w, context_.px(25.0f));
+        dragMid_.setBounds(pad, height() - px(10.0f) - px(28.0f), w, px(28.0f));
     }
 
   private:
-    Row bendRange_;
-    Row legato_;
     Row shiftMs_;
     Row ccThin_;
+    Row exprAmt_;
+    Row holdMidi_;
     Row audition_;
-    Row auditionTone_;
     Row auditionGain_;
     Button dragMid_;
     std::string shownExport_;

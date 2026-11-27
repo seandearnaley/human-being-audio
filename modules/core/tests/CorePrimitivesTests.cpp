@@ -16,16 +16,19 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <random>
 #include <vector>
 
 TEST_CASE("hba::core::writeWavFloat writes spec-compliant IEEE float WAV with fact chunk", "[core][wav]") {
-    const auto path = std::filesystem::temp_directory_path() / "hba_wave3_test.wav";
+    const auto path =
+        std::filesystem::temp_directory_path() / ("hba_wave_" + std::to_string(std::random_device{}()) + ".wav");
     const std::vector<float> samples{0.25f, -0.25f, 0.5f, -0.5f, 0.0f, 0.0f};
     REQUIRE(hba::core::writeWavFloat(path.string(), samples, 2, 48000));
 
     std::ifstream in(path, std::ios::binary);
     std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    std::filesystem::remove(path);
+    in.close();
+    REQUIRE(std::filesystem::remove(path));
 
     // 12 (RIFF) + 26 (18-byte fmt) + 12 (4-byte fact) + 8 (data hdr) + 24 (6 floats) = 82 bytes
     REQUIRE(bytes.size() == 82u);
@@ -42,19 +45,13 @@ TEST_CASE("hba::core::encodeSmfType0 writes valid MThd/MTrk headers and sorted e
     events.push_back(hba::core::SmfEvent::msg(0, 0, 0x90, 60, 100));
 
     const auto bytes = hba::core::encodeSmfType0(std::move(events), 960, 172.0, 960);
-    REQUIRE(bytes.size() > 22u);
-    CHECK(bytes[0] == 'M');
-    CHECK(bytes[1] == 'T');
-    CHECK(bytes[2] == 'h');
-    CHECK(bytes[3] == 'd');
-    CHECK(bytes[14] == 'M');
-    CHECK(bytes[15] == 'T');
-    CHECK(bytes[16] == 'r');
-    CHECK(bytes[17] == 'k');
-    // Ends with End-of-Track meta event FF 2F 00
-    CHECK(bytes[bytes.size() - 3] == 0xFFu);
-    CHECK(bytes[bytes.size() - 2] == 0x2Fu);
-    CHECK(bytes[bytes.size() - 1] == 0x00u);
+    const std::vector<std::uint8_t> expected{
+        'M',  'T',  'h',  'd',  0, 0, 0, 6,  0, 0,    0,    1, 0x03, 0xC0,       // Type 0, one track, 960 PPQ
+        'M',  'T',  'r',  'k',  0, 0, 0, 21, 0, 0xFF, 0x51, 3, 0x05, 0x52, 0xA5, // 172 BPM
+        0,    0x90, 60,   100,                                                   // note-on at tick 0
+        0x83, 0x60, 0x80, 60,   0,                                               // note-off at tick 480
+        0x83, 0x60, 0xFF, 0x2F, 0};                                              // end at tick 960
+    CHECK(bytes == expected);
 }
 
 TEST_CASE("hba::core param_math and note_name handle edge values cleanly", "[core][param]") {
@@ -126,3 +123,10 @@ TEST_CASE("hba::dsp pitch, random, oscillator, allpass, and biquad are accurate 
         ph = hba::dsp::frac(ph + inc);
     }
 }
+
+#if defined(__linux__)
+TEST_CASE("A buffered WAV write reports a full destination", "[core][wav]") {
+    const float samples[] = {0.25f, -0.25f};
+    REQUIRE_FALSE(hba::core::writeWavFloat("/dev/full", samples, 2, 48000));
+}
+#endif

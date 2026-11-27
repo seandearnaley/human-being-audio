@@ -373,3 +373,14 @@ TEST_CASE("A catch-up winds up from still and lands exactly on the track","[frac
         }
     }
 }
+
+TEST_CASE("Prepared grain readers share identical immutable polyphase kernels", "[fracture][kernel]") {
+    GrainResampler first;
+    first.prepare();
+    const auto initial = first.kernelFor(8.0);
+    GrainResampler second;
+    second.prepare();
+    CHECK(second.kernelFor(8.0).coefficients == initial.coefficients);
+    first.prepare();
+    CHECK(first.kernelFor(8.0).coefficients == initial.coefficients);
+}

@@ -38,7 +38,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
-    double getTailLengthSeconds() const override { return 0.5; }
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -85,6 +85,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     void handleMidi(const juce::MidiMessage& message, bool allowKeySwitch) noexcept;
 
     ParameterValues values_;
+    std::atomic<double> pipelineTailSeconds_{0.0};
     Engine engine_;
     hba::host::MidiExpressionParser midiParser_{2.0f};
     double sampleRate_ = 48000.0;
@@ -95,7 +96,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     SceneMatrix audioMatrix_ = matrixForPack(0);
     OutMidiBuffer outMidi_{};
     juce::MidiBuffer generatedMidi_{};
-    std::vector<float> monoScratchR_;
+    std::array<float, 1024> monoScratchR_{};
 
     std::atomic<int> lastNote_{41};
     std::atomic<double> lastBpm_{172.0};

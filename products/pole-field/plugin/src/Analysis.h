@@ -21,6 +21,9 @@ class Analysis {
     struct Status {
         float gainReductionDb = 0.0f;
         double ppq = 0.0;
+        double notePpq = 0.0;
+        double freeSec = 0.0;
+        double noteSec = 0.0;
         int osFactor = 4;
         std::array<float, kLaneCount> lanePhase{};
         std::array<float, kLaneCount> laneValue{};
@@ -47,6 +50,9 @@ class Analysis {
     std::atomic<int> osFactor_{4};
     std::atomic<float> gainReductionDb_{0.0f};
     std::atomic<double> ppq_{0.0};
+    std::atomic<double> notePpq_{0.0};
+    std::atomic<double> freeSec_{0.0};
+    std::atomic<double> noteSec_{0.0};
     std::array<std::atomic<float>, kLaneCount> lanePhase_{};
     std::array<std::atomic<float>, kLaneCount> laneValue_{};
 

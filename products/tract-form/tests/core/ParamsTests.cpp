@@ -61,6 +61,8 @@ TEST_CASE("values are formatted for display") {
     CHECK(formatValue(spec(ParamId::aDetune), 7.2f) == "+7.2 ct");
     CHECK(formatValue(spec(ParamId::glide), 12.5f) == "12.5 ms");
     CHECK(formatValue(spec(ParamId::xover), 100.0f) == "100 Hz");
+    CHECK(formatValue(spec(ParamId::lane1Hz), 0.5f) == "0.50 Hz");
+    CHECK(formatValue(spec(ParamId::lane1Hz), 12.5f) == "12.5 Hz");
     CHECK(formatValue(spec(ParamId::sideGain), 4.2f) == "+4.2 dB");
     CHECK(formatValue(spec(ParamId::ceiling), -0.3f) == "-0.3 dB");
     CHECK(formatValue(spec(ParamId::aRatio), 1.0f) == "1.000");

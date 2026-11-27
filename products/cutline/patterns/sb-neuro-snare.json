@@ -1,0 +1,45 @@
+{
+    "format": 3,
+    "name": "SB Neuro Snare",
+    "category": "Strike Body",
+    "bars": 2,
+    "lanes": {
+        "kick": {
+            "core": "X...............|X...............",
+            "muted": true
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X..."
+        },
+        "ghost": {
+            "groove": ".......o........|.......o........",
+            "detail": "..o.......o....o|..o.......o..o.."
+        },
+        "clap": {
+            "groove": "................|..............x.",
+            "detail": ".........x......|................"
+        },
+        "percA": {
+            "groove": "...........x....|...........x...."
+        }
+    },
+    "fill": {
+        "beats": 1,
+        "lanes": {
+            "snare": "............X..X",
+            "ghost": ".............oo."
+        }
+    },
+    "edits": [
+        {
+            "lane": "percA",
+            "step": 11,
+            "ratchet": 2
+        },
+        {
+            "lane": "percA",
+            "step": 27,
+            "ratchet": 2
+        }
+    ]
+}

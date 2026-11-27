@@ -1,0 +1,39 @@
+{
+    "format": 3,
+    "name": "SB Amen Ghosts Var",
+    "category": "Strike Body",
+    "bars": 2,
+    "lanes": {
+        "kick": {
+            "core": "X...............|X...............",
+            "muted": true
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X...",
+            "groove": ".x.......x......|.......x.x......"
+        },
+        "ghost": {
+            "groove": "..............o.|..............o.",
+            "detail": ".....o.o........|..o..o.....o...o"
+        },
+        "clap": {
+            "detail": "...........x....|...........x...."
+        },
+        "percA": {
+            "groove": "................|...............x"
+        }
+    },
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "snare": "........oooxxxxX"
+        }
+    },
+    "edits": [
+        {
+            "lane": "percA",
+            "step": 31,
+            "ratchet": 2
+        }
+    ]
+}

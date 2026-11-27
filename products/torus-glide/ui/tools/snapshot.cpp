@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "tg/ui/editor.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -8,9 +9,14 @@
 namespace {
 class FakeModel final : public tg::ui::Model {
   public:
-    explicit FakeModel(int mode) {
+    FakeModel(int mode, int padProgram) {
         params_ = tg::Params::defaults();
         params_.set(tg::ParamId::mode, static_cast<float>(mode));
+        params_.set(tg::ParamId::padProgram, static_cast<float>(padProgram));
+        params_.set(tg::ParamId::padX, 62.0f);
+        params_.set(tg::ParamId::padY, 68.0f);
+        params_.set(tg::ParamId::padHold, 1.0f);
+
         if (mode == 1) {
             params_.set(tg::ParamId::gravity, 65.0f);
             params_.set(tg::ParamId::stagger, 52.0f);
@@ -35,12 +41,20 @@ class FakeModel final : public tg::ui::Model {
         tel_.beatNumber = 3;
         tel_.bpm = 172.0f;
         tel_.sounding = true;
+        tel_.padActive = true;
+        tel_.padAmount = 1.0f;
+        tel_.spiralVel = 1.48f;
         tel_.peakL = 0.72f;
         tel_.peakR = 0.68f;
         tel_.subPeak = 0.84f;
         tel_.rmsLevel = 0.48f;
         tel_.limiterGain = 0.92f;
-        tel_.effectiveBellHz = 320.0f;
+        tel_.effectiveBellHz = 360.0f;
+        tel_.effectiveFilterHz = 2850.0f;
+        tel_.effectiveSpace = 0.46f;
+        tel_.effectiveDrive = 0.54f;
+        tel_.effectiveSubAnchor = 0.86f;
+        tel_.voicePitches = {41.0f, 48.0f, 54.0f, 56.0f, 63.0f};
         tel_.heldNoteCount = 3;
         tel_.heldNotes = {41, 48, 54, 0, 0};
     }
@@ -69,8 +83,8 @@ class FakeModel final : public tg::ui::Model {
     bool isSlotB() const override { return false; }
     void toggleAB() override {}
     void copyAB() override {}
-    bool isAuditioning() const override { return true; }
-    void setAudition(bool) override {}
+    bool isAuditioning() const override { return params_.flag(tg::ParamId::padHold); }
+    void setAudition(bool a) override { params_.set(tg::ParamId::padHold, a ? 1.0f : 0.0f); }
     tg::ui::ResampleState resampleState() const override { return tg::ui::ResampleState::ready; }
     void startResample() override {}
     void dragResampledWav() override {}
@@ -88,11 +102,30 @@ class FakeModel final : public tg::ui::Model {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Usage: tg-ui-snapshot <out.png> [padProgram=0..5 | --studio] [mode=0..2] [width=1280] [height=760]
     const std::string out = argc > 1 ? argv[1] : "torus-glide-snapshot.png";
-    const int mode = argc > 2 ? std::atoi(argv[2]) : 0;
-    FakeModel model(mode);
+    bool studio = false;
+    int padProg = 0;
+    int mode = 0;
+    if (argc > 2) {
+        const std::string arg2 = argv[2];
+        if (arg2 == "--studio" || arg2 == "studio") {
+            studio = true;
+            mode = argc > 3 ? std::clamp(std::atoi(argv[3]), 0, 2) : 0;
+        } else {
+            padProg = std::clamp(std::atoi(argv[2]), 0, tg::kPadProgramCount - 1);
+            mode = argc > 3 ? std::clamp(std::atoi(argv[3]), 0, 2) : (padProg == 1 ? 2 : (padProg == 2 ? 1 : 0));
+        }
+    }
+    const int w = argc > 4 ? std::max(640, std::atoi(argv[4])) : tg::ui::kDefaultWidth;
+    const int h = argc > 5 ? std::max(380, std::atoi(argv[5])) : tg::ui::kDefaultHeight;
+
+    FakeModel model(mode, padProg);
     tg::ui::Editor editor(model);
-    editor.renderToPng(out, tg::ui::kDefaultWidth, tg::ui::kDefaultHeight);
-    std::cout << "Saved " << out << " (mode=" << mode << ")\n";
+    if (studio)
+        editor.setView(tg::ui::Editor::View::studio);
+    editor.renderToPng(out, w, h);
+    std::cout << "Saved " << out << " (" << (studio ? "studio" : "play") << ", pad=" << padProg << ", mode=" << mode
+              << ", " << w << "x" << h << ")\n";
     return 0;
 }

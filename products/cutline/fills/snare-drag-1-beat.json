@@ -1,0 +1,10 @@
+{
+    "format": 3,
+    "name": "Snare Drag 1 Beat",
+    "category": "Snare",
+    "beats": 1,
+    "lanes": {
+        "snare": "............X..X",
+        "ghost": ".............oo."
+    }
+}

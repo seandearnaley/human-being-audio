@@ -16,6 +16,7 @@ class MidiExpressionParser {
         : pitchBendRangeSt_(std::clamp(defaultBendRangeSt, 1.0f, 48.0f)) {}
 
     float pitchBendRangeSt() const noexcept { return pitchBendRangeSt_; }
+    void setPitchBendRange(float semitones) noexcept { pitchBendRangeSt_ = std::clamp(semitones, 1.0f, 48.0f); }
 
     void reset(float defaultBendRangeSt = 2.0f) noexcept {
         rpnDetector_.reset();

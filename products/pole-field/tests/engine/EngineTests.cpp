@@ -637,3 +637,128 @@ TEST_CASE("PDC latency includes oversampling HIIR group delay plus limiter looka
     CHECK(eng4.latencySamples() == eng2.latencySamples() + 1);
     CHECK(eng8.latencySamples() == eng4.latencySamples() + 1);
 }
+
+TEST_CASE(
+    "Free Hz lanes are BPM-independent, phase-locked across Follow+Ratio, retrigger on MIDI, and block-size exact",
+    "[engine]") {
+    constexpr double fs = 48000.0;
+    constexpr int total = 4800; // 0.1 s
+
+    auto makeFreeParams = [] {
+        auto p = pf::Params::defaults();
+        p[pf::ParamId::motion] = 0.85f;
+        p[pf::ParamId::lane1On] = 1.0f;
+        p[pf::ParamId::lane1Target] = static_cast<float>(pf::LaneTarget::morphX);
+        p[pf::ParamId::lane1Mode] = static_cast<float>(pf::LaneMode::freeRun);
+        p[pf::ParamId::lane1Hz] = 2.5f;
+        p[pf::ParamId::lane1Depth] = 0.7f;
+        p[pf::ParamId::lane2On] = 1.0f;
+        p[pf::ParamId::lane2Target] = static_cast<float>(pf::LaneTarget::morphY);
+        p[pf::ParamId::lane2Follow] = 1.0f; // Follow Lane 1
+        p[pf::ParamId::lane2Ratio] = 4.0f;  // x2 -> 5.0 Hz
+        p[pf::ParamId::lane2Mode] = static_cast<float>(pf::LaneMode::sync);
+        p[pf::ParamId::lane2Depth] = 0.6f;
+        p[pf::ParamId::lane3On] = 0.0f;
+        p[pf::ParamId::lane4On] = 0.0f;
+        return p;
+    };
+
+    // 1) BPM independence & linked phase-ratio accuracy.
+    {
+        const auto params = makeFreeParams();
+        std::vector<float> lSlow(total), rSlow(total), lFast(total), rFast(total);
+        for (int i = 0; i < total; ++i) {
+            const float s = static_cast<float>(0.35 * std::sin(kTwoPi * 110.0 * static_cast<double>(i) / fs));
+            lSlow[static_cast<std::size_t>(i)] = lFast[static_cast<std::size_t>(i)] = s;
+            rSlow[static_cast<std::size_t>(i)] = rFast[static_cast<std::size_t>(i)] = s;
+        }
+        pf::Engine engSlow, engFast;
+        engSlow.prepare(fs, 256, 4);
+        engFast.prepare(fs, 256, 4);
+        engSlow.process(params, {85.0, 1.25, true}, lSlow.data(), rSlow.data(), total);
+        engFast.process(params, {178.0, 9.75, true}, lFast.data(), rFast.data(), total);
+
+        double maxDiff = 0.0;
+        for (int i = 0; i < total; ++i) {
+            maxDiff = std::max(maxDiff, std::abs(static_cast<double>(lSlow[static_cast<std::size_t>(i)] -
+                                                                     lFast[static_cast<std::size_t>(i)])));
+            maxDiff = std::max(maxDiff, std::abs(static_cast<double>(rSlow[static_cast<std::size_t>(i)] -
+                                                                     rFast[static_cast<std::size_t>(i)])));
+        }
+        CHECK(maxDiff == 0.0);
+
+        // At sample (total - 1) = 4799 -> t = 4799 / 48000 s:
+        // Lane 1 phase = frac(t * 2.5), Lane 2 phase = frac(t * 5.0 + 90/360)
+        const double tEnd = static_cast<double>(total - 1) / fs;
+        const auto phases = engSlow.lanePhases();
+        CHECK(phases[0] == Catch::Approx(static_cast<float>(std::fmod(tEnd * 2.5, 1.0))).margin(1e-5f));
+        CHECK(phases[1] == Catch::Approx(static_cast<float>(std::fmod(tEnd * 5.0 + 0.25, 1.0))).margin(1e-5f));
+        CHECK(engSlow.freeSeconds() == Catch::Approx(tEnd).margin(1e-9));
+    }
+
+    // 2) MIDI noteOn retriggers Free R and 1-Shot lanes deterministically.
+    {
+        auto params = pf::Params::defaults();
+        params[pf::ParamId::lane1On] = 1.0f;
+        params[pf::ParamId::lane1Mode] = static_cast<float>(pf::LaneMode::freeRetrig);
+        params[pf::ParamId::lane1Hz] = 4.0f;
+        params[pf::ParamId::lane1Phase] = 0.0f;
+        params[pf::ParamId::lane2On] = 1.0f;
+        params[pf::ParamId::lane2Mode] = static_cast<float>(pf::LaneMode::oneShot);
+        params[pf::ParamId::lane2Rate] = 9.0f; // 1/16 = 0.25 qn
+        params[pf::ParamId::lane2Phase] = 0.0f;
+
+        pf::Engine eng;
+        eng.prepare(fs, 256, 4);
+        std::vector<float> l(4800, 0.1f), r(4800, 0.1f);
+        eng.process(params, {120.0, 0.0, true}, l.data(), r.data(), 4800);
+        CHECK(eng.noteSeconds() > 0.09);
+        CHECK(eng.lanePhases()[1] < 0.99999f);
+
+        // Process long enough for 1-Shot (0.25 qn = 0.125 s at 120 BPM) to saturate.
+        eng.process(params, {120.0, 0.2, true}, l.data(), r.data(), 4800);
+        CHECK(eng.lanePhases()[1] > 0.999f);
+
+        // Retrigger via MIDI noteOn -> resets noteSeconds and restarts both Free R and 1-Shot near 0!
+        eng.noteOn(48);
+        std::vector<float> tinyL(16, 0.1f), tinyR(16, 0.1f);
+        eng.process(params, {120.0, 0.4, true}, tinyL.data(), tinyR.data(), 16);
+        CHECK(eng.noteSeconds() == Catch::Approx(15.0 / fs).margin(1e-9));
+        CHECK(eng.lanePhases()[0] < 0.01f);
+        CHECK(eng.lanePhases()[1] < 0.01f);
+    }
+
+    // 3) Bit-exact block-size independence with Free and Free R lanes active.
+    {
+        auto params = makeFreeParams();
+        params[pf::ParamId::lane3On] = 1.0f;
+        params[pf::ParamId::lane3Mode] = static_cast<float>(pf::LaneMode::freeRetrig);
+        params[pf::ParamId::lane3Hz] = 3.2f;
+        params[pf::ParamId::lane3Depth] = 0.5f;
+
+        auto renderChunked = [&](int chunkSize) {
+            pf::Engine eng;
+            eng.prepare(fs, 512, 4);
+            std::vector<float> l(1024), r(1024);
+            for (int i = 0; i < 1024; ++i) {
+                l[static_cast<std::size_t>(i)] = static_cast<float>(0.4 * std::sin(kTwoPi * 165.0 * i / fs));
+                r[static_cast<std::size_t>(i)] = static_cast<float>(0.4 * std::cos(kTwoPi * 165.0 * i / fs));
+            }
+            for (int pos = 0; pos < 1024; pos += chunkSize) {
+                const int n = std::min(chunkSize, 1024 - pos);
+                eng.process(params, {172.0, static_cast<double>(pos) * (172.0 / (60.0 * fs)), true}, l.data() + pos,
+                            r.data() + pos, n);
+            }
+            return std::pair{l, r};
+        };
+
+        const auto [refL, refR] = renderChunked(512);
+        for (int bs : {1, 7, 64, 257}) {
+            const auto [curL, curR] = renderChunked(bs);
+            for (std::size_t i = 0; i < refL.size(); ++i) {
+                REQUIRE(curL[i] == refL[i]);
+                REQUIRE(curR[i] == refR[i]);
+            }
+        }
+    }
+}

@@ -1,5 +1,5 @@
 name: Studio release
-run-name: Release ${{ inputs.product }} from ${{ github.ref_name }}
+run-name: ${{ inputs.publish && 'Publish' || 'Qualify' }} ${{ inputs.product }} from ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -7,8 +7,12 @@ on:
       product:
         description: Product to package
         type: choice
-        options: [livecut-redux, tract-form, pole-field, cutline, torus-glide, strike-body]
+        options: [livecut-redux, tract-form, pole-field, cutline, torus-glide, strike-body, lineage, datum]
         required: true
+      publish:
+        description: Publish the verified draft immediately
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,9 +34,13 @@ env:
 
 jobs:
   prepare:
+    permissions:
+      contents: write
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - run: python3 factory/release/release.py env "$PRODUCT"
       - name: Check source and version
         env:
@@ -43,19 +51,26 @@ jobs:
           refs=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/archive/$PRODUCT/tags/v$VERSION")
           if [[ -n $refs ]]; then echo "::error::This version already has a release tag. Bump the product version first."; exit 1; fi
           drafts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name')
-          if grep -Fxq "$TAG" <<<"$drafts"; then echo "::error::A release already exists for $TAG"; exit 1; fi
+          if grep -Fxq "$TAG" <<<"$drafts"; then
+            gh release view "$TAG" --json isDraft,targetCommitish | jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha'
+          else
+            python3 factory/release/release.py notes "$PRODUCT" > "$RUNNER_TEMP/notes"
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
+          fi
 
   package:
     needs: prepare
     environment: release
     permissions:
-      contents: read
+      contents: write
       id-token: write
     strategy:
       fail-fast: false
       matrix:
         os: [macos-26, windows-2025-vs2026, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
+    env:
+      CTEST_PARALLEL_LEVEL: ${{ inputs.product == 'livecut-redux' && '4' || '1' }}
     defaults:
       run:
         shell: bash
@@ -121,9 +136,15 @@ jobs:
         if: runner.os == 'macOS'
         with:
           python-version: '3.12'
-      - name: Open the installed Mac plug-ins in pluginval
+      - name: Validate the installed Mac Audio Unit, VST3 and standalone
         if: runner.os == 'macOS'
         run: |
+          # The runner's AU registry may predate the just-installed bundle.
+          pkill -9 -x -u "$UID" AudioComponentRegistrar || [ "$?" -eq 1 ]
+          plist="/Library/Audio/Plug-Ins/Components/$NAME.component/Contents/Info.plist"
+          auval -strict -v "$(plutil -extract AudioComponents.0.type raw -o - "$plist")" \
+            "$(plutil -extract AudioComponents.0.subtype raw -o - "$plist")" \
+            "$(plutil -extract AudioComponents.0.manufacturer raw -o - "$plist")"
           python3 factory/release/verify_product.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
           python -m pip install --only-binary=:all: pedalboard==0.9.26
           python factory/release/verify_recall.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
@@ -183,16 +204,15 @@ jobs:
           xvfb-run -a cmake/with-window-manager.sh /usr/bin/python3 factory/release/standalone-linux.py "$RUNNER_TEMP/installed/$NAME/Standalone/$NAME"
           xvfb-run -a cmake/with-window-manager.sh bash factory/release/pluginval.sh "$HOME/.vst3/$NAME.vst3"
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: package-${{ runner.os }}
-          path: |
-            dist/*.pkg
-            dist/*.exe
-            dist/*.tar.gz
-          if-no-files-found: error
+      - name: Stage the tested package in the private draft
+        env:
+          PACKAGE_FILE: ${{ runner.os == 'macOS' && env.MACOS_FILE || runner.os == 'Windows' && env.WINDOWS_FILE || env.LINUX_FILE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --json isDraft,targetCommitish | jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha'
+          gh release upload "$TAG" "dist/$PACKAGE_FILE" --clobber
 
-  publish:
+  finalize:
     outputs:
       tag: ${{ steps.published.outputs.tag }}
     needs: package
@@ -205,32 +225,39 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: package-*
-          merge-multiple: true
-          path: dist
       - run: python3 factory/release/release.py env "$PRODUCT"
+      - name: Collect the three tested packages from the private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --json isDraft,targetCommitish | jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha'
+          gh release download "$TAG" -D dist -p "$MACOS_FILE" -p "$WINDOWS_FILE" -p "$LINUX_FILE"
       - run: python3 factory/release/release.py record "$PRODUCT"
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
-      - name: Verify and publish the signed release
-        id: published
+      - name: Verify the candidate and attach its manifest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum -c SHA256SUMS)
           for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest "$GITHUB_SHA"; done
-          python3 factory/release/release.py notes "$PRODUCT" > "$RUNNER_TEMP/notes"
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false --title "$NAME $VERSION" --notes-file "$RUNNER_TEMP/notes"
+          gh release upload "$TAG" dist/release.json dist/SHA256SUMS --clobber
+      - name: Publish the verified draft
+        id: published
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$TAG" --draft=false --latest=false
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   verify-downloads:
-    needs: publish
+    needs: finalize
+    if: inputs.publish
     permissions:
       contents: read
       attestations: read
     uses: ./.github/workflows/verify-downloads.yml
     with:
-      tag: ${{ needs.publish.outputs.tag }}
+      tag: ${{ needs.finalize.outputs.tag }}

@@ -29,6 +29,11 @@ PluginProcessor::~PluginProcessor() {
     cancelPendingUpdate();
 }
 
+double PluginProcessor::getTailLengthSeconds() const {
+    // The Tract Form gate reaches exactly zero at the selected release time.
+    return currentParams()[ParamId::ampRelease] * 0.001 + pipelineTailSeconds_.load(std::memory_order_relaxed);
+}
+
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
@@ -44,6 +49,7 @@ void PluginProcessor::prepareEngine() {
         std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
     engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
+    pipelineTailSeconds_.store((engine_.latencySamples() + 3.0) / sampleRate_, std::memory_order_relaxed);
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -124,6 +130,14 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float* right = buffer.getWritePointer(1);
 
     const Params params = values_.snapshot();
+    const int bendChoice =
+        std::clamp(params.choice(ParamId::bendRange), 0, static_cast<int>(kBendSemitones.size()) - 1);
+    if (bendChoice != lastBendChoice_) {
+        lastBendChoice_ = bendChoice;
+        const float st = static_cast<float>(kBendSemitones[static_cast<std::size_t>(bendChoice)]);
+        midiParser_.setPitchBendRange(st);
+        engine_.setPitchBendRange(st);
+    }
     if (curves.pull(audioCurves_)) engine_.setLaneCurves(audioCurves_);
     const bool wantAudition = auditionWanted_.load(std::memory_order_relaxed);
     if (wantAudition != auditionPlaying_) {
@@ -180,6 +194,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     status.gainReductionDb = engine_.gainReductionDb();
     status.ppq = engine_.lanePpq();
     status.notePpq = engine_.notePpq();
+    status.freeSec = engine_.freeSeconds();
+    status.noteSec = engine_.noteSeconds();
     status.lanePhase = engine_.lanePhases();
     status.laneValue = engine_.laneValues();
     status.effective = engine_.effectiveState();

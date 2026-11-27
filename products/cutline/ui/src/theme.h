@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline Visage 1.0 design tokens: shared studio chrome from hba::ui plus
-// signature 262° electric iris (phrase statement/structure), oscillograph cyan
-// (answer & glide), splice vermilion (ratchets & microtiming shift), amber
-// (mutation), emerald (turnaround).
+// Cutline 3 dark-chrome design tokens, the 8-lane palette and the six pad colours.
 #pragma once
 
 #include "cl/ui/model.h"
 
 #include <hba/ui/theme.h>
 
+#include <algorithm>
+#include <array>
 #include <vector>
 
 namespace cl::ui {
@@ -22,6 +21,7 @@ struct Context {
     Model& model;
     float scale = 1.0f;
     std::vector<Live*> live;
+    bool fillView = false; // the grid shows the fill bar instead of the pattern
 
     float px(float designPixels) const { return designPixels * scale; }
 };
@@ -37,11 +37,51 @@ using hba::ui::colour::track;
 using hba::ui::colour::window;
 using hba::ui::colour::withAlpha;
 
-inline constexpr unsigned iris = 0xff9b7eff;      // 262° electric iris (statement & core accent)
-inline constexpr unsigned cyan = 0xff3fd9e8;      // answer, glide curves & CC74
-inline constexpr unsigned amber = 0xfff5a742;     // mutation & density
-inline constexpr unsigned vermilion = 0xffff6e5e; // ratchet bursts & microtiming stems
-inline constexpr unsigned emerald = 0xff49d193;   // turnaround & active audition
+inline constexpr unsigned onColour = 0xff0c0f15;  // Dark crisp text on bright colored tabs/sheets
+inline constexpr unsigned iris = 0xff936eff;      // Electric iris
+inline constexpr unsigned lavender = 0xffbaa3ff;  // Soft lavender (ghosts)
+inline constexpr unsigned cyan = 0xff1cd8ee;      // Electric cyan
+inline constexpr unsigned teal = 0xff1fe4b5;      // Mint teal
+inline constexpr unsigned amber = 0xffffa01e;     // Solar amber
+inline constexpr unsigned vermilion = 0xffff4e3e; // Blaze vermilion
+inline constexpr unsigned coral = 0xffff4593;     // Hyper coral
+inline constexpr unsigned emerald = 0xff28df8a;   // Neon emerald
+inline constexpr unsigned sky = 0xff4f8cff;       // Signal blue
+
+inline constexpr std::array<unsigned, kDrumLaneCount> lane{
+    vermilion, // 0: KICK
+    iris,      // 1: SNARE
+    lavender,  // 2: GHOST
+    coral,     // 3: CLAP
+    cyan,      // 4: CL HAT
+    teal,      // 5: OP HAT
+    amber,     // 6: PERC A
+    emerald,   // 7: PERC B
+};
+
+inline constexpr std::array<unsigned, kPerfPadCount> pad{
+    coral,     // 0: Repeat
+    vermilion, // 1: Roll
+    iris,      // 2: Density (the GRID's Density knob)
+    teal,      // 3: Rate
+    sky,       // 4: Drop
+    amber,     // 5: Fill (the GRID's fill colour)
+};
+
+inline unsigned lerpArgb(unsigned a, unsigned b, float t) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    const auto mixChan = [t](unsigned ca, unsigned cb) -> unsigned {
+        return static_cast<unsigned>(
+            std::lround(static_cast<float>(ca) + (static_cast<float>(cb) - static_cast<float>(ca)) * t));
+    };
+    return (mixChan((a >> 24) & 0xffu, (b >> 24) & 0xffu) << 24) |
+           (mixChan((a >> 16) & 0xffu, (b >> 16) & 0xffu) << 16) | (mixChan((a >> 8) & 0xffu, (b >> 8) & 0xffu) << 8) |
+           mixChan(a & 0xffu, b & 0xffu);
+}
+
+inline unsigned programArgb(int program) {
+    return pad[static_cast<std::size_t>(std::clamp(program, 0, kPerfPadCount - 1))];
+}
 } // namespace colour
 
 namespace metric {

@@ -1,16 +1,58 @@
 # Cutline
 
-Expressive phrase-grammar, gravitational microtiming, and MPE/CC MIDI articulator by [Human Being Audio](https://humanbeingaudio.com).
+Cutline is a drum-pattern MIDI plugin whose grid is exactly what plays, plus a MIDI slicer for your own chords and clips. By [Human Being Audio](https://humanbeingaudio.com).
 
-Cutline compiles deterministic 2-, 4-, and 8-bar musical phrases (`Statement → Answer → Mutation → Ratchet → Turnaround`), bends them through a strictly monotonic continuous microtiming gravity field, wraps them in four tempo-locked Bézier expression lanes, and delivers them live over VST3 / AU (`aumi` MIDI FX) or via one-drag 960-PPQ `.mid` capture.
+## The grid is the truth
 
-## Highlights
+Literal steps on 8 lanes, in three layers: Core, Groove and Detail. Nothing in playback is random. One function, `resolveBar`, decides what sounds, and both the engine and the grid call it.
 
-- **Five phrase grammars & contours**: `Neuro`, `BBCut11`, `WarpCut`, `Halftime`, and `Liquid` with `Loop`/`Evolve` modes, six melodic contours (`Auto`, `Pedal`, `Arch`, `Rise`, `Fall`, `Acid`), 64-step `‹ Roll ›` seed history, and Live MIDI `Transpose` / `Chord Carve` + `Latch`.
-- **Direct-manipulation Phrase Stage**: click spans to Lock/Pin across rolls, drag dividers to resize fill/turnaround windows, right-click to override roles (including `REST`), drag notes vertically snapped to scale, Alt-click to mute, inspect timing/velocity/bend in the hover micro-HUD, and monitor live `NOTE / PB / CC74 / CC1 / AT` LEDs.
-- **Gravitational microtiming field**: continuous, strictly monotonic push/pull toward `Downbeat`, `Backbeat`, `Offbeat 16`, or `Triplet` pockets — mathematically guaranteed never to invert adjacent ratchets.
-- **Three first-class output modes**: `Mono Ch1` (Ableton Live track-to-track safe with RPN `00 00` bend range), `MPE Zone` (Lower Zone Ch 1 Master + Ch 2–15 Member with MCM RPN & ±48 st scale-diatonic voicing), and `Drum Kit` (Kick/Snare/Ghost/Hat/Ratchet articulation).
-- **Multi-hue expression lanes, poly audition & studio workflow**: four target-coded `hba::dsp::Curve` lanes, 4-voice poly audition synth (`Reese`, `Sub`, `Pluck`, `Kit`), exact current-phrase 960-PPQ `.mid` drag export, plus 64-step Undo/Redo (`⌘Z` / `⌘⇧Z`) and A/B Compare.
+## Controls
+
+- **Density**: 0% Core, 50% Core and Groove, 100% everything. Default 50%.
+- **Swing**: delays the odd 16ths. Default 0%.
+- **Dynamics**: velocity contrast. Default 50%.
+- **Fill**: Off, or every 2, 4, 8 or 16 bars. Default Off.
+- **Scene**: A to D, four patterns.
+- **Rate**: 0.5x, 1x or 2x.
+
+## Fills
+
+Drawn, and off by default. A lane with nothing drawn in the fill keeps playing the main pattern.
+
+## PLAY
+
+Six programs on the PLAY surface, locked to the grid. They engage on the next 1/16, release at once, and return to the pattern in phase.
+
+| Pad | X | Y |
+|-----|---|---|
+| Repeat | window: 1, 1/2, 1/4 or 1/8 beat | gate length |
+| Roll | 1/8, 1/16, 1/16T, 1/32; velocity rises from 72 to 120 across each bar | lane: kick, snare, closed hat (bottom to top); the other lanes keep playing |
+| Density | Density, while held | Dynamics, while held |
+| Rate | 0.5x, 1x or 2x | under 30% kick and snare; over 70% no kick |
+| Drop | four zones: silence; kick only; kick and snare; everything except kick | none |
+| Fill | none: while held, every bar plays its fill | none |
+
+The surface draws the notes Cutline actually sent, one row per lane, fading over a bar, over faint outlines of the pattern. In MIDI Slicer mode it draws one row per pitch; Density and Fill do nothing there, and Drop only silences.
+
+Pad MIDI (C3 to F3, in drum mode) and XY to CC are off by default. Bypassing Cutline sends a note-off for every note it has sounding.
+
+## MIDI Slicer
+
+Plays the notes you hold through a literal gate strip of up to 32 steps: Stab Chop, Strum / Flam, Break Arp, Bass / Stab, or Clip Slice for a captured clip.
+
+## Factory content
+
+The library contains 46 patterns, 13 fills and 22 factory presets. The preset builder in `tools/build_presets.py` maps patterns to scenes.
+
+## Files
+
+Patterns and presets are JSON with `"format": 3`. Cutline 2 presets are not loaded: they do not appear in the preset list, and no message says why. A Cutline 2 session opens on the default beat.
+
+## For developers
+
+- `engine` preset: core, engine and their tests, no JUCE or Visage. `dev` preset: everything.
+- `cutline-render` renders a preset to MIDI or audio. `cl-ui-snapshot` renders the editor to a PNG.
+- Spec: `docs/specs/`. Plans: `docs/plans/`.
 
 ## Building
 

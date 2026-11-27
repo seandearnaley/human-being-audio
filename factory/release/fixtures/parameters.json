@@ -12,8 +12,8 @@
     "drive": 0.23
   },
   "cutline": {
-    "gravity": 0.72,
-    "ratchet": 0.81
+    "density": 0.72,
+    "swing": 0.31
   },
   "torus-glide": {
     "scale_gravity": 0.74,
@@ -22,5 +22,13 @@
   "strike-body": {
     "tension": 0.78,
     "disperser": 0.64
+  },
+  "lineage": {
+    "filter_1": 0.68,
+    "drive": 0.54
+  },
+  "datum": {
+    "punch": 0.74,
+    "drive": 0.52
   }
 }

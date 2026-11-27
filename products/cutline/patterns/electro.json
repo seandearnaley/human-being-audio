@@ -1,0 +1,37 @@
+{
+    "format": 3,
+    "name": "Electro",
+    "category": "Breaks",
+    "bars": 2,
+    "lanes": {
+        "kick": {
+            "core": "X.....x...x.....|X.....x...x.....",
+            "groove": "................|.............x..",
+            "detail": "...x............|...x............"
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X...",
+            "offsetMs": 1
+        },
+        "ghost": {
+            "detail": "...........o....|...........o...o",
+            "offsetMs": 1
+        },
+        "clap": {
+            "core": "....x.......x...|....x.......x...",
+            "offsetMs": 2
+        },
+        "hat": {
+            "core": "..x...x...x...x.|..x...x...x...x.",
+            "groove": "o...o...o...o...|o...o...o...o...",
+            "detail": ".o.o.o.o.o.o.o..|.o.o.o.o.o.o.o.."
+        }
+    },
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "kick": "........x.......",
+            "percA": "........oxxxxxxX"
+        }
+    }
+}

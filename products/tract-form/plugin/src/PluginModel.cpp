@@ -1,5 +1,7 @@
 #include "PluginModel.h"
 
+#include <hba/host/external_file_drag.h>
+
 namespace tf {
 
 PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
@@ -101,7 +103,7 @@ void PluginModel::resample() {
 void PluginModel::dragResampledFile() {
     const auto file = processor_.resampler.file();
     if (dragSource_ == nullptr || !file.existsAsFile()) return;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({ file.getFullPathName() }, false, dragSource_);
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {

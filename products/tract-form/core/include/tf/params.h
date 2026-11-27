@@ -2,6 +2,8 @@
 // interface's labels all derive from it, so a parameter is defined exactly once.
 #pragma once
 
+#include <hba/dsp/lane_math.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -80,6 +82,7 @@ enum class ParamId : std::uint8_t {
     lane1Follow,
     lane1Ratio,
     lane1Mode,
+    lane1Hz,
     lane2On,
     lane2Rate,
     lane2Phase,
@@ -89,6 +92,7 @@ enum class ParamId : std::uint8_t {
     lane2Follow,
     lane2Ratio,
     lane2Mode,
+    lane2Hz,
     lane3On,
     lane3Rate,
     lane3Phase,
@@ -98,6 +102,7 @@ enum class ParamId : std::uint8_t {
     lane3Follow,
     lane3Ratio,
     lane3Mode,
+    lane3Hz,
     lane4On,
     lane4Rate,
     lane4Phase,
@@ -107,14 +112,19 @@ enum class ParamId : std::uint8_t {
     lane4Follow,
     lane4Ratio,
     lane4Mode,
+    lane4Hz,
+    playMode,
+    glideMode,
+    bendRange,
+    octave,
     count
 };
 
 inline constexpr int kParamCount = static_cast<int>(ParamId::count);
 inline constexpr int kLaneCount = 4;
 
-enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio, mode };
-inline constexpr int kLaneFieldCount = 9;
+enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio, mode, hz };
+inline constexpr int kLaneFieldCount = 10;
 
 // What a lane moves. Order matches choices::laneTarget.
 enum class LaneTarget : std::uint8_t { phase, morph, drive, beat, coupling, reach, weight, sculpt, fit, width, shift };
@@ -158,9 +168,20 @@ inline constexpr std::array<std::string_view, 5> foldType { "Fold", "Sine", "Tub
 inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> sculptMode{"Bell", "Phaser", "Comb"};
 inline constexpr std::array<std::string_view, 3> quality { "2×", "4×", "8×" };
-inline constexpr std::array<std::string_view, 12> laneRate {
-    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
-};
+inline constexpr std::array<std::string_view, 2> playMode{"Mono", "Legato"};
+inline constexpr std::array<std::string_view, 2> glideMode{"Always", "Legato"};
+inline constexpr std::array<std::string_view, 5> bendRange{"\xc2\xb1"
+                                                           "2 st",
+                                                           "\xc2\xb1"
+                                                           "7 st",
+                                                           "\xc2\xb1"
+                                                           "12 st",
+                                                           "\xc2\xb1"
+                                                           "24 st",
+                                                           "\xc2\xb1"
+                                                           "48 st"};
+inline constexpr std::array<std::string_view, 4> octave{"-2 oct", "-1 oct", "0 oct", "+1 oct"};
+inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 // "Custom" plays the lane's drawn curve.
 inline constexpr std::array<std::string_view, 7> laneShape {
     "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps", "Custom"
@@ -168,27 +189,29 @@ inline constexpr std::array<std::string_view, 7> laneShape {
 inline constexpr std::array<std::string_view, 11> laneTarget{"Phase",  "Morph",  "Drive", "Beat",  "Coupling", "Reach",
                                                              "Weight", "Sculpt", "Fit",   "Width", "Shift"};
 // A lane plays its own shape, or follows another lane's shape at a ratio of its rate.
-inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
-inline constexpr std::array<std::string_view, 7> laneRatio { "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74" };
-inline constexpr std::array<std::string_view, 3> laneMode{"Sync", "Retrig", "1-Shot"};
+inline constexpr auto& laneFollow = hba::dsp::kLaneFollowLabels;
+inline constexpr auto& laneRatio = hba::dsp::kLaneRatioLabels;
+inline constexpr auto& laneMode = hba::dsp::kLaneModeLabels;
 }
 
 // Feedback delay per choice, in cycles of the note.
 inline constexpr std::array<double, 5> kFbCycles { 0.25, 0.5, 1.0, 2.0, 4.0 };
 // Quarter notes per roll for each Beat lock division.
 inline constexpr std::array<double, 9> kBeatLockQuarters { 32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
-inline constexpr std::array<double, 12> kLaneRateQuarters {
-    32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
-};
+using hba::dsp::kLaneRateQuarters;
 inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
+inline constexpr std::array<int, 5> kBendSemitones{2, 7, 12, 24, 48};
+inline constexpr std::array<int, 4> kOctaveSemitones{-24, -12, 0, 12};
 // How many times faster than its leader a following lane runs.
-inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
+using hba::dsp::kLaneRatios;
 
 enum class TractPos : std::uint8_t { pre, post };
 enum class SculptMode : std::uint8_t { bell, phaser, comb };
 enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
+enum class PlayMode : std::uint8_t { mono, legato };
+enum class GlideMode : std::uint8_t { always, legato };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
-enum class LaneMode : std::uint8_t { sync, retrig, oneShot };
+using LaneMode = hba::dsp::LaneMode;
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def, bool automatable = true) {
@@ -235,7 +258,8 @@ constexpr ParamSpec ranged(std::string_view key, std::string_view name, float mi
                        false),                                                                                         \
         detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
         detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false),                          \
-        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false)
+        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false),                             \
+        detail::ranged("lane" #n "Hz", "Lane " #n " Hz", 0.05f, 20.0f, 0.5f, Unit::hz, 0.0f, false)
 
 // Order must match ParamId.
 inline constexpr std::array<ParamSpec, kParamCount> kParams{{
@@ -299,6 +323,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     TF_LANE(2, LaneTarget::morph, 5, 90.0f, 0.79f),
     TF_LANE(3, LaneTarget::drive, 7, 180.0f, 0.46f),
     TF_LANE(4, LaneTarget::beat, 4, 270.0f, 0.38f),
+    detail::choice("playMode", "Play mode", choices::playMode, 1, false),
+    detail::choice("glideMode", "Portamento", choices::glideMode, 1, false),
+    detail::choice("bendRange", "Bend range", choices::bendRange, 0, false),
+    detail::choice("octave", "Octave", choices::octave, 2, false),
 }};
 
 #undef TF_LANE
@@ -329,6 +357,8 @@ static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(spec(ParamId::lane4Shape).key == "lane4Shape", "kParams order must match ParamId");
 static_assert(spec(ParamId::lane4Mode).key == "lane4Mode" && spec(laneParam(2, LaneField::target)).key == "lane3Target",
               "lane layout");
+static_assert(spec(ParamId::lane4Hz).key == "lane4Hz" && spec(laneParam(1, LaneField::hz)).key == "lane2Hz",
+              "lane hz layout");
 static_assert(choices::laneTarget.size() == kLaneTargetCount && kLaneRatios.size() == choices::laneRatio.size());
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
 static_assert(spec(ParamId::reach).key == "reach" && spec(ParamId::beatLock).key == "beatLock", "kParams order");

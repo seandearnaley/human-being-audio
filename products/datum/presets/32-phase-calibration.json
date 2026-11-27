@@ -1,0 +1,204 @@
+{
+    "name": "Phase Cal 55Hz A1",
+    "category": "Acoustic & Reference",
+    "tuneHz": 55.0,
+    "punchAmt": 0.44,
+    "lengthMs": 200.0,
+    "clickAmt": 0.24,
+    "drive": 0.12,
+    "tight": 0.2,
+    "coreTopology": "Harmonic",
+    "startPhase": 0.0,
+    "harm2": 0.28,
+    "harm3": 0.18,
+    "harm4": 0.1,
+    "harm5": 0.05,
+    "harm6": 0.02,
+    "harmTilt": 0.68,
+    "tension": 0.32,
+    "cavityHz": 74.0,
+    "cavityQ": 0.26,
+    "pitchDepth": 0.65,
+    "beaterType": "Wood",
+    "beaterHard": 0.58,
+    "beaterTone": 3200.0,
+    "fmDepth": 0.3,
+    "fmRatio": 2.35,
+    "fmDecayMs": 11.0,
+    "noiseMode": "BP",
+    "noiseLevel": 0.24,
+    "noiseHz": 4400.0,
+    "noiseQ": 0.35,
+    "noiseDecayMs": 16.0,
+    "clickWavMix": 0.0,
+    "subLevel": 0.92,
+    "bodyLevel": 0.86,
+    "clickLevel": 0.74,
+    "envAttack": 0.18,
+    "envPunch": 0.15,
+    "envTail": 0.0,
+    "shaperType": "Tube",
+    "shaperGlue": 0.2,
+    "boxCutHz": 310.0,
+    "boxCutDb": 2.5,
+    "boxZeroPhase": true,
+    "airWidth": 0.18,
+    "phaseRotate": 0.0,
+    "disperseAmt": 0.14,
+    "disperseHz": 340.0,
+    "outputDb": 0.0,
+    "ceilingDb": -0.3,
+    "limitOn": true,
+    "humanize": 0.0,
+    "velToPunch": 0.55,
+    "activeSlot": "A · Main",
+    "slotMorph": 0.0,
+    "seqRun": false,
+    "seqSteps": "16",
+    "seqRate": "1/16",
+    "seqSwing": 0.0,
+    "keyTrack": "Kit",
+    "chokeMode": "Mono",
+    "zeroCross": true,
+    "headroomMode": "Peak-Min",
+    "quality": "4×",
+    "refBassMode": "Off",
+    "pitchCurve": [
+        {
+            "t": 0.0,
+            "y": 0.62,
+            "tension": -0.7,
+            "seg": 1
+        },
+        {
+            "t": 0.04,
+            "y": 0.22,
+            "tension": -0.3,
+            "seg": 1
+        },
+        {
+            "t": 1.0,
+            "y": 0.15,
+            "tension": 0.0,
+            "seg": 0
+        }
+    ],
+    "ampCurve": [
+        {
+            "t": 0.0,
+            "y": 1.0,
+            "tension": 0.0,
+            "seg": 0
+        },
+        {
+            "t": 0.35,
+            "y": 0.88,
+            "tension": -0.1,
+            "seg": 2
+        },
+        {
+            "t": 0.78,
+            "y": 0.48,
+            "tension": -0.2,
+            "seg": 2
+        },
+        {
+            "t": 1.0,
+            "y": 0.0,
+            "tension": 0.0,
+            "seg": 0
+        }
+    ],
+    "slots": [
+        {
+            "tune": 0.0,
+            "len": 1.0,
+            "click": 1.0,
+            "drive": 1.0,
+            "level": 1.0
+        },
+        {
+            "tune": 1.0,
+            "len": 0.72,
+            "click": 0.68,
+            "drive": 0.8,
+            "level": 0.74
+        },
+        {
+            "tune": 0.5,
+            "len": 0.66,
+            "click": 0.9,
+            "drive": 0.95,
+            "level": 0.88
+        },
+        {
+            "tune": -3.0,
+            "len": 1.48,
+            "click": 0.45,
+            "drive": 0.85,
+            "level": 0.98
+        }
+    ],
+    "steps": [
+        {
+            "i": 0,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 4,
+            "v": 118,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 8,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 12,
+            "v": 118,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 15,
+            "v": 82,
+            "s": 1,
+            "r": 1
+        },
+        {
+            "i": 16,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 20,
+            "v": 118,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 24,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 28,
+            "v": 118,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 30,
+            "v": 96,
+            "s": 2,
+            "r": 2
+        }
+    ]
+}

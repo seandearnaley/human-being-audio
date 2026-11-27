@@ -3,9 +3,9 @@
 1. Merge the product changes with its new three-part version in the product’s top-level CMakeLists.txt. This version becomes the plug-in version, package filenames and product-scoped release tag.
 Add its musician-facing changes in `products/<product>/docs/releases/<version>.md`. The workflow publishes that file with the source link and verification instructions.
 
-2. In GitHub Actions, open **Studio release**, select **Run workflow**, keep the branch on **main** and choose the product. From any authenticated terminal, the equivalent command is `gh workflow run release.yml -R seandearnaley/human-being-audio --ref main -f product=livecut-redux`. Use the catalogue slug for the product you are shipping.
+2. To qualify a private release candidate, in GitHub Actions open **Studio release**, select **Run workflow**, keep the branch on **main** and choose the product. From any authenticated terminal, the equivalent command is `gh workflow run release.yml -R seandearnaley/human-being-audio --ref main -f product=livecut-redux`. Use the catalogue slug for the product you are shipping.
 3. GitHub builds and tests all three platforms, signs and installs their packages, checks the installed VST3 publisher and host class IDs, opens the plug-ins in pluginval, and verifies the Windows uninstaller. macOS also validates the Audio Unit.
-4. When all three packages pass, the workflow verifies provenance, publishes the product tag and uploads its catalogue record. The website discovers the release automatically.
+4. When all three packages pass, the workflow verifies provenance and attaches the catalogue record and checksums to the draft. Maintainers can download the exact signed files with `gh release download <product>/v<version>`. The draft is visible to repository writers. After explicit release approval, publish the verified draft with `gh release edit <product>/v<version> --draft=false --latest=false`, then run **Verify live downloads** for that tag. To build and publish in one previously approved run, pass `-f publish=true` when dispatching the workflow.
 
 5. After publication, **Verify live downloads** opens the production site in Chromium and waits for the product card to show the published version. It clicks the macOS, Windows and Ubuntu links, checks the downloaded bytes against the attested release manifest, and runs `gh release verify-asset` on each file. The job log records the filename, size and verified SHA-256 for each platform.
 
@@ -29,6 +29,6 @@ Contributors need only the development toolchain. Signing runs on disposable Git
 
 To set the Apple export password, run `gh secret set MACOS_P12_PASSWORD --env release -R seandearnaley/human-being-audio` and enter it at the hidden prompt. The other Apple secret names are in the signing step of the workflow.
 
-A packaging failure prevents publication. Open the failed step in Actions. After correcting an external credential, use **Re-run failed jobs**. A source fix needs a fresh run from the corrected commit. A previously created draft or tag stops another run for that version.
+A packaging failure prevents publication. Open the failed step in Actions. After correcting an external credential, use **Re-run failed jobs**. A source fix needs a fresh run from the corrected commit. A draft for the same source commit can be resumed. An existing tag or a draft targeting different source prevents another run for that version.
 
 [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) · [Microsoft Artifact Signing](https://github.com/Azure/artifact-signing-action) · [NSIS licensing](https://nsis.sourceforge.io/License) · [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)

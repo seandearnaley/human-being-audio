@@ -2,6 +2,8 @@
 // it over JUCE; tests implement it with canned data.
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "tf/lanes.h"
 #include "tf/params.h"
 
@@ -41,6 +43,9 @@ struct Visuals {
     double ppq = 0.0;
     // Note-relative elapsed quarter notes for Retrig and One-Shot lane modes.
     double notePpq = 0.0;
+    // Monotonic elapsed seconds and note-relative seconds for Free / Free R lanes.
+    double freeSec = 0.0;
+    double noteSec = 0.0;
 
     float hz = 0.0f;
     int note = -1;  // MIDI note, -1 when silent
@@ -57,15 +62,15 @@ struct Visuals {
     bool effActive = false;
 };
 
-enum class ResampleState { idle, rendering, ready };
+enum class ResampleState { idle, rendering, ready, failed };
 
 struct PresetInfo {
     std::string name;
     std::string category;
 };
 
-class Model {
-public:
+class Model : public hba::ui::PresetMenuHost {
+  public:
     virtual ~Model() = default;
 
     // Real parameter values, as in tf::Params.
@@ -105,5 +110,4 @@ public:
     // Press-and-hold audition note (F1) from the interface.
     virtual void setAudition(bool down) { (void)down; }
 };
-
 }

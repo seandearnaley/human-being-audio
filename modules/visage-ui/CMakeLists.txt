@@ -9,7 +9,12 @@ if(NOT TARGET hba_visage_ui)
         include/hba/ui/movement_panel.h
         include/hba/ui/theme.h
         include/hba/ui/top_bar.h
+        include/hba/ui/voice_bar.h
         src/movement_edit.cpp)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_sources(hba_visage_ui PRIVATE src/x11_file_drag.cpp)
+        set_source_files_properties(src/x11_file_drag.cpp PROPERTIES COMPILE_DEFINITIONS VISAGE_LINUX=1)
+    endif()
     target_include_directories(hba_visage_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(hba_visage_ui PUBLIC cxx_std_20)
     if(MSVC)

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 
-#include "Parameters.h"
+#include <hba/host/external_file_drag.h>
 
-#include <hba/dsp/lane_math.h>
+#include "Library.h"
+#include "Parameters.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,14 +17,12 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
     }
-    if (processor_.seedHistory.empty()) {
-        processor_.seedHistory.push_back(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
-        processor_.seedCursor = 0;
-    }
+    processor_.telemetry.discardSentNotes(); // what was sent while the editor was closed is long gone
     refreshVisuals();
 }
 
 PluginModel::~PluginModel() {
+    endGrooveEdit(); // an editor closed mid-drag still saves what the drag did
     *alive_ = false;
     if (saveDialog_)
         saveDialog_->exitModalState(0);
@@ -49,17 +48,38 @@ void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->e
 
 void PluginModel::refreshVisuals() {
     processor_.telemetry.read(visuals_);
-    // When host transport is stopped, compile the live preview from current parameter values
-    // and overrides so tweaking Grammar/Gravity/Seed/Overrides updates the piano roll immediately.
-    if (!visuals_.playing) {
-        Params p;
-        for (int i = 0; i < kParamCount; ++i)
-            p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
-        const PhraseOverrides ov = processor_.overrides.get();
-        const std::uint32_t sig = phraseSignature(p, 0, visuals_.heldNotes, ov);
-        if (visuals_.plan.signature != sig || visuals_.plan.phraseIndex != 0)
-            compilePhrase(p, 0, visuals_.heldNotes, visuals_.plan, ov);
-        visuals_.bpm = processor_.telemetry.lastBpm();
+    visuals_.sentCount = processor_.telemetry.drainSentNotes(visuals_.sent.data(), ui::kMaxSentPerRefresh);
+    if (visuals_.playing)
+        return;
+    // Stopped: show what the parameters say will play from the top of the pattern.
+    Params p;
+    for (int i = 0; i < kParamCount; ++i)
+        p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
+    const int scene = std::clamp(p.choice(ParamId::scene), 0, kSceneCount - 1);
+    const double bpm = processor_.telemetry.lastBpm();
+    visuals_.activeScene = scene;
+    visuals_.pendingScene = -1;
+    visuals_.activePadProgram = std::clamp(p.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
+    visuals_.pendingPadProgram = -1;
+    visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
+    visuals_.position = {};
+    // The Density pad replaces Density and Dynamics while it is held, in drum mode.
+    const bool densityPad = visuals_.padEngaged && visuals_.activePadProgram == static_cast<int>(PadProgram::density) &&
+                            p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::drum);
+    visuals_.position.density = densityPad ? p[ParamId::padX] : p[ParamId::density];
+    visuals_.position.dynamics = densityPad ? p[ParamId::padY] : p[ParamId::dynamics];
+    visuals_.position.rate =
+        static_cast<float>(kSeqRateMultipliers[static_cast<std::size_t>(std::clamp(p.choice(ParamId::seqRate), 0, 2))]);
+    visuals_.bpm = bpm;
+    if (p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
+        // The preview phrase: recompiled only when something it depends on changed, not on every UI tick.
+        const GrooveState& state = groove();
+        const SlicerInputs now = slicerInputs(p, scene, visuals_.heldNotes, bpm, grooveRevision_);
+        if (!now.sameAs(previewInputs_)) {
+            compileSlicer(p, state, scene, visuals_.heldNotes, bpm, previewPlan_);
+            previewInputs_ = now;
+        }
+        visuals_.slicerPlan = previewPlan_;
     }
 }
 
@@ -73,62 +93,72 @@ void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     processor_.curves.set(lane, curve);
 }
 
-PhraseOverrides PluginModel::overrides() const { return processor_.overrides.get(); }
-void PluginModel::setOverrides(const PhraseOverrides& overrides) {
-    if (!applyingSnapshot_)
-        processor_.history.pushCoalesced(captureSnapshot(), 0x2000u,
-                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
-    processor_.overrides.set(overrides);
+// The model keeps a copy of the published GrooveState and refetches it only when the store changed.
+const GrooveState& PluginModel::groove() const {
+    const std::uint32_t revision = processor_.patterns.revision();
+    if (revision != grooveRevision_) {
+        groove_ = processor_.patterns.get();
+        grooveRevision_ = revision;
+    }
+    return groove_;
 }
-void PluginModel::clearOverrides() {
+
+// One grid gesture is one undo step: its first edit takes the snapshot, every edit is heard at once, and the plugin
+// state is written once when the gesture ends. An edit outside a gesture is its own undo step.
+void PluginModel::setGrooveBank(const GrooveBank& bank) {
+    if (!applyingSnapshot_ && !(inGrooveEdit_ && grooveEditSnapshot_))
+        processor_.history.push(captureSnapshot());
+    if (!inGrooveEdit_) {
+        processor_.patterns.set(bank);
+        return;
+    }
+    grooveEditSnapshot_ = true;
+    grooveEditDirty_ = true;
+    processor_.patterns.setLive(bank);
+}
+
+void PluginModel::beginGrooveEdit() {
+    if (inGrooveEdit_)
+        endGrooveEdit(); // a press whose release never arrived
+    inGrooveEdit_ = true;
+    grooveEditSnapshot_ = false;
+    grooveEditDirty_ = false;
+}
+
+void PluginModel::endGrooveEdit() {
+    if (inGrooveEdit_ && grooveEditDirty_)
+        processor_.patterns.writeState();
+    inGrooveEdit_ = false;
+    grooveEditSnapshot_ = false;
+    grooveEditDirty_ = false;
+}
+
+void PluginModel::cloneActiveSceneToNext() {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
-    processor_.overrides.clear();
+    const int cur = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    const int next = (cur + 1) % kSceneCount;
+    GrooveBank bank = processor_.patterns.bank();
+    bank.scenes[static_cast<std::size_t>(next)] = bank.scenes[static_cast<std::size_t>(cur)];
+    processor_.patterns.set(bank);
+    begin(ParamId::scene);
+    set(ParamId::scene, static_cast<float>(next));
+    end(ParamId::scene);
 }
 
-void PluginModel::pushSeedHistory(int seed) {
-    const int clamped = std::clamp(seed, 1, 999);
-    auto& seeds = processor_.seedHistory;
-    auto& cursor = processor_.seedCursor;
-    if (!seeds.empty() && seeds[cursor] == clamped)
-        return;
-    if (cursor + 1 < seeds.size())
-        seeds.resize(cursor + 1);
-    seeds.push_back(clamped);
-    if (seeds.size() > 64)
-        seeds.erase(seeds.begin());
-    cursor = seeds.size() - 1;
-}
-
-void PluginModel::rollSeed() {
-    const int current = std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999);
-    pushSeedHistory(current);
-    const auto ticks = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks());
-    int next =
-        1 + static_cast<int>(hba::dsp::laneHash(static_cast<std::uint32_t>(current) * 2654435761U ^ ticks) % 999U);
-    if (next == current)
-        next = (next % 999) + 1;
-    pushSeedHistory(next);
-    begin(ParamId::seed);
-    set(ParamId::seed, static_cast<float>(next));
-    end(ParamId::seed);
-}
-
-bool PluginModel::canStepSeedHistory(int delta) const {
-    if (delta < 0)
-        return processor_.seedCursor > 0;
-    if (delta > 0)
-        return processor_.seedCursor + 1 < processor_.seedHistory.size();
-    return false;
-}
-
-void PluginModel::stepSeedHistory(int delta) {
-    if (!canStepSeedHistory(delta))
-        return;
-    processor_.seedCursor = static_cast<std::size_t>(static_cast<int>(processor_.seedCursor) + (delta < 0 ? -1 : 1));
-    begin(ParamId::seed);
-    set(ParamId::seed, static_cast<float>(processor_.seedHistory[processor_.seedCursor]));
-    end(ParamId::seed);
+// A cleared scene is empty and stays empty. In MIDI Slicer mode, Clear empties the gate strip instead.
+void PluginModel::clearActiveScene() {
+    if (!applyingSnapshot_)
+        processor_.history.push(captureSnapshot());
+    const int scene = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    GrooveBank bank = processor_.patterns.bank();
+    if (static_cast<int>(get(ParamId::engineMode) + 0.5f) == static_cast<int>(EngineMode::slicer)) {
+        bank.slicerLength = 16;
+        bank.slicerSteps = {};
+    } else {
+        bank.scenes[static_cast<std::size_t>(scene)] = Pattern{};
+    }
+    processor_.patterns.set(bank);
 }
 
 void PluginModel::dragMidiPhrase() {
@@ -140,17 +170,22 @@ void PluginModel::dragMidiPhrase() {
     ui::Visuals snap{};
     processor_.telemetry.peek(snap);
     const double bpm = processor_.telemetry.lastBpm();
+    const int scIdx = snap.playing ? snap.activeScene : std::clamp(params.choice(ParamId::scene), 0, kSceneCount - 1);
     const auto file =
-        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.overrides.get(), snap.heldNotes,
-                                          bpm, snap.phraseIndex, toJuce(processor_.presets.currentName()));
-    if (!file.existsAsFile())
+        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.bank(), snap.heldNotes,
+                                          bpm, scIdx, toJuce(processor_.presets.currentName()));
+    if (!file.existsAsFile()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "MIDI export failed",
+            "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
         return;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    }
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 std::string PluginModel::exportStatus() const {
-    const auto idx = static_cast<std::size_t>(std::clamp(static_cast<int>(get(ParamId::phraseBars) + 0.5f), 0, 2));
-    return "Drag " + std::to_string(kPhraseBarCounts[idx]) + "-bar .mid";
+    const int scene = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    return "Drag " + std::to_string(patternBars(groove().bank.scenes[static_cast<std::size_t>(scene)])) + "-bar .mid";
 }
 
 std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
@@ -166,14 +201,12 @@ void PluginModel::loadPreset(int index) {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
     processor_.presets.load(index);
-    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::stepPreset(int delta) {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
     processor_.presets.step(delta);
-    pushSeedHistory(std::clamp(static_cast<int>(std::lround(get(ParamId::seed))), 1, 999));
 }
 
 void PluginModel::savePreset() {
@@ -195,7 +228,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
     s.curves = processor_.curves.all();
-    s.overrides = processor_.overrides.get();
+    s.bank = processor_.patterns.bank();
     s.presetName = processor_.presets.currentName();
     return s;
 }
@@ -205,7 +238,7 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         parameters_[i]->setValueNotifyingHost(parameters_[i]->convertTo0to1(snapshot.params[i]));
     processor_.curves.setAll(snapshot.curves);
-    processor_.overrides.set(snapshot.overrides);
+    processor_.patterns.set(snapshot.bank);
     if (!snapshot.presetName.empty())
         processor_.presets.setCurrentName(snapshot.presetName);
     applyingSnapshot_ = false;
@@ -224,5 +257,9 @@ void PluginModel::redo() {
 void PluginModel::toggleAB() { applySnapshot(processor_.history.toggleAB(captureSnapshot())); }
 
 void PluginModel::copyAB() { processor_.history.copyActiveToOther(captureSnapshot()); }
+
+const std::vector<ui::LibraryPattern>& PluginModel::patternLibrary() const { return factoryLibrary().patterns; }
+
+const std::vector<ui::LibraryFill>& PluginModel::fillLibrary() const { return factoryLibrary().fills; }
 
 } // namespace cl

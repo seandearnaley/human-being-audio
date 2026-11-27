@@ -45,10 +45,11 @@ class MeterStrip final : public visage::Frame, public Live {
             }
         };
 
+        const float spacing = std::max(context_.px(10.0f), (height() - context_.px(10.0f)) * 0.25f);
         drawBar(context_.px(5.0f), l_, colour::spiral, "OUT L");
-        drawBar(context_.px(15.0f), r_, colour::spiral, "OUT R");
-        drawBar(context_.px(25.0f), sub_, colour::mobius, "SUB");
-        drawBar(context_.px(35.0f), 1.0f - std::clamp(gr_, 0.0f, 1.0f), colour::drive, "LIM");
+        drawBar(context_.px(5.0f) + spacing, r_, colour::spiral, "OUT R");
+        drawBar(context_.px(5.0f) + spacing * 2.0f, sub_, colour::mobius, "SUB");
+        drawBar(context_.px(5.0f) + spacing * 3.0f, 1.0f - std::clamp(gr_, 0.0f, 1.0f), colour::drive, "LIM");
     }
 
   private:
@@ -92,18 +93,13 @@ class ControlsStrip final : public Panel, public Live {
           driveModel_(ctx, ParamId::driveModel, colour::drive, "Shaper"),
           rissetGate_(ctx, ParamId::rissetGate, colour::mobius, "Risset Gate"),
 
-          // Envelope, MPE & Output
+          // Envelope & Output (Retrig, Glide, Bend, Key Switch & OS live in the studio Voice footer bar)
           outputDb_(ctx, ParamId::outputDb, colour::text, "Output"),
           attackMs_(ctx, ParamId::attackMs, colour::textDim, "Attack"),
           releaseMs_(ctx, ParamId::releaseMs, colour::textDim, "Release"),
-          glideMs_(ctx, ParamId::glideMs, colour::textDim, "Key Glide"),
           morphAuto_(ctx, ParamId::morphAuto, colour::copedent, "Auto-Morph"),
-          retrig_(ctx, ParamId::retrig, colour::spiral, "Note Retrig"),
           mpeOut_(ctx, ParamId::mpeOut, colour::copedent, "MPE Out"),
-          mpeRange_(ctx, ParamId::mpeRange, colour::copedent, "MPE Range"),
-          keySwitch_(ctx, ParamId::keySwitch, colour::mobius, "KeySw C0"),
-          limiter_(ctx, ParamId::limiter, colour::drive, "True-Peak"),
-          quality_(ctx, ParamId::quality, colour::textDim, "Quality"), meter_(ctx) {
+          limiter_(ctx, ParamId::limiter, colour::drive, "True-Peak"), meter_(ctx) {
         morph_.setModProvider([&m = context_.model] { return m.visuals().morphPos; });
 
         for (visage::Frame* c : std::initializer_list<visage::Frame*>{
@@ -111,8 +107,7 @@ class ControlsStrip final : public Panel, public Live {
                  &morph_,      &gravity_,   &stagger_,   &voicingPack_, &gravityMode_, &staggerOrder_, &anchorSub_,
                  &subAnchor_,  &drive_,     &filterHz_,  &timbre_,      &filterMode_,  &detune_,       &filterRes_,
                  &width_,      &space_,     &subWarmth_, &subCutoff_,   &driveModel_,  &rissetGate_,   &outputDb_,
-                 &attackMs_,   &releaseMs_, &glideMs_,   &morphAuto_,   &retrig_,      &mpeOut_,       &mpeRange_,
-                 &keySwitch_,  &limiter_,   &quality_,   &meter_}) {
+                 &attackMs_,   &releaseMs_, &morphAuto_, &mpeOut_,      &limiter_,     &meter_}) {
             addChild(c);
         }
 
@@ -173,7 +168,7 @@ class ControlsStrip final : public Panel, public Live {
         const std::array<std::pair<const char*, unsigned>, 3> headers{{
             {leftTitle, leftAcc},
             {"02 · SOUND, FILTER & SPACE CORE", colour::mobius},
-            {"03 · ENVELOPE, MPE & OUTPUT", colour::drive},
+            {"03 · ENVELOPE & OUTPUT", colour::drive},
         }};
 
         for (int i = 0; i < 3; ++i) {
@@ -254,26 +249,25 @@ class ControlsStrip final : public Panel, public Live {
         driveModel_.setBounds(x1 + pad, sY + step * 4.0f, sHalf, rowH);
         rissetGate_.setBounds(x1 + pad + sHalf + px(8.0f), sY + step * 4.0f, sHalf, rowH);
 
-        // ===== Column 2: Envelope, MPE & Output =====
+        // ===== Column 2: Envelope & Output =====
         const float x2 = 2.0f * (colW + gap);
-        const float outKnobW = px(74.0f);
-        const float outKnobH = px(68.0f);
+        const float outKnobW = px(78.0f);
+        const float outKnobH = px(72.0f);
         outputDb_.setBounds(x2 + pad, topY, outKnobW, outKnobH);
-        meter_.setBounds(x2 + pad + outKnobW + px(8.0f), topY + px(10.0f), colW - 2.0f * pad - outKnobW - px(8.0f),
-                         px(48.0f));
+        meter_.setBounds(x2 + pad + outKnobW + px(10.0f), topY + px(8.0f), colW - 2.0f * pad - outKnobW - px(10.0f),
+                         px(56.0f));
 
-        const float eY = topY + outKnobH + px(4.0f);
-        const float eHalf = (colW - 2.0f * pad - px(8.0f)) * 0.5f;
-        attackMs_.setBounds(x2 + pad, eY, eHalf, rowH);
-        mpeOut_.setBounds(x2 + pad + eHalf + px(8.0f), eY, eHalf, rowH);
-        releaseMs_.setBounds(x2 + pad, eY + step, eHalf, rowH);
-        mpeRange_.setBounds(x2 + pad + eHalf + px(8.0f), eY + step, eHalf, rowH);
-        glideMs_.setBounds(x2 + pad, eY + step * 2.0f, eHalf, rowH);
-        keySwitch_.setBounds(x2 + pad + eHalf + px(8.0f), eY + step * 2.0f, eHalf, rowH);
-        morphAuto_.setBounds(x2 + pad, eY + step * 3.0f, eHalf, rowH);
-        limiter_.setBounds(x2 + pad + eHalf + px(8.0f), eY + step * 3.0f, eHalf, rowH);
-        retrig_.setBounds(x2 + pad, eY + step * 4.0f, eHalf, rowH);
-        quality_.setBounds(x2 + pad + eHalf + px(8.0f), eY + step * 4.0f, eHalf, rowH);
+        const float eRowH = px(25.0f);
+        const float eStep = eRowH + px(9.0f);
+        const float eTotalH = 2.0f * eStep + eRowH;
+        const float eY =
+            std::round(topY + outKnobH + std::max(px(10.0f), (height() - pad - (topY + outKnobH) - eTotalH) * 0.5f));
+        const float eHalf = (colW - 2.0f * pad - px(10.0f)) * 0.5f;
+        attackMs_.setBounds(x2 + pad, eY, eHalf, eRowH);
+        releaseMs_.setBounds(x2 + pad + eHalf + px(10.0f), eY, eHalf, eRowH);
+        morphAuto_.setBounds(x2 + pad, eY + eStep, eHalf, eRowH);
+        mpeOut_.setBounds(x2 + pad + eHalf + px(10.0f), eY + eStep, eHalf, eRowH);
+        limiter_.setBounds(x2 + pad, eY + eStep * 2.0f, colW - 2.0f * pad, eRowH);
     }
 
   private:
@@ -289,7 +283,7 @@ class ControlsStrip final : public Panel, public Live {
     Row timbre_, filterMode_, detune_, filterRes_, width_, space_, subWarmth_, subCutoff_, driveModel_, rissetGate_;
 
     Knob outputDb_;
-    Row attackMs_, releaseMs_, glideMs_, morphAuto_, retrig_, mpeOut_, mpeRange_, keySwitch_, limiter_, quality_;
+    Row attackMs_, releaseMs_, morphAuto_, mpeOut_, limiter_;
     MeterStrip meter_;
 };
 } // namespace

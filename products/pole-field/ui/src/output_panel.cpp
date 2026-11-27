@@ -19,7 +19,6 @@ public:
         limit_(add<Row>(context, ParamId::limit, colour::text, "Limit")),
         ceiling_(add<Row>(context, ParamId::ceiling, colour::text, "Ceiling")),
         envSens_(add<Row>(context, ParamId::envSens, colour::sub, "Env sens", true)),
-        quality_(add<Row>(context, ParamId::quality, colour::text, "Quality")),
         imprint_(add<Button>(context, "Imprint WAV", [this] { context_.model.browseImprintAudio(); })),
         capture_(add<Button>(context, "Capture", [this] { context_.model.captureLiveImprint(0); })),
         clear_(add<Button>(context, "Clear", [this] { context_.model.clearImprint(); })) {
@@ -55,11 +54,11 @@ public:
 
         input_.setBounds(pad, firstRow, columnWidth, rowHeight);
         output_.setBounds(pad, firstRow + step, columnWidth, rowHeight);
-        quality_.setBounds(pad, firstRow + 2.0f * step, columnWidth, rowHeight);
 
         limit_.setBounds(right, firstRow, columnWidth, rowHeight);
         ceiling_.setBounds(right, firstRow + step, columnWidth, rowHeight);
-        envSens_.setBounds(right, firstRow + 2.0f * step, columnWidth, rowHeight);
+
+        envSens_.setBounds(pad, firstRow + 2.0f * step, width() - 2.0f * pad, rowHeight);
 
         const float totalW = width() - 2.0f * pad;
         const float btnGap = px(5.0f);
@@ -93,7 +92,6 @@ public:
     Row& limit_;
     Row& ceiling_;
     Row& envSens_;
-    Row& quality_;
     Button& imprint_;
     Button& capture_;
     Button& clear_;

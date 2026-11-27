@@ -48,7 +48,12 @@ std::string formatValue(const ParamSpec& spec, float real) {
         case Unit::cents:   return print("%+.1f ct", real);
         case Unit::degrees: return print("%.0f°", real);
         case Unit::dB:      return print(isSigned ? "%+.1f dB" : "%.1f dB", real);
-        case Unit::hz:      return print("%.0f Hz", real);
+        case Unit::hz:
+            if (real < 10.0f)
+                return print("%.2f Hz", real);
+            if (real < 30.0f)
+                return print("%.1f Hz", real);
+            return print("%.0f Hz", real);
         case Unit::ratio:
             return print("%.3f", real);
         case Unit::harmonic:

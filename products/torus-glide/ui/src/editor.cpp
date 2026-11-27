@@ -4,40 +4,92 @@
 #include "panels.h"
 #include "top_bar.h"
 
+#include <hba/core/note_name.h>
 #include <hba/ui/editor_window.h>
+#include <hba/ui/voice_bar.h>
+
+#include <string>
 
 namespace tg::ui {
 
 namespace {
 constexpr float kM = metric::margin;
 constexpr float kW = kDefaultWidth - 2.0f * kM;
-constexpr hba::ui::DesignRect kTopBar{kM, 10.0f, kW, 56.0f};
-constexpr hba::ui::DesignRect kStage{kM, 74.0f, kW, 286.0f};
-constexpr hba::ui::DesignRect kControls{kM, 368.0f, kW, 224.0f};
+constexpr hba::ui::DesignRect kTopBar{kM, 10.0f, kW, 52.0f};
+
+// Hero PLAY surface (default)
+constexpr hba::ui::DesignRect kRibbon{kM, 70.0f, kW, 56.0f};
+constexpr hba::ui::DesignRect kPlayPad{kM, 134.0f, kW, 616.0f};
+
+// Deep STUDIO surface (1-click toggle)
+constexpr hba::ui::DesignRect kStage{kM, 70.0f, kW, 288.0f};
+constexpr hba::ui::DesignRect kControls{kM, 366.0f, kW, 226.0f};
 constexpr hba::ui::DesignRect kMovement{kM, 600.0f, kW, 150.0f};
+
+// Persistent studio Voice / Playability / Quality footer (always visible in both PLAY and STUDIO)
+constexpr hba::ui::DesignRect kVoiceBar{kM, 758.0f, kW, hba::ui::kVoiceBarHeight};
+
+using VoiceBar = hba::ui::StudioVoiceBar<Context, ParamFrame, ParamId, ParamKind>;
 } // namespace
 
 struct Editor::Impl final {
     Impl(Model& model, std::function<void()> showAbout)
-        : context(model), host(context, static_cast<float>(kDefaultWidth)), topBar(context, std::move(showAbout)),
-          stage(makeStagePanel(context)), controls(makeControlsStrip(context)), movement(makeMovementPanel(context)) {
+        : context(model), host(context, static_cast<float>(kDefaultWidth)),
+          topBar(context, std::move(showAbout), [this](bool studio) { applyView(studio); }),
+          ribbon(makeManifoldRibbon(context)), playPad(makePlayPanel(context)), stage(makeStagePanel(context)),
+          controls(makeControlsStrip(context)), movement(makeMovementPanel(context)),
+          voiceBar(context, colour::spiral, "VOICE",
+                   {
+                       {ParamId::retrig, "Retrig", colour::spiral, 88.0f, false, false},
+                       {ParamId::glideMs, "Glide", colour::spiral, 136.0f, true, false},
+                       {ParamId::mpeRange, "Bend", colour::copedent, 108.0f, false, false},
+                       {ParamId::keySwitch, "Key Switch", colour::mobius, 114.0f, false, false},
+                       {ParamId::quality, "OS", colour::spiral, 116.0f, false, true},
+                   },
+                   [this]() -> std::string {
+                       const auto& v = context.model.visuals();
+                       if (v.heldNoteCount > 0) {
+                           return hba::core::midiNoteName(v.heldNotes[0], false) + " \xc2\xb7 " +
+                                  std::to_string(v.heldNoteCount) + "/5v";
+                       }
+                       return v.sounding ? "5v" : "Poly 5";
+                   }) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {
             if (key.keyCode() == visage::KeyCode::Space && !key.isMainModifier()) {
-                context.model.setAudition(!context.model.isAuditioning());
+                const bool next = context.model.get(ParamId::padHold) < 0.5f;
+                context.model.begin(ParamId::padHold);
+                context.model.set(ParamId::padHold, next ? 1.0f : 0.0f);
+                context.model.end(ParamId::padHold);
                 return true;
             }
             return false;
         };
         host.addPlaced(&topBar, kTopBar);
+        host.addPlaced(ribbon.get(), kRibbon);
+        host.addPlaced(playPad.get(), kPlayPad);
         host.addPlaced(stage.get(), kStage);
         host.addPlaced(controls.get(), kControls);
         host.addPlaced(movement.get(), kMovement);
+        host.addPlaced(&voiceBar, kVoiceBar);
+        applyView(false);
+    }
+
+    void applyView(bool studio) {
+        studioView = studio;
+        ribbon->setVisible(!studio);
+        playPad->setVisible(!studio);
+        stage->setVisible(studio);
+        controls->setVisible(studio);
+        movement->setVisible(studio);
     }
 
     Context context;
     hba::ui::StudioEditorWindow<Context> host;
     TopBar topBar;
+    std::unique_ptr<Panel> ribbon, playPad;
     std::unique_ptr<Panel> stage, controls, movement;
+    VoiceBar voiceBar;
+    bool studioView = false;
 };
 
 Editor::Editor(Model& model, std::function<void()> showAbout)
@@ -46,7 +98,10 @@ Editor::Editor(Model& model, std::function<void()> showAbout)
 Editor::~Editor() { detach(); }
 void Editor::attach(void* parentView, int width, int height) { impl_->host.attach(parentView, width, height); }
 void Editor::detach() { impl_->host.detach(); }
+visage::Frame& Editor::rootFrame() { return impl_->host.window(); }
+
 void Editor::setSize(int width, int height) { impl_->host.setSize(width, height); }
+void Editor::setView(View view) { impl_->topBar.setStudioView(view == View::studio); }
 
 #if defined(__linux__)
 int Editor::eventFd() const { return impl_->host.eventFd(); }

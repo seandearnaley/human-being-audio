@@ -98,11 +98,15 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
         std::clamp(params.choice(ParamId::spiralRatio), 0, static_cast<int>(kSpiralRatioSemitones.size()) - 1);
     const double ratioSemi = kSpiralRatioSemitones[static_cast<std::size_t>(ratioIdx)];
 
-    std::vector<hba::core::SmfEvent> evs;
+    std::array<hba::core::SmfTrack, kVoiceCount + 1> tracks;
+    tracks[0].name = "MPE setup";
+    for (int v = 0; v < kVoiceCount; ++v)
+        tracks[static_cast<std::size_t>(v + 1)].name = "Voice " + std::to_string(v + 1);
+
     int seqOrder = 0;
     const auto addMsg = [&](std::uint32_t tick, std::uint8_t b0, std::uint8_t b1, std::uint8_t b2,
                             std::uint8_t sz = 3) {
-        evs.push_back(hba::core::SmfEvent::msg(tick, seqOrder++, b0, b1, b2, sz));
+        tracks[b0 & 0x0fu].events.push_back(hba::core::SmfEvent::msg(tick, seqOrder++, b0, b1, b2, sz));
     };
 
     // MPE Lower Zone MCM + per-channel RPN 00 00 at tick 0
@@ -184,7 +188,7 @@ std::vector<std::uint8_t> exportMpeSmf(const Params& params, const LaneCurves& c
                static_cast<std::uint8_t>(baseNotes[static_cast<std::size_t>(v)]), 0);
     }
 
-    return hba::core::encodeSmfType0(std::move(evs), kPpq, safeBpm, totalTicks);
+    return hba::core::encodeSmf(std::move(tracks), kPpq, safeBpm, totalTicks);
 }
 
 } // namespace tg

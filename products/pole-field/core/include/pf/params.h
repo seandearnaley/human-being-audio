@@ -2,6 +2,8 @@
 // all derive from this single definition, verified at compile time.
 #pragma once
 
+#include <hba/dsp/lane_math.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -56,6 +58,8 @@ enum class ParamId : std::uint8_t {
     lane1Target,
     lane1Follow,
     lane1Ratio,
+    lane1Mode,
+    lane1Hz,
     lane2On,
     lane2Rate,
     lane2Phase,
@@ -64,6 +68,8 @@ enum class ParamId : std::uint8_t {
     lane2Target,
     lane2Follow,
     lane2Ratio,
+    lane2Mode,
+    lane2Hz,
     lane3On,
     lane3Rate,
     lane3Phase,
@@ -72,6 +78,8 @@ enum class ParamId : std::uint8_t {
     lane3Target,
     lane3Follow,
     lane3Ratio,
+    lane3Mode,
+    lane3Hz,
     lane4On,
     lane4Rate,
     lane4Phase,
@@ -80,14 +88,16 @@ enum class ParamId : std::uint8_t {
     lane4Target,
     lane4Follow,
     lane4Ratio,
+    lane4Mode,
+    lane4Hz,
     count
 };
 
 inline constexpr int kParamCount = static_cast<int>(ParamId::count);
 inline constexpr int kLaneCount = 4;
 
-enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio };
-inline constexpr int kLaneFieldCount = 8;
+enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio, mode, hz };
+inline constexpr int kLaneFieldCount = 10;
 
 // What a lane modulates. Order matches choices::laneTarget.
 enum class LaneTarget : std::uint8_t { morphX, morphY, morphZ, freq, res, transform, drive, spread, mix, fit, fm };
@@ -128,25 +138,20 @@ inline constexpr std::array<std::string_view, 2> envSource{"Input", "Sidechain"}
 inline constexpr std::array<std::string_view, 5> foldType { "Tube", "Clip", "Fold", "Buchla", "Sine" };
 inline constexpr std::array<std::string_view, 3> drivePos { "Pre", "Inter", "Post" };
 inline constexpr std::array<std::string_view, 3> quality { "2\u00d7", "4\u00d7", "8\u00d7" };
-inline constexpr std::array<std::string_view, 12> laneRate {
-    "8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
-};
+inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 inline constexpr std::array<std::string_view, 8> laneShape{"Sine",   "Triangle", "Ramp up", "Ramp down",
                                                            "Square", "Steps",    "Custom",  "Env"};
 inline constexpr std::array<std::string_view, 11> laneTarget{
     "Morph X", "Morph Y", "Morph Z", "Freq", "Res", "Transform", "Drive", "Spread", "Mix", "Fit", "FM"};
-inline constexpr std::array<std::string_view, 5> laneFollow { "Own", "Lane 1", "Lane 2", "Lane 3", "Lane 4" };
-inline constexpr std::array<std::string_view, 7> laneRatio {
-    "\u00f74", "\u00f73", "\u00f72", "\u00d71", "\u00d72", "\u00d73", "\u00d74"
-};
+inline constexpr auto& laneFollow = hba::dsp::kLaneFollowLabels;
+inline constexpr auto& laneRatio = hba::dsp::kLaneRatioLabels;
+inline constexpr auto& laneMode = hba::dsp::kLaneModeLabels;
 }
 
 inline constexpr std::array<int, 4> kStageCounts { 2, 4, 6, 7 };
 inline constexpr std::array<int, 3> kQualityFactors { 2, 4, 8 };
-inline constexpr std::array<double, 12> kLaneRateQuarters {
-    32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 2.0 / 3, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125
-};
-inline constexpr std::array<double, 7> kLaneRatios { 0.25, 1.0 / 3, 0.5, 1.0, 2.0, 3.0, 4.0 };
+using hba::dsp::kLaneRateQuarters;
+using hba::dsp::kLaneRatios;
 
 enum class Topology : std::uint8_t { serial, hybrid, parallel };
 enum class StereoMode : std::uint8_t { stereo, mid, side };
@@ -155,6 +160,7 @@ enum class EnvSource : std::uint8_t { input, sidechain };
 enum class FoldType : std::uint8_t { tube, clip, fold, buchla, sine };
 enum class DrivePos : std::uint8_t { pre, inter, post };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom, env };
+using LaneMode = hba::dsp::LaneMode;
 
 namespace detail {
 constexpr ParamSpec amount(std::string_view key, std::string_view name, float def) {
@@ -172,20 +178,31 @@ constexpr ParamSpec choice(std::string_view key, std::string_view name, std::spa
              .def = static_cast<float>(def), .choices = list, .automatable = automatable };
 }
 constexpr ParamSpec ranged(std::string_view key, std::string_view name, float min, float max, float def, Unit unit,
-                           float skew = 1.0f) {
-    return { .key = key, .name = name, .min = min, .max = max, .def = def, .unit = unit, .skew = skew };
+                           float skew = 1.0f, bool automatable = true) {
+    return {.key = key,
+            .name = name,
+            .min = min,
+            .max = max,
+            .def = def,
+            .unit = unit,
+            .skew = skew,
+            .automatable = automatable};
 }
 }
 
-#define PF_LANE(n, onDef, target, rate, phase, depth)                                                              \
-    detail::toggle("lane" #n "On", "Lane " #n, onDef),                                                             \
-    detail::choice("lane" #n "Rate", "Lane " #n " rate", choices::laneRate, rate, false),                          \
-    detail::ranged("lane" #n "Phase", "Lane " #n " phase", 0.0f, 360.0f, phase, Unit::degrees),                    \
-    detail::bipolar("lane" #n "Depth", "Lane " #n " depth", depth),                                                \
-    detail::choice("lane" #n "Shape", "Lane " #n " shape", choices::laneShape, 0, false),                          \
-    detail::choice("lane" #n "Target", "Lane " #n " target", choices::laneTarget, static_cast<int>(target), false),\
-    detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
-    detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false)
+#define PF_LANE(n, onDef, target, rate, phase, depth)                                                                  \
+    detail::toggle("lane" #n "On", "Lane " #n, onDef),                                                                 \
+        detail::choice("lane" #n "Rate", "Lane " #n " rate", choices::laneRate, rate, false),                          \
+        detail::ranged("lane" #n "Phase", "Lane " #n " phase", 0.0f, 360.0f, phase, Unit::degrees),                    \
+        detail::bipolar("lane" #n "Depth", "Lane " #n " depth", depth),                                                \
+        detail::choice("lane" #n "Shape", "Lane " #n " shape", choices::laneShape, 0, false),                          \
+        detail::choice("lane" #n "Target", "Lane " #n " target", choices::laneTarget, static_cast<int>(target),        \
+                       false),                                                                                         \
+        detail::choice("lane" #n "Follow", "Lane " #n " follow", choices::laneFollow, 0, false),                       \
+        detail::choice("lane" #n "Ratio", "Lane " #n " ratio", choices::laneRatio, 3, false),                          \
+        detail::choice("lane" #n "Mode", "Lane " #n " mode", choices::laneMode, 0, false),                             \
+        detail::ranged("lane" #n "Hz", "Lane " #n " Hz", hba::dsp::kLaneMinHz, hba::dsp::kLaneMaxHz,                   \
+                       hba::dsp::kLaneDefaultHz, Unit::hz, 0.0f, false)
 
 // Order must match ParamId.
 inline constexpr std::array<ParamSpec, kParamCount> kParams{{
@@ -260,8 +277,9 @@ static_assert(detail::tableIsValid(), "parameter table is inconsistent");
 static_assert(static_cast<int>(ParamId::mix) == 7, "the eight macros are the first eight parameters");
 static_assert(spec(ParamId::quality).key == "quality", "kParams order must match ParamId");
 static_assert(spec(ParamId::envSens).key == "envSens", "env params precede lanes");
-static_assert(spec(ParamId::lane4Ratio).key == "lane4Ratio", "lane layout");
+static_assert(spec(ParamId::lane4Hz).key == "lane4Hz", "lane layout");
 static_assert(choices::laneTarget.size() == kLaneTargetCount);
+static_assert(choices::laneMode.size() == 5);
 static_assert(kLaneRateQuarters.size() == choices::laneRate.size());
 static_assert(kLaneRatios.size() == choices::laneRatio.size());
 static_assert(kStageCounts.size() == choices::stages.size());

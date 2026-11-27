@@ -10,12 +10,14 @@
 namespace tg::ui {
 
 inline constexpr int kDefaultWidth = 1280;
-inline constexpr int kDefaultHeight = 760;
+inline constexpr int kDefaultHeight = 802;
 inline constexpr int kMinWidth = 960;
-inline constexpr int kMinHeight = 570;
+inline constexpr int kMinHeight = 602;
 
 class Editor {
   public:
+    enum class View { play, studio };
+
     Editor(Model& model, std::function<void()> showAbout = {});
     ~Editor();
 
@@ -24,7 +26,9 @@ class Editor {
 
     void attach(void* parentView, int width, int height);
     void detach();
+    visage::Frame& rootFrame();
     void setSize(int width, int height);
+    void setView(View view);
 
 #if defined(__linux__)
     int eventFd() const;

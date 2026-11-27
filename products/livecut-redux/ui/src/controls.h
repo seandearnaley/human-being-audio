@@ -3,6 +3,7 @@
 
 #include "theme.h"
 
+#include <hba/ui/controls.h>
 #include <visage/ui.h>
 
 #include <functional>
@@ -11,44 +12,30 @@
 
 namespace lc::ui {
 
-class ActionButton final : public visage::Frame {
+class ActionButton final : public hba::ui::ActionButtonBase<Context> {
   public:
-    ActionButton(Context& context, std::string label, std::function<void()> onClick);
-
-    void setLabel(std::string label);
-    void setAccent(unsigned accent);
-    void setActive(bool active);
-    void setEnabledState(bool enabled);
-    void setOnDrag(std::function<void()> onDrag) { onDrag_ = std::move(onDrag); }
-    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
-
+    using ActionButtonBase::ActionButtonBase;
     void draw(visage::Canvas& canvas) override;
-    void mouseEnter(const visage::MouseEvent& e) override;
-    void mouseExit(const visage::MouseEvent& e) override;
-    void mouseDown(const visage::MouseEvent& e) override;
-    void mouseDrag(const visage::MouseEvent& e) override;
-    void mouseUp(const visage::MouseEvent& e) override;
-
-  private:
-    Context& context_;
-    std::string label_;
-    std::function<void()> onClick_;
-    std::function<void()> onDrag_;
-    std::function<void()> onRightClick_;
-    unsigned accent_ = colour::text;
-    bool active_ = false;
-    bool enabled_ = true;
-    bool hovered_ = false;
-    bool pressed_ = false;
-    bool dragged_ = false;
-    float downX_ = 0.0f;
-    float downY_ = 0.0f;
 };
 
-class TogglePill final : public visage::Frame, public Live {
+class DiscreteParameter : public visage::Frame, public Live, public hba::ui::ParameterControl {
+  public:
+    DiscreteParameter(Context& context, std::string id, const std::string& label);
+    ~DiscreteParameter() override;
+    std::string_view parameterKey() const override { return id_; }
+    std::string valueText() const override { return context_.model.formatValue(id_); }
+    void setFromNormalised(float value) override;
+    bool keyPress(const visage::KeyEvent& key) override;
+    void focusChanged(bool, bool) override { redraw(); }
+
+  protected:
+    Context& context_;
+    const std::string id_;
+};
+
+class TogglePill final : public DiscreteParameter {
   public:
     TogglePill(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent);
-    ~TogglePill() override;
 
     void setAccent(unsigned accent);
     void setDimmed(bool dimmed);
@@ -59,8 +46,6 @@ class TogglePill final : public visage::Frame, public Live {
     void mouseDown(const visage::MouseEvent& e) override;
 
   private:
-    Context& context_;
-    std::string id_;
     std::string label_;
     unsigned accent_;
     bool dimmed_ = false;
@@ -69,11 +54,16 @@ class TogglePill final : public visage::Frame, public Live {
     bool initialised_ = false;
 };
 
-class ParamSlider final : public visage::Frame, public Live {
+class ParamSlider final : public visage::Frame, public Live, public hba::ui::ParameterControl {
   public:
     ParamSlider(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent,
                 bool compact = false);
     ~ParamSlider() override;
+    std::string_view parameterKey() const override { return id_; }
+    std::string valueText() const override { return context_.model.formatValue(id_); }
+    void setFromNormalised(float v) override;
+    bool keyPress(const visage::KeyEvent& key) override;
+    void focusChanged(bool, bool) override { redraw(); }
 
     void setAccent(unsigned accent);
     void setDimmed(bool dimmed);
@@ -135,10 +125,9 @@ class RangeSlider final : public visage::Frame, public Live {
     float drawnHigh_ = -1.0f;
 };
 
-class ChoiceRow final : public visage::Frame, public Live {
+class ChoiceRow final : public DiscreteParameter {
   public:
     ChoiceRow(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent);
-    ~ChoiceRow() override;
 
     void setDimmed(bool dimmed);
     void tick() override;
@@ -151,8 +140,6 @@ class ChoiceRow final : public visage::Frame, public Live {
   private:
     void showMenu();
 
-    Context& context_;
-    std::string id_;
     std::string label_;
     unsigned accent_;
     bool dimmed_ = false;
@@ -186,19 +173,16 @@ class SegmentedBar final : public visage::Frame {
 };
 
 // Parameter-bound segmented selector (e.g. Pad|Classic, Beat|Bar, Procedure, Reader Family).
-class ParamSegmented final : public visage::Frame, public Live {
+class ParamSegmented final : public DiscreteParameter {
   public:
-    ParamSegmented(Context& context, std::string paramId, std::vector<std::string> labels,
+    ParamSegmented(Context& context, std::string paramId, const std::string& name, std::vector<std::string> labels,
                    unsigned accent = colour::accent);
-    ~ParamSegmented() override;
 
     void setAccent(unsigned accent);
     void tick() override;
     void resized() override;
 
   private:
-    Context& context_;
-    std::string id_;
     int count_ = 1;
     int drawn_ = -1;
     SegmentedBar bar_;

@@ -21,8 +21,12 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
       undo_(context, "Undo", [this] { context_.model.undo(); }),
       redo_(context, "Redo", [this] { context_.model.redo(); }),
       ab_(context, "A", [this] { context_.model.toggleAB(); }),
-      surface_(context, "surface", {"Pad", "Classic"}, colour::accent),
+      surface_(context, "surface", "Surface", {"Pad", "Classic"}, colour::accent),
       subAnchor_(context, "subAnchor", "Sub", colour::cyan, true), limiter_(context, "limiter", "LIM", colour::amber) {
+    previous_.setName("Previous preset");
+    next_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout), [this](visage::Canvas& canvas) {
         drawWordmark(canvas, 0.0f, 0.0f, wordmark_.width(), wordmark_.height(), context_.scale,
@@ -34,6 +38,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
         addChild(child);
 
     save_.setAccent(colour::textDim);
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick(
         [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
 
@@ -43,10 +48,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
 
 TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &presetName_,
-                                       [this](int i) { context_.model.loadPreset(i); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::tick() {
     auto current = context_.model.presetName();

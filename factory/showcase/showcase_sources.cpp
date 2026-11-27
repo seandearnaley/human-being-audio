@@ -2,6 +2,7 @@
 #include "showcase_common.h"
 
 #include <hba/core/wav.h>
+#include <hba/dsp/limiter.h>
 
 #include <algorithm>
 #include <cmath>
@@ -87,6 +88,15 @@ void masterClip(std::vector<float>& stereo, double targetRmsDb, double peakCeilD
         stereo[i * 2] = shape(stereo[i * 2]);
         stereo[i * 2 + 1] = shape(stereo[i * 2 + 1]);
     }
+    // Leave codec headroom with a single linear gain across the finished clip.
+    const double peakAfterShaping = hba::dsp::stereoTruePeak(stereo);
+    constexpr double deliveryCeiling = 0.7943282347242815; // -2 dBTP
+    if (peakAfterShaping > deliveryCeiling) {
+        const float trim = static_cast<float>(deliveryCeiling / peakAfterShaping);
+        for (auto& sample : stereo)
+            sample *= trim;
+    }
+
 }
 
 

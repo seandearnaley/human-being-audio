@@ -84,28 +84,19 @@ const PRODUCT_DETAILS = {
     credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   cutline: {
-    kind: "MIDI articulator",
+    kind: "Drum sequencer & MIDI slicer",
     hue: 262,
     bpm: 172,
     form: "tube",
     formLabel: "Tube",
-    alt: "Cutline’s interactive phrase grammar tape, chord progression strip, gravitational piano roll, velocity lane and multi-hue expression lanes",
-    body: "Sculpt deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases on a tactile piano roll with a Chord Progression Strip, bend them through a gravitational microtiming field and drive any synth with four MPE and CC lanes.",
+    alt: "Cutline’s eight-lane drum grid with four scene selectors, density and swing controls, and its GRID and PLAY tabs",
+    body: "Write a beat across eight lanes, switch between four scenes and use the PLAY pad to repeat, roll or drop parts without losing your place. MIDI Slicer plays held chords and captured clips through a gate pattern.",
     features: [
-      [
-        "Tactile Phrase Stage & Chord Strip",
-        "Five BBCut-inspired grammars with Loop/Evolve modes, polyphonic breaks, Chord Progression Strip and 64-step seed history. Click spans to lock them, drag dividers, drag scale-snapped notes and durations or Alt-click to mute.",
-      ],
-      [
-        "Live MIDI, Mono, MPE & Drums",
-        "Play Live MIDI Transpose or Chord Carve with Latch, and stream Ableton-safe Mono Ch 1 (with RPN bend range), full MPE Lower Zone (Ch 2–15, ±48 st) or Drum Kit articulation with live activity LEDs.",
-      ],
-      [
-        "8-voice PolyBLEP audition & Drag .mid",
-        "Preview immediately with the anti-aliased 8-voice poly audition synth (Reese, Sub, Pluck, Kit), drag the exact current 960-PPQ .mid phrase into your DAW, and compare takes with Undo/Redo and A/B slots.",
-      ],
+      ["Layered drum grid", "Draw Core, Groove and Detail hits. Density reveals the layers, swing delays offbeat sixteenths and Dynamics changes their velocity contrast."],
+      ["Six PLAY programs", "Hold Repeat, Roll, Density, Rate, Drop or Fill. Each engages on the next sixteenth and returns to the pattern in phase when you let go."],
+      ["MIDI Slicer", "Gate held notes or a captured clip across up to 32 steps. Use the built-in audition sound or send MIDI to another instrument."],
     ],
-    credits: "Includes 32 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 46 patterns, 13 fills and 22 factory presets.",
   },
   "torus-glide": {
     kind: "Pitch-manifold synth",
@@ -155,6 +146,54 @@ const PRODUCT_DETAILS = {
     ],
     credits: "Includes 24 factory presets, six Quick-Start Archetypes, Mutate, Undo/Redo and A/B compare.",
   },
+  lineage: {
+    kind: "Resampling bass synth",
+    hue: 166,
+    bpm: 172,
+    form: "strata",
+    formLabel: "Strata",
+    alt: "Lineage’s glowing geological strata pad, non-destructive Print/Stack Gen-2 resampler ribbon, PLAY/STUDIO view switch, and unified studio Voice footer bar",
+    body: "Sculpt analog, sync and TZFM Reese basses, then print and stack them non-destructively into a live Strata resampler without leaving the synth. Lock a phase-pure mono sub beneath 4-voice polyphonic chords, crossfade-scrub reversed or pitched Gen-2 layers across an LR4 crossover, or drop in your own audio.",
+    features: [
+      [
+        "Non-destructive Gen-2 Strata resampler",
+        "Print 1–4 bar loops in-plugin, stack up to 4 generations with instant undo, scrub loop windows with equal-power crossfades, split Blend / Hi-Strata / Lo-Strata at 460 Hz, or drag-and-drop external WAV/AIFF/FLAC stems.",
+      ],
+      [
+        "Mono, Legato & Poly 4 with lowest-note sub lock",
+        "Run six zero-aliasing Reese/Sync/TZFM cores through dual morphing filters, 4× ADAA1 waveshapers, phase dispersion and harmonic density while a dedicated LR4 mono sub tracks the lowest active chord note.",
+      ],
+      [
+        "Sculptural PLAY & STUDIO workflow",
+        "Perform across six expressive XY programs in PLAY or dial every filter rail, modulation lane and Voice bar control in STUDIO, backed by 64-step Undo/Redo, A/B compare and instant drag-out WAV export.",
+      ],
+    ],
+    credits: "Includes 24 factory presets, four modulation lanes, Undo/Redo and A/B compare.",
+  },
+  datum: {
+    kind: "Neuro kick synth",
+    hue: 152,
+    bpm: 172,
+    form: "piston",
+    formLabel: "Piston",
+    alt: "Datum’s phase-separated Sub/Body/Click/Sum waveform stage with direct-manipulation Pitch and Amp splines, six luminous macro dials, Quick-Start Archetypes, and unified Voice footer bar",
+    body: "Synthesize phase-locked neurofunk, Twin-T, and modal membrane kicks from pure DSP before any FX chain. Sculpt analytical pitch and amplitude splines with Zero-X tail snap, balance Sub/Body/Click without crossover phase smear, align directly against a live sidechain sub-bass with Sub-Link, and compose 4-slot A/B/C/D grooves.",
+    features: [
+      [
+        "Four Nord-philosophy pure-DSP cores & analytical splines",
+        "Switch between analytical Sine, nonlinear discrete Twin-T bridged-T, 6-partial Harmonic with Schroeder/Peak-Min crest optimization, and Berger tension Membrane + Helmholtz Cavity — driven by Gauss-Legendre phase-integrated splines and terminal Zero-X snap.",
+      ],
+      [
+        "Phase-native 3-band sculpting & Sub-Link alignment",
+        "Balance Sub, Body, and Click without crossover smear, saturate through 8× HIIR ADAA2 shapers with analytical DC cancellation and zero-phase Box-Cut, rotate phase with an Orchard allpass rotator, or one-click Match Phase and Tune Root against a live sidechain bass bus.",
+      ],
+      [
+        "4-slot Kit Composer, Ref Sub & Sample-0 Drag exports",
+        "Build Main, Ghost, Double and Sub kit variations across a 16/32-step velocity and ratchet sequencer with a built-in Reference Sub-Bass, or drag 16× sample-0 key-tagged .wav bounces and 960-PPQ .mid grooves straight into your DAW.",
+      ],
+    ],
+    credits: "Includes 32 factory presets, 4-slot Kit Composer, Sub-Link sidechain alignment, Undo/Redo and A/B compare.",
+  },
 };
 
 export const PRODUCT_SLUGS = Object.keys(studio.products);
@@ -174,6 +213,8 @@ export const SCULPTURE_FORMS = [
   { id: "prisms", label: "Prisms" },
   { id: "helix", label: "Helix" },
   { id: "membrane", label: "Membrane" },
+  { id: "strata", label: "Strata" },
+  { id: "piston", label: "Piston" },
 ];
 
 export const FIELD_GUIDE_CHAPTERS = [
@@ -236,15 +277,10 @@ export const FIELD_GUIDE_CHAPTERS = [
     status: "Planned",
     live: false,
     hue: PRODUCTS_BY_SLUG.cutline.hue,
-    title: "Algorithmic Breakbeat Grammar, Microtiming Gravity & MPE Articulation",
+    title: "Drum grids, performance fills and MIDI slicing",
     summary:
-      "Translate Nick Collins’ BBCut phrase grammars into deterministic Statement/Answer/Mutation timelines, warp beats through gravitational microtiming fields, and emit 14-bit RPN/MPE Lower Zone streams.",
-    topics: [
-      "BBCut Phrase Grammars",
-      "Gravitational Microtiming",
-      "MPE Lower Zone (±48 st)",
-      "960-PPQ MIDI Export",
-    ],
+      "Follow a beat from its three density layers to MIDI output, then hold a PLAY gesture and hear how the sequencer returns to the groove in phase.",
+    topics: ["Layered patterns", "Four scenes", "Quantized PLAY gestures", "MIDI Slicer"],
   },
   {
     num: "Chapter 05",
@@ -278,6 +314,40 @@ export const FIELD_GUIDE_CHAPTERS = [
       "24-Mode Nonlinear Tensioned Shells",
       "16-Stage Series Allpass Disperser",
       "Sympathetic Wire Buzz & Hadamard Room",
+    ],
+  },
+  {
+    num: "Chapter 07",
+    slug: "lineage",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG.lineage.hue,
+    title: "Non-Destructive Resampling: Lock-Free Strata Printing & Lowest-Note Sub Lock",
+    summary:
+      "Replace manual DAW bounce-and-reimport loops with lock-free triple-buffered generation stacking, equal-power wrap crossfading, LR4 band-split Strata crossovers, and polyphonic Reese voicings anchored to the lowest active chord note.",
+    topics: [
+      "Lock-Free Triple-Buffered Print Ring",
+      "Equal-Power Loop Crossfade & Scrub",
+      "LR4 Strata Band-Split Crossover",
+      "Poly 4 Lowest-Note Mono Sub Lock",
+    ],
+  },
+  {
+    num: "Chapter 08",
+    slug: "datum",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG.datum.hue,
+    title: "Phase-Locked Kick Synthesis: Analytical Splines, Schroeder Crest & Sub-Link",
+    summary:
+      "Integrate kick pitch splines analytically with Gauss-Legendre quadrature, lower harmonic crest factor with Schroeder & Peak-Min phase solvers, eliminate DC offset in asymmetric shapers, and phase-lock kicks against a live sidechain sub-bass.",
+    topics: [
+      "Gauss-Legendre Analytical Pitch Phase",
+      "Schroeder & Peak-Min Crest Solver",
+      "Analytic DC-Cancelled ADAA2 Shaping",
+      "Sub-Link Live Sidechain Phase Alignment",
     ],
   },
   {

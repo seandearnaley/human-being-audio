@@ -1,0 +1,63 @@
+{
+    "format": 3,
+    "name": "Slicer: Live Clip Re-Slicer",
+    "category": "MIDI Slicer",
+    "engineMode": "MIDI Slicer",
+    "slicerStyle": "Clip Slice",
+    "swing": 0.23,
+    "gateLen": 0.62,
+    "strumMs": 10.0,
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X......x........|X.........x.....",
+                        "groove": "...........x....|..............x.",
+                        "detail": "................|...x............"
+                    },
+                    "snare": {
+                        "core": "........X.......|........X.......",
+                        "groove": "................|.............x..",
+                        "offsetMs": 1
+                    },
+                    "ghost": {
+                        "detail": "......o.........|......o........o",
+                        "offsetMs": 1
+                    },
+                    "hat": {
+                        "core": "x..x..x.x..x..x.|x..x..x.x..x..x.",
+                        "groove": ".....o.......o..|.....o..........",
+                        "detail": ".o........o.....|.o........o..o.."
+                    },
+                    "percA": {
+                        "detail": "....o...........|....o.......o...",
+                        "offsetMs": 1
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "kick": "............x.x.",
+                        "snare": ".............x.X"
+                    }
+                },
+                "edits": [
+                    {
+                        "lane": "hat",
+                        "step": 13,
+                        "ratchet": 3
+                    }
+                ]
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X.xx..X..x.X..x."
+        }
+    }
+}

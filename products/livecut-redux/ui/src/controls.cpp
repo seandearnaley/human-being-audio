@@ -8,37 +8,6 @@ namespace lc::ui {
 
 // --- ActionButton -----------------------------------------------------------
 
-ActionButton::ActionButton(Context& context, std::string label, std::function<void()> onClick)
-    : context_(context), label_(std::move(label)), onClick_(std::move(onClick)) {}
-
-void ActionButton::setLabel(std::string label) {
-    if (label_ == label)
-        return;
-    label_ = std::move(label);
-    redraw();
-}
-
-void ActionButton::setAccent(unsigned accent) {
-    if (accent_ == accent)
-        return;
-    accent_ = accent;
-    redraw();
-}
-
-void ActionButton::setActive(bool active) {
-    if (active_ == active)
-        return;
-    active_ = active;
-    redraw();
-}
-
-void ActionButton::setEnabledState(bool enabled) {
-    if (enabled_ == enabled)
-        return;
-    enabled_ = enabled;
-    redraw();
-}
-
 void ActionButton::draw(visage::Canvas& canvas) {
     const float w = width();
     const float h = height();
@@ -60,60 +29,45 @@ void ActionButton::draw(visage::Canvas& canvas) {
               visage::Font::kCenter, type::label, active_ ? Weight::semibold : Weight::medium);
 }
 
-void ActionButton::mouseEnter(const visage::MouseEvent&) {
-    hovered_ = true;
-    redraw();
-}
-
-void ActionButton::mouseExit(const visage::MouseEvent&) {
-    hovered_ = false;
-    pressed_ = false;
-    redraw();
-}
-
-void ActionButton::mouseDown(const visage::MouseEvent& e) {
-    if (!enabled_)
-        return;
-    if (e.shouldTriggerPopup() && onRightClick_) {
-        onRightClick_();
-        return;
-    }
-    pressed_ = true;
-    dragged_ = false;
-    downX_ = e.position.x;
-    downY_ = e.position.y;
-    redraw();
-}
-
-void ActionButton::mouseDrag(const visage::MouseEvent& e) {
-    if (!enabled_ || !pressed_ || dragged_ || !onDrag_)
-        return;
-    if (std::hypot(e.position.x - downX_, e.position.y - downY_) >= context_.px(4.0f)) {
-        dragged_ = true;
-        pressed_ = false;
-        redraw();
-        onDrag_();
-    }
-}
-
-void ActionButton::mouseUp(const visage::MouseEvent& e) {
-    if (!pressed_)
-        return;
-    pressed_ = false;
-    redraw();
-    if (!dragged_ && enabled_ && e.position.x >= 0.0f && e.position.x <= width() && e.position.y >= 0.0f &&
-        e.position.y <= height() && onClick_)
-        onClick_();
-}
-
 // --- TogglePill -------------------------------------------------------------
 
-TogglePill::TogglePill(Context& context, std::string paramId, std::string label, unsigned accent)
-    : context_(context), id_(std::move(paramId)), label_(std::move(label)), accent_(accent) {
+DiscreteParameter::DiscreteParameter(Context& context, std::string id, const std::string& label)
+    : context_(context), id_(std::move(id)) {
+    setName(label);
+    setAcceptsKeystrokes(true);
+    onDraw() += [this](visage::Canvas& canvas) { hba::ui::drawKeyboardFocus(canvas, *this, context_.scale); };
     context_.live.push_back(this);
 }
 
-TogglePill::~TogglePill() { std::erase(context_.live, static_cast<Live*>(this)); }
+DiscreteParameter::~DiscreteParameter() { std::erase(context_.live, static_cast<Live*>(this)); }
+
+void DiscreteParameter::setFromNormalised(float value) {
+    context_.model.beginGesture(id_);
+    context_.model.setNormalised(id_, std::clamp(value, 0.0f, 1.0f));
+    context_.model.endGesture(id_);
+    tick();
+}
+
+bool DiscreteParameter::keyPress(const visage::KeyEvent& key) {
+    if (key.isMainModifier())
+        return false;
+    using Key = visage::KeyCode;
+    const auto code = key.keyCode();
+    const auto current = context_.model.getNormalised(id_);
+    if ((code == Key::Space || code == Key::Return) && context_.model.isBool(id_)) {
+        setFromNormalised(current < 0.5f ? 1.0f : 0.0f);
+        return true;
+    }
+    if (code != Key::Left && code != Key::Right && code != Key::Up && code != Key::Down)
+        return false;
+    const auto steps = std::max(1, static_cast<int>(context_.model.choices(id_).size()) - 1);
+    const float direction = code == Key::Left || code == Key::Down ? -1.0f : 1.0f;
+    setFromNormalised(current + direction / static_cast<float>(steps));
+    return true;
+}
+
+TogglePill::TogglePill(Context& context, std::string paramId, std::string label, unsigned accent)
+    : DiscreteParameter(context, std::move(paramId), label), label_(std::move(label)), accent_(accent) {}
 
 void TogglePill::setAccent(unsigned accent) {
     if (accent_ != accent) {
@@ -177,17 +131,16 @@ void TogglePill::mouseDown(const visage::MouseEvent& e) {
     if (e.shouldTriggerPopup())
         return;
     const bool next = context_.model.getNormalised(id_) < 0.5f;
-    context_.model.beginGesture(id_);
-    context_.model.setNormalised(id_, next ? 1.0f : 0.0f);
-    context_.model.endGesture(id_);
-    drawnOn_ = next;
-    redraw();
+    setFromNormalised(next ? 1.0f : 0.0f);
 }
 
 // --- ParamSlider ------------------------------------------------------------
 
 ParamSlider::ParamSlider(Context& context, std::string paramId, std::string label, unsigned accent, bool compact)
     : context_(context), id_(std::move(paramId)), label_(std::move(label)), accent_(accent), compact_(compact) {
+    setName(label_);
+    setAcceptsKeystrokes(true);
+    onDraw() += [this](visage::Canvas& canvas) { hba::ui::drawKeyboardFocus(canvas, *this, context_.scale); };
     context_.live.push_back(this);
 }
 
@@ -338,13 +291,27 @@ void ParamSlider::mouseUp(const visage::MouseEvent&) {
 
 bool ParamSlider::mouseWheel(const visage::MouseEvent& e) {
     const float step = e.isShiftDown() ? 0.005f : 0.025f;
-    const float next = std::clamp(context_.model.getNormalised(id_) + e.wheel_delta_y * step, 0.0f, 1.0f);
+    setFromNormalised(context_.model.getNormalised(id_) + e.wheel_delta_y * step);
+    return true;
+}
+
+bool ParamSlider::keyPress(const visage::KeyEvent& key) {
+    using Key = visage::KeyCode;
+    const auto k = key.keyCode();
+    if (key.isMainModifier() || (k != Key::Left && k != Key::Down && k != Key::Right && k != Key::Up))
+        return false;
+    const float step = key.isShiftDown() ? 0.005f : 0.025f;
+    setFromNormalised(context_.model.getNormalised(id_) + ((k == Key::Left || k == Key::Down) ? -step : step));
+    return true;
+}
+
+void ParamSlider::setFromNormalised(float v) {
+    const auto next = std::clamp(v, 0.0f, 1.0f);
     context_.model.beginGesture(id_);
     context_.model.setNormalised(id_, next);
     context_.model.endGesture(id_);
     drawn_ = next;
     redraw();
-    return true;
 }
 
 // --- RangeSlider ------------------------------------------------------------
@@ -505,11 +472,7 @@ void RangeSlider::mouseUp(const visage::MouseEvent&) {
 // --- ChoiceRow --------------------------------------------------------------
 
 ChoiceRow::ChoiceRow(Context& context, std::string paramId, std::string label, unsigned accent)
-    : context_(context), id_(std::move(paramId)), label_(std::move(label)), accent_(accent) {
-    context_.live.push_back(this);
-}
-
-ChoiceRow::~ChoiceRow() { std::erase(context_.live, static_cast<Live*>(this)); }
+    : DiscreteParameter(context, std::move(paramId), label), label_(std::move(label)), accent_(accent) {}
 
 void ChoiceRow::setDimmed(bool dimmed) {
     if (dimmed_ != dimmed) {
@@ -693,24 +656,19 @@ void SegmentedBar::mouseDown(const visage::MouseEvent& e) {
 
 // --- ParamSegmented ---------------------------------------------------------
 
-ParamSegmented::ParamSegmented(Context& context, std::string paramId, std::vector<std::string> labels, unsigned accent)
-    : context_(context), id_(std::move(paramId)), count_(std::max(1, static_cast<int>(labels.size()))),
+ParamSegmented::ParamSegmented(Context& context, std::string paramId, const std::string& name,
+                               std::vector<std::string> labels, unsigned accent)
+    : DiscreteParameter(context, std::move(paramId), name), count_(std::max(1, static_cast<int>(labels.size()))),
       bar_(
           context, std::move(labels),
           [this](int idx) {
               const float norm = count_ > 1 ? static_cast<float>(idx) / static_cast<float>(count_ - 1) : 0.0f;
-              context_.model.beginGesture(id_);
-              context_.model.setNormalised(id_, norm);
-              context_.model.endGesture(id_);
-              drawn_ = idx;
+              setFromNormalised(norm);
           },
           accent) {
     addChild(&bar_);
-    context_.live.push_back(this);
     tick();
 }
-
-ParamSegmented::~ParamSegmented() { std::erase(context_.live, static_cast<Live*>(this)); }
 
 void ParamSegmented::setAccent(unsigned accent) { bar_.setAccent(accent); }
 

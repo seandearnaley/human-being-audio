@@ -12,6 +12,8 @@
 #include <vector>
 
 #if JUCE_MAC
+#include <atomic>
+#include <pthread.h>
 // libmalloc calls this hook, when set, for every allocation and free. It is how
 // Apple's own memory tools watch a process, and it sees malloc as well as new.
 extern "C" void (*malloc_logger)(uint32_t type, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uint32_t);
@@ -49,23 +51,36 @@ struct Host {
 };
 
 #if JUCE_MAC
-// Counts this thread's allocations while one is alive.
+// Counts this thread's allocations while one is alive. Avoids thread_local inside
+// malloc_logger because Darwin allocates TLS lazily via malloc on background threads.
 class AllocationCount {
-public:
+  public:
     AllocationCount() {
-        count_ = 0;
+        owner_.store(pthread_self(), std::memory_order_release);
+        count_.store(0, std::memory_order_relaxed);
+        active_.store(true, std::memory_order_release);
         malloc_logger = [](uint32_t type, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uint32_t) {
             constexpr uint32_t allocation = 2;
-            if ((type & allocation) != 0) ++count_;
+            if ((type & allocation) != 0 && active_.load(std::memory_order_acquire) &&
+                pthread_equal(pthread_self(), owner_.load(std::memory_order_acquire))) {
+                count_.fetch_add(1, std::memory_order_relaxed);
+            }
         };
     }
-    ~AllocationCount() { malloc_logger = nullptr; }
-    int get() const { return count_; }
+    ~AllocationCount() {
+        active_.store(false, std::memory_order_release);
+        malloc_logger = nullptr;
+    }
+    int get() const { return count_.load(std::memory_order_relaxed); }
 
-private:
-    static thread_local int count_;
+  private:
+    static std::atomic<bool> active_;
+    static std::atomic<pthread_t> owner_;
+    static std::atomic<int> count_;
 };
-thread_local int AllocationCount::count_ = 0;
+std::atomic<bool> AllocationCount::active_{false};
+std::atomic<pthread_t> AllocationCount::owner_{};
+std::atomic<int> AllocationCount::count_{0};
 #endif
 
 // Lets the message thread's queued callbacks run.
@@ -292,11 +307,12 @@ TEST_CASE("Quality set from another thread takes effect on the message thread") 
     };
     {
         Host host;
-        const int before = host.processor.getLatencySamples();
+        const int before = host.processor.engineOversamplingFactor();
+        REQUIRE(before == 4);
         setQualityElsewhere(host.processor, 0.0f);
-        CHECK(host.processor.getLatencySamples() == before);
+        CHECK(host.processor.engineOversamplingFactor() == before);
         runMessageLoop();
-        CHECK(host.processor.getLatencySamples() != before);
+        CHECK(host.processor.engineOversamplingFactor() == 2);
     }
     {
         // A processor destroyed with a change still queued leaves nothing behind to run.
@@ -437,4 +453,37 @@ TEST_CASE("PluginModel audition pill triggers lock-free F1 note and bank exposes
     }
     model.refreshVisuals();
     CHECK_FALSE(model.visuals().gate);
+}
+
+TEST_CASE("tract-form renders its longest release inside the reported host tail", "[plugin][tail]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    tf::PluginProcessor proc;
+    constexpr int rate = 22050, block = 256;
+    proc.setRateAndBufferSizeDetails(rate, block);
+    proc.prepareToPlay(rate, block);
+    proc.state.getParameter("ampRelease")->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> audio(2, block);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 0);
+    for (int i = 0; i < 40; ++i) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+    }
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 0);
+    const int end = static_cast<int>(std::ceil(proc.getTailLengthSeconds() * rate));
+    REQUIRE(end < rate * 60);
+    float peakAfter = 0.0f, peakBefore = 0.0f;
+    for (int start = 0; start < end + 2 * block; start += block) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+        if (start == 0)
+            peakBefore = audio.getMagnitude(0, block);
+        const int from = std::clamp(end - start, 0, block);
+        if (from < block)
+            peakAfter = std::max(peakAfter, audio.getMagnitude(from, block - from));
+    }
+    REQUIRE(peakBefore > 0.01f);
+    CHECK(peakAfter < 1.0e-6f);
 }

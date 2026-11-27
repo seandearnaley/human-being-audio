@@ -5,6 +5,7 @@
 #include "MidiExporter.h"
 #include "PluginModel.h"
 #include "PluginProcessor.h"
+#include "tg/export.h"
 
 #include <cmath>
 
@@ -121,4 +122,116 @@ TEST_CASE("PluginModel Undo/Redo, A/B compare, and MPE MIDI export work end-to-e
 
     model.jumpToScene(3);
     REQUIRE(model.get(tg::ParamId::morph) == Approx(100.0f).margin(1.0f));
+}
+
+TEST_CASE("The dragged MIDI file keeps five unison voices on separate named tracks", "[plugin][mpe-export]") {
+    tg::RenderRequest phrase;
+    const auto bytes = tg::exportMpeSmf(phrase.params, phrase.curves, phrase.matrix, 41, 120.0);
+    juce::MemoryInputStream input(bytes.data(), bytes.size(), false);
+    juce::MidiFile file;
+    int format = -1;
+    REQUIRE(file.readFrom(input, false, &format));
+    REQUIRE(format == 1);
+    REQUIRE(file.getNumTracks() == 6);
+    CHECK(file.getTimeFormat() == 960);
+
+    for (int index = 0; index < file.getNumTracks(); ++index) {
+        CAPTURE(index);
+        const auto& track = *file.getTrack(index);
+        juce::String name;
+        int tempos = 0, notes = 0, releases = 0, bends = 0;
+        std::vector<std::pair<int, int>> controllers;
+        for (const auto* event : track) {
+            const auto& message = event->message;
+            if (message.isTrackNameEvent())
+                name = message.getTextFromTextMetaEvent();
+            if (message.isTempoMetaEvent()) {
+                ++tempos;
+                CHECK(message.getTempoSecondsPerQuarterNote() == Approx(0.5));
+            }
+            if (message.isMetaEvent())
+                continue;
+            REQUIRE(message.getChannel() == index + 1);
+            if (message.isController()) {
+                CHECK(message.getTimeStamp() == 0.0);
+                controllers.emplace_back(message.getControllerNumber(), message.getControllerValue());
+            } else if (message.isNoteOn() || message.isNoteOff()) {
+                CHECK(message.getNoteNumber() == 41);
+                if (message.isNoteOn()) {
+                    ++notes;
+                    CHECK(message.getTimeStamp() == 0.0);
+                } else {
+                    ++releases;
+                    CHECK(message.getTimeStamp() == 15356.0);
+                }
+            } else if (message.isPitchWheel()) {
+                CHECK(message.getTimeStamp() == bends * 60.0);
+                CHECK(message.getPitchWheelValue() == 8192 + 8 * bends);
+                ++bends;
+            }
+        }
+        REQUIRE(track.getEndTime() == 15360.0);
+        if (index == 0) {
+            CHECK(name == "MPE setup");
+            CHECK(tempos == 1);
+            CHECK(controllers == (std::vector<std::pair<int, int>>{{101, 0}, {100, 6}, {6, 5}}));
+            CHECK(notes + releases + bends == 0);
+        } else {
+            CHECK(name == "Voice " + juce::String(index));
+            CHECK(tempos == 0);
+            CHECK(controllers == (std::vector<std::pair<int, int>>{{101, 0}, {100, 0}, {6, 48}, {38, 0}}));
+            CHECK(notes == 1);
+            CHECK(releases == 1);
+            CHECK(bends == 256);
+        }
+    }
+}
+
+TEST_CASE("torus-glide renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    tg::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 4096);
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
+    proc.processBlock(audio, midi);
+    CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}
+
+TEST_CASE("torus-glide renders its longest release inside the reported host tail", "[plugin][tail]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    tg::PluginProcessor proc;
+    constexpr int rate = 22050, block = 256;
+    proc.setRateAndBufferSizeDetails(rate, block);
+    proc.prepareToPlay(rate, block);
+    proc.state.getParameter("releaseMs")->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> audio(2, block);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 0);
+    for (int i = 0; i < 40; ++i) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+    }
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 0);
+    const int end = static_cast<int>(std::ceil(proc.getTailLengthSeconds() * rate));
+    REQUIRE(end < rate * 60);
+    float peakAfter = 0.0f, peakBefore = 0.0f;
+    for (int start = 0; start < end + 2 * block; start += block) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+        if (start == 0)
+            peakBefore = audio.getMagnitude(0, block);
+        const int from = std::clamp(end - start, 0, block);
+        if (from < block)
+            peakAfter = std::max(peakAfter, audio.getMagnitude(from, block - from));
+    }
+    REQUIRE(peakBefore > 0.01f);
+    CHECK(peakAfter < 1.0e-6f);
 }

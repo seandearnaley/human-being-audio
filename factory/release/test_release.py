@@ -30,6 +30,13 @@ class ReleaseRecordTests(unittest.TestCase):
             self.assertFalse((Path(tmp) / "release.json").exists())
 
 class ProductNotesTests(unittest.TestCase):
+    def test_every_installer_has_its_product_notices(self):
+        for slug in release.PRODUCTS:
+            for name in ("LICENSE", "README.md"):
+                with self.subTest(product=slug, notice=name):
+                    notice = release.ROOT / "products" / slug / name
+                    self.assertTrue(notice.read_text(encoding="utf-8").strip())
+
     def test_notes_bind_current_product_to_exact_source(self):
         sha = "f" * 40
         for slug in release.PRODUCTS:
@@ -50,6 +57,8 @@ class ProductIdentityTests(unittest.TestCase):
             "cutline": ("ABCDEF019182FAEB48626D7543746C6E", "ABCDEF011234ABCD48626D7543746C6E"),
             "torus-glide": ("ABCDEF019182FAEB48626D755472676C", "ABCDEF011234ABCD48626D755472676C"),
             "strike-body": ("ABCDEF019182FAEB48626D7553746264", "ABCDEF011234ABCD48626D7553746264"),
+            "lineage": ("ABCDEF019182FAEB48626D754C6E6731", "ABCDEF011234ABCD48626D754C6E6731"),
+            "datum": ("ABCDEF019182FAEB48626D7544746D31", "ABCDEF011234ABCD48626D7544746D31"),
         }
         for slug, pair in expected.items():
             self.assertEqual(verify_product.class_ids(slug), pair)

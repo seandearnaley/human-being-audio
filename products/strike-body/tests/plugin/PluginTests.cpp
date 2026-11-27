@@ -110,3 +110,19 @@ TEST_CASE("PluginModel Undo/Redo, A/B, Archetypes, Mutate, and Auto-Align work e
     model.refreshVisuals();
     REQUIRE(model.visuals().triggerCount >= 1u);
 }
+
+TEST_CASE("strike-body renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    sb::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 4096);
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
+    proc.processBlock(audio, midi);
+    CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}

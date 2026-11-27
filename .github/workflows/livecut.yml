@@ -164,7 +164,7 @@ jobs:
           # macOS only finds an AU once it is installed and the registrar has rescanned.
           mkdir -p ~/Library/Audio/Plug-Ins/Components
           cp -R "$ARTEFACTS/AU/Livecut Redux.component" ~/Library/Audio/Plug-Ins/Components/
-          pkill -9 AudioComponentRegistrar || [ $? -eq 1 ]  # exit 1 means it was not running
+          pkill -9 -x -u "$UID" AudioComponentRegistrar || [ "$?" -eq 1 ]  # exit 1 means it was not running
           auval -strict -v aumf Lvct Sdrn
           "$GITHUB_WORKSPACE/.pluginval/${{ matrix.pluginval_bin }}" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
             --validate ~/"Library/Audio/Plug-Ins/Components/Livecut Redux.component"

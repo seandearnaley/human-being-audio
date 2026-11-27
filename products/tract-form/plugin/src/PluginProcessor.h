@@ -12,6 +12,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -35,7 +36,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.1; }
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -53,6 +54,7 @@ public:
     };
     Performance lastPerformance() const noexcept;
     Params currentParams() const noexcept { return values_.snapshot(); }
+    int engineOversamplingFactor() const noexcept { return engine_.oversamplingFactor(); }
     void setAudition(bool down) noexcept { auditionWanted_.store(down, std::memory_order_relaxed); }
 
     struct HistorySnapshot {
@@ -78,6 +80,7 @@ public:
     void handleMidi(const juce::MidiMessage& message) noexcept;
 
     ParameterValues values_;
+    std::atomic<double> pipelineTailSeconds_{0.0};
     Engine engine_;
     hba::host::MidiExpressionParser midiParser_{2.0f};
     double sampleRate_ = 48000.0;
@@ -89,6 +92,7 @@ public:
     std::atomic<double> lastBpm_ { 174.0 };
     std::atomic<bool> auditionWanted_{false};
     bool auditionPlaying_ = false;
+    int lastBendChoice_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };

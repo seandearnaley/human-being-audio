@@ -3,6 +3,7 @@
 #pragma once
 
 #include <StudioAbout.h>
+#include <hba/host/accessible_controls.h>
 #include <hba/host/visage_surface.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -86,11 +87,25 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
     StudioPluginEditor(ProcessorT& owner, int minW, int minH, int defaultW, int defaultH, std::uint32_t backgroundArgb,
                        AboutArgs&&... aboutArgs)
         : AudioProcessorEditor(owner), model_(owner), view_(model_, [this] { showAbout(); }),
-          about_(std::forward<AboutArgs>(aboutArgs)...), backgroundArgb_(backgroundArgb) {
+          controls_(view_.rootFrame(), owner), about_(std::forward<AboutArgs>(aboutArgs)...),
+          backgroundArgb_(backgroundArgb) {
+#if JUCE_WINDOWS
+        nativeHost_.onNativeResize = [this](int width, int height) {
+            if (width <= 0 || height <= 0)
+                return;
+            if (attachedTo_ != nullptr)
+                view_.setSize(width, height);
+            else
+                attachWhenOnScreen();
+        };
+#endif
         nativeHost_.setComponentID("instrumentSurface");
         addAndMakeVisible(nativeHost_);
+        addAndMakeVisible(controls_);
         addChildComponent(about_);
+        model_.openHostPresetMenu = [this](visage::Frame& anchor) { openPresetMenu(anchor); };
         about_.onClosed = [this] {
+            controls_.setVisible(true);
             nativeHost_.setVisible(true);
             attachWhenOnScreen();
         };
@@ -103,15 +118,23 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         setSize(defaultW, defaultH);
     }
 
-    ~StudioPluginEditor() override { detachView(); }
+    ~StudioPluginEditor() override {
+#if JUCE_WINDOWS
+        nativeHost_.onNativeResize = {};
+#endif
+        detachView();
+    }
 
     void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(backgroundArgb_)); }
 
     void resized() override {
         nativeHost_.setBounds(getLocalBounds());
+        controls_.setBounds(getLocalBounds());
         about_.setBounds(getLocalBounds());
+#if !JUCE_WINDOWS
         if (attachedTo_ != nullptr)
             view_.setSize(getWidth(), getHeight());
+#endif
     }
 
     void parentHierarchyChanged() override { attachWhenOnScreen(); }
@@ -119,11 +142,45 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
     void showAbout() {
         if (about_.isVisible())
             return;
+        controls_.setVisible(false);
         nativeHost_.setVisible(false);
         about_.open();
     }
 
   protected:
+    void openPresetMenu(visage::Frame& anchor) {
+        juce::PopupMenu menu;
+        const auto presets = model_.presets();
+        int index = 0;
+        const int count = static_cast<int>(presets.size());
+        while (index < count) {
+            const auto category = presets[static_cast<std::size_t>(index)].category;
+            juce::PopupMenu group;
+            do {
+                const auto& preset = presets[static_cast<std::size_t>(index)];
+                group.addItem(++index, juce::String::fromUTF8(preset.name.c_str()));
+            } while (index < count && presets[static_cast<std::size_t>(index)].category == category);
+            menu.addSubMenu(juce::String::fromUTF8(category.c_str()), group);
+        }
+        menu.addSeparator();
+        menu.addItem(count + 1, "Save User Preset...");
+        menu.addItem(count + 2,
+                     model_.isSlotB() ? "Copy B to A (Shift+Enter on A/B)" : "Copy A to B (Shift+Enter on A/B)");
+        const auto area = controlBounds(anchor, view_.rootFrame(), getWidth());
+        menu.showMenuAsync(
+            juce::PopupMenu::Options().withTargetComponent(this).withTargetScreenArea(localAreaToGlobal(area)),
+            [editor = juce::Component::SafePointer<StudioPluginEditor>(this), count](int selection) {
+                if (!editor || selection == 0)
+                    return;
+                if (selection == count + 1)
+                    editor->model_.savePreset();
+                else if (selection == count + 2)
+                    editor->model_.copyAB();
+                else
+                    editor->model_.loadPreset(selection - 1);
+            });
+    }
+
     void attachWhenOnScreen() {
         auto* peer = getPeer();
         if (peer == nullptr) {
@@ -139,8 +196,20 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         detachView();
         if (nativeView == nullptr)
             return;
+#if JUCE_WINDOWS
+        // The host can request a different VST3 scale from the desktop DPI.
+        const auto bounds = nativeHost_.clientBounds();
+        if (bounds.isEmpty())
+            return;
+        view_.attach(nativeView, bounds.getWidth(), bounds.getHeight());
+#else
         view_.attach(nativeView, getWidth(), getHeight());
+#endif
         attachedTo_ = nativeView;
+#if JUCE_MAC || JUCE_WINDOWS
+        if (dynamic_cast<juce::FileDragAndDropTarget*>(this) != nullptr)
+            nativeHost_.useHostFileDropTarget();
+#endif
 #if JUCE_LINUX
         // The embedded Visage window owns a separate X11 connection.
         if (const int fd = view_.eventFd(); fd >= 0)
@@ -158,8 +227,9 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
     }
 
     ModelT model_;
+    VisageSurface nativeHost_; // The embedded renderer must be destroyed before its native parent.
     ViewT view_;
-    VisageSurface nativeHost_;
+    AccessibleControls controls_;
     AboutPageT about_;
     void* attachedTo_ = nullptr;
     std::uint32_t backgroundArgb_ = 0xff0b0e13u;

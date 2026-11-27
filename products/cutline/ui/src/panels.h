@@ -34,7 +34,9 @@ class Panel : public visage::Frame, public Live {
     std::vector<std::unique_ptr<visage::Frame>> owned_;
 };
 
-std::unique_ptr<Panel> makePhrasePanel(Context& context);
+std::unique_ptr<Panel> makeMacroStripPanel(Context& context);
+std::unique_ptr<Panel> makeGridStagePanel(Context& context);
+std::unique_ptr<Panel> makeSetupPanel(Context& context);
 std::unique_ptr<Panel> makeMovementPanel(Context& context);
 std::unique_ptr<Panel> makeDeliveryPanel(Context& context);
 

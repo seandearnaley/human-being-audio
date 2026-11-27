@@ -56,3 +56,38 @@ TEST_CASE("A click on the Cutline wordmark reveals About inside a native Mac hos
         REQUIRE(container.subviews.firstObject == renderer);
     }
 }
+
+TEST_CASE("Cutline exposes visible shared controls to a native accessibility client") {
+    const juce::ScopedJuceInitialiser_GUI gui;
+    cl::PluginProcessor processor;
+    juce::Component host;
+    cl::PluginEditor editor(processor);
+    host.setSize(cl::ui::kMinWidth, cl::ui::kMinHeight);
+    host.addAndMakeVisible(editor);
+    editor.setBounds(host.getLocalBounds());
+    host.addToDesktop(juce::ComponentPeer::windowIsTemporary);
+    host.setVisible(true);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+
+    auto* group = editor.findChildWithID("studioControls");
+    REQUIRE(group != nullptr);
+    const auto children = group->getAccessibilityHandler()->getChildren();
+    auto button =
+        std::find_if(children.begin(), children.end(), [](auto* child) { return child->getTitle() == "Next preset"; });
+    REQUIRE(button != children.end());
+    auto* nativeButton = (id<NSAccessibilityElement>)(*button)->getNativeImplementation();
+    REQUIRE(nativeButton != nil);
+    auto before = processor.presets.currentName();
+    REQUIRE([(id)nativeButton accessibilityPerformPress]);
+    CHECK(processor.presets.currentName() != before);
+    auto slider = std::find_if(children.begin(), children.end(), [](auto* child) {
+        return child->getRole() == juce::AccessibilityRole::slider && child->getValueInterface() != nullptr;
+    });
+    REQUIRE(slider != children.end());
+    auto* value = (*slider)->getValueInterface();
+    const auto range = value->getRange();
+    REQUIRE(range.isValid());
+    value->setValue(range.getMaximumValue());
+    CHECK(value->getCurrentValue() == range.getMaximumValue());
+    CHECK(value->getCurrentValueAsString().isNotEmpty());
+}

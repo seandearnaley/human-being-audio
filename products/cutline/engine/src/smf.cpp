@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/smf.h"
 
+#include "cl/groove_state.h"
+#include "cl/hits.h"
+#include "cl/pattern.h"
+#include "cl/phrase.h"
+#include "cl/resolve.h"
+
 #include <hba/core/smf.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace cl {
@@ -14,52 +23,32 @@ namespace cl {
 namespace {
 int toMidi7(double bipolar) { return std::clamp(static_cast<int>(std::lround((bipolar * 0.5 + 0.5) * 127.0)), 0, 127); }
 
-int toPb14(double semitones, double rangeSt) {
-    const double norm = std::clamp(semitones / std::max(1.0, rangeSt), -1.0, 1.0);
-    return std::clamp(static_cast<int>(std::lround(8192.0 + norm * 8191.0)), 0, 16383);
-}
+struct ClipNote {
+    std::uint8_t note = 0;
+    std::uint8_t velocity = 0;
+    std::uint32_t start = 0;
+    std::uint32_t end = 0;
+};
 } // namespace
 
-std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves& curves, const HeldNotes& held,
-                                          double bpm, std::int64_t phraseIndex, const PhraseOverrides& overrides) {
-    PhrasePlan plan;
-    compilePhrase(params, phraseIndex, held, plan, overrides);
-
+std::vector<std::uint8_t> exportSmf(const Params& params, const LaneCurves& curves, const HeldNotes& held, double bpm,
+                                    int scene, const GrooveBank& bank) {
     const double safeBpm = std::clamp(bpm, 20.0, 400.0);
-    const auto mode = static_cast<OutputMode>(std::clamp(params.choice(ParamId::outputMode), 0, 2));
-    const auto pbIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::bendRange), 0, 2));
-    const double pbRangeSt = mode == OutputMode::mpe ? 48.0 : static_cast<double>(kBendRangeSemitones[pbIdx]);
-    const auto phraseEndTick = static_cast<std::uint32_t>(std::llround(plan.phraseBeats * kSmfPpq));
+    const auto rateIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::seqRate), 0, 2));
+    const double rate = kSeqRateMultipliers[rateIdx];
+    const auto sceneIdx = static_cast<std::size_t>(std::clamp(scene, 0, kSceneCount - 1));
+    const GrooveState groove(bank);
+    const Pattern& pattern = groove.bank.scenes[sceneIdx];
+    const int bars = patternBars(pattern);
+    const double clipBeats = static_cast<double>(bars) * 4.0 / rate; // host beats
+    const auto clipTicks = static_cast<long long>(std::llround(clipBeats * kSmfPpq));
+    const auto mode = static_cast<EngineMode>(std::clamp(params.choice(ParamId::engineMode), 0, 1));
+    const auto noteMap = static_cast<NoteMap>(std::clamp(params.choice(ParamId::noteMap), 0, kNoteMapCount - 1));
 
-    std::vector<hba::core::SmfEvent> events;
-    events.reserve(static_cast<std::size_t>(plan.noteCount * 10 + 256));
-
-    // Setup RPN: MPE Lower Zone (Ch 1 MCM + Ch 2 ±48 st) or Mono Bend Range (Ch 1 RPN 00 00)
-    if (mode == OutputMode::mpe) {
-        events.push_back(hba::core::SmfEvent::msg(0, 1, 0xB0, 101, 0));
-        events.push_back(hba::core::SmfEvent::msg(0, 2, 0xB0, 100, 6));
-        events.push_back(hba::core::SmfEvent::msg(0, 3, 0xB0, 6, 14));
-        events.push_back(hba::core::SmfEvent::msg(0, 4, 0xB0, 101, 127));
-        events.push_back(hba::core::SmfEvent::msg(0, 5, 0xB0, 100, 127));
-        events.push_back(hba::core::SmfEvent::msg(0, 6, 0xB1, 101, 0));
-        events.push_back(hba::core::SmfEvent::msg(0, 7, 0xB1, 100, 0));
-        events.push_back(hba::core::SmfEvent::msg(0, 8, 0xB1, 6, 48));
-        events.push_back(hba::core::SmfEvent::msg(0, 9, 0xB1, 101, 127));
-        events.push_back(hba::core::SmfEvent::msg(0, 10, 0xB1, 100, 127));
-    } else if (mode == OutputMode::mono) {
-        const auto bendSt = static_cast<std::uint8_t>(std::clamp(static_cast<int>(pbRangeSt), 1, 48));
-        events.push_back(hba::core::SmfEvent::msg(0, 1, 0xB0, 101, 0));
-        events.push_back(hba::core::SmfEvent::msg(0, 2, 0xB0, 100, 0));
-        events.push_back(hba::core::SmfEvent::msg(0, 3, 0xB0, 6, bendSt));
-        events.push_back(hba::core::SmfEvent::msg(0, 4, 0xB0, 101, 127));
-        events.push_back(hba::core::SmfEvent::msg(0, 5, 0xB0, 100, 127));
-    }
-
-    const double pOrigin = static_cast<double>(phraseIndex) * plan.phraseBeats;
     auto evalSends = [&](double beat) {
         std::array<float, kLaneCount> sends{};
         for (int l = 0; l < kLaneCount; ++l)
-            sends[static_cast<std::size_t>(l)] = static_cast<float>(laneSend(params, curves, l, pOrigin + beat));
+            sends[static_cast<std::size_t>(l)] = static_cast<float>(laneSend(params, curves, l, beat));
         return sends;
     };
     auto targetActive = [&](LaneTarget target) {
@@ -69,208 +58,122 @@ std::vector<std::uint8_t> exportPhraseSmf(const Params& params, const LaneCurves
         }
         return false;
     };
-    const bool hasCc74 = targetActive(LaneTarget::cc74Slide);
-    const bool hasAt = targetActive(LaneTarget::pressure);
-    const bool hasPbLane = targetActive(LaneTarget::pitchBend);
 
-    struct NoteSpan {
-        std::uint8_t ch = 0;
-        std::uint8_t note = 0;
-        std::uint32_t startTick = 0;
-        std::uint32_t endTick = 0;
-        float bendSemitones = 0.0f;
+    std::vector<ClipNote> notes;
+    // `patternBeat` may be negative (a flam, an early nudge or lane offset on bar 1) or past the last bar
+    // (a late nudge on the last step). The plugin loops the pattern, so such a hit belongs at the other
+    // end of the clip: wrap it.
+    const auto add = [&](int note, double patternBeat, double durBeats, int velocity) {
+        long long tick = std::llround(patternBeat / rate * kSmfPpq);
+        tick = ((tick % clipTicks) + clipTicks) % clipTicks;
+        const long long startTick = std::min(tick, clipTicks - 16);
+        const long long length = std::llround(std::max(0.025, durBeats / rate) * kSmfPpq);
+        const long long endTick = std::clamp(startTick + length, startTick + 12, clipTicks - 1);
+        const double hostBeat = static_cast<double>(startTick) / kSmfPpq;
+        const int bias =
+            static_cast<int>(std::lround(laneSum(params, evalSends(hostBeat), LaneTarget::velocity) * 26.0f));
+        notes.push_back({static_cast<std::uint8_t>(std::clamp(note, 0, 127)),
+                         static_cast<std::uint8_t>(std::clamp(velocity + bias, 1, 127)),
+                         static_cast<std::uint32_t>(startTick), static_cast<std::uint32_t>(endTick)});
     };
-    std::vector<NoteSpan> scheduledNotes;
-    scheduledNotes.reserve(static_cast<std::size_t>(plan.noteCount));
 
-    std::array<std::uint32_t, 16> mpeChanFreeTick{};
-    int nextMpeCh = 1; // 0-based channel 1..14 => MIDI Ch 2..15
-
-    for (int i = 0; i < plan.noteCount; ++i) {
-        const CompiledNote& n = plan.notes[static_cast<std::size_t>(i)];
-        if (n.muted)
-            continue;
-        const auto startTick = static_cast<std::uint32_t>(std::clamp<long long>(
-            std::llround(n.warpedBeats * kSmfPpq), 0LL, static_cast<long long>(phraseEndTick) - 16LL));
-        const auto endTick = static_cast<std::uint32_t>(std::clamp<long long>(
-            std::llround((n.warpedBeats + n.durationBeats) * kSmfPpq), static_cast<long long>(startTick) + 12LL,
-            static_cast<long long>(phraseEndTick) - 1LL));
-
-        std::uint8_t ch = static_cast<std::uint8_t>(std::clamp(static_cast<int>(n.channel), 1, 16) - 1);
-        if (mode == OutputMode::mpe) {
-            int picked = -1;
-            for (int t = 0; t < 14; ++t) {
-                const int cand = 1 + ((nextMpeCh - 1 + t) % 14);
-                if (mpeChanFreeTick[static_cast<std::size_t>(cand)] <= startTick) {
-                    picked = cand;
-                    break;
-                }
-            }
-            if (picked < 0) {
-                picked = 1;
-                for (int c = 2; c <= 14; ++c) {
-                    if (mpeChanFreeTick[static_cast<std::size_t>(c)] <
-                        mpeChanFreeTick[static_cast<std::size_t>(picked)])
-                        picked = c;
-                }
-            }
-            ch = static_cast<std::uint8_t>(picked);
-            nextMpeCh = 1 + ((picked - 1 + 1) % 14);
-            mpeChanFreeTick[static_cast<std::size_t>(ch)] = endTick;
+    if (mode == EngineMode::drum) {
+        const HitTiming timing{static_cast<double>(params[ParamId::swing]),
+                               static_cast<double>(params[ParamId::gateLen]), safeBpm / 60000.0 * rate};
+        const bool fillOn = params.choice(ParamId::fillEvery) != 0;
+        for (int bar = 0; bar < bars; ++bar) {
+            ResolvedBar resolved;
+            resolveBar(pattern, groove.maps[sceneIdx], bar,
+                       {params[ParamId::density], params[ParamId::dynamics], fillOn && bar == bars - 1}, resolved);
+            forEachHit(pattern, resolved, static_cast<double>(bar) * 4.0, timing, [&](const Hit& h) {
+                const int note =
+                    effectiveLaneMidiNote(noteMap, h.lane, pattern.lanes[static_cast<std::size_t>(h.lane)].midiNote);
+                add(note, h.beat, h.durBeats, h.velocity);
+            });
         }
-
-        const auto noteByte = static_cast<std::uint8_t>(n.noteNumber & 0x7F);
-        for (auto& prev : scheduledNotes) {
-            const bool collision =
-                (prev.ch == ch) && (mode == OutputMode::mpe || prev.note == noteByte) && (prev.endTick > startTick);
-            if (collision)
-                prev.endTick = startTick > prev.startTick ? startTick : prev.startTick + 1U;
+    } else {
+        const auto plan = std::make_unique<SlicerPlan>();
+        compileSlicer(params, groove, static_cast<int>(sceneIdx), held, safeBpm, *plan);
+        for (int i = 0; i < plan->noteCount; ++i) {
+            const SlicerNote& n = plan->notes[static_cast<std::size_t>(i)];
+            add(n.note, n.beat, n.durBeats, n.velocity);
         }
-
-        scheduledNotes.push_back({ch, noteByte, startTick, endTick, n.bendSemitones});
-
-        const auto startSends = evalSends(n.warpedBeats);
-        const int velBias = static_cast<int>(std::lround(laneSum(params, startSends, LaneTarget::velocity) * 28.0f));
-        const auto vel = static_cast<std::uint8_t>(std::clamp(static_cast<int>(n.velocity) + velBias, 1, 127));
-
-        if (mode != OutputMode::drum) {
-            const double laneBendSt =
-                static_cast<double>(std::clamp(laneSum(params, startSends, LaneTarget::pitchBend), -1.0f, 1.0f)) *
-                std::min(pbRangeSt, 12.0);
-            const int initPb = mode == OutputMode::mpe ? toPb14(laneBendSt * 0.5, 48.0) : toPb14(laneBendSt, pbRangeSt);
-            events.push_back(hba::core::SmfEvent::msg(startTick, 15, static_cast<std::uint8_t>(0xE0u | ch),
-                                                      static_cast<std::uint8_t>(initPb & 0x7F),
-                                                      static_cast<std::uint8_t>((initPb >> 7) & 0x7F)));
-            if (mode == OutputMode::mpe) {
-                if (hasCc74) {
-                    const int v74 = toMidi7(
-                        std::clamp(static_cast<double>(laneSum(params, startSends, LaneTarget::cc74Slide)), -1.0, 1.0));
-                    events.push_back(hba::core::SmfEvent::msg(startTick, 16, static_cast<std::uint8_t>(0xB0u | ch), 74,
-                                                              static_cast<std::uint8_t>(v74)));
-                }
-                if (hasAt) {
-                    const int vAt = toMidi7(
-                        std::clamp(static_cast<double>(laneSum(params, startSends, LaneTarget::pressure)), -1.0, 1.0));
-                    events.push_back(hba::core::SmfEvent::msg2(startTick, 17, static_cast<std::uint8_t>(0xD0u | ch),
-                                                               static_cast<std::uint8_t>(vAt)));
-                }
-            }
-        }
-
-        events.push_back(hba::core::SmfEvent::msg(startTick, 20, static_cast<std::uint8_t>(0x90u | ch), noteByte, vel));
     }
 
-    // Emit trimmed Note Offs (order 18 < NoteOn 20 so contiguous notes release before re-triggering)
-    for (const auto& sn : scheduledNotes) {
-        events.push_back(
-            hba::core::SmfEvent::msg(sn.endTick, 18, static_cast<std::uint8_t>(0x80u | sn.ch), sn.note, 0));
+    std::stable_sort(notes.begin(), notes.end(),
+                     [](const ClipNote& a, const ClipNote& b) { return a.start < b.start; });
+
+    // Two lanes can share a MIDI note (the Strike Body map does). A pitch can only start once per tick:
+    // keep one note, with the higher velocity and the later end.
+    std::vector<ClipNote> merged;
+    merged.reserve(notes.size());
+    for (const ClipNote& n : notes) {
+        bool duplicate = false;
+        for (auto it = merged.rbegin(); it != merged.rend() && it->start == n.start; ++it) {
+            if (it->note != n.note)
+                continue;
+            it->velocity = std::max(it->velocity, n.velocity);
+            it->end = std::max(it->end, n.end);
+            duplicate = true;
+            break;
+        }
+        if (!duplicate)
+            merged.push_back(n);
+    }
+    notes = std::move(merged);
+
+    // A note ends when the same pitch starts again.
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            if (notes[j].note == notes[i].note && notes[j].end > notes[i].start)
+                notes[j].end = notes[i].start > notes[j].start ? notes[i].start : notes[j].start + 1U;
+        }
     }
 
-    std::array<std::array<int, 16>, 5> lastCc{};
-    for (auto& row : lastCc)
-        row.fill(-1);
-    std::array<int, 16> lastAt{};
-    lastAt.fill(-1);
-    std::array<int, 16> lastPb{};
-    lastPb.fill(-1);
+    const auto endTick = static_cast<std::uint32_t>(clipTicks);
+    std::vector<hba::core::SmfEvent> events;
+    events.reserve(notes.size() * 2 + 256);
+    for (const auto& n : notes) {
+        events.push_back(hba::core::SmfEvent::msg(n.start, 20, 0x90, n.note, n.velocity));
+        events.push_back(hba::core::SmfEvent::msg(n.end, 18, 0x80, n.note, 0));
+    }
 
-    constexpr std::array<std::pair<LaneTarget, int>, 5> kCcMap{{
+    // Expression lanes as CC and aftertouch. Pitch bend is written only if a lane targets Pitch Scoop,
+    // and this exporter never writes it.
+    constexpr std::array<std::pair<LaneTarget, int>, 4> kCcMap{{
         {LaneTarget::cc74Slide, 74},
         {LaneTarget::cc1Mod, 1},
         {LaneTarget::cc11Expr, 11},
-        {LaneTarget::cc2Breath, 2},
         {LaneTarget::cc71Res, 71},
     }};
-
-    for (double b = 0.0; b < plan.phraseBeats; b += 0.0625) {
+    std::array<int, 4> lastCc{-1, -1, -1, -1};
+    int lastAt = -1;
+    const bool hasAt = targetActive(LaneTarget::pressure);
+    for (double beat = 0.0; beat < clipBeats; beat += 0.125) {
         const auto tick = static_cast<std::uint32_t>(
-            std::min<long long>(std::llround(b * kSmfPpq), static_cast<long long>(phraseEndTick) - 1LL));
-        const auto sends = evalSends(b);
-
+            std::min<long long>(std::llround(beat * kSmfPpq), static_cast<long long>(endTick) - 1LL));
+        const auto sends = evalSends(beat);
         for (std::size_t k = 0; k < kCcMap.size(); ++k) {
             if (!targetActive(kCcMap[k].first))
                 continue;
             const int v = toMidi7(std::clamp(static_cast<double>(laneSum(params, sends, kCcMap[k].first)), -1.0, 1.0));
-            if (mode == OutputMode::mpe && kCcMap[k].first == LaneTarget::cc74Slide) {
-                for (const auto& sn : scheduledNotes) {
-                    if (tick >= sn.startTick && tick < sn.endTick && lastCc[k][sn.ch] != v) {
-                        events.push_back(hba::core::SmfEvent::msg(tick, 25, static_cast<std::uint8_t>(0xB0u | sn.ch),
-                                                                  static_cast<std::uint8_t>(kCcMap[k].second),
-                                                                  static_cast<std::uint8_t>(v)));
-                        lastCc[k][sn.ch] = v;
-                    }
-                }
-            } else if (lastCc[k][0] != v) {
+            if (lastCc[k] != v) {
                 events.push_back(hba::core::SmfEvent::msg(tick, 25, 0xB0, static_cast<std::uint8_t>(kCcMap[k].second),
                                                           static_cast<std::uint8_t>(v)));
-                lastCc[k][0] = v;
+                lastCc[k] = v;
             }
         }
-
         if (hasAt) {
             const int v =
                 toMidi7(std::clamp(static_cast<double>(laneSum(params, sends, LaneTarget::pressure)), -1.0, 1.0));
-            if (mode == OutputMode::mpe) {
-                for (const auto& sn : scheduledNotes) {
-                    if (tick >= sn.startTick && tick < sn.endTick && lastAt[sn.ch] != v) {
-                        events.push_back(hba::core::SmfEvent::msg2(tick, 26, static_cast<std::uint8_t>(0xD0u | sn.ch),
-                                                                   static_cast<std::uint8_t>(v)));
-                        lastAt[sn.ch] = v;
-                    }
-                }
-            } else if (lastAt[0] != v) {
+            if (lastAt != v) {
                 events.push_back(hba::core::SmfEvent::msg2(tick, 26, 0xD0, static_cast<std::uint8_t>(v)));
-                lastAt[0] = v;
-            }
-        }
-
-        if (mode != OutputMode::drum) {
-            const double laneBendSt =
-                hasPbLane
-                    ? static_cast<double>(std::clamp(laneSum(params, sends, LaneTarget::pitchBend), -1.0f, 1.0f)) *
-                          std::min(pbRangeSt, 12.0)
-                    : 0.0;
-            if (mode == OutputMode::mpe) {
-                for (const auto& sn : scheduledNotes) {
-                    if (tick < sn.startTick || tick >= sn.endTick)
-                        continue;
-                    if (!hasPbLane && std::abs(sn.bendSemitones) <= 0.2f)
-                        continue;
-                    const double dur = std::max(1.0, static_cast<double>(sn.endTick - sn.startTick));
-                    const double frac = std::clamp(static_cast<double>(tick - sn.startTick) / dur, 0.0, 1.0);
-                    const int pb =
-                        toPb14(static_cast<double>(sn.bendSemitones) * (frac * frac) + laneBendSt * 0.5, 48.0);
-                    if (lastPb[sn.ch] < 0 || std::abs(pb - lastPb[sn.ch]) >= 16) {
-                        events.push_back(hba::core::SmfEvent::msg(tick, 22, static_cast<std::uint8_t>(0xE0u | sn.ch),
-                                                                  static_cast<std::uint8_t>(pb & 0x7F),
-                                                                  static_cast<std::uint8_t>((pb >> 7) & 0x7F)));
-                        lastPb[sn.ch] = pb;
-                    }
-                }
-            } else {
-                const NoteSpan* newest = nullptr;
-                for (const auto& sn : scheduledNotes) {
-                    if (tick >= sn.startTick && tick < sn.endTick &&
-                        (newest == nullptr || sn.startTick >= newest->startTick)) {
-                        newest = &sn;
-                    }
-                }
-                if (newest != nullptr && (hasPbLane || std::abs(newest->bendSemitones) > 0.2f)) {
-                    const double dur = std::max(1.0, static_cast<double>(newest->endTick - newest->startTick));
-                    const double frac = std::clamp(static_cast<double>(tick - newest->startTick) / dur, 0.0, 1.0);
-                    const int pb =
-                        toPb14(static_cast<double>(newest->bendSemitones) * (frac * frac) + laneBendSt, pbRangeSt);
-                    if (lastPb[0] < 0 || std::abs(pb - lastPb[0]) >= 16) {
-                        events.push_back(hba::core::SmfEvent::msg(tick, 22, 0xE0, static_cast<std::uint8_t>(pb & 0x7F),
-                                                                  static_cast<std::uint8_t>((pb >> 7) & 0x7F)));
-                        lastPb[0] = pb;
-                    }
-                }
+                lastAt = v;
             }
         }
     }
 
-    return hba::core::encodeSmfType0(std::move(events), kSmfPpq, safeBpm, phraseEndTick);
+    return hba::core::encodeSmfType0(std::move(events), kSmfPpq, safeBpm, endTick);
 }
 
 } // namespace cl

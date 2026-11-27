@@ -114,6 +114,14 @@ def encode_clip(item: dict) -> tuple[str, dict]:
         ]
     )
 
+    stats = subprocess.run([
+        "ffmpeg", "-v", "error", "-i", str(mp3_path), "-af", "loudnorm=print_format=json:stats_file=-",
+        "-f", "null", "-",
+    ], capture_output=True, text=True, check=True)
+    peak = float(json.loads(stats.stdout)["input_tp"])
+    if not math.isfinite(peak) or peak > -1.0:
+        raise ValueError(f"{mp3_path}: decoded peak {peak:.2f} dBTP exceeds the -1 dBTP delivery ceiling")
+
     duration, peaks = read_wav_peaks(wav_path, PEAK_BARS)
     return product, {
         "id": clip_id,
@@ -174,10 +182,11 @@ def main() -> int:
         raw_items = json.loads((wav_dir / "raw-manifest.json").read_text())
         if args.product:
             raw_items = [item for item in raw_items if item["product"] == args.product]
-            manifest: dict[str, list[dict]] = json.loads(WEB_MANIFEST.read_text()) if WEB_MANIFEST.exists() else {}
-            manifest[args.product] = []
-        else:
-            manifest = {}
+            if not raw_items:
+                raise ValueError(f"No showcase recipe for {args.product}")
+        manifest = json.loads(WEB_MANIFEST.read_text()) if WEB_MANIFEST.exists() else {}
+        for product in {item["product"] for item in raw_items}:
+            manifest[product] = []
 
         # Encode clips in parallel to crisp, stripped VBR MP3 (~190-220 kbps, 48 kHz stereo)
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:

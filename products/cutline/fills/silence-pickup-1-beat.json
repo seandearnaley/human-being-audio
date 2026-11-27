@@ -1,0 +1,11 @@
+{
+    "format": 3,
+    "name": "Silence Pickup 1 Beat",
+    "category": "Drops",
+    "beats": 1,
+    "lanes": {
+        "kick": "...............x",
+        "snare": "...............X",
+        "hat": "...............o"
+    }
+}

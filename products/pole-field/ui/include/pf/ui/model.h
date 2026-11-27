@@ -1,5 +1,7 @@
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "pf/cubes.h"
 #include "pf/lanes.h"
 #include "pf/params.h"
@@ -29,6 +31,9 @@ struct Visuals {
     std::array<float, kLaneCount> lanePhase {};
     std::array<float, kLaneCount> laneValue {};
     double ppq = 0.0;
+    double notePpq = 0.0;
+    double freeSec = 0.0;
+    double noteSec = 0.0;
     double sampleRate = 48000.0;
     int osFactor = 4;
 
@@ -52,8 +57,8 @@ struct PresetInfo {
     std::string category;
 };
 
-class Model {
-public:
+class Model : public hba::ui::PresetMenuHost {
+  public:
     virtual ~Model() = default;
 
     virtual float get(ParamId id) const = 0;
@@ -96,5 +101,4 @@ public:
     virtual void toggleAB() {}
     virtual void copyAB() {}
 };
-
 }

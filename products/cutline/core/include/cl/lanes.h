@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Four tempo-locked MIDI/MPE expression lanes shared between engine and UI.
+// Two optional tempo-locked MIDI expression lanes (CC74 / CC1 / CC11 / Velocity / AT).
 #pragma once
 
 #include "cl/curve.h"
@@ -16,7 +16,6 @@
 namespace cl {
 
 using hba::dsp::kLaneStepsPerCycle;
-using hba::dsp::laneHash;
 using hba::dsp::lanePhase;
 using hba::dsp::laneStepValue;
 
@@ -28,13 +27,11 @@ using LaneCurves = std::array<Curve, kLaneCount>;
 
 inline LaneCurves defaultLaneCurves() noexcept CL_NONBLOCKING {
     LaneCurves curves;
-    curves[0] = curves::sine();
-    curves[1] = curves::make({{0.0f, -0.6f, -0.35f, Segment::smooth},
-                              {0.3f, 0.8f, 0.2f, Segment::smooth},
-                              {0.6f, -0.2f, -0.2f, Segment::line},
-                              {0.82f, 0.95f, 0.4f, Segment::smooth}});
-    curves[2] = curves::triangle();
-    curves[3] = curves::rampUp();
+    curves[0] = curves::make({{0.0f, -0.55f, -0.25f, Segment::smooth},
+                              {0.35f, 0.72f, 0.25f, Segment::smooth},
+                              {0.68f, -0.15f, -0.2f, Segment::line},
+                              {0.88f, 0.92f, 0.35f, Segment::smooth}});
+    curves[1] = curves::triangle();
     return curves;
 }
 

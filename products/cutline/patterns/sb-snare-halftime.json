@@ -1,0 +1,39 @@
+{
+    "format": 3,
+    "name": "SB Snare Halftime",
+    "category": "Strike Body",
+    "bars": 2,
+    "lanes": {
+        "kick": {
+            "core": "X...............|X...............",
+            "muted": true
+        },
+        "snare": {
+            "core": "........X.......|........X......."
+        },
+        "ghost": {
+            "groove": ".......o........|.......o.......o",
+            "detail": "...o.......o....|...o......o....."
+        },
+        "clap": {
+            "groove": "..............x.|..............x.",
+            "detail": "....x...........|....x..........."
+        },
+        "percA": {
+            "detail": "...............x|................"
+        }
+    },
+    "fill": {
+        "beats": 1,
+        "lanes": {
+            "snare": "............oxxX"
+        }
+    },
+    "edits": [
+        {
+            "lane": "percA",
+            "step": 15,
+            "ratchet": 2
+        }
+    ]
+}

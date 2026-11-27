@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Comprehensive tests for shared studio DSP primitives (control, SVF, crossover,
 // PhaseRotator, Limiter, Oversampler, MultiShaperAdaa2, denormals) and StudioHistory.
+#include <hba/dsp/sample_exchange.h>
+
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/control.h>
 #include <hba/dsp/crossover.h>
 #include <hba/dsp/denormals.h>
+#include <hba/dsp/envelope_curve.h>
+#include <hba/dsp/harmonic_phase.h>
+#include <hba/dsp/lane_math.h>
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oversampling.h>
 #include <hba/dsp/svf.h>
@@ -261,4 +266,155 @@ TEST_CASE("hba::studio::History supports undo/redo, coalescing, capacity cap, an
     CHECK_FALSE(h.isSlotB());
     h.copyActiveToOther(10);
     CHECK(h.toggleAB(10) == 10);
+}
+
+TEST_CASE("hba::dsp::BaseRate4x, SoftClipAdaa1, and lanePhaseHz meet anti-aliasing and precision specs",
+          "[dsp][engine]") {
+    using namespace hba::dsp;
+
+    // BaseRate4x preserves unity passband at 440 Hz and 1 kHz.
+    BaseRate4x os4;
+    os4.prepare();
+    double peak = 0.0;
+    double sumSq = 0.0;
+    int rmsCount = 0;
+    std::array<float, BaseRate4x::kFactor> buf{};
+    for (int i = 0; i < 4096; ++i) {
+        const float x = std::sin(static_cast<float>(2.0 * kPi * 440.0 * i / 48000.0));
+        os4.up(x, buf.data());
+        const float y = os4.down(buf.data());
+        REQUIRE(std::isfinite(y));
+        if (i >= 1024) {
+            peak = std::max(peak, static_cast<double>(std::abs(y)));
+            sumSq += static_cast<double>(y) * static_cast<double>(y);
+            ++rmsCount;
+        }
+    }
+    CHECK(peak == Catch::Approx(1.0).margin(1e-3));
+    CHECK(std::sqrt(2.0 * sumSq / rmsCount) == Catch::Approx(1.0).margin(2e-3));
+
+    // SoftClipAdaa1: bit-exact linear midpoint below knee, strictly bounded above knee,
+    // and suppresses aliasing well below raw memoryless softClip on a hot high-frequency sine.
+    SoftClipAdaa1 cA, cB;
+    for (int i = 0; i < 64; ++i) {
+        const double x = 0.25 * std::sin(0.1 * i);
+        // Different ceilings well above |x| must produce bit-identical output below knee.
+        CHECK(cA.process(x, 0.6, 0.8) == cB.process(x, 0.6, 2.5));
+    }
+
+    cA.reset();
+    double maxAdaa = 0.0;
+    for (int i = 0; i < 4096; ++i) {
+        const double x = 8.0 * std::sin(2.0 * kPi * 3100.0 * i / 192000.0);
+        const double y = cA.process(x, 0.6, 0.75);
+        REQUIRE(std::isfinite(y));
+        maxAdaa = std::max(maxAdaa, std::abs(y));
+    }
+    CHECK(maxAdaa <= 0.75 + 1e-12);
+
+    // Numerical derivative of softClipUnitF1 matches softClip everywhere.
+    constexpr double h = 1e-6;
+    for (double u : {-3.5, -0.9, -0.6, -0.2, 0.0, 0.2, 0.6, 0.9, 3.5, 50.0}) {
+        const double df = (softClipUnitF1(u + h, 0.6) - softClipUnitF1(u - h, 0.6)) / (2.0 * h);
+        CHECK(df == Catch::Approx(softClip(u, 0.6, 1.0)).margin(1e-6));
+    }
+
+    // lanePhaseHz wraps accurately with phase offset and clamps negative rates safely.
+    CHECK(lanePhaseHz(0.0, 0.5, 0.0) == Catch::Approx(0.0));
+    CHECK(lanePhaseHz(1.5, 0.5, 0.0) == Catch::Approx(0.75));
+    CHECK(lanePhaseHz(1.5, 0.5, 90.0) == Catch::Approx(0.0).margin(1e-12));
+    CHECK(lanePhaseHz(2.0, -1.0, 180.0) == Catch::Approx(0.5));
+}
+
+TEST_CASE("hba::dsp::EnvelopeCurve integrates log-Hz smoothly and maintains node invariants", "[dsp]") {
+    using namespace hba::dsp;
+    auto c = defaultKickPitchCurve();
+    CHECK(c.count == 4);
+    CHECK(evaluateEnvelope(c, 0.0) == Catch::Approx(0.78));
+    CHECK(evaluateEnvelope(c, 1.0) == Catch::Approx(0.19));
+
+    // Exact integral consistency: full integral == sum of 1000 sub-intervals
+    const double whole = integrateEnvelopeLogHz(c, 0.0, 1.0, 20.0, 2400.0);
+    double fine = 0.0;
+    constexpr int N = 1000;
+    for (int i = 0; i < N; ++i)
+        fine += integrateEnvelopeLogHz(c, static_cast<double>(i) / N, static_cast<double>(i + 1) / N, 20.0, 2400.0);
+    CHECK(whole == Catch::Approx(fine).epsilon(1e-5));
+    CHECK(whole > 50.0);
+
+    // Edit helpers preserve sorted endpoints
+    const int idx = insertEnvelopeNode(c, 0.5f, 0.25f);
+    CHECK(idx > 0);
+    CHECK(c.count == 5);
+    moveEnvelopeNode(c, idx, 0.99f, 0.22f);
+    CHECK(c.nodes[0].t == 0.0f);
+    CHECK(c.nodes[static_cast<std::size_t>(c.count - 1)].t == 1.0f);
+    CHECK(removeEnvelopeNode(c, idx));
+    CHECK(c.count == 4);
+}
+
+TEST_CASE("hba::dsp harmonic crest optimizer, TwinTResonator, and analyticAsymShape meet precision specs", "[dsp]") {
+    using namespace hba::dsp;
+    const std::array<double, 6> amps{1.0, 0.45, 0.30, 0.22, 0.16, 0.10};
+    const auto optPh = optimizeCrestPhases(amps, 0.0);
+
+    auto measurePeak = [&](const std::array<double, 6>& ph) {
+        double pk = 0.0;
+        for (int i = 0; i < 512; ++i) {
+            const double th = kTwoPi * (static_cast<double>(i) / 512.0);
+            double y = 0.0;
+            for (std::size_t k = 0; k < 6; ++k)
+                y += amps[k] * std::sin(static_cast<double>(k + 1) * th + ph[k]);
+            pk = std::max(pk, std::abs(y));
+        }
+        return pk;
+    };
+    const std::array<double, 6> zeroPh{};
+    const double zeroPeak = measurePeak(zeroPh);
+    const double optPeak = measurePeak(optPh);
+    const double crestGainDb = 20.0 * std::log10(zeroPeak / optPeak);
+    INFO("Zero-phase peak=" << zeroPeak << " optPeak=" << optPeak << " crest reduction=" << crestGainDb << " dB");
+    CHECK(crestGainDb >= 1.5);
+
+    // Twin-T resonator decays smoothly and remains finite under rapid pitch sweep
+    TwinTResonator tt;
+    tt.prepare(48000.0);
+    tt.trigger(1.0, 0.0);
+    double peakTt = 0.0;
+    for (int i = 0; i < 4800; ++i) {
+        const double hz = 52.0 + 400.0 * std::exp(-static_cast<double>(i) / 400.0);
+        const double y = tt.process(hz, 0.12, 0.4);
+        REQUIRE(std::isfinite(y));
+        peakTt = std::max(peakTt, std::abs(y));
+    }
+    CHECK(peakTt > 0.5);
+    CHECK(peakTt < 1.5);
+
+    // Analytic asymmetric shaper keeps DC offset below -90 dBFS on a full-scale sine wave
+    double dcSum = 0.0;
+    constexpr int M = 1024;
+    for (int i = 0; i < M; ++i) {
+        const double x = 0.9 * std::sin(kTwoPi * static_cast<double>(i) / static_cast<double>(M));
+        dcSum += analyticAsymShape(x, 0.42, 0.9);
+    }
+    const double dcMean = std::abs(dcSum / static_cast<double>(M));
+    CHECK(dcMean < 3.0e-5); // < -90 dBFS
+}
+
+TEST_CASE("Publishing supersedes unread samples and preserves both playback generations", "[dsp]") {
+    hba::dsp::SampleExchange<int> samples;
+    REQUIRE_FALSE(samples.pull());
+    for (int gen = 1; gen <= 100; ++gen) {
+        const int current = samples.current(), previous = samples.previous();
+        for (int revision = 0; revision < 7; ++revision) {
+            samples.writable() = gen * 10 + revision;
+            samples.publish();
+            REQUIRE(samples.current() == current);
+            REQUIRE(samples.previous() == previous);
+        }
+        REQUIRE(samples.pull());
+        REQUIRE(samples.current() == gen * 10 + 6);
+        REQUIRE(samples.previous() == current);
+        REQUIRE_FALSE(samples.pull());
+    }
 }

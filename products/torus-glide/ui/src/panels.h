@@ -20,5 +20,7 @@ class Panel : public visage::Frame {
 std::unique_ptr<Panel> makeStagePanel(Context& ctx);
 std::unique_ptr<Panel> makeControlsStrip(Context& ctx);
 std::unique_ptr<Panel> makeMovementPanel(Context& ctx);
+std::unique_ptr<Panel> makeManifoldRibbon(Context& ctx);
+std::unique_ptr<Panel> makePlayPanel(Context& ctx);
 
 } // namespace tg::ui

@@ -42,6 +42,20 @@ const FORM_GLYPHS = {
       <circle cx="10.2" cy="6.2" r="1.5" />
     </>
   ),
+  strata: (
+    <>
+      <polygon points="3,4.2 13,2.8 14,5.0 2,6.4" />
+      <polygon points="2,8.0 14,7.2 14,9.4 2,10.2" />
+      <polygon points="3,11.6 13,11.2 12,13.4 4,13.8" />
+    </>
+  ),
+  piston: (
+    <>
+      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" strokeWidth="1.2" opacity="0.45" />
+      <path d="M2.5 8 C4 2.2 5.6 2.2 7 8 C8.6 13.4 10.6 13.4 12.2 8 L13.8 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="2.5" cy="8" r="1.4" />
+    </>
+  ),
 };
 
 export default function Hero() {
@@ -66,7 +80,7 @@ export default function Hero() {
           <span>Human Being Audio.</span>
         </h1>
         <p className="hero__lede">
-          Cut up a breakbeat, synthesize a bassline, morph a filterbank, articulate MIDI phrases, glide chords across a pitch torus or forge phase-locked drums. Free to download,
+          Cut up a breakbeat, synthesize or resample a bassline, morph a filterbank, articulate MIDI phrases, glide chords across a pitch torus or forge phase-locked drums. Free to download,
           open to study, built for making music.
         </p>
         <div className="hero__actions">

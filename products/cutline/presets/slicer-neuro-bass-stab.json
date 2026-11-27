@@ -1,0 +1,64 @@
+{
+    "format": 3,
+    "name": "Slicer: Neuro Bass + Stab",
+    "category": "MIDI Slicer",
+    "engineMode": "MIDI Slicer",
+    "slicerStyle": "Bass / Stab",
+    "gateLen": 0.52,
+    "strumMs": 12.0,
+    "slicerLatch": true,
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X.........X.....|X.........X.....",
+                        "groove": "................|...........x....",
+                        "detail": "......x.........|................"
+                    },
+                    "snare": {
+                        "core": "....X.......X...|....X.......X...",
+                        "groove": "................|..............x.",
+                        "offsetMs": 2
+                    },
+                    "ghost": {
+                        "groove": ".......o........|................",
+                        "detail": "...o.....o......|...o.....o......",
+                        "offsetMs": 1
+                    },
+                    "hat": {
+                        "core": "..x...x...x...x.|..x...x...x...x.",
+                        "groove": ".......o.......o|.......o........",
+                        "detail": "...o.......o....|...o.......o...o",
+                        "offsetMs": -1
+                    },
+                    "percA": {
+                        "detail": ".............o..|.....o.......o..",
+                        "offsetMs": 1
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "snare": "............oxxX"
+                    }
+                },
+                "edits": [
+                    {
+                        "lane": "hat",
+                        "step": 31,
+                        "ratchet": 2
+                    }
+                ]
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X..x...x..X.x..."
+        }
+    }
+}

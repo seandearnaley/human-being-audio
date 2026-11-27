@@ -16,7 +16,9 @@ namespace tf {
 
 using hba::dsp::kLaneStepsPerCycle;
 using hba::dsp::laneHash;
+using hba::dsp::laneModeIsFree;
 using hba::dsp::lanePhase;
+using hba::dsp::lanePhaseHz;
 using hba::dsp::laneStepValue;
 
 // Shape value in -1..1 at `phase` (0..1). Sine and triangle start at 0 going
@@ -34,66 +36,75 @@ inline LaneCurves defaultLaneCurves() noexcept {
     return curves;
 }
 
+inline std::array<hba::dsp::LaneConfig, kLaneCount> extractLaneConfigs(const Params& params) noexcept {
+    std::array<hba::dsp::LaneConfig, kLaneCount> lanes{};
+    for (int i = 0; i < kLaneCount; ++i) {
+        auto& cfg = lanes[static_cast<std::size_t>(i)];
+        cfg.on = params.on(laneParam(i, LaneField::on));
+        cfg.rateIndex = params.choice(laneParam(i, LaneField::rate));
+        cfg.phaseDeg = static_cast<double>(params[laneParam(i, LaneField::phase)]);
+        cfg.depth = static_cast<double>(params[laneParam(i, LaneField::depth)]);
+        cfg.shape = params.choice(laneParam(i, LaneField::shape));
+        cfg.follow = params.choice(laneParam(i, LaneField::follow));
+        cfg.ratioIndex = params.choice(laneParam(i, LaneField::ratio));
+        cfg.mode = static_cast<LaneMode>(
+            std::clamp(params.choice(laneParam(i, LaneField::mode)), 0, static_cast<int>(LaneMode::freeRetrig)));
+        cfg.hz = static_cast<double>(params[laneParam(i, LaneField::hz)]);
+    }
+    return lanes;
+}
+
 // The lane whose shape, curve and rate `lane` plays: itself, or the lane it
 // follows. Chains are followed to their end; a loop falls back to the lane itself.
 inline int laneSource(const Params& params, int lane) noexcept {
-    int source = lane;
-    for (int hop = 0; hop < kLaneCount; ++hop) {
-        const int follow = params.choice(laneParam(source, LaneField::follow)) - 1;  // -1 is Own
-        if (follow < 0 || follow >= kLaneCount || follow == source) return source;
-        source = follow;
-    }
-    return lane;
+    return hba::dsp::resolveLaneSource(extractLaneConfigs(params), lane);
 }
 
 // One cycle of `lane` in quarter notes: its own rate, or its leader's divided by
 // the ratio (a ratio of x2 runs twice as fast as the leader).
 inline double laneLengthQuarters(const Params& params, int lane) noexcept {
-    const int source = laneSource(params, lane);
-    const auto rate = static_cast<std::size_t>(
-        std::clamp(params.choice(laneParam(source, LaneField::rate)), 0, static_cast<int>(kLaneRateQuarters.size()) - 1));
-    if (source == lane) return kLaneRateQuarters[rate];
-    const auto ratio = static_cast<std::size_t>(
-        std::clamp(params.choice(laneParam(lane, LaneField::ratio)), 0, static_cast<int>(kLaneRatios.size()) - 1));
-    return kLaneRateQuarters[rate] / kLaneRatios[ratio];
+    return hba::dsp::resolveLaneLengthQuarters(extractLaneConfigs(params), lane);
 }
 
 inline LaneMode laneModeOf(const Params& params, int lane) noexcept {
     return static_cast<LaneMode>(
-        std::clamp(params.choice(laneParam(lane, LaneField::mode)), 0, static_cast<int>(LaneMode::oneShot)));
+        std::clamp(params.choice(laneParam(lane, LaneField::mode)), 0, static_cast<int>(LaneMode::freeRetrig)));
 }
 
-inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq) noexcept {
-    const double length = laneLengthQuarters(params, lane);
-    const double phaseDeg = params[laneParam(lane, LaneField::phase)];
-    const LaneMode mode = laneModeOf(params, lane);
-    if (mode == LaneMode::oneShot) {
-        const double offset = std::clamp(phaseDeg / 360.0, 0.0, 0.999999);
-        const double progress = std::max(0.0, notePpq) / std::max(length, 1.0e-6);
-        return std::clamp(offset + progress, 0.0, 1.0 - 1.0e-6);
-    }
-    const double clockPpq = (mode == LaneMode::retrig) ? std::max(0.0, notePpq) : hostPpq;
-    return lanePhase(clockPpq, length, phaseDeg);
+// Effective timing mode for `lane`. When following a Free / Free R leader, the
+// follower automatically inherits the leader's Hz clock domain so linked lanes stay
+// phase-locked and ratio-accurate across arbitrary BPM or transport changes.
+inline LaneMode laneEffectiveMode(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneMode(extractLaneConfigs(params), lane);
 }
 
-// The lane's shape in -1..1 at a host position (and optional note-relative position for Retrig/One-Shot).
-inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                         double notePpq = 0.0) noexcept {
-    const int source = laneSource(params, lane);
-    const double phase = lanePhaseFor(params, lane, ppq, notePpq);
-    const auto shape = static_cast<LaneShape>(
-        std::clamp(params.choice(laneParam(source, LaneField::shape)), 0, static_cast<int>(LaneShape::custom)));
-    if (shape == LaneShape::custom) return evaluate(curves[static_cast<std::size_t>(source)], phase);
-    return laneShape(shape, phase, source);
+inline bool laneUsesFreeClock(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneUsesFreeClock(extractLaneConfigs(params), lane);
+}
+
+// Cycle frequency in Hz for a free-running lane (or a follower locked to a free leader,
+// scaled accurately by the follower's ratio).
+inline double laneRateHz(const Params& params, int lane) noexcept {
+    return hba::dsp::resolveLaneRateHz(extractLaneConfigs(params), lane);
+}
+
+inline double lanePhaseFor(const Params& params, int lane, double hostPpq, double notePpq, double freeSec = 0.0,
+                           double noteSec = 0.0) noexcept {
+    return hba::dsp::resolveLanePhase(extractLaneConfigs(params), lane, {hostPpq, notePpq, freeSec, noteSec});
+}
+
+// The lane's shape in -1..1 at a host position (and optional note-relative / free-Hz clocks).
+inline double laneOutput(const Params& params, const LaneCurves& curves, int lane, double ppq, double notePpq = 0.0,
+                         double freeSec = 0.0, double noteSec = 0.0) noexcept {
+    return hba::dsp::evaluateLaneOutput(extractLaneConfigs(params), curves, lane, {ppq, notePpq, freeSec, noteSec});
 }
 
 // What the lane sends to its target, in -1..1: shape times depth times Motion,
 // or zero when the lane is off.
-inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq,
-                       double notePpq = 0.0) noexcept {
-    if (!params.on(laneParam(lane, LaneField::on))) return 0.0;
-    return laneOutput(params, curves, lane, ppq, notePpq) * params[laneParam(lane, LaneField::depth)] *
-           params[ParamId::motion];
+inline double laneSend(const Params& params, const LaneCurves& curves, int lane, double ppq, double notePpq = 0.0,
+                       double freeSec = 0.0, double noteSec = 0.0) noexcept {
+    return hba::dsp::evaluateLaneSend(extractLaneConfigs(params), curves, lane, {ppq, notePpq, freeSec, noteSec},
+                                      static_cast<double>(params[ParamId::motion]));
 }
 
 inline LaneTarget laneTargetOf(const Params& params, int lane) noexcept {

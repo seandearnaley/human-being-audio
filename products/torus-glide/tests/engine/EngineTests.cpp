@@ -5,6 +5,8 @@
 #include "tg/engine.h"
 #include "tg/export.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -249,4 +251,170 @@ TEST_CASE("Low-octave MIDI KeySwitch C0..D#0 shifts Morph scene smoothly without
     }
     REQUIRE(engine.telemetry().keySwitchScene == 3);
     REQUIRE(engine.telemetry().morphPos > 0.92f);
+}
+
+TEST_CASE("Spiral and Mobius Sub-Anchor wraps stay click-free at 100% Sub-Anchor and all 7 timbres stay finite",
+          "[engine][v2][wrap]") {
+    constexpr double sr = 48000.0;
+    constexpr int block = 128;
+    constexpr double bpm = 172.0;
+    const double beatsPerSec = bpm / 60.0;
+
+    // Worst-case wrap key B (rootKey = 11 -> floor ~30.87 Hz right near subAnchorWeight slope) at 100% Sub-Anchor!
+    for (int modeIdx : {0, 2}) {
+        auto params = tg::Params::defaults();
+        params.set(tg::ParamId::mode, static_cast<float>(modeIdx));
+        params.set(tg::ParamId::rootKey, 11.0f);
+        params.set(tg::ParamId::loopBars, 0.0f); // fast 1/2 bar wrap!
+        params.set(tg::ParamId::timbre, 1.0f);   // Pure Sine
+        params.set(tg::ParamId::subAnchor, 100.0f);
+        params.set(tg::ParamId::drive, 0.0f);
+        params.set(tg::ParamId::space, 0.0f);
+
+        tg::Engine engine;
+        engine.prepare(sr, block, 2);
+        engine.setSceneMatrix(tg::matrixForPack(modeIdx == 2 ? 6 : 0));
+        engine.noteOn(47, 0.9f); // B2
+
+        std::vector<float> L(block), R(block);
+        double ppq = 0.0;
+        float prev = 0.0f;
+        float maxDiff = 0.0f;
+        for (int b = 0; b < 320; ++b) {
+            engine.process(params, {bpm, ppq, true}, L.data(), R.data(), block, nullptr);
+            for (int i = 0; i < block; ++i) {
+                const float s = L[static_cast<std::size_t>(i)];
+                REQUIRE(std::isfinite(s));
+                if (b >= 16)
+                    maxDiff = std::max(maxDiff, std::abs(s - prev));
+                prev = s;
+            }
+            ppq += (static_cast<double>(block) / sr) * beatsPerSec;
+        }
+        CAPTURE(modeIdx, maxDiff);
+        REQUIRE(maxDiff < 0.14f);
+    }
+
+    // All 7 timbres (including Glass Bell & Super Organ) produce rich finite stereo audio with FDN Space active!
+    tg::Engine engine;
+    engine.prepare(sr, block, 2);
+    std::vector<float> L(block), R(block);
+    for (int timbreIdx = 0; timbreIdx < 7; ++timbreIdx) {
+        engine.reset();
+        auto p = tg::Params::defaults();
+        p.set(tg::ParamId::timbre, static_cast<float>(timbreIdx));
+        p.set(tg::ParamId::space, 75.0f);
+        engine.noteOn(41, 0.9f);
+        double energy = 0.0;
+        for (int b = 0; b < 30; ++b) {
+            engine.process(p, {140.0, static_cast<double>(b * block) / sr * (140.0 / 60.0), true}, L.data(), R.data(),
+                           block, nullptr);
+            for (int i = 0; i < block; ++i) {
+                REQUIRE(std::isfinite(L[static_cast<std::size_t>(i)]));
+                REQUIRE(std::isfinite(R[static_cast<std::size_t>(i)]));
+                energy += static_cast<double>(L[static_cast<std::size_t>(i)] * L[static_cast<std::size_t>(i)]);
+            }
+        }
+        CAPTURE(timbreIdx, energy);
+        REQUIRE(energy > 0.08);
+    }
+}
+
+TEST_CASE("Playable 2D Manifold Pad triggers sound directly, freezes/reverses Spiral, and keeps FDN Space sub mono",
+          "[engine][v2][pad]") {
+    constexpr double sr = 48000.0;
+    constexpr int block = 256;
+    tg::Engine engine;
+    engine.prepare(sr, block, 2);
+    std::vector<float> L(block), R(block);
+
+    // 1. Direct padTouch sounds immediately with NO MIDI noteOn!
+    auto p = tg::Params::defaults();
+    p.set(tg::ParamId::padProgram, 0.0f); // Spiral
+    p.set(tg::ParamId::padTouch, 1.0f);
+    p.set(tg::ParamId::padX, 25.0f); // Exact 0x FREEZE detent!
+    p.set(tg::ParamId::padY, 70.0f);
+    double energy = 0.0;
+    float posAfterWarmup = 0.0f;
+    for (int b = 0; b < 40; ++b) {
+        engine.process(p, {172.0, static_cast<double>(b * block) / sr * (172.0 / 60.0), true}, L.data(), R.data(),
+                       block, nullptr);
+        if (b == 16)
+            posAfterWarmup = engine.telemetry().spiralPos;
+        for (int i = 0; i < block; ++i)
+            energy += static_cast<double>(L[static_cast<std::size_t>(i)] * L[static_cast<std::size_t>(i)]);
+    }
+    REQUIRE(energy > 0.25);
+    REQUIRE(engine.telemetry().sounding);
+    REQUIRE(std::abs(engine.telemetry().spiralVel) < 0.05f);
+    REQUIRE(std::abs(engine.telemetry().spiralPos - posAfterWarmup) < 0.02f);
+
+    // 2. Reverse Spiral at padX = 0% moves spiralPos backward smoothly!
+    p.set(tg::ParamId::padX, 0.0f);
+    const float posBeforeRev = engine.telemetry().spiralPos;
+    for (int b = 0; b < 32; ++b) {
+        engine.process(p, {172.0, static_cast<double>((40 + b) * block) / sr * (172.0 / 60.0), true}, L.data(),
+                       R.data(), block, nullptr);
+    }
+    REQUIRE(engine.telemetry().spiralVel < -1.5f);
+    REQUIRE(engine.telemetry().spiralPos < posBeforeRev - 0.05f);
+
+    // 3. Void Halo at 100% Space + 100% Width still keeps Sub-Anchor strictly mono below Sub X-Over!
+    engine.reset();
+    auto v = tg::Params::defaults();
+    v.set(tg::ParamId::padProgram, 5.0f); // Void
+    v.set(tg::ParamId::padHold, 1.0f);
+    v.set(tg::ParamId::padX, 100.0f);
+    v.set(tg::ParamId::padY, 100.0f);
+    v.set(tg::ParamId::space, 100.0f);
+    v.set(tg::ParamId::width, 100.0f);
+    v.set(tg::ParamId::subAnchor, 100.0f);
+    v.set(tg::ParamId::subCutoff, 110.0f);
+    v.set(tg::ParamId::filterHz, 120.0f);
+    double midSq = 0.0, sideSq = 0.0;
+    for (int b = 0; b < 32; ++b) {
+        engine.process(v, {140.0, static_cast<double>(b * block) / sr * (140.0 / 60.0), true}, L.data(), R.data(),
+                       block, nullptr);
+        if (b >= 10) {
+            for (int i = 0; i < block; ++i) {
+                const double mid = 0.5 * (L[static_cast<std::size_t>(i)] + R[static_cast<std::size_t>(i)]);
+                const double side = 0.5 * (L[static_cast<std::size_t>(i)] - R[static_cast<std::size_t>(i)]);
+                midSq += mid * mid;
+                sideSq += side * side;
+            }
+        }
+    }
+    REQUIRE(midSq > 0.01);
+    REQUIRE(sideSq / midSq < 0.03);
+}
+
+TEST_CASE("Manifold Space starts silent and renders a finite tail at high sample rates", "[engine][space]") {
+    auto params = tg::Params::defaults();
+    params.set(tg::ParamId::space, 100.0f);
+    tg::Engine engine;
+    constexpr int block = 64;
+    std::array<float, block> left{}, right{};
+    for (const auto rate : {48000.0, 88200.0, 96000.0, 192000.0}) {
+        CAPTURE(rate);
+        engine.prepare(rate, block, 2);
+        engine.process(params, {}, left.data(), right.data(), block, nullptr);
+        for (const auto& channel : {left, right})
+            REQUIRE(std::all_of(channel.begin(), channel.end(), [](float sample) { return sample == 0.0f; }));
+
+        engine.noteOn(41, 0.9f);
+        float peak = 0.0f;
+        const int blocks = static_cast<int>(std::ceil(0.12 * rate / block));
+        for (int i = 0; i < blocks; ++i) {
+            if (i == blocks / 2)
+                engine.noteOff(41);
+            engine.process(params, {}, left.data(), right.data(), block, nullptr);
+            for (const auto& channel : {left, right}) {
+                REQUIRE(
+                    std::all_of(channel.begin(), channel.end(), [](float sample) { return std::isfinite(sample); }));
+                for (float sample : channel)
+                    peak = std::max(peak, std::abs(sample));
+            }
+        }
+        REQUIRE(peak > 0.0f);
+    }
 }

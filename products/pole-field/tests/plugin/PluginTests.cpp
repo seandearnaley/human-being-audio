@@ -305,3 +305,31 @@ TEST_CASE("PoleField supports sidechain bus layout and 1-click Live Capture mult
     model.undo();
     CHECK_FALSE(model.imprint().slotEnabled(1));
 }
+
+TEST_CASE("Pole Field host bypass nulls against dry audio delayed by the reported latency", "[plugin][bypass]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    pf::PluginProcessor proc;
+    auto* quality = proc.state.getParameter("quality");
+    REQUIRE(quality != nullptr);
+    for (double rate : {44100.0, 96000.0}) {
+        for (float q : {0.0f, 0.5f, 1.0f}) {
+            quality->setValueNotifyingHost(q);
+            proc.prepareToPlay(rate, 64);
+            const int latency = proc.getLatencySamples();
+            REQUIRE(latency > 0);
+            juce::MidiBuffer midi;
+            juce::AudioBuffer<float> active(2, 64);
+            active.clear();
+            active.setSample(0, 63, 0.7f);
+            active.setSample(1, 63, -0.4f);
+            proc.processBlock(active, midi);
+            juce::AudioBuffer<float> bypass(2, latency + 64);
+            bypass.clear();
+            proc.processBlockBypassed(bypass, midi);
+            bypass.addSample(0, latency - 1, -0.7f);
+            bypass.addSample(1, latency - 1, 0.4f);
+            CAPTURE(rate, q, latency);
+            CHECK(bypass.getMagnitude(0, bypass.getNumSamples()) == 0.0f);
+        }
+    }
+}

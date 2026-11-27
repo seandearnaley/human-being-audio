@@ -11,9 +11,9 @@
 namespace tf::ui {
 
 inline constexpr int kDefaultWidth = 1280;
-inline constexpr int kDefaultHeight = 720;
+inline constexpr int kDefaultHeight = 762;
 inline constexpr int kMinWidth = 960;
-inline constexpr int kMinHeight = 540;
+inline constexpr int kMinHeight = 572;
 
 class Editor {
 public:
@@ -23,6 +23,7 @@ public:
     // `parentView` is the host's native view (an NSView* on macOS).
     void attach(void* parentView, int width, int height);
     void detach();
+    visage::Frame& rootFrame();
     void setSize(int width, int height);
 
 #if defined(__linux__)

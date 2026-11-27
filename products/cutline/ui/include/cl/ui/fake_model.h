@@ -19,39 +19,60 @@ class FakeModel final : public Model {
     Curve laneCurve(int lane) const override { return curves_[static_cast<std::size_t>(lane)]; }
     void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
 
-    PhraseOverrides overrides() const override { return overrides_; }
-    void setOverrides(const PhraseOverrides& ov) override {
-        overrides_ = ov;
-        recompile();
-    }
-    void clearOverrides() override {
-        overrides_.clear();
-        recompile();
-    }
+    const GrooveState& groove() const override { return groove_; }
+    void setGrooveBank(const GrooveBank& bank) override;
+    void beginGrooveEdit() override;
+    void endGrooveEdit() override;
 
-    void rollSeed() override;
-    bool canStepSeedHistory(int delta) const override;
-    void stepSeedHistory(int delta) override;
+    // What a gesture-aware host would record: undo snapshots taken and plugin-state writes made.
+    int undoSnapshots() const { return undoSnapshots_; }
+    int stateWrites() const { return stateWrites_; }
+
+    // For screenshots: what the snapshot tool can ask the fake model to show.
+    void showBars(int bars); // resize scene A to 1, 2 or 4 bars
+    void showLive();         // the last bar with its fill live, and a one-beat Repeat window held
+    void showSlicer();       // MIDI Slicer mode
+    void showPending();      // a 1 Bar scene switch to scene B waiting for the next bar
+    // PLAY: the real engine plays the pattern for a few bars, so the surface draws the notes it sent.
+    void showPlaying();
+    // ...and engages a program (0..5) partway through the last bar, by touch or, with `viaMidi`, by its Pad MIDI key.
+    void showPad(int program, bool viaMidi = false);
+
+    void cloneActiveSceneToNext() override;
+    void clearActiveScene() override;
 
     void dragMidiPhrase() override {}
-    std::string exportStatus() const override { return "Drag 4-bar .mid"; }
+    std::string exportStatus() const override { return "Drag 2-bar .mid"; }
 
     std::string presetName() const override { return presetName_; }
-    std::vector<PresetInfo> presets() const override { return {{"Neuro Whip", "Neuro"}, {"Amen Ghosts", "Breaks"}}; }
+    std::vector<PresetInfo> presets() const override {
+        return {{"Amen", "Breaks"}, {"Neuro", "Neuro"}, {"Slicer: UKG Chord Stabs", "MIDI Slicer"}};
+    }
     void loadPreset(int) override {}
     void stepPreset(int) override {}
     void savePreset() override {}
 
   private:
-    void recompile();
+    void refresh();
+    void simulate();
 
     Params params_;
     LaneCurves curves_ = defaultLaneCurves();
-    PhraseOverrides overrides_{};
+    GrooveState groove_{};
     Visuals visuals_;
-    std::vector<int> seedHistory_{407};
-    std::size_t seedCursor_ = 0;
-    std::string presetName_ = "Neuro Whip";
+    bool live_ = false;
+    bool pending_ = false;
+    bool inGesture_ = false;
+    bool gestureSnapshot_ = false; // this gesture has taken its undo snapshot
+    bool gestureDirty_ = false;    // this gesture changed the bank, so its end writes the state
+    int undoSnapshots_ = 0;
+    int stateWrites_ = 0;
+    std::string presetName_ = "Amen";
+    // PLAY simulation: off until showPlaying or showPad.
+    bool simulate_ = false;
+    int simProgram_ = -1; // the program engaged partway through, or -1
+    bool simViaMidi_ = false;
+    std::uint32_t simSeq_ = 0;
 };
 
 } // namespace cl::ui
