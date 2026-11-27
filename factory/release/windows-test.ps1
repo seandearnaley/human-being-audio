@@ -25,6 +25,7 @@ try {
     if ($registration.Publisher -ne $env:PUBLISHER -or $registration.DisplayVersion -ne $env:VERSION -or $registration.URLInfoAbout -ne $env:WEBSITE) {
         throw 'Installed product metadata does not match the studio catalog'
     }
+    $validationStarted = Get-Date
     $standalone = Start-Process -FilePath $app -PassThru
     try {
         if (!$standalone.WaitForInputIdle(30000)) { throw 'Standalone did not initialize' }
@@ -43,6 +44,16 @@ try {
     if ($LASTEXITCODE) { throw 'Installed VST3 identity changed' }
     & "$env:ProgramFiles\Git\bin\bash.exe" factory/release/pluginval.sh "$plugin"
     if ($LASTEXITCODE) { throw "pluginval returned $LASTEXITCODE" }
+    # A host may return zero even when Windows recorded an exception while unloading the VST3.
+    $filter = @{ LogName = 'Application'; ProviderName = 'Application Error'; Id = 1000; StartTime = $validationStarted }
+    try {
+        $faults = Get-WinEvent -FilterHashtable $filter -ErrorAction Stop |
+            Where-Object { $_.Properties[0].Value -in @('pluginval.exe', [IO.Path]::GetFileName($app)) }
+    } catch {
+        if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound,*') { throw }
+        $faults = @()
+    }
+    if ($faults) { throw "Windows recorded a validation crash: $($faults.Message -join [Environment]::NewLine)" }
 } finally {
     Invoke-Installer $uninstaller '/S'
 }
