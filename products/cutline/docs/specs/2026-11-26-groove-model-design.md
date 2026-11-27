@@ -209,9 +209,10 @@ fillActive = scheduled or fillNow
 ```
 
 At 1x rate, "every 4" fires in bars 4, 8, 12 of the host's bar ruler. The fill replaces the
-tail of whichever pattern bar is playing in that host bar. `fillNow` is sampled half a beat
-before the fill window starts, so that hits nudged early are not missed; switching it on later
-affects the next bar.
+tail of whichever pattern bar is playing in that host bar. `fillNow` is sampled once per
+bar, at the earliest moment a hit in the fill window could start (a full early nudge, lane offset and
+flam before the window), so that hits nudged early are not missed; switching it on later affects the
+next bar.
 
 4/4 is assumed, as in 2.0.
 

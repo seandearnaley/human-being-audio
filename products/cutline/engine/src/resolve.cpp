@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/resolve.h"
 
+#include "cl/groove_state.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -138,6 +140,14 @@ void resolveBar(const Pattern& pattern, int barInPattern, const ResolveInput& in
     DensityMap map;
     buildDensityMap(pattern, map);
     resolveBar(pattern, map, barInPattern, in, out);
+}
+
+GrooveState::GrooveState() noexcept : GrooveState(GrooveBank{}) {}
+
+GrooveState::GrooveState(const GrooveBank& source) noexcept : bank(source) {
+    sanitise(bank);
+    for (std::size_t scene = 0; scene < bank.scenes.size(); ++scene)
+        buildDensityMap(bank.scenes[scene], maps[scene]);
 }
 
 } // namespace cl
