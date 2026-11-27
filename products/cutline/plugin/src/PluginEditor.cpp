@@ -12,11 +12,10 @@ hba::host::StudioAboutConfig makeAboutConfig() {
     cfg.wordmarkSize = static_cast<std::size_t>(ui::brand::cutline_logotype_on_dark_svg.size);
     cfg.monogramData = ui::brand::cutline_mark_on_dark_svg.data;
     cfg.monogramSize = static_cast<std::size_t>(ui::brand::cutline_mark_on_dark_svg.size);
-    cfg.accessibilitySuffix = ". Live MIDI breakbeat, polymeter, and rhythmic articulation slicer.";
-    cfg.headline = "Live MIDI breakbeat, polymeter & articulation slicer";
-    cfg.body = "Drive Drum Racks and Strike Body with 12 multi-bar breakbeat styles, 8 polymetric lanes, 4 instant "
-               "scenes, and 8 quantized performance pads — or switch to MIDI Slicer to chop, strum, and re-groove "
-               "your own live chords and clips with zero pitch drift.";
+    cfg.accessibilitySuffix = ". Drum patterns you can read, and a MIDI slicer.";
+    cfg.headline = "Drum patterns you can read, and a MIDI slicer";
+    cfg.body = "The grid is what plays: literal steps in three layers, one Density knob, fills you draw, and four "
+               "scenes. Switch to MIDI Slicer to chop, strum and re-groove your own chords and clips.";
     cfg.backgroundArgb = 0xff0b0e13u;
     cfg.bodyHeight = 84.0f;
     cfg.bodyMaxLines = 4;

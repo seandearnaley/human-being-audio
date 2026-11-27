@@ -1,16 +1,63 @@
 {
+    "format": 3,
     "name": "Slicer: Live Clip Re-Slicer",
     "category": "MIDI Slicer",
     "engineMode": "MIDI Slicer",
     "slicerStyle": "Clip Slice",
-    "style": "Drill",
-    "gravity": 0.3,
-    "ghosts": 0.4,
-    "chop": 0.44,
-    "ratchet": 0.36,
-    "complexity": 0.64,
-    "dynamics": 0.7,
+    "swing": 0.23,
     "gateLen": 0.62,
     "strumMs": 10.0,
-    "attractor": "MPC Swing"
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X......x........|X.........x.....",
+                        "groove": "...........x....|..............x.",
+                        "detail": "................|...x............"
+                    },
+                    "snare": {
+                        "core": "........X.......|........X.......",
+                        "groove": "................|.............x..",
+                        "offsetMs": 1
+                    },
+                    "ghost": {
+                        "detail": "......o.........|......o........o",
+                        "offsetMs": 1
+                    },
+                    "hat": {
+                        "core": "x..x..x.x..x..x.|x..x..x.x..x..x.",
+                        "groove": ".....o.......o..|.....o..........",
+                        "detail": ".o........o.....|.o........o..o.."
+                    },
+                    "percA": {
+                        "detail": "....o...........|....o.......o...",
+                        "offsetMs": 1
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "kick": "............x.x.",
+                        "snare": ".............x.X"
+                    }
+                },
+                "edits": [
+                    {
+                        "lane": "hat",
+                        "step": 13,
+                        "ratchet": 3
+                    }
+                ]
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X.xx..X..x.X..x."
+        }
+    }
 }

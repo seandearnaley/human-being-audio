@@ -3,6 +3,7 @@
 #pragma once
 
 #include "cl/engine.h"
+#include "cl/sent_notes.h"
 #include "cl/ui/model.h"
 
 #include <juce_core/juce_core.h>
@@ -13,21 +14,19 @@ namespace cl {
 
 class Telemetry {
   public:
-    Telemetry() {
-        Params defaults;
-        HeldNotes held;
-        compilePhrase(defaults, 0, 0, held, snapshot_.plan);
-    }
-
-    // Audio thread: never blocks; skips update if UI is mid-copy.
-    void publish(const Engine& engine, double bpm) noexcept {
+    // Audio thread: never blocks; skips the update if the UI is mid-copy. The notes the engine sent go through a
+    // lock-free ring, so none is lost to a skipped update.
+    void publish(const Engine& engine, double bpm, bool slicerMode) noexcept {
+        for (const SentNote& note : engine.sentNotes())
+            sent_.push(note);
         lastBpm_.store(bpm, std::memory_order_relaxed);
         const juce::SpinLock::ScopedTryLockType scoped(lock_);
         if (!scoped.isLocked())
             return;
-        snapshot_.plan = engine.currentPlan();
+        snapshot_.position = engine.position();
+        if (slicerMode)
+            snapshot_.slicerPlan = engine.slicerPlan(); // the slicer keeps its plan snapshot
         snapshot_.heldNotes = engine.activeHeldNotes();
-        snapshot_.phraseIndex = engine.currentPhraseIndex();
         snapshot_.activeScene = engine.activeScene();
         snapshot_.pendingScene = engine.pendingScene();
         snapshot_.activePadProgram = engine.activePadProgram();
@@ -36,7 +35,6 @@ class Telemetry {
         snapshot_.midiPadMask = engine.midiPadMask();
         snapshot_.capturedClipCount = engine.capturedClipCount();
         snapshot_.bpm = bpm;
-        snapshot_.playheadBeats = engine.playheadPhraseBeats();
         snapshot_.ppq = engine.lanePpq();
         snapshot_.lanePhase = engine.lanePhases();
         snapshot_.laneValue = engine.laneValues();
@@ -61,11 +59,17 @@ class Telemetry {
         out = snapshot_;
     }
 
+    // Message thread: the notes sent since the last drain, oldest first, up to `max`.
+    int drainSentNotes(SentNote* out, int max) noexcept { return sent_.drain(out, max); }
+    // Message thread: forgets what was sent while nobody was watching (the editor was closed).
+    void discardSentNotes() noexcept { sent_.discard(); }
+
     double lastBpm() const noexcept { return lastBpm_.load(std::memory_order_relaxed); }
 
   private:
     mutable juce::SpinLock lock_;
     mutable ui::Visuals snapshot_{};
+    SentNoteRing sent_;
     std::atomic<double> lastBpm_{172.0};
 };
 

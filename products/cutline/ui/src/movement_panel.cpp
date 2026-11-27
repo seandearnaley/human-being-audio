@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Compact 2-lane optional CC / Velocity expression drawer for Cutline 2.0's bottom deck.
+// Compact 2-lane optional CC / Velocity expression drawer for Cutline's bottom deck.
 #include "panels.h"
 
 #include "movement_edit.h"

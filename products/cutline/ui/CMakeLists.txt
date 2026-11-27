@@ -9,6 +9,8 @@ add_library(cl_ui STATIC
     src/delivery_panel.cpp
     src/editor.cpp
     src/fake_model.cpp
+    src/grid_edit.cpp
+    src/grid_edit.h
     src/grid_stage.h
     src/grid_stage_draw.cpp
     src/grid_stage_input.cpp
@@ -17,6 +19,7 @@ add_library(cl_ui STATIC
     src/movement_panel.cpp
     src/pad_art.cpp
     src/pad_art.h
+    src/sent_history.h
     src/panel.cpp
     src/panels.h
     src/play_panel.cpp

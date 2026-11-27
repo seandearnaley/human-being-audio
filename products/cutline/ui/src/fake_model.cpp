@@ -1,104 +1,302 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "cl/ui/fake_model.h"
 
-#include "cl/engine.h"
-#include <hba/dsp/lane_math.h>
+#include "cl/phrase.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace cl::ui {
 
+namespace {
+
+void put(Pattern& p, int lane, int step, int velocity, Layer layer) {
+    Step& s = p.lanes[static_cast<std::size_t>(lane)].steps[static_cast<std::size_t>(step)];
+    s.velocity = static_cast<std::uint8_t>(velocity);
+    s.layer = layer;
+}
+
+// A two-bar break for screenshots: every layer, ratchets, flams, nudges, a lane pocket, a short lane and a drawn fill.
+Pattern showcasePattern() {
+    Pattern p{};
+    p.bars = 2;
+    for (const int step : {0, 10, 16, 26})
+        put(p, 0, step, 118, Layer::core);
+    put(p, 0, 2, 96, Layer::groove);
+    put(p, 0, 19, 96, Layer::detail);
+    for (const int step : {4, 12, 20, 28})
+        put(p, 1, step, 118, Layer::core);
+    put(p, 1, 27, 96, Layer::groove);
+    for (const int step : {7, 9, 23, 25})
+        put(p, 2, step, 56, Layer::detail);
+    put(p, 3, 12, 96, Layer::groove);
+    for (int step = 0; step < 32; step += 2)
+        put(p, 4, step, step % 4 == 0 ? 118 : 96, Layer::core);
+    for (int step = 1; step < 32; step += 4)
+        put(p, 4, step, 56, Layer::detail);
+    p.lanes[4].steps[14].ratchet = 2;
+    put(p, 5, 14, 96, Layer::groove);
+    put(p, 5, 30, 96, Layer::groove);
+    for (const int step : {0, 3, 6})
+        put(p, 6, step, 96, Layer::groove);
+    p.lanes[6].length = 7;
+    put(p, 7, 0, 96, Layer::core);
+    p.lanes[1].steps[12].flam = true;
+    p.lanes[1].steps[27].flam = true;
+    p.lanes[1].steps[27].nudge = -6; // a pushed, flammed snare: the grace hit lands in the step before
+    p.lanes[0].steps[10].nudge = 8;  // a laid-back kick
+    p.lanes[4].steps[30].ratchet = 3;
+    p.lanes[4].steps[22].nudge = 24; // a full late nudge: on the next step's start
+    p.lanes[6].offsetMs = 10;        // perc A sits 10 ms late
+    p.fill.beats = 2;
+    for (const int step : {8, 10, 12, 14})
+        p.fill.steps[1][static_cast<std::size_t>(step)].velocity = 96;
+    p.fill.steps[1][15].velocity = 118;
+    p.fill.steps[0][8].velocity = 96;
+    return p;
+}
+
+} // namespace
+
 FakeModel::FakeModel() {
-    // Showcase a vibrant polymetric Jungle/Amen breakbeat on Cutline 2.0's signature POLY X/Y world!
-    params_[ParamId::style] = static_cast<float>(DrumStyle::amen);
-    params_[ParamId::gravity] = 0.28f;
-    params_[ParamId::ghosts] = 0.66f;
-    params_[ParamId::chop] = 0.34f;
-    params_[ParamId::ratchet] = 0.42f;
-    params_[ParamId::complexity] = 0.68f;
-    params_[ParamId::fills] = 0.50f;
-    params_[ParamId::dynamics] = 0.72f;
+    params_[ParamId::density] = 0.6f;
+    params_[ParamId::swing] = 0.6f;
+    params_[ParamId::fillEvery] = 2.0f; // every 4 bars
+    GrooveBank bank;
+    bank.scenes[0] = showcasePattern();
+    groove_ = GrooveState(bank);
+    pending_ = true;
+    refresh();
+}
 
-    params_[ParamId::padProgram] = static_cast<float>(PadProgram::poly);
-    params_[ParamId::padX] = 0.64f;
-    params_[ParamId::padY] = 0.66f;
-    params_[ParamId::padTouch] = 1.0f;
-    params_[ParamId::padCcMode] = static_cast<float>(PadCcMode::cc74AndCc1);
+void FakeModel::setGrooveBank(const GrooveBank& bank) {
+    if (!inGesture_ || !gestureSnapshot_)
+        ++undoSnapshots_;
+    gestureSnapshot_ = inGesture_;
+    if (inGesture_)
+        gestureDirty_ = true;
+    else
+        ++stateWrites_;
+    groove_ = GrooveState(bank);
+    refresh();
+}
 
-    auto& sc0 = bank_.scenes[0];
-    sc0.customized = true;
-    sc0.lanes[0].locked = true;
-    sc0.lanes[1].locked = true;
-    sc0.lanes[4].stepLength = 16;
-    sc0.lanes[6].stepLength = 7;
-    sc0.lanes[7].stepLength = 5;
-    sc0.lanes[4].steps[15].state = StepState::forceOn;
-    sc0.lanes[4].steps[15].ratchet = 3;
-    sc0.lanes[1].steps[12].flam = true;
-    recompile();
+void FakeModel::beginGrooveEdit() {
+    inGesture_ = true;
+    gestureSnapshot_ = false;
+    gestureDirty_ = false;
+}
+
+void FakeModel::endGrooveEdit() {
+    if (inGesture_ && gestureDirty_)
+        ++stateWrites_;
+    inGesture_ = false;
+    gestureSnapshot_ = false;
+    gestureDirty_ = false;
+}
+
+void FakeModel::showPending() {
+    pending_ = true;
+    refresh();
 }
 
 void FakeModel::set(ParamId id, float real) {
     params_[id] = clampToRange(spec(id), real);
-    recompile();
-}
-
-void FakeModel::mutateActiveScene() {
-    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
-    auto& sc = bank_.scenes[static_cast<std::size_t>(scIdx)];
-    if (!sc.customized)
-        sc = effectiveSceneData(bank_, scIdx);
-    mutateUnlockedLanes(sc, ++actionSeed_);
-    recompile();
-}
-
-void FakeModel::polymeterActiveScene() {
-    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
-    auto& sc = bank_.scenes[static_cast<std::size_t>(scIdx)];
-    if (!sc.customized)
-        sc = effectiveSceneData(bank_, scIdx);
-    applyPolymeterToUnlocked(sc, ++actionSeed_);
-    recompile();
+    refresh();
 }
 
 void FakeModel::cloneActiveSceneToNext() {
     const int cur = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
     const int next = (cur + 1) % kSceneCount;
-    cloneSceneSlot(bank_, cur, next, true, ++actionSeed_);
+    GrooveBank bank = groove_.bank;
+    bank.scenes[static_cast<std::size_t>(next)] = bank.scenes[static_cast<std::size_t>(cur)];
+    groove_ = GrooveState(bank);
     set(ParamId::scene, static_cast<float>(next));
 }
 
 void FakeModel::clearActiveScene() {
-    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
-    clearSceneEdits(bank_.scenes[static_cast<std::size_t>(scIdx)]);
-    recompile();
+    if (params_.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
+        // MIDI Slicer: Clear empties the gate strip and leaves the scene alone.
+        GrooveBank bank = groove_.bank;
+        bank.slicerLength = 16;
+        bank.slicerSteps = {};
+        groove_ = GrooveState(bank);
+        refresh();
+        return;
+    }
+    const int scene = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
+    GrooveBank bank = groove_.bank;
+    bank.scenes[static_cast<std::size_t>(scene)] = Pattern{};
+    groove_ = GrooveState(bank);
+    refresh();
 }
 
-void FakeModel::recompile() {
-    HeldNotes held;
-    const int scIdx = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
-    compilePhrase(params_, scIdx, 0, held, visuals_.plan, bank_, 172.0);
+void FakeModel::showBars(int bars) {
+    GrooveBank bank = groove_.bank;
+    setPatternBars(bank.scenes[0], bars);
+    groove_ = GrooveState(bank);
+    refresh();
+}
+
+void FakeModel::showLive() {
+    live_ = true;
+    refresh();
+}
+
+void FakeModel::showSlicer() { set(ParamId::engineMode, static_cast<float>(EngineMode::slicer)); }
+
+void FakeModel::refresh() {
+    const int scene = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
     visuals_.bpm = 172.0;
-    visuals_.phraseIndex = 0;
-    visuals_.activeScene = scIdx;
+    visuals_.activeScene = scene;
     visuals_.pendingScene = -1;
     visuals_.activePadProgram = std::clamp(params_.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
     visuals_.pendingPadProgram = -1;
     visuals_.padEngaged = params_.on(ParamId::padTouch) || params_.on(ParamId::padHold);
     visuals_.midiPadMask = 0;
-    visuals_.playheadBeats = 3.0; // Step 12 — snare backbeat hit!
+    // Host bar 13 (the fifth of the phrase 9-16), bar 1 of the pattern, just after the flammed snare backbeat, so the
+    // flam is not under the playhead. A switch to scene B waits for the next bar.
+    const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);
+    visuals_.position = {};
+    visuals_.position.density = params_[ParamId::density];
+    visuals_.position.dynamics = params_[ParamId::dynamics];
+    visuals_.position.beatInBar = 3.25f;
+    visuals_.sentCount = 0;
+    visuals_.position.absBar = 12;
+    visuals_.position.barInPattern = 12 % bars;
+    visuals_.position.stepInBar = 13;
+    if (pending_)
+        visuals_.pendingScene = (scene + 1) % kSceneCount;
+    if (live_) {
+        // Host bar 4, the last bar of the pattern, inside its fill window, with Repeat holding beat 2 of that bar.
+        visuals_.position.absBar = 3;
+        visuals_.position.barInPattern = 3 % bars;
+        visuals_.position.stepInBar = 13;
+        visuals_.position.fillLive = true;
+        visuals_.position.repeatStartStep = (bars - 1) * kStepsPerBar + 4;
+        visuals_.position.repeatBeats = 1.0;
+        visuals_.padEngaged = true;
+    }
     visuals_.ppq = 3.0;
     visuals_.playing = true;
-    visuals_.lastBlockEvents = 18;
-    visuals_.activityMask = kActNote | kActCc | (visuals_.padEngaged ? kActPad : 0);
-    visuals_.laneFlash = {0.35f, 0.96f, 0.48f, 0.82f, 0.68f, 0.22f, 0.74f, 0.52f};
+    visuals_.lastBlockEvents = 6;
+    visuals_.activityMask = static_cast<std::uint8_t>(kActNote | (visuals_.padEngaged ? kActPad : 0));
+    visuals_.laneFlash = {0.35f, 0.96f, 0.0f, 0.0f, 0.68f, 0.0f, 0.0f, 0.0f};
+    visuals_.heldNotes.clear();
+    for (const int note : {48, 55, 60})
+        visuals_.heldNotes.push(note, 100);
+    compileSlicer(params_, groove_, scene, visuals_.heldNotes, visuals_.bpm, visuals_.slicerPlan);
     for (int l = 0; l < kLaneCount; ++l) {
         const auto idx = static_cast<std::size_t>(l);
         visuals_.lanePhase[idx] = static_cast<float>(
             lanePhase(visuals_.ppq, laneLengthQuarters(params_, l), params_[laneParam(l, LaneField::phase)]));
         visuals_.laneValue[idx] = static_cast<float>(laneSend(params_, curves_, l, visuals_.ppq));
     }
+    if (simulate_)
+        simulate();
+}
+
+void FakeModel::showPlaying() {
+    simulate_ = true;
+    refresh();
+}
+
+void FakeModel::showPad(int program, bool viaMidi) {
+    // Where each program's puck sits in the screenshots: a half-beat Repeat, a 1/16T snare roll, Density up with
+    // Dynamics down, double speed, kick and snare only, and Fill (no axes).
+    struct Puck {
+        float x;
+        float y;
+    };
+    constexpr std::array<Puck, kPerfPadCount> kPucks{
+        {{0.30f, 0.62f}, {0.62f, 0.50f}, {0.95f, 0.30f}, {0.86f, 0.50f}, {0.62f, 0.50f}, {0.50f, 0.50f}}};
+    const int p = std::clamp(program, 0, kPerfPadCount - 1);
+    params_[ParamId::padProgram] = static_cast<float>(p);
+    params_[ParamId::padX] = kPucks[static_cast<std::size_t>(p)].x;
+    params_[ParamId::padY] = kPucks[static_cast<std::size_t>(p)].y;
+    if (viaMidi)
+        params_[ParamId::padMidi] = 1.0f;
+    simProgram_ = p;
+    simViaMidi_ = viaMidi;
+    simulate_ = true;
+    refresh();
+}
+
+// Plays the bank through the real engine from beat 0 to step 13 of the third bar, the program engaged on beat 2 of
+// that bar, and shows the last bar of what it sent, with the telemetry the plugin would read at that moment.
+void FakeModel::simulate() {
+    constexpr double kSampleRate = 48000.0;
+    constexpr int kBlock = 256;
+    const double bpm = visuals_.bpm;
+    const double end = 4.0 * 2.0 + 3.35;
+    const double engageAt = 4.0 * 2.0 + 1.0;
+    const bool slicer = params_.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer);
+
+    Engine engine;
+    engine.prepare(kSampleRate, kBlock);
+    engine.setGroove(groove_);
+    engine.setLaneCurves(curves_);
+    if (slicer)
+        for (const int note : {48, 55, 67}) // a held chord, clear of the Pad MIDI keys
+            engine.inputNoteOn(note, 100, 0.0);
+
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    std::vector<SentNote> sent;
+    const double beatsPerBlock = bpm / 60.0 / kSampleRate * static_cast<double>(kBlock);
+    double ppq = 0.0;
+    bool engaged = false;
+    for (; ppq + beatsPerBlock <= end; ppq += beatsPerBlock) {
+        Params p = params_;
+        p[ParamId::padTouch] = 0.0f;
+        p[ParamId::padHold] = 0.0f;
+        if (simProgram_ >= 0 && ppq >= engageAt) {
+            if (simViaMidi_ && !engaged)
+                engine.inputNoteOn(60 + simProgram_, 100, ppq);
+            else if (!simViaMidi_)
+                p[ParamId::padTouch] = 1.0f;
+            engaged = true;
+        }
+        engine.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        for (const SentNote& note : engine.sentNotes())
+            sent.push_back(note);
+    }
+
+    // The last bar of what was sent (on the pattern's clock), newest last, numbered as the plugin's ring numbers them.
+    const PlayPosition pos = engine.position();
+    const double barHost = 4.0 / std::max(0.05, static_cast<double>(pos.rate));
+    std::vector<SentNote> recent;
+    for (const SentNote& note : sent)
+        if (note.ppq > ppq - barHost)
+            recent.push_back(note);
+    const std::size_t from = recent.size() > static_cast<std::size_t>(kMaxSentPerRefresh)
+                                 ? recent.size() - static_cast<std::size_t>(kMaxSentPerRefresh)
+                                 : 0;
+    visuals_.sentCount = 0;
+    for (std::size_t i = from; i < recent.size(); ++i) {
+        SentNote& out = visuals_.sent[static_cast<std::size_t>(visuals_.sentCount++)];
+        out = recent[i];
+        out.seq = ++simSeq_;
+    }
+
+    visuals_.position = pos;
+    visuals_.ppq = engine.lanePpq();
+    visuals_.playing = true;
+    visuals_.activeScene = engine.activeScene();
+    visuals_.pendingScene = engine.pendingScene();
+    visuals_.activePadProgram = engine.activePadProgram();
+    visuals_.pendingPadProgram = engine.pendingPadProgram();
+    visuals_.padEngaged = engine.padEngaged();
+    visuals_.midiPadMask = engine.midiPadMask();
+    visuals_.laneFlash = engine.laneHitFlashes();
+    visuals_.heldNotes = engine.activeHeldNotes();
+    if (slicer)
+        visuals_.slicerPlan = engine.slicerPlan();
+    visuals_.activityMask =
+        static_cast<std::uint8_t>(kActNote | (visuals_.padEngaged ? kActPad : 0) | (slicer ? kActSlice : 0));
 }
 
 const Visuals& FakeModel::visuals() { return visuals_; }

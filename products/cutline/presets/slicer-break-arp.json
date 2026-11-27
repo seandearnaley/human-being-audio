@@ -1,17 +1,57 @@
 {
+    "format": 3,
     "name": "Slicer: Break Arp",
     "category": "MIDI Slicer",
     "engineMode": "MIDI Slicer",
     "slicerStyle": "Break Arp",
-    "style": "Amen",
-    "gravity": 0.26,
-    "ghosts": 0.64,
-    "chop": 0.32,
-    "ratchet": 0.42,
-    "complexity": 0.72,
-    "dynamics": 0.74,
+    "swing": 0.2,
     "gateLen": 0.44,
     "strumMs": 8.0,
     "slicerLatch": true,
-    "attractor": "MPC Swing"
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X.........X.....|X.........X.....",
+                        "groove": "..x........x....|..x.............",
+                        "detail": "................|...........x...."
+                    },
+                    "snare": {
+                        "core": "....X.......X...|....X.......X...",
+                        "groove": ".......o.x.....o|.......o.x....o.",
+                        "offsetMs": 3
+                    },
+                    "ghost": {
+                        "detail": "..o..o..........|.....o......o...",
+                        "offsetMs": 2
+                    },
+                    "hat": {
+                        "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
+                        "detail": "...o.......o....|...o.......o....",
+                        "offsetMs": -1
+                    },
+                    "percB": {
+                        "detail": "................|..........x....."
+                    }
+                },
+                "fill": {
+                    "beats": 2,
+                    "lanes": {
+                        "kick": "........x.x.....",
+                        "snare": ".........x..x.xX",
+                        "ghost": "...........o...."
+                    }
+                }
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X..x..x...X...x."
+        }
+    }
 }

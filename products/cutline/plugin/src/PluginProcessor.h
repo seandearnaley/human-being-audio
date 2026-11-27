@@ -13,6 +13,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
+#include <bitset>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,9 @@ class PluginProcessor final : public juce::AudioProcessor {
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
+    // Sends a note-off for every note Cutline has sounding, then passes the incoming MIDI through.
+    void processBlockBypassed(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    using AudioProcessor::processBlockBypassed;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -46,11 +50,12 @@ class PluginProcessor final : public juce::AudioProcessor {
 
     void getStateInformation(juce::MemoryBlock& destination) override;
     void setStateInformation(const void* data, int size) override;
+    void loadDefaultState();
 
     struct HistorySnapshot {
         std::array<float, kParamCount> params{};
         LaneCurves curves = defaultLaneCurves();
-        PatternBank bank{};
+        GrooveBank bank{};
         std::string presetName;
 
         bool operator==(const HistorySnapshot&) const = default;
@@ -66,12 +71,19 @@ class PluginProcessor final : public juce::AudioProcessor {
 
   private:
     Transport readTransport(int numSamples);
+    void ingestMidi(const juce::MidiBuffer& midi, const Transport& transport);
 
     ParameterValues values_;
     Engine engine_;
     LaneCurves audioCurves_ = defaultLaneCurves();
-    PatternBank audioBank_{};
+    GrooveState audioGroove_{};
     MidiEventBuffer outEvents_{};
+    juce::MidiBuffer bypassMidi_; // note-offs then the pass-through input, while bypassed
+    // Notes whose note-on passed through while bypassed, per channel: their note-offs must reach the instrument even
+    // after bypass ends, and no other note-off passes through while bypassed.
+    std::array<std::bitset<128>, 16> passedThrough_{};
+    std::bitset<16> sustainPassed_{}; // channels whose sustain pedal went down while bypassed
+    juce::MidiBuffer releaseMidi_;    // after bypass: the releases of what passed through while bypassed
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;
     double standalonePpq_ = 0.0;

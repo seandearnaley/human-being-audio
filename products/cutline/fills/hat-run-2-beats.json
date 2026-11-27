@@ -1,0 +1,10 @@
+{
+    "format": 3,
+    "name": "Hat Run 2 Beats",
+    "category": "Hats",
+    "beats": 2,
+    "lanes": {
+        "hat": "........x.x.oxx.",
+        "openHat": "...............x"
+    }
+}

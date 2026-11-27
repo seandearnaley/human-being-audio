@@ -24,6 +24,7 @@ class Presets {
     void step(int delta);
     bool save(const juce::String& name);
     void setCurrentName(const std::string& name);
+    void clearCurrentName();
 
   private:
     static juce::File userDirectory();

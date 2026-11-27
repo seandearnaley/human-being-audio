@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline 2.0 built-in studio preview engine:
+// Cutline built-in studio preview engine:
 //  - 8-voice polyphonic electronic drum kit (Kick, Snare, Ghost, Clap/Rim,
 //    choked Closed/Open Hats, resonant Perc A, metallic Ride/Crash Perc B)
 //  - 8-voice strictly in-tune polyphonic warm stab synth for MIDI Slicer preview

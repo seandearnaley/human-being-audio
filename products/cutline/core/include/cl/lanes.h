@@ -16,7 +16,6 @@
 namespace cl {
 
 using hba::dsp::kLaneStepsPerCycle;
-using hba::dsp::laneHash;
 using hba::dsp::lanePhase;
 using hba::dsp::laneStepValue;
 

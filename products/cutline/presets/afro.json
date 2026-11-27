@@ -1,0 +1,145 @@
+{
+    "format": 3,
+    "name": "Afro House",
+    "category": "Club",
+    "swing": 0.2,
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X...x...x...x...|X...x...x...x..."
+                    },
+                    "snare": {
+                        "core": "....x.......x...|....x.......x...",
+                        "offsetMs": 2
+                    },
+                    "ghost": {
+                        "core": "x..x..x...x.x...|x..x..x...x.x...",
+                        "offsetMs": 1
+                    },
+                    "hat": {
+                        "detail": ".o.o...o.o.o...o|.o.o...o.o.o...o"
+                    },
+                    "openHat": {
+                        "groove": "..x...x...x...x.|..x...x...x...x.",
+                        "offsetMs": 1
+                    },
+                    "percA": {
+                        "groove": "..x..x..x..x....|................",
+                        "length": 12,
+                        "offsetMs": 2
+                    }
+                },
+                "fill": {
+                    "beats": 2,
+                    "lanes": {
+                        "kick": "........x.......",
+                        "percA": "........oxxxxxxX"
+                    }
+                }
+            },
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X...x...x...x...|X...x...x...x..."
+                    },
+                    "snare": {
+                        "core": "....o.......o...|....o.......o...",
+                        "offsetMs": 1
+                    },
+                    "ghost": {
+                        "detail": ".......o........|.......o......o.",
+                        "offsetMs": 2
+                    },
+                    "clap": {
+                        "core": "....X.......X...|....X.......X...",
+                        "offsetMs": 2
+                    },
+                    "hat": {
+                        "groove": "...o...o...o...o|...o...o...o...o",
+                        "detail": ".o...o...o...o..|.o...o...o...o.."
+                    },
+                    "openHat": {
+                        "core": "..x...x...x...x.|..x...x...x...x.",
+                        "offsetMs": 1
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "hat": "............oxx.",
+                        "openHat": "...............x"
+                    }
+                }
+            },
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X...x...x...x...|X...x...x...x...",
+                        "detail": "................|..............x."
+                    },
+                    "snare": {
+                        "core": "........X.......|........X.......",
+                        "offsetMs": 3
+                    },
+                    "ghost": {
+                        "groove": "......o.......o.|......o.......o.",
+                        "detail": "..o.............|..o.......o.....",
+                        "offsetMs": 2
+                    },
+                    "hat": {
+                        "core": "..x...x...x...x.|..x...x...x...x.",
+                        "detail": ".......o.......o|...o...o.......o"
+                    },
+                    "percA": {
+                        "detail": "...........o....|...........o....",
+                        "offsetMs": 2
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "percA": "............oxxX"
+                    }
+                }
+            },
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X...x...x...x...|X...x...x...x...",
+                        "detail": "................|..............x."
+                    },
+                    "snare": {
+                        "core": "....x.......x...|....x.......x..."
+                    },
+                    "hat": {
+                        "groove": "o..oo..oo..oo..o|o..oo..oo..oo..o",
+                        "detail": ".o...o...o...o..|.o...o...o...o.."
+                    },
+                    "openHat": {
+                        "core": "..x...x...x...x.|..x...x...x...x."
+                    },
+                    "percA": {
+                        "groove": "...........o....|...........o...."
+                    }
+                },
+                "fill": {
+                    "beats": 2,
+                    "lanes": {
+                        "hat": "........x.x.oxx.",
+                        "openHat": "...............x"
+                    }
+                }
+            }
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X..x..X...x.X..."
+        }
+    }
+}

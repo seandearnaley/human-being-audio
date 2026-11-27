@@ -3,6 +3,7 @@
 
 #include "PluginProcessor.h"
 #include "StudioHistory.h"
+#include "cl/phrase.h"
 #include "cl/ui/model.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -29,11 +30,11 @@ class PluginModel final : public ui::Model {
     Curve laneCurve(int lane) const override;
     void setLaneCurve(int lane, const Curve& curve) override;
 
-    PatternBank patternBank() const override;
-    void setPatternBank(const PatternBank& bank) override;
+    const GrooveState& groove() const override;
+    void setGrooveBank(const GrooveBank& bank) override;
+    void beginGrooveEdit() override;
+    void endGrooveEdit() override;
 
-    void mutateActiveScene() override;
-    void polymeterActiveScene() override;
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
 
@@ -42,6 +43,8 @@ class PluginModel final : public ui::Model {
 
     std::string presetName() const override;
     std::vector<ui::PresetInfo> presets() const override;
+    const std::vector<ui::LibraryPattern>& patternLibrary() const override;
+    const std::vector<ui::LibraryFill>& fillLibrary() const override;
     void loadPreset(int index) override;
     void stepPreset(int delta) override;
     void savePreset() override;
@@ -66,7 +69,13 @@ class PluginModel final : public ui::Model {
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
     bool applyingSnapshot_ = false;
-    std::uint32_t actionCounter_ = 0;
+    bool inGrooveEdit_ = false;       // between beginGrooveEdit and endGrooveEdit
+    bool grooveEditSnapshot_ = false; // this gesture has taken its undo snapshot
+    bool grooveEditDirty_ = false;    // this gesture changed the bank: its end writes the state
+    mutable GrooveState groove_{};
+    mutable std::uint32_t grooveRevision_ = 0xffffffffu; // never equal to the store's first revision
+    SlicerPlan previewPlan_{};                           // the slicer phrase shown while the transport is stopped
+    SlicerInputs previewInputs_{};                       // what previewPlan_ was compiled from
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     juce::Component* dragSource_ = nullptr;

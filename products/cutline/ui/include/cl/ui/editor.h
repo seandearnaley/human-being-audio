@@ -25,6 +25,7 @@ class Editor {
     void detach();
     void setSize(int width, int height);
     void setGridMode(bool grid);
+    void setFillView(bool fill);
 
 #if defined(__linux__)
     int eventFd() const;

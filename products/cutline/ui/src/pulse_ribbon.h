@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Compact live 8-lane polymetric MIDI pulse ribbon + Slicer chord telemetry bar above the PLAY XY stage.
+// Compact live 8-lane pulse ribbon (what resolveBar plays) + Slicer chord telemetry bar above the PLAY XY stage.
 #pragma once
 
 #include "controls.h"
