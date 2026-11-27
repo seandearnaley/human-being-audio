@@ -69,6 +69,8 @@ jobs:
       matrix:
         os: [macos-26, windows-2025-vs2026, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
+    env:
+      CTEST_PARALLEL_LEVEL: ${{ inputs.product == 'livecut-redux' && '4' || '1' }}
     defaults:
       run:
         shell: bash
