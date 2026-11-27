@@ -32,7 +32,7 @@ from fontTools.ttLib import TTFont
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = ROOT / "brand"
 PRESS = ROOT / "press"
-FONTS = ROOT / "ui" / "fonts"
+FONTS = ROOT.parents[1] / "modules" / "visage-ui" / "fonts"
 RESVG = shutil.which("resvg") or "/opt/homebrew/bin/resvg"
 
 # The palette is the plugin's own (ui/src/theme.h).
