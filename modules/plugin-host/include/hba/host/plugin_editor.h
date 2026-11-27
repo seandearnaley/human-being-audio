@@ -118,7 +118,12 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         setSize(defaultW, defaultH);
     }
 
-    ~StudioPluginEditor() override { detachView(); }
+    ~StudioPluginEditor() override {
+#if JUCE_WINDOWS
+        nativeHost_.onNativeResize = {};
+#endif
+        detachView();
+    }
 
     void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(backgroundArgb_)); }
 
@@ -222,8 +227,8 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
     }
 
     ModelT model_;
+    VisageSurface nativeHost_; // The embedded renderer must be destroyed before its native parent.
     ViewT view_;
-    VisageSurface nativeHost_;
     AccessibleControls controls_;
     AboutPageT about_;
     void* attachedTo_ = nullptr;
