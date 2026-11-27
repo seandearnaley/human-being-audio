@@ -181,3 +181,24 @@ TEST_CASE("Datum retains its aliased stereo sidechain throughout a large callbac
     CHECK(proc.telemetry.read().scActive);
     CHECK(proc.telemetry.read().scRootHz == Approx(55.0f).margin(4.0f));
 }
+
+TEST_CASE("Datum redraws the preview at the new device rate after prepare", "[plugin][preview]") {
+    const juce::ScopedJuceInitialiser_GUI gui;
+    dt::PluginProcessor processor;
+    processor.setRateAndBufferSizeDetails(48000.0, 64);
+    processor.prepareToPlay(48000.0, 64);
+    dt::PluginModel model(processor);
+    const auto initial = model.preview().sumWave;
+    processor.releaseResources();
+    processor.setRateAndBufferSizeDetails(96000.0, 64);
+    processor.prepareToPlay(96000.0, 64);
+    model.refreshVisuals();
+    const auto bundle = processor.stateStore.all();
+    const auto p = processor.currentParams();
+    const auto expected = dt::Engine::renderPreview(p, bundle.pitchCurve, bundle.ampCurve, bundle.pattern, nullptr,
+                                                    p.choice(dt::ParamId::activeSlot), 96000.0);
+    REQUIRE(expected.sumWave != initial);
+    const auto& actual = model.preview().sumWave;
+    const auto mismatch = std::mismatch(actual.begin(), actual.end(), expected.sumWave.begin());
+    CHECK(std::distance(actual.begin(), mismatch.first) == static_cast<std::ptrdiff_t>(actual.size()));
+}
