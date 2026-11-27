@@ -23,8 +23,8 @@ ClassicPanel::ClassicPanel(Context& context)
     : context_(context), tabs_(
                              context, {"Cut & Recut", "Impact", "Fracture", "Resonance & Spectral"},
                              [this](int idx) { selectTab(idx); }, colour::accent),
-      procedure_(context, "procedure", {"CutProc11", "WarpCut", "SQPusher", "Bounce"}, colour::accent),
-      mode_(context, "mode", {"Live", "Studio"}, colour::blue),
+      procedure_(context, "procedure", "Procedure", {"CutProc11", "WarpCut", "SQPusher", "Bounce"}, colour::accent),
+      mode_(context, "mode", "Processing mode", {"Live", "Studio"}, colour::blue),
       applyMode_(context, "Apply Mode", [this] { context_.model.applyRequestedMode(); }),
       applySpectral_(context, "Apply while stopped", [this] { context_.model.applyRequestedMode(); }),
       rollSeed_(context, "Roll", [this] { context_.model.rollSeed(); }),
@@ -107,7 +107,7 @@ ClassicPanel::ClassicPanel(Context& context)
 
     // Tab 2 — Fracture
     fractureFamily_ = std::make_unique<ParamSegmented>(
-        context, "fractureProcedure", std::vector<std::string>{"Classic", "GrainCut", "TapeCut"}, colour::cyan);
+        context, "fractureProcedure", "Reader family", std::vector<std::string>{"Classic", "GrainCut", "TapeCut"}, colour::cyan);
     fracActivity_ = std::make_unique<ParamSlider>(context, "fractureActivity", "Activity", colour::cyan);
     grainSize_ = std::make_unique<ParamSlider>(context, "fractureGrainSizeMs", "Grain Size", colour::cyan);
     grainDensity_ = std::make_unique<ParamSlider>(context, "fractureGrainDensity", "Density", colour::cyan);

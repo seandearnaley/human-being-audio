@@ -87,6 +87,22 @@ TEST_CASE ("Processor reports a tail as long as the longest bar it cuts", "[proc
 }
 
 // Steinberg's VST3 validator rejects a program list containing an unnamed program.
+TEST_CASE("Pad switches are exposed to the host focus traversal", "[editor][accessibility]") {
+    const juce::ScopedJuceInitialiser_GUI gui;
+    LivecutAudioProcessor processor;
+    const std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+    auto* controls = editor->findChildWithID("studioControls");
+    REQUIRE(controls != nullptr);
+    const auto traversal = controls->createFocusTraverser();
+    juce::StringArray names;
+    for (auto* component : controls->getChildren())
+        if (component->isVisible())
+            names.add(component->getTitle());
+
+    for (auto name : {"Surface", "Hold", "Straight", "Quantize"})
+        CHECK(names.contains(name));
+}
+
 TEST_CASE("Processor exposes named factory presets", "[processor][programs]") {
     LivecutAudioProcessor processor;
 

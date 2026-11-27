@@ -21,7 +21,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
       undo_(context, "Undo", [this] { context_.model.undo(); }),
       redo_(context, "Redo", [this] { context_.model.redo(); }),
       ab_(context, "A", [this] { context_.model.toggleAB(); }),
-      surface_(context, "surface", {"Pad", "Classic"}, colour::accent),
+      surface_(context, "surface", "Surface", {"Pad", "Classic"}, colour::accent),
       subAnchor_(context, "subAnchor", "Sub", colour::cyan, true), limiter_(context, "limiter", "LIM", colour::amber) {
     previous_.setName("Previous preset");
     next_.setName("Next preset");
