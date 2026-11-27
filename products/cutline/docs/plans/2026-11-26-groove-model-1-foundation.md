@@ -24,7 +24,7 @@
 - Commit messages have no attribution trailer lines.
 - Lane order is fixed: 0 kick, 1 snare, 2 ghost, 3 clap, 4 closed hat, 5 open hat, 6 perc A, 7 perc B.
 
-The code in this plan was compiled with those flags and its test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. The code blocks below match what was committed, including two fixes made during execution: Task 4's reader and writer drop fill steps that sit before the fill window, as the spec requires, and Task 3's `forEachHit` no longer clamps hit times to beat 0. If a step's code fails to compile as written, stop and report it instead of improvising.
+The code in this plan was compiled with those flags and its test cases were run against the 11 generated patterns on 2026-11-26, outside the repository. The code blocks below match what was committed, including two fixes made during execution and one rule change made after the final review. Task 4's reader and writer drop fill steps that sit before the fill window, as the spec requires. Task 3's `forEachHit` no longer clamps hit times to beat 0. Task 2's `resolveBar` lets a lane with nothing drawn in the fill window keep playing the main pattern. If a step's code fails to compile as written, stop and report it instead of improvising.
 
 ## File Structure
 
@@ -417,22 +417,43 @@ TEST_CASE("Dynamics scales velocity contrast around 64 and is the identity at 50
     CHECK(applyDynamics(1, 1.0f) == 1);
 }
 
-TEST_CASE("A live fill replaces every lane inside its window and ignores Density", "[engine][resolve]") {
+TEST_CASE("A live fill replaces only the lanes drawn in it and ignores Density", "[engine][resolve]") {
     Pattern p = layered();
     p.lanes[4].steps[14] = hit(96, Layer::core);
+    p.lanes[1].steps[13] = hit(96, Layer::core);
     p.fill.beats = 1;
     p.fill.steps[1][14] = hit(118, Layer::groove);
     ResolvedBar bar;
 
     resolveBar(p, 0, {1.0f, 0.5f, false}, bar);
     CHECK(bar.lanes[4][14].velocity > 0);
+    CHECK(bar.lanes[1][13].velocity > 0);
     CHECK_FALSE(bar.lanes[1][14].written);
 
     resolveBar(p, 0, {0.0f, 0.5f, true}, bar);
-    CHECK(bar.lanes[1][14].velocity == 118);
+    CHECK(bar.lanes[1][14].velocity == 118); // the drawn lane takes the fill, whatever the Density
     CHECK(bar.lanes[1][14].fromFill);
-    CHECK_FALSE(bar.lanes[4][14].written);
+    CHECK_FALSE(bar.lanes[1][13].written); // and loses its own steps inside the window
+    CHECK(bar.lanes[4][14].velocity > 0);  // a lane with nothing drawn in the fill keeps playing
+    CHECK_FALSE(bar.lanes[4][14].fromFill);
     CHECK(bar.lanes[0][0].velocity > 0); // outside the window the main pattern plays
+}
+
+TEST_CASE("An empty fill changes nothing, and steps drawn before the window do not count", "[engine][resolve]") {
+    Pattern p = layered();
+    p.lanes[4].steps[14] = hit(96, Layer::core);
+    p.fill.beats = 1;
+    p.fill.steps[4][2] = hit(96, Layer::groove); // before the 1-beat window
+    ResolvedBar plain;
+    ResolvedBar filled;
+    resolveBar(p, 0, {1.0f, 0.5f, false}, plain);
+    resolveBar(p, 0, {1.0f, 0.5f, true}, filled);
+    for (std::size_t lane = 0; lane < plain.lanes.size(); ++lane) {
+        for (std::size_t step = 0; step < plain.lanes[lane].size(); ++step) {
+            CHECK(filled.lanes[lane][step].velocity == plain.lanes[lane][step].velocity);
+            CHECK_FALSE(filled.lanes[lane][step].fromFill);
+        }
+    }
 }
 
 TEST_CASE("Muted and non-soloed lanes stay written but silent", "[engine][resolve]") {
@@ -665,11 +686,16 @@ void resolveBar(const Pattern& pattern, const DensityMap& map, int barInPattern,
         const auto li = static_cast<std::size_t>(lane);
         const DrumLane& cfg = pattern.lanes[li];
         const bool audible = anySolo ? (cfg.solo && !cfg.muted) : !cfg.muted;
+        // A lane takes the fill only if something is drawn for it inside the window.
+        // A lane with nothing drawn there keeps playing the main pattern.
+        bool laneFilled = false;
+        for (int step = fillFrom; step < kStepsPerBar; ++step)
+            laneFilled = laneFilled || pattern.fill.steps[li][static_cast<std::size_t>(step)].on();
         for (int step = 0; step < kStepsPerBar; ++step) {
             const auto si = static_cast<std::size_t>(step);
             ResolvedStep& r = out.lanes[li][si];
             r = {};
-            const bool inFill = step >= fillFrom;
+            const bool inFill = laneFilled && step >= fillFrom;
             const int stored = storedStep(pattern, lane, bar * kStepsPerBar + step);
             const Step& s = inFill ? pattern.fill.steps[li][si] : cfg.steps[static_cast<std::size_t>(stored)];
             if (!s.on())
@@ -712,7 +738,7 @@ In `engine/CMakeLists.txt`, add both files to the `cl_engine` source list. Put t
 cmake --build --preset engine --target cl-engine-tests && ./build/engine/tests/cl-engine-tests "[resolve]"
 ```
 
-Expected: `All tests passed (` followed by an assertion count, `in 8 test cases)`.
+Expected: `All tests passed (` followed by an assertion count, `in 9 test cases)`.
 
 - [ ] **Step 6: Commit**
 
@@ -2162,7 +2188,7 @@ git commit -m "test(cutline): lint factory patterns for anchor and note budgets"
 cmake --build --preset engine && ctest --preset engine
 ```
 
-Expected: `100% tests passed`. The count is the 2.0 total plus the 23 new test cases.
+Expected: `100% tests passed`. The count is the 2.0 total plus the 24 new test cases.
 
 - [ ] **Step 2: Build and test the plugin and UI**
 

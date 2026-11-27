@@ -192,9 +192,12 @@ phrase swell.
 
 ### Fills
 
-When `fillActive` is true, for the last `fill.beats * 4` steps of the bar every lane takes
-the fill's steps in place of the main pattern's. Outside that window the main pattern
-plays. Lane mute and solo still apply. Density does not apply to fill steps.
+When `fillActive` is true, the fill window is the last `fill.beats * 4` steps of the bar. A lane
+that has at least one step drawn inside the window takes the fill's steps there in place of
+the main pattern's, silences included. A lane with nothing drawn inside the window keeps
+playing the main pattern, so an empty fill changes nothing and a snare fill plays over the
+hats. Outside the window the main pattern plays. Lane mute and solo still apply. Density
+does not apply to fill steps.
 
 The engine sets `fillActive` per bar:
 
@@ -443,3 +446,4 @@ Swing and Poly pad programs; 8-bar phrases; all random number use in playback.
 - The PLAY surface and its visuals (PLAY spec).
 - Release work: version bump, release notes, README and website copy, demos.
 - Time signatures other than 4/4.
+- A fill that silences lanes it does not draw (a deliberate drop). Use the Drop pad for now.

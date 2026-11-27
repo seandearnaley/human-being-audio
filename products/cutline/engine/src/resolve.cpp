@@ -103,11 +103,16 @@ void resolveBar(const Pattern& pattern, const DensityMap& map, int barInPattern,
         const auto li = static_cast<std::size_t>(lane);
         const DrumLane& cfg = pattern.lanes[li];
         const bool audible = anySolo ? (cfg.solo && !cfg.muted) : !cfg.muted;
+        // A lane takes the fill only if something is drawn for it inside the window.
+        // A lane with nothing drawn there keeps playing the main pattern.
+        bool laneFilled = false;
+        for (int step = fillFrom; step < kStepsPerBar; ++step)
+            laneFilled = laneFilled || pattern.fill.steps[li][static_cast<std::size_t>(step)].on();
         for (int step = 0; step < kStepsPerBar; ++step) {
             const auto si = static_cast<std::size_t>(step);
             ResolvedStep& r = out.lanes[li][si];
             r = {};
-            const bool inFill = step >= fillFrom;
+            const bool inFill = laneFilled && step >= fillFrom;
             const int stored = storedStep(pattern, lane, bar * kStepsPerBar + step);
             const Step& s = inFill ? pattern.fill.steps[li][si] : cfg.steps[static_cast<std::size_t>(stored)];
             if (!s.on())
