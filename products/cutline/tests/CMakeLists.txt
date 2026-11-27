@@ -18,7 +18,9 @@ add_executable(cl-engine-tests
     "${PROJECT_SOURCE_DIR}/../../modules/dsp/tests/CurveTests.cpp")
 hba_build_for_host_only(cl-engine-tests)
 target_link_libraries(cl-engine-tests PRIVATE cl_engine_internal Catch2::Catch2WithMain cl_warnings)
-target_compile_definitions(cl-engine-tests PRIVATE CL_PATTERNS_DIR="${PROJECT_SOURCE_DIR}/patterns")
+target_compile_definitions(cl-engine-tests PRIVATE
+    CL_PATTERNS_DIR="${PROJECT_SOURCE_DIR}/patterns"
+    CL_FILLS_DIR="${PROJECT_SOURCE_DIR}/fills")
 if(HBA_RTSAN)
     hba_realtime_suite(cl-engine-tests "[engine]")
 else()

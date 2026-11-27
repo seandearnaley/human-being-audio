@@ -1,0 +1,32 @@
+{
+  "format": 3,
+  "name": "Techno",
+  "category": "Club",
+  "bars": 2,
+  "lanes": {
+    "kick": {
+      "core": "X...x...x...x...|X...x...x...x...",
+      "detail": "................|..............x."
+    },
+    "snare": {
+      "core": "....x.......x...|....x.......x..."
+    },
+    "hat": {
+      "groove": "o..oo..oo..oo..o|o..oo..oo..oo..o",
+      "detail": ".o...o...o...o..|.o...o...o...o.."
+    },
+    "openHat": {
+      "core": "..x...x...x...x.|..x...x...x...x."
+    },
+    "percA": {
+      "groove": "...........o....|...........o...."
+    }
+  },
+  "fill": {
+    "beats": 2,
+    "lanes": {
+      "hat": "........x.x.oxx.",
+      "openHat": "...............x"
+    }
+  }
+}

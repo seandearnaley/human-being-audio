@@ -1,0 +1,9 @@
+{
+  "format": 3,
+  "name": "Snare Roll 1 Beat",
+  "category": "Snare",
+  "beats": 1,
+  "lanes": {
+    "snare": "............oxxX"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "format": 3,
+  "name": "Kick Snare Pickup 1 Beat",
+  "category": "Pickups",
+  "beats": 1,
+  "lanes": {
+    "kick": "............x.x.",
+    "snare": ".............x.X"
+  }
+}

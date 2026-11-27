@@ -1,0 +1,35 @@
+{
+  "format": 3,
+  "name": "Roller",
+  "category": "Drum & Bass",
+  "bars": 2,
+  "lanes": {
+    "kick": {
+      "core": "X......x..X.....|X.........X.....",
+      "groove": "................|.......x........",
+      "detail": "................|...............x"
+    },
+    "snare": {
+      "core": "....X.......X...|....X.......X...",
+      "offsetMs": 2
+    },
+    "ghost": {
+      "groove": "..............o.|.........o......",
+      "detail": ".........o......|..o...........o.",
+      "offsetMs": 1
+    },
+    "hat": {
+      "core": "..x...x...x...x.|..x...x...x...x.",
+      "groove": "o...o..oo...o..o|o...o..oo...o..o",
+      "detail": ".o.o.o...o.o.o..|.o.o.o...o.o.o..",
+      "offsetMs": -1
+    }
+  },
+  "fill": {
+    "beats": 1,
+    "lanes": {
+      "kick": "............x.x.",
+      "snare": ".............x.X"
+    }
+  }
+}
