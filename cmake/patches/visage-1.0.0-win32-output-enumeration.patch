@@ -1,0 +1,20 @@
+--- a/visage_windowing/win32/windowing_win32.cpp
++++ b/visage_windowing/win32/windowing_win32.cpp
+@@ -292,13 +292,13 @@
+       }
+ 
+       IDXGIAdapter* adapter = nullptr;
+-      for (int i = 0; factory_->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
++      for (int i = 0; factory_->EnumAdapters(i, &adapter) == S_OK; ++i) {
+         adapters_.push_back(adapter);
+         IDXGIOutput* output = nullptr;
+-        for (int j = 0; adapter->EnumOutputs(j, &output) != DXGI_ERROR_NOT_FOUND; ++j) {
++        for (int j = 0; adapter->EnumOutputs(j, &output) == S_OK; ++j) {
+           DXGI_OUTPUT_DESC desc;
+-          if (SUCCEEDED(output->GetDesc(&desc)))
+-            monitor_outputs_[desc.Monitor] = output;
++          if (FAILED(output->GetDesc(&desc)) || !monitor_outputs_.emplace(desc.Monitor, output).second)
++            output->Release();
+         }
+       }
+     }
