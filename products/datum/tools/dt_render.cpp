@@ -4,6 +4,7 @@
 #include "dt/preset.h"
 
 #include <hba/core/wav.h>
+#include <hba/dsp/limiter.h>
 
 #include <algorithm>
 #include <cmath>
@@ -96,10 +97,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "failed to write %s\n", outPath.c_str());
         return 1;
     }
-    const auto pv = dt::Engine::renderPreview(preset.params, preset.pitchCurve, preset.ampCurve, preset.pattern,
-                                              nullptr, slot, 48000.0);
-    std::printf("Rendered %s (%zu frames, len=%.1fms, peak=%.1fdBTP, crest=%.1fdB, dc=%.3f%%)\n", outPath.c_str(),
-                left.size(), static_cast<double>(pv.effectiveLengthMs), static_cast<double>(pv.truePeakDb),
-                static_cast<double>(pv.crestDb), static_cast<double>(pv.dcPercent));
+    const double peak = hba::dsp::stereoTruePeak(interleaved);
+    std::printf("Rendered %s (%zu frames, %.1f ms, %.2f dBTP)\n", outPath.c_str(), left.size(),
+                static_cast<double>(left.size()) / 48.0, 20.0 * std::log10(peak));
     return 0;
 }
