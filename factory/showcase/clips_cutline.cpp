@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "showcase_common.h"
 #include "cl/engine.h"
+#include "cl/groove_state.h"
 #include "cl/preset.h"
 #include "pf/engine.h"
 #include "pf/preset.h"
@@ -17,7 +18,7 @@
 namespace hba::showcase {
 
 // ============================================================================
-// 4. CUTLINE 2.0 (6 clips: Breakbeats, Live X/Y Articulation, Strike Body, Polyrhythm & MIDI Slicer!)
+// 4. CUTLINE 3 (6 clips: Breakbeats, Live X/Y Articulation, Strike Body, Polyrhythm & MIDI Slicer!)
 // ============================================================================
 namespace {
 
@@ -33,7 +34,7 @@ std::vector<float> renderCutlineDrums(const fs::path& clPresetPath, double bpm, 
     cl::Engine clEng;
     clEng.prepare(kSr, kBlock);
     clEng.setLaneCurves(clParsed->curves);
-    clEng.setPatternBank(clParsed->bank);
+    clEng.setGroove(cl::GrooveState(clParsed->bank));
 
     StudioDrumKit kit;
     const int totalFrames = static_cast<int>(std::llround((4.0 * bars * 60.0 / bpm) * kSr));
@@ -84,7 +85,7 @@ std::vector<float> renderCutlineSlicerIntoTract(const fs::path& clPresetPath, co
     cl::Engine clEng;
     clEng.prepare(kSr, kBlock);
     clEng.setLaneCurves(clParsed->curves);
-    clEng.setPatternBank(clParsed->bank);
+    clEng.setGroove(cl::GrooveState(clParsed->bank));
     for (int note : chordNotes)
         clEng.inputNoteOn(note, 108, 0.0);
 
@@ -166,15 +167,14 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
 
     // 1. Amen Chop 172 -> Studio Drum Kit with Live X/Y Poly + Slice Performance Sweeps
     {
-        auto audio = renderCutlineDrums(clDir / "amen-chop-172.json", 172.0, 4, [](cl::Params& p, double t) {
-            p[cl::ParamId::sceneQuantize] = static_cast<float>(cl::Quantize::sixteenth);
+        auto audio = renderCutlineDrums(clDir / "amen.json", 172.0, 4, [](cl::Params& p, double t) {
             if (t >= 0.45 && t < 0.78) {
-                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::poly);
+                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::repeat);
                 p[cl::ParamId::padTouch] = 1.0f;
                 p[cl::ParamId::padX] = lerpF(0.35f, 0.85f, (t - 0.45) / 0.33);
                 p[cl::ParamId::padY] = lerpF(0.40f, 0.88f, (t - 0.45) / 0.33);
             } else if (t >= 0.78) {
-                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::slice);
+                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::repeat);
                 p[cl::ParamId::padTouch] = 1.0f;
                 p[cl::ParamId::padX] = lerpF(0.55f, 0.92f, (t - 0.78) / 0.22);
                 p[cl::ParamId::padY] = 0.78f;
@@ -189,17 +189,18 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
 
     // 2. Strike Body Neuro Snare -> Native Strike Body Kit Map + Live Roll Escalation
     {
-        const auto clParsed = cl::parsePreset(readTextFile(clDir / "strike-body-neuro-snare.json"));
+        const auto clParsed = cl::parsePreset(readTextFile(clDir / "neuro.json"));
         const auto sbParsed = sb::parsePresetJson(readTextFile(sbDir / "01 Neuro Crack 185Hz.json"));
         if (!clParsed || !sbParsed)
             throw std::runtime_error("Bad Cutline/Strike Body preset");
 
         cl::Params clP = clParsed->params;
         clP[cl::ParamId::audition] = 0.0f;
+        clP[cl::ParamId::noteMap] = static_cast<float>(cl::NoteMap::strikeBody);
         cl::Engine clEng;
         clEng.prepare(kSr, kBlock);
         clEng.setLaneCurves(clParsed->curves);
-        clEng.setPatternBank(clParsed->bank);
+        clEng.setGroove(cl::GrooveState(clParsed->bank));
 
         sb::Params sbP = sbParsed->params;
         sb::Engine sbEng;
@@ -244,9 +245,9 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
 
     // 3. Afro 7/11 Polyrhythm + Bounce Gravity X/Y
     {
-        auto audio = renderCutlineDrums(clDir / "afro-7-11-polyrhythm.json", 126.0, 4, [](cl::Params& p, double t) {
+        auto audio = renderCutlineDrums(clDir / "afro.json", 126.0, 4, [](cl::Params& p, double t) {
             if (t >= 0.62 && t < 0.88) {
-                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::bounce);
+                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::roll);
                 p[cl::ParamId::padTouch] = 1.0f;
                 p[cl::ParamId::padX] = lerpF(0.25f, 0.82f, (t - 0.62) / 0.26);
                 p[cl::ParamId::padY] = 0.72f;
@@ -271,7 +272,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
         cl::Engine clEng;
         clEng.prepare(kSr, kBlock);
         clEng.setLaneCurves(clParsed->curves);
-        clEng.setPatternBank(clParsed->bank);
+        clEng.setGroove(cl::GrooveState(clParsed->bank));
         for (int n : {48, 55, 60, 63, 67, 70}) // Cmin9 user-played chord!
             clEng.inputNoteOn(n, 102, 0.0);
 
@@ -291,7 +292,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
             const int n = std::min(kBlock, totalFrames - pos);
             const double beat = static_cast<double>(pos) * beatsPerSample;
             const double prog = static_cast<double>(pos) / static_cast<double>(totalFrames);
-            clParams[cl::ParamId::gravity] = lerpF(0.32f, 0.62f, prog);
+            clParams[cl::ParamId::swing] = std::clamp(lerpF(0.32f, 0.62f, prog) * 0.76f, 0.0f, 1.0f);
             synth.globalCutoffHz = 1100.0 + 1700.0 * smoothStep(prog);
 
             midi.clear();
@@ -320,7 +321,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
 
     // 5. Halftime Colossus (Half-Time 0.5x -> Normal 1x + Drop Build)
     {
-        auto audio = renderCutlineDrums(clDir / "halftime-85-colossus.json", 170.0, 4, [](cl::Params& p, double t) {
+        auto audio = renderCutlineDrums(clDir / "halftime.json", 170.0, 4, [](cl::Params& p, double t) {
             p[cl::ParamId::seqRate] =
                 static_cast<float>(t < 0.50 ? cl::SeqRate::half : cl::SeqRate::normal);
             if (t >= 0.78) {
@@ -342,7 +343,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
         auto audio = renderCutlineSlicerIntoTract(
             clDir / "slicer-neuro-bass-stab.json", tfDir / "coupled-reese.json", pfDir / "neuro-chew.json",
             {41, 48, 53, 56}, 172.0, 4, [](cl::Params& cp, tf::Params& tp, double t) {
-                cp[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::stutter);
+                cp[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::repeat);
                 cp[cl::ParamId::padTouch] = (t > 0.68 && t < 0.86) ? 1.0f : 0.0f;
                 cp[cl::ParamId::padX] = 0.58f;
                 cp[cl::ParamId::padY] = 0.76f;
