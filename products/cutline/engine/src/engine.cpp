@@ -390,6 +390,9 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
     const auto firstBar = static_cast<std::int64_t>(std::floor((scaledStart - late) / 4.0));
     const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd + early) / 4.0));
     const bool filterKit = b.padOn && b.program == PadProgram::rate;
+    // Silent before beat 0: of the hits that start before it, only bar 0's own early hits play. A hit of an earlier
+    // bar that lands at or after beat 0 (late Swing, nudge or offset on its last step) plays as it always has.
+    const double silentBefore = kTimelineStart * b.rate;
 
     // The scenes that can own a step with a hit in this block. A step at grid time g starts its hits no earlier than
     // g - early and no later than g + one step + late.
@@ -421,6 +424,8 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
             forEachHit(
                 pat, resolved, static_cast<double>(bar) * 4.0, timing, [&](const Hit& h) noexcept CL_NONBLOCKING {
                     if (h.beat < scaledStart - kBeatEps || h.beat >= scaledEnd - kBeatEps)
+                        return;
+                    if (bar < 0 && h.beat < silentBefore - kBeatEps)
                         return;
                     const double grid = (static_cast<double>(bar) * 4.0 + static_cast<double>(h.step) * 0.25) / b.rate;
                     if (sceneAtGrid(grid) != scene)
@@ -522,29 +527,39 @@ void Engine::Impl::playClip(const Block& b) noexcept CL_NONBLOCKING {
 }
 
 // One part of a block: a pad program, the pattern, or in MIDI Slicer mode the phrase or the captured clip.
+// Silent before beat 0: every source but the pattern plays only the part of the block from kTimelineStart on. The
+// pattern sees the whole block, because bar 0's early hits start before beat 0; it drops the earlier bars' hits there.
 void Engine::Impl::playBlock(const Block& b) noexcept CL_NONBLOCKING {
     if (b.windowEnd <= b.windowStart)
         return;
     const bool silent = b.padOn && b.program == PadProgram::drop && pads::dropIsSilence(b.padX);
+    Block from = b;
+    from.windowStart = std::max(b.windowStart, kTimelineStart);
+    const bool fromStart = from.windowEnd > from.windowStart; // some of the block is at or after beat 0
     if (!b.isDrum) {
+        if (!fromStart)
+            return;
         const auto style = static_cast<SlicerStyle>(std::clamp(b.params->choice(ParamId::slicerStyle), 0, 4));
         if (b.padOn && b.program == PadProgram::roll)
-            playRoll(b);
+            playRoll(from);
         else if (style == SlicerStyle::clipSlice) {
             if (!silent)
-                playClip(b); // loops inside the Repeat window itself while Repeat is engaged
+                playClip(from); // loops inside the Repeat window itself while Repeat is engaged
         } else if (b.padOn && b.program == PadProgram::repeat)
-            playRepeat(b);
+            playRepeat(from);
         else if (!silent)
-            playSlicer(b);
+            playSlicer(from);
         return;
     }
-    if (b.padOn && b.program == PadProgram::roll)
-        playRoll(b);
-    else if (b.padOn && b.program == PadProgram::repeat)
-        playRepeat(b);
-    else if (!silent)
+    if (b.padOn && b.program == PadProgram::roll) {
+        if (fromStart)
+            playRoll(from);
+    } else if (b.padOn && b.program == PadProgram::repeat) {
+        if (fromStart)
+            playRepeat(from);
+    } else if (!silent) {
         playPattern(b);
+    }
 }
 
 // Releases every active note that ends at or before `beat` (strictly before it when `strict`).
@@ -670,7 +685,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     activityMask = 0;
 
     // One clock for playback and switching: window time is the transport minus Shift, so the pattern's grid as it
-    // sounds. Hit times are not clamped: the window follows the transport below beat 0 too.
+    // sounds. The window follows the transport below beat 0 too, but nothing plays there except bar 0's own early
+    // hits (kTimelineStart).
     const double shiftBeats = static_cast<double>(params[ParamId::shiftMs]) * 1.0e-3 * (bpm / 60.0);
     const double rawStart = rawPpq - shiftBeats;
 
@@ -753,9 +769,10 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     if (!isDrum && slicerStyle != SlicerStyle::clipSlice && lastEffectiveHeld.count == 0)
         flushAllActive(outMidi, 0);
 
-    // Position telemetry, on the window clock: the step of the pattern that is sounding.
+    // Position telemetry, on the window clock: the step of the pattern that is sounding. Before beat 0 the playhead
+    // waits on bar 0, step 0.
     const auto updatePosition = [&](double rate, bool fillLive) noexcept CL_NONBLOCKING {
-        const double scaled = windowStart * rate;
+        const double scaled = std::max(windowStart, kTimelineStart) * rate;
         const auto absBar = static_cast<std::int64_t>(std::floor(scaled / 4.0));
         pos.absBar = absBar;
         pos.barInPattern = floorMod(absBar, patternBars(pattern()));
@@ -848,8 +865,9 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     }
     {
         const auto absBar = static_cast<std::int64_t>(std::floor(windowStart * b.rate / 4.0));
-        updatePosition(
-            b.rate, isDrum && fillActiveFor(pattern(), absBar, b.fillNow, everyBars, windowEnd * b.rate, b.beatsPerMs));
+        updatePosition(b.rate,
+                       isDrum && windowStart >= kTimelineStart &&
+                           fillActiveFor(pattern(), absBar, b.fillNow, everyBars, windowEnd * b.rate, b.beatsPerMs));
     }
 
     // This block's notes, then every note-off in time order. When a pad commits inside the block, what played
@@ -865,15 +883,16 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     }
     emitBlockHits(b, silenceAt, outMidi);
 
-    // Continuous CC, expression lanes and XY -> CC.
+    // Continuous CC, expression lanes and XY -> CC, from beat 0 on.
     const auto thinIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::ccThinMs), 0, 3));
     const double tickBeats = kCcThinMsValues[thinIdx] * 1.0e-3 * (bpm / 60.0);
-    std::int64_t tickIdx = static_cast<std::int64_t>(std::ceil((windowStart - kBeatEps) / tickBeats));
+    const double ccFrom = std::max(windowStart, kTimelineStart);
+    std::int64_t tickIdx = static_cast<std::int64_t>(std::ceil((ccFrom - kBeatEps) / tickBeats));
     for (int iter = 0; iter < 128; ++iter) {
         const double tickBeat = static_cast<double>(tickIdx) * tickBeats;
         if (tickBeat >= windowEnd - kBeatEps)
             break;
-        if (tickBeat >= windowStart - kBeatEps) {
+        if (tickBeat >= ccFrom - kBeatEps) {
             const int offset = sampleOffsetOf(tickBeat, rawStart, beatsPerSample, numSamples);
             const bool tickPadOn = (padCommitted && tickBeat < padAt - kBeatEps) ? engagedBefore : engaged;
             emitContinuousAt(params, tickBeat, offset, outMidi, tickPadOn, padX, padY);

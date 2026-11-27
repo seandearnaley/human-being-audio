@@ -643,3 +643,59 @@ TEST_CASE("No pad CC is sent before the pad's switch point in the block where it
         CHECK(at >= padAt - 1);
     }
 }
+
+TEST_CASE("Pre-roll: Roll held from before beat 0 plays its first note on beat 0", "[engine][pads]") {
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    Run run;
+    const Params p = padParams(PadProgram::roll, 0.0f, 1.0f);
+    double ppq = -4.0;
+    std::int64_t sample = 0;
+    while (ppq < 1.0) {
+        eng.process(p, {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        take(run, midi, sample);
+        sample += kBlock;
+        ppq += bps * static_cast<double>(kBlock);
+    }
+    REQUIRE_FALSE(run.noteOns.empty());
+    for (const auto& on : run.noteOns) {
+        const double at = -4.0 + static_cast<double>(on.sample) * bps;
+        INFO("note " << on.note << " at host beat " << at);
+        CHECK(at >= -bps);
+    }
+    const double first = -4.0 + static_cast<double>(run.noteOns.front().sample) * bps;
+    CHECK(std::abs(first) <= 2.0 * bps);
+    CHECK(run.noteOns.front().note == 38);
+}
+
+TEST_CASE("Pre-roll: Repeat held from before beat 0 loops from beat 0", "[engine][pads]") {
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    Run run;
+    const Params p = padParams(PadProgram::repeat, 0.1f, 0.5f); // a one-beat window
+    double ppq = -4.0;
+    std::int64_t sample = 0;
+    while (ppq < 2.0) {
+        eng.process(p, {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        take(run, midi, sample);
+        sample += kBlock;
+        ppq += bps * static_cast<double>(kBlock);
+    }
+    REQUIRE_FALSE(run.noteOns.empty());
+    for (const auto& on : run.noteOns) {
+        const double at = -4.0 + static_cast<double>(on.sample) * bps;
+        INFO("note " << on.note << " at host beat " << at);
+        CHECK(at >= -bps);
+    }
+    // It loops beat 0 of bar 0: the default beat's kick, once on each beat from beat 0. beatOf counts from the run's
+    // start, four beats before beat 0.
+    CHECK(countInBeat(run, 36, 4) == 1);
+    CHECK(countInBeat(run, 36, 5) == 1);
+    CHECK(std::abs(-4.0 + static_cast<double>(run.noteOns.front().sample) * bps) <= 2.0 * bps);
+}

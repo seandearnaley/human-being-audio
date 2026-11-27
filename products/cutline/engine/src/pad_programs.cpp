@@ -10,9 +10,10 @@
 
 namespace cl {
 
-// Remembers the 16th the pad was engaged on. The window loops from there.
+// Remembers the 16th the pad was engaged on. The window loops from there. Engaged before beat 0, it loops from
+// beat 0, where it starts to sound.
 void Engine::Impl::beginRepeat(double hostBeat, double rate, bool fillNow, int everyBars) noexcept CL_NONBLOCKING {
-    const double scaled = hostBeat * rate;
+    const double scaled = std::max(hostBeat, kTimelineStart) * rate;
     repeatAnchor = std::floor(scaled * 4.0 + 1.0e-6) * 0.25;
     repeatBar = static_cast<std::int64_t>(std::floor(repeatAnchor / 4.0));
     repeatFill = fillScheduled(repeatBar, everyBars) || fillNow;

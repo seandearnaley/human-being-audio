@@ -577,3 +577,35 @@ TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid at the
         CHECK(rolled[i].velocity == 64);
     }
 }
+
+TEST_CASE("Pre-roll: MIDI Slicer and Clip Slice are silent before beat 0", "[engine][slicer]") {
+    const double bpm = 120.0;
+    SECTION("MIDI Slicer with held notes") {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const HeldNotes held = chord();
+        for (int i = 0; i < held.count; ++i)
+            eng.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)],
+                            -4.0);
+        const auto ons = playNotes(eng, bpm, -4.0, 2.0, [](double) { return slicerParams(SlicerStyle::stabChop); });
+        REQUIRE_FALSE(ons.empty());
+        for (const auto& on : ons) {
+            INFO("note " << on.note << " at host beat " << on.beat);
+            CHECK(on.beat >= -1.0e-9);
+        }
+    }
+    SECTION("Clip Slice with a captured note") {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        eng.inputNoteOn(38, 114, 1.0); // beat 1 of its bar
+        eng.inputNoteOff(38, 1.25);
+        REQUIRE(eng.capturedClipCount() == 1);
+        const auto ons = playNotes(eng, bpm, -4.0, 2.0, [](double) { return slicerParams(SlicerStyle::clipSlice); });
+        REQUIRE_FALSE(ons.empty());
+        for (const auto& on : ons) {
+            INFO("note " << on.note << " at host beat " << on.beat);
+            CHECK(on.beat >= -1.0e-9);
+        }
+        CHECK(std::abs(ons.front().beat - 1.0) < 1.0e-3);
+    }
+}

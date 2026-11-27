@@ -22,6 +22,10 @@ inline constexpr int kMaxBlockHits = kMaxMidiEventsPerBlock;
 // Bars one block can reach into (the bars resolved per block, and the fillNow latches kept).
 inline constexpr int kMaxBarsPerBlock = 4;
 inline constexpr double kBeatEps = 1.0e-9;
+// Beat 0 on the window clock, where the pattern's bar 0 starts. The engine is silent before it (host pre-roll and
+// count-in): no hit of a bar before bar 0, no slicer, clip, pad or CC. Only bar 0's own early hits (a flam's grace,
+// a negative nudge or lane offset on its first steps) may start just before it.
+inline constexpr double kTimelineStart = 0.0;
 
 struct Engine::Impl {
     struct ActiveNote {

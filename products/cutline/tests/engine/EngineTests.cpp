@@ -644,25 +644,54 @@ TEST_CASE("Truth holds with mixed block sizes, Shift and a negative start", "[en
             double startPpq;
             bool mixed;
         };
+        // The pre-roll variant's pattern starts bar 0 early: a flammed, early-nudged kick on step 0.
+        GrooveBank earlyBank = bank;
+        Pattern& early = earlyBank.scenes[0];
+        early.lanes[0].muted = false;
+        early.lanes[0].length = 0;
+        early.lanes[0].offsetMs = static_cast<std::int8_t>(std::min<int>(early.lanes[0].offsetMs, 0));
+        early.lanes[0].steps[0] = {};
+        early.lanes[0].steps[0].velocity = 110;
+        early.lanes[0].steps[0].layer = Layer::core;
+        early.lanes[0].steps[0].flam = true;
+        early.lanes[0].steps[0].nudge = -6;
+        const GrooveState earlyGroove(earlyBank);
+
         for (const Variant v : {Variant{"mixed blocks", 0.0f, 0.0, true}, Variant{"shift +17 ms", 17.0f, 0.0, false},
                                 Variant{"shift -23 ms", -23.0f, 0.0, true}, Variant{"start at -2", 0.0f, -2.0, true}}) {
+            const GrooveState& g = v.startPpq < 0.0 ? earlyGroove : groove;
             Params p = truthParams();
             p[ParamId::swing] = 0.3f;
             p[ParamId::shiftMs] = v.shiftMs;
             Engine eng;
             eng.prepare(kSr, 4096);
-            eng.setGroove(groove);
+            eng.setGroove(g);
             const int blocks = v.mixed ? 4 * blocksFor(6.0, bpm, 1 + 37 + 512 + 4096) : blocksFor(6.0, bpm, 512);
             const Run run = play(
                 eng, bpm, blocks, [&](double) { return p; }, 512, v.startPpq, v.mixed ? cycle : std::vector<int>{});
             INFO("seed " << seed << " " << v.name);
-            const auto expected = expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat, v.startPpq);
+            // Silent before beat 0 (window clock; host beat `shift`): before it only bar 0's early hits sound. A hit of
+            // an earlier bar that lands at or after beat 0 plays, as it does in a run that starts at beat 0.
+            const double bps = bpm / 60.0 / kSr;
+            const double beatZero = static_cast<double>(v.shiftMs) * 1.0e-3 * (bpm / 60.0);
+            auto expected = expectedNoteOns(g.bank.scenes[0], p, bpm, run.endBeat, v.startPpq);
+            std::erase_if(expected, [&](const Expected& e) {
+                return e.bar < 0 && v.startPpq + static_cast<double>(e.sample + 1) * bps <= beatZero;
+            });
             REQUIRE(expected.size() > 0);
             if (v.startPpq < 0.0) {
-                bool beforeZero = false;
-                for (const auto& e : expected)
-                    beforeZero = beforeZero || static_cast<double>(e.sample) * (bpm / 60.0 / kSr) < -v.startPpq;
-                REQUIRE(beforeZero);
+                // Bar 0's own early kick sounds before beat 0.
+                bool earlyKick = false;
+                for (const auto& on : run.noteOns)
+                    earlyKick = earlyKick || (on.note == 36 && static_cast<double>(on.sample) * bps < -v.startPpq);
+                REQUIRE(earlyKick);
+                // No note-on before beat 0 belongs to a bar before 0: nothing sounds earlier than bar 0's earliest
+                // possible hit (and requireSameNoteOns matches each one to a hit of bar 0).
+                const double earliest = -maxEarlyBeats(bpm / 60000.0);
+                for (const auto& on : run.noteOns) {
+                    INFO("note " << on.note << " at host beat " << v.startPpq + static_cast<double>(on.sample) * bps);
+                    REQUIRE(v.startPpq + static_cast<double>(on.sample) * bps >= earliest - bps);
+                }
             }
             requireSameNoteOns(expected, run.noteOns, 36);
         }
@@ -1198,5 +1227,148 @@ TEST_CASE("A hit before the block's first sample is not started on the sample wh
     for (std::size_t note = 0; note < on.size(); ++note) {
         INFO("note " << note);
         CHECK_FALSE(on[note]);
+    }
+}
+
+namespace {
+
+// Plays from `fromPpq` until `toPpq` in kBlock blocks and returns the host beat of every event `pick` selects.
+template <typename ParamsAt, typename Pick>
+std::vector<double> eventBeats(Engine& eng, double bpm, double fromPpq, double toPpq, ParamsAt&& paramsAt,
+                               Pick&& pick) {
+    std::vector<double> out;
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    std::array<bool, 128> on{};
+    const double bps = bpm / 60.0 / kSr;
+    for (double ppq = fromPpq; ppq < toPpq; ppq += bps * static_cast<double>(kBlock)) {
+        eng.process(paramsAt(ppq), {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        takeWellFormed(on, midi, kBlock);
+        for (int i = 0; i < midi.count; ++i) {
+            const auto& ev = midi.events[static_cast<std::size_t>(i)];
+            if (pick(ev))
+                out.push_back(ppq + static_cast<double>(ev.sampleOffset) * bps);
+        }
+    }
+    return out;
+}
+
+bool isCc(const MidiEvent& ev) { return (ev.data[0] & 0xF0u) == 0xB0u; }
+
+} // namespace
+
+TEST_CASE("Pre-roll: the default beat is silent before beat 0, then plays as a run from beat 0", "[engine]") {
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    const int preBlocks = 3000; // 8 beats of 64-sample blocks at 120 BPM
+    REQUIRE(std::abs(static_cast<double>(preBlocks * kBlock) * bps - 8.0) < 1.0e-9);
+    Engine pre;
+    pre.prepare(kSr, kBlock);
+    const Run withPreRoll =
+        play(pre, bpm, preBlocks + blocksFor(4.0, bpm), [](double) { return Params{}; }, kBlock, -8.0);
+    Engine fromZero;
+    fromZero.prepare(kSr, kBlock);
+    const Run plain = play(fromZero, bpm, blocksFor(4.0, bpm), [](double) { return Params{}; });
+
+    const std::int64_t zero = static_cast<std::int64_t>(preBlocks) * kBlock;
+    std::vector<NoteOn> ons;
+    for (const auto& on : withPreRoll.noteOns) {
+        INFO("note " << on.note << " at host beat " << -8.0 + static_cast<double>(on.sample) * bps);
+        REQUIRE(on.sample >= zero);
+        ons.push_back({on.note, on.sample - zero, on.velocity});
+    }
+    std::vector<NoteOn> offs;
+    for (const auto& off : withPreRoll.noteOffEvents)
+        offs.push_back({off.note, off.sample - zero, 0});
+    REQUIRE(plain.noteOns.size() > 10);
+    CHECK(ons == plain.noteOns);
+    CHECK(offs == plain.noteOffEvents);
+}
+
+TEST_CASE("Pre-roll: no CC before beat 0, from XY to CC or an expression lane", "[engine]") {
+    const double bpm = 120.0;
+    SECTION("XY to CC with a pad held") {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const auto beats = eventBeats(
+            eng, bpm, -4.0, 1.0,
+            [](double) {
+                Params p;
+                p[ParamId::padCcMode] = static_cast<float>(PadCcMode::cc74AndCc1);
+                p[ParamId::padProgram] = static_cast<float>(PadProgram::rate);
+                p[ParamId::padX] = 0.5f;
+                p[ParamId::padTouch] = 1.0f;
+                return p;
+            },
+            isCc);
+        REQUIRE_FALSE(beats.empty());
+        for (const double at : beats) {
+            INFO("CC at host beat " << at);
+            CHECK(at >= -1.0e-9);
+        }
+    }
+    SECTION("An expression lane") {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const auto beats = eventBeats(
+            eng, bpm, -4.0, 1.0,
+            [](double) {
+                Params p;
+                p[laneParam(0, LaneField::on)] = 1.0f;
+                p[laneParam(0, LaneField::target)] = static_cast<float>(LaneTarget::cc11Expr);
+                p[laneParam(0, LaneField::depth)] = 1.0f;
+                return p;
+            },
+            isCc);
+        REQUIRE_FALSE(beats.empty());
+        for (const double at : beats) {
+            INFO("CC at host beat " << at);
+            CHECK(at >= -1.0e-9);
+        }
+    }
+}
+
+TEST_CASE("Pre-roll: the engine reports bar 0, step 0 and no fill", "[engine]") {
+    GrooveBank bank;
+    bank.scenes[0] = fillPattern();
+    Params p;
+    p[ParamId::fillNow] = 1.0f; // would make bar -1 a fill if bars before 0 played
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    eng.setGroove(GrooveState(bank));
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    eng.process(p, {120.0, -1.5, true}, midi, l.data(), r.data(), kBlock); // bar -1, beat 2.5: in its fill window
+    const PlayPosition pos = eng.position();
+    CHECK(pos.absBar == 0);
+    CHECK(pos.barInPattern == 0);
+    CHECK(pos.stepInBar == 0);
+    CHECK_FALSE(pos.fillLive);
+    CHECK(pos.repeatStartStep == -1);
+}
+
+TEST_CASE("Pre-roll with Shift: the silence ends where the shifted pattern's bar 0 starts", "[engine]") {
+    // Shift of 20 ms at 120 BPM is 0.04 beat. The default beat's first kick is on step 0 of bar 0.
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    for (const float shiftMs : {20.0f, -20.0f}) {
+        const double shift = static_cast<double>(shiftMs) * 1.0e-3 * (bpm / 60.0);
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const auto beats = eventBeats(
+            eng, bpm, -4.0, 1.0,
+            [&](double) {
+                Params p;
+                p[ParamId::shiftMs] = shiftMs;
+                return p;
+            },
+            [](const MidiEvent& ev) { return ev.isNoteOn(); });
+        INFO("shift " << shiftMs << " ms");
+        REQUIRE_FALSE(beats.empty());
+        for (const double at : beats) {
+            INFO("note-on at host beat " << at);
+            CHECK(at >= shift - 2.0 * bps);
+        }
+        CHECK(std::abs(beats.front() - shift) <= 2.0 * bps);
     }
 }
