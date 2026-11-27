@@ -3,6 +3,7 @@
 
 #include "PluginProcessor.h"
 #include "StudioHistory.h"
+#include "cl/phrase.h"
 #include "cl/ui/model.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -29,11 +30,9 @@ class PluginModel final : public ui::Model {
     Curve laneCurve(int lane) const override;
     void setLaneCurve(int lane, const Curve& curve) override;
 
-    PatternBank patternBank() const override;
-    void setPatternBank(const PatternBank& bank) override;
+    const GrooveState& groove() const override;
+    void setGrooveBank(const GrooveBank& bank) override;
 
-    void mutateActiveScene() override;
-    void polymeterActiveScene() override;
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
 
@@ -66,7 +65,10 @@ class PluginModel final : public ui::Model {
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
     bool applyingSnapshot_ = false;
-    std::uint32_t actionCounter_ = 0;
+    mutable GrooveState groove_{};
+    mutable std::uint32_t grooveRevision_ = 0xffffffffu; // never equal to the store's first revision
+    SlicerPlan previewPlan_{};                           // the slicer phrase shown while the transport is stopped
+    SlicerInputs previewInputs_{};                       // what previewPlan_ was compiled from
     std::unique_ptr<juce::AlertWindow> saveDialog_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     juce::Component* dragSource_ = nullptr;

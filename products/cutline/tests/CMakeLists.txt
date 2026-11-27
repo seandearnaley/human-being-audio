@@ -1,6 +1,9 @@
-add_executable(cl-core-tests core/CoreTests.cpp core/GrooveTests.cpp core/GrooveJsonTests.cpp core/PresetTests.cpp)
+add_executable(cl-core-tests core/CoreTests.cpp core/GrooveTests.cpp core/GrooveJsonTests.cpp core/PresetTests.cpp core/FactoryPresetTests.cpp)
 hba_build_for_host_only(cl-core-tests)
 target_link_libraries(cl-core-tests PRIVATE cl_core Catch2::Catch2WithMain cl_warnings)
+target_compile_definitions(cl-core-tests PRIVATE
+    CL_PATTERNS_DIR="${PROJECT_SOURCE_DIR}/patterns"
+    CL_PRESETS_DIR="${PROJECT_SOURCE_DIR}/presets")
 catch_discover_tests(cl-core-tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(cl-engine-tests

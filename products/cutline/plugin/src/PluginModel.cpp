@@ -43,22 +43,30 @@ void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->e
 
 void PluginModel::refreshVisuals() {
     processor_.telemetry.read(visuals_);
-    if (!visuals_.playing) {
-        Params p;
-        for (int i = 0; i < kParamCount; ++i)
-            p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
-        const PatternBank bank = processor_.patterns.get();
-        const int scIdx = std::clamp(p.choice(ParamId::scene), 0, kSceneCount - 1);
-        const double bpm = processor_.telemetry.lastBpm();
-        const std::uint32_t sig = phraseSignature(p, scIdx, visuals_.heldNotes, bank, bpm);
-        if (visuals_.plan.signature != sig || visuals_.plan.activeScene != scIdx)
-            compilePhrase(p, scIdx, 0, visuals_.heldNotes, visuals_.plan, bank, bpm);
-        visuals_.activeScene = scIdx;
-        visuals_.pendingScene = -1;
-        visuals_.activePadProgram = std::clamp(p.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
-        visuals_.pendingPadProgram = -1;
-        visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
-        visuals_.bpm = bpm;
+    if (visuals_.playing)
+        return;
+    // Stopped: show what the parameters say will play from the top of the pattern.
+    Params p;
+    for (int i = 0; i < kParamCount; ++i)
+        p[static_cast<ParamId>(i)] = get(static_cast<ParamId>(i));
+    const int scene = std::clamp(p.choice(ParamId::scene), 0, kSceneCount - 1);
+    const double bpm = processor_.telemetry.lastBpm();
+    visuals_.activeScene = scene;
+    visuals_.pendingScene = -1;
+    visuals_.activePadProgram = std::clamp(p.choice(ParamId::padProgram), 0, kPerfPadCount - 1);
+    visuals_.pendingPadProgram = -1;
+    visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
+    visuals_.position = {};
+    visuals_.bpm = bpm;
+    if (p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
+        // The preview phrase: recompiled only when something it depends on changed, not on every UI tick.
+        const GrooveState& state = groove();
+        const SlicerInputs now = slicerInputs(p, scene, visuals_.heldNotes, bpm, grooveRevision_);
+        if (!now.sameAs(previewInputs_)) {
+            compileSlicer(p, state, scene, visuals_.heldNotes, bpm, previewPlan_);
+            previewInputs_ = now;
+        }
+        visuals_.slicerPlan = previewPlan_;
     }
 }
 
@@ -72,37 +80,20 @@ void PluginModel::setLaneCurve(int lane, const Curve& curve) {
     processor_.curves.set(lane, curve);
 }
 
-PatternBank PluginModel::patternBank() const { return processor_.patterns.get(); }
-void PluginModel::setPatternBank(const PatternBank& bank) {
+// The model keeps a copy of the published GrooveState and refetches it only when the store changed.
+const GrooveState& PluginModel::groove() const {
+    const std::uint32_t revision = processor_.patterns.revision();
+    if (revision != grooveRevision_) {
+        groove_ = processor_.patterns.get();
+        grooveRevision_ = revision;
+    }
+    return groove_;
+}
+
+void PluginModel::setGrooveBank(const GrooveBank& bank) {
     if (!applyingSnapshot_)
         processor_.history.pushCoalesced(captureSnapshot(), 0x2000u,
                                          static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
-    processor_.patterns.set(bank);
-}
-
-void PluginModel::mutateActiveScene() {
-    if (!applyingSnapshot_)
-        processor_.history.push(captureSnapshot());
-    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
-    auto bank = processor_.patterns.get();
-    auto& sc = bank.scenes[static_cast<std::size_t>(scIdx)];
-    if (!sc.customized)
-        sc = effectiveSceneData(bank, scIdx);
-    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 7919U);
-    mutateUnlockedLanes(sc, seed);
-    processor_.patterns.set(bank);
-}
-
-void PluginModel::polymeterActiveScene() {
-    if (!applyingSnapshot_)
-        processor_.history.push(captureSnapshot());
-    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
-    auto bank = processor_.patterns.get();
-    auto& sc = bank.scenes[static_cast<std::size_t>(scIdx)];
-    if (!sc.customized)
-        sc = effectiveSceneData(bank, scIdx);
-    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 6151U);
-    applyPolymeterToUnlocked(sc, seed);
     processor_.patterns.set(bank);
 }
 
@@ -111,25 +102,25 @@ void PluginModel::cloneActiveSceneToNext() {
         processor_.history.push(captureSnapshot());
     const int cur = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
     const int next = (cur + 1) % kSceneCount;
-    auto bank = processor_.patterns.get();
-    const auto seed = static_cast<std::uint32_t>(juce::Time::getHighResolutionTicks()) ^ (++actionCounter_ * 4999U);
-    cloneSceneSlot(bank, cur, next, true, seed);
+    GrooveBank bank = processor_.patterns.bank();
+    bank.scenes[static_cast<std::size_t>(next)] = bank.scenes[static_cast<std::size_t>(cur)];
     processor_.patterns.set(bank);
     begin(ParamId::scene);
     set(ParamId::scene, static_cast<float>(next));
     end(ParamId::scene);
 }
 
+// A cleared scene is empty and stays empty. In MIDI Slicer mode, Clear empties the gate strip instead.
 void PluginModel::clearActiveScene() {
     if (!applyingSnapshot_)
         processor_.history.push(captureSnapshot());
-    const int scIdx = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
-    auto bank = processor_.patterns.get();
-    if (static_cast<int>(get(ParamId::engineMode) + 0.5f) == 1) {
+    const int scene = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    GrooveBank bank = processor_.patterns.bank();
+    if (static_cast<int>(get(ParamId::engineMode) + 0.5f) == static_cast<int>(EngineMode::slicer)) {
         bank.slicerLength = 16;
         bank.slicerSteps = {};
     } else {
-        clearSceneEdits(bank.scenes[static_cast<std::size_t>(scIdx)]);
+        bank.scenes[static_cast<std::size_t>(scene)] = Pattern{};
     }
     processor_.patterns.set(bank);
 }
@@ -145,7 +136,7 @@ void PluginModel::dragMidiPhrase() {
     const double bpm = processor_.telemetry.lastBpm();
     const int scIdx = snap.playing ? snap.activeScene : std::clamp(params.choice(ParamId::scene), 0, kSceneCount - 1);
     const auto file =
-        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.get(), snap.heldNotes,
+        processor_.exporter.writeTempFile(params, processor_.curves.all(), processor_.patterns.bank(), snap.heldNotes,
                                           bpm, scIdx, toJuce(processor_.presets.currentName()));
     if (!file.existsAsFile())
         return;
@@ -153,8 +144,8 @@ void PluginModel::dragMidiPhrase() {
 }
 
 std::string PluginModel::exportStatus() const {
-    const auto idx = static_cast<std::size_t>(std::clamp(static_cast<int>(get(ParamId::phraseBars) + 0.5f), 0, 2));
-    return "Drag " + std::to_string(kPhraseBarCounts[idx]) + "-bar .mid";
+    const int scene = std::clamp(static_cast<int>(get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    return "Drag " + std::to_string(patternBars(groove().bank.scenes[static_cast<std::size_t>(scene)])) + "-bar .mid";
 }
 
 std::string PluginModel::presetName() const { return processor_.presets.currentName(); }
@@ -197,7 +188,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
     for (std::size_t i = 0; i < kParams.size(); ++i)
         s.params[i] = parameters_[i]->convertFrom0to1(parameters_[i]->getValue());
     s.curves = processor_.curves.all();
-    s.bank = processor_.patterns.get();
+    s.bank = processor_.patterns.bank();
     s.presetName = processor_.presets.currentName();
     return s;
 }

@@ -46,11 +46,12 @@ class PluginProcessor final : public juce::AudioProcessor {
 
     void getStateInformation(juce::MemoryBlock& destination) override;
     void setStateInformation(const void* data, int size) override;
+    void loadDefaultState();
 
     struct HistorySnapshot {
         std::array<float, kParamCount> params{};
         LaneCurves curves = defaultLaneCurves();
-        PatternBank bank{};
+        GrooveBank bank{};
         std::string presetName;
 
         bool operator==(const HistorySnapshot&) const = default;
@@ -70,7 +71,7 @@ class PluginProcessor final : public juce::AudioProcessor {
     ParameterValues values_;
     Engine engine_;
     LaneCurves audioCurves_ = defaultLaneCurves();
-    PatternBank audioBank_{};
+    GrooveState audioGroove_{};
     MidiEventBuffer outEvents_{};
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;

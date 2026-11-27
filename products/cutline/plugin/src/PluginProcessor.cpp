@@ -2,6 +2,7 @@
 #include "PluginProcessor.h"
 
 #include "PluginEditor.h"
+#include "cl/groove_json.h"
 
 #include <algorithm>
 
@@ -78,8 +79,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
-    if (patterns.pull(audioBank_))
-        engine_.setPatternBank(audioBank_);
+    if (patterns.pull(audioGroove_))
+        engine_.setGroove(audioGroove_);
 
     const int numChannels = buffer.getNumChannels();
     const bool pureMidiHost = (numChannels < 1) || (wrapperType == wrapperType_AudioUnit);
@@ -112,24 +113,50 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             midi.addEvent(ev.data, ev.size, juce::jlimit(0, numSamples - 1, ev.sampleOffset));
     }
 
-    telemetry.publish(engine_, transport.bpm);
+    telemetry.publish(engine_, transport.bpm,
+                      params.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer));
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginEditor(*this); }
 
+namespace {
+const juce::Identifier kFormatProp{"format"};
+const juce::Identifier kGrooveBankProp{"grooveBank"}; // the same property PatternStore writes
+} // namespace
+
+// Saving must not change the plugin: hosts call this often, and not always on the message thread.
+// Stamp the format and the bank on a COPY of the state, so nothing is re-published to the audio thread.
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
-    if (const auto xml = state.copyState().createXml())
+    juce::ValueTree copy = state.copyState();
+    copy.setProperty(kFormatProp, kGrooveFormat, nullptr);
+    copy.setProperty(kGrooveBankProp, toJuce(serialiseGrooveBank(patterns.bank())), nullptr);
+    if (const auto xml = copy.createXml())
         copyXmlToBinary(*xml, destination);
 }
 
+// Cutline 3 state carries format="3". Anything else (a Cutline 2 session, or bytes that do not parse)
+// loads the default state, as the spec says.
 void PluginProcessor::setStateInformation(const void* data, int size) {
-    if (const auto xml = getXmlFromBinary(data, size)) {
-        if (xml->hasTagName(state.state.getType())) {
-            state.replaceState(juce::ValueTree::fromXml(*xml));
-            curves.reloadFromState();
-            patterns.reloadFromState();
-        }
+    const auto xml = getXmlFromBinary(data, size);
+    const bool current = xml != nullptr && xml->hasTagName(state.state.getType()) &&
+                         xml->getIntAttribute(kFormatProp.toString(), 0) >= kGrooveFormat;
+    if (current) {
+        state.replaceState(juce::ValueTree::fromXml(*xml));
+        curves.reloadFromState();
+        if (patterns.reloadFromState())
+            return;
     }
+    loadDefaultState();
+}
+
+void PluginProcessor::loadDefaultState() {
+    for (const auto& spec : kParams) {
+        if (auto* parameter = state.getParameter(toJuce(spec.key)))
+            parameter->setValueNotifyingHost(parameter->getDefaultValue());
+    }
+    curves.setAll(defaultLaneCurves());
+    patterns.clear();
+    presets.clearCurrentName();
 }
 
 } // namespace cl

@@ -14,11 +14,10 @@ namespace cl {
 namespace {
 const juce::Identifier kPresetName{"presetName"};
 constexpr const char* kUserCategory = "User";
-constexpr const char* kDefaultPreset = "Amen Chop 172";
+constexpr const char* kDefaultPreset = "Default Beat";
 
 std::ptrdiff_t categoryRank(const std::string& category) {
-    static constexpr std::array<std::string_view, 6> kOrder{"Breaks",     "Neuro",       "Club",
-                                                            "Polyrhythm", "Strike Body", "MIDI Slicer"};
+    static constexpr std::array<std::string_view, 4> kOrder{"Breaks", "Neuro", "Club", "MIDI Slicer"};
     return std::find(kOrder.begin(), kOrder.end(), category) - kOrder.begin();
 }
 } // namespace
@@ -42,6 +41,8 @@ std::string Presets::currentName() const {
 }
 
 void Presets::setCurrentName(const std::string& name) { state_.state.setProperty(kPresetName, toJuce(name), nullptr); }
+
+void Presets::clearCurrentName() { state_.state.removeProperty(kPresetName, nullptr); }
 
 int Presets::currentIndex() const {
     const auto name = currentName();
@@ -81,7 +82,7 @@ bool Presets::save(const juce::String& name) {
             preset.params.values[i] = parameter->convertFrom0to1(parameter->getValue());
     }
     preset.curves = curves_.all();
-    preset.bank = patterns_.get();
+    preset.bank = patterns_.bank();
 
     const auto directory = userDirectory();
     if (!directory.createDirectory())

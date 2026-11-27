@@ -13,21 +13,16 @@ namespace cl {
 
 class Telemetry {
   public:
-    Telemetry() {
-        Params defaults;
-        HeldNotes held;
-        compilePhrase(defaults, 0, 0, held, snapshot_.plan);
-    }
-
-    // Audio thread: never blocks; skips update if UI is mid-copy.
-    void publish(const Engine& engine, double bpm) noexcept {
+    // Audio thread: never blocks; skips the update if the UI is mid-copy.
+    void publish(const Engine& engine, double bpm, bool slicerMode) noexcept {
         lastBpm_.store(bpm, std::memory_order_relaxed);
         const juce::SpinLock::ScopedTryLockType scoped(lock_);
         if (!scoped.isLocked())
             return;
-        snapshot_.plan = engine.currentPlan();
+        snapshot_.position = engine.position();
+        if (slicerMode)
+            snapshot_.slicerPlan = engine.slicerPlan(); // the slicer keeps its plan snapshot
         snapshot_.heldNotes = engine.activeHeldNotes();
-        snapshot_.phraseIndex = engine.currentPhraseIndex();
         snapshot_.activeScene = engine.activeScene();
         snapshot_.pendingScene = engine.pendingScene();
         snapshot_.activePadProgram = engine.activePadProgram();
@@ -36,7 +31,6 @@ class Telemetry {
         snapshot_.midiPadMask = engine.midiPadMask();
         snapshot_.capturedClipCount = engine.capturedClipCount();
         snapshot_.bpm = bpm;
-        snapshot_.playheadBeats = engine.playheadPhraseBeats();
         snapshot_.ppq = engine.lanePpq();
         snapshot_.lanePhase = engine.lanePhases();
         snapshot_.laneValue = engine.laneValues();
