@@ -12,8 +12,8 @@
     "drive": 0.23
   },
   "cutline": {
-    "gravity": 0.72,
-    "ratchet": 0.81
+    "density": 0.72,
+    "swing": 0.31
   },
   "torus-glide": {
     "scale_gravity": 0.74,
