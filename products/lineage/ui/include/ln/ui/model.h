@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "ln/engine.h"
 #include "ln/lanes.h"
 #include "ln/params.h"
@@ -19,7 +21,7 @@ struct PresetInfo {
 enum class PrintState : std::uint8_t { idle, printing, ready };
 enum class ExportState : std::uint8_t { idle, rendering, ready, failed };
 
-class Model {
+class Model : public hba::ui::PresetMenuHost {
   public:
     virtual ~Model() = default;
 

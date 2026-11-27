@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "sb/archetypes.h"
 #include "sb/engine.h"
 #include "sb/params.h"
@@ -19,7 +21,7 @@ struct PresetEntry {
     std::string category;
 };
 
-class Model {
+class Model : public hba::ui::PresetMenuHost {
   public:
     virtual ~Model() = default;
 

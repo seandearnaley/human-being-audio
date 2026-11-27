@@ -27,6 +27,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
       hitBtn_(ctx, "HIT", [this] { context_.model.triggerAudition(-1, 0.98f); }),
       dragWav_(ctx, "Drag .wav", [this] { context_.model.startWavExport(view_ == Editor::View::compose); }),
       dragMid_(ctx, "Drag .mid", [this] { context_.model.dragPatternMidi(); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });

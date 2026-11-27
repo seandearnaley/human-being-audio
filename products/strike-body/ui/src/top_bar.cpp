@@ -21,6 +21,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
       ab_(ctx, "A", [this] { context_.model.toggleAB(); }),
       autoAlign_(ctx, "Auto-Align", [this] { context_.model.runAutoAlign(); }),
       bounceWav_(ctx, "Bounce .wav", [this] { context_.model.startBounce(); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });

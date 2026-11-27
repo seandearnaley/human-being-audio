@@ -18,6 +18,7 @@ inline void setupWordmarkButton(visage::Button& wordmark, std::function<void()> 
         if (open)
             open();
     };
+    wordmark.setName("About");
     wordmark.setAcceptsKeystrokes(true);
     wordmark.onKeyPress() = [&wordmark](const visage::KeyEvent& key) {
         if (key.keyCode() != visage::KeyCode::Return && key.keyCode() != visage::KeyCode::Space)
@@ -43,6 +44,10 @@ inline void drawBrandWordmark(visage::Canvas& canvas, const visage::Button& word
 }
 
 template <typename Model> inline void showStudioPresetMenu(Model& model, visage::Frame* anchor) {
+    if (model.openHostPresetMenu) {
+        model.openHostPresetMenu(*anchor);
+        return;
+    }
     const auto presets = model.presets();
     constexpr int kSaveId = 10000;
     visage::PopupMenu menu;

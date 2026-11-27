@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -68,7 +70,7 @@ struct VisualState {
     bool activeSpectral = false;
 };
 
-class Model {
+class Model : public hba::ui::PresetMenuHost {
   public:
     virtual ~Model() = default;
 

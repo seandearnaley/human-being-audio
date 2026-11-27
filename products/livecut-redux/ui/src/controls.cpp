@@ -111,6 +111,9 @@ void TogglePill::mouseDown(const visage::MouseEvent& e) {
 
 ParamSlider::ParamSlider(Context& context, std::string paramId, std::string label, unsigned accent, bool compact)
     : context_(context), id_(std::move(paramId)), label_(std::move(label)), accent_(accent), compact_(compact) {
+    setName(label_);
+    setAcceptsKeystrokes(true);
+    onDraw() += [this](visage::Canvas& canvas) { hba::ui::drawKeyboardFocus(canvas, *this, context_.scale); };
     context_.live.push_back(this);
 }
 
@@ -261,13 +264,27 @@ void ParamSlider::mouseUp(const visage::MouseEvent&) {
 
 bool ParamSlider::mouseWheel(const visage::MouseEvent& e) {
     const float step = e.isShiftDown() ? 0.005f : 0.025f;
-    const float next = std::clamp(context_.model.getNormalised(id_) + e.wheel_delta_y * step, 0.0f, 1.0f);
+    setFromNormalised(context_.model.getNormalised(id_) + e.wheel_delta_y * step);
+    return true;
+}
+
+bool ParamSlider::keyPress(const visage::KeyEvent& key) {
+    using Key = visage::KeyCode;
+    const auto k = key.keyCode();
+    if (key.isMainModifier() || (k != Key::Left && k != Key::Down && k != Key::Right && k != Key::Up))
+        return false;
+    const float step = key.isShiftDown() ? 0.005f : 0.025f;
+    setFromNormalised(context_.model.getNormalised(id_) + ((k == Key::Left || k == Key::Down) ? -step : step));
+    return true;
+}
+
+void ParamSlider::setFromNormalised(float v) {
+    const auto next = std::clamp(v, 0.0f, 1.0f);
     context_.model.beginGesture(id_);
     context_.model.setNormalised(id_, next);
     context_.model.endGesture(id_);
     drawn_ = next;
     redraw();
-    return true;
 }
 
 // --- RangeSlider ------------------------------------------------------------

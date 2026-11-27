@@ -33,6 +33,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
       dragMid_(ctx, "Drag .mid", [this] { context_.model.dragExportedMidi(); }),
       viewPlay_(ctx, "PLAY", [this] { setStudioView(false); }),
       viewStudio_(ctx, "STUDIO", [this] { setStudioView(true); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });

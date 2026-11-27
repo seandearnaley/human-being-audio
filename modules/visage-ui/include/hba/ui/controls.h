@@ -2,6 +2,8 @@
 // Shared Visage parameter control bases, buttons, toggle pills, and stereo output meter primitives.
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include <hba/ui/theme.h>
 #include <visage/ui.h>
 
@@ -145,7 +147,7 @@ struct ParamControlMetrics {
 
 template <typename ContextT, typename ParamIdT, typename ParamSpecT, typename ParamKindT,
           ParamControlMetrics Metrics = ParamControlMetrics{}>
-class ParamFrameBase : public visage::Frame, public Live {
+class ParamFrameBase : public visage::Frame, public Live, public ParameterControl {
   public:
     ParamFrameBase(ContextT& context, ParamIdT id, unsigned accent)
         : context_(context), accent_(accent), id_(id), spec_(detail::lookupParamSpec(id)) {
@@ -161,6 +163,10 @@ class ParamFrameBase : public visage::Frame, public Live {
     float value() const { return context_.model.get(id_); }
     float normalised() const { return toNormalised(spec_, value()); }
     std::string text() const { return formatValue(spec_, value()); }
+
+    std::string_view parameterKey() const override { return spec_.key; }
+    std::string valueText() const override { return text(); }
+    void setFromNormalised(float v) override { commit(fromNormalised(spec_, v)); }
 
     void setAccent(unsigned accent) {
         if (accent == accent_)
@@ -479,7 +485,7 @@ template <typename ParamFrameT> class StandardChip final : public ParamFrameT {
     std::string textOverride_;
 };
 
-template <typename ContextT> class ActionButtonBase : public visage::Frame {
+template <typename ContextT> class ActionButtonBase : public visage::Frame, public ActionControl {
   public:
     ActionButtonBase(ContextT& ctx, std::string label, std::function<void()> onClick = {})
         : context_(ctx), label_(std::move(label)), onClick_(std::move(onClick)) {
@@ -500,6 +506,18 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
         redraw();
     }
 
+    void activate() override {
+        if (enabled_ && onClick_)
+            onClick_();
+    }
+    void setAccessibilityPrefix(std::string prefix) {
+        accessibilityPrefix_ = std::move(prefix);
+        updateAccessibleName();
+    }
+    void updateAccessibleName() {
+        setName(accessibilityPrefix_.empty() ? label_ : accessibilityPrefix_ + " " + label_);
+    }
+
     void setDragReady(bool ready) { dragReady_ = ready; }
     void setAlternateAction(std::function<void()> fn) { alternate_ = std::move(fn); }
 
@@ -511,8 +529,8 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
         if (!key.isRepeat()) {
             if (key.isShiftDown() && alternate_)
                 alternate_();
-            else if (onClick_)
-                onClick_();
+            else
+                activate();
         }
         return true;
     }
@@ -520,7 +538,7 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     void setLabel(std::string next) {
         if (label_ != next) {
             label_ = std::move(next);
-            setName(label_);
+            updateAccessibleName();
             redraw();
         }
     }
@@ -595,6 +613,7 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     std::string label_;
     unsigned accent_ = colour::text;
     bool enabled_ = true;
+    std::string accessibilityPrefix_;
     bool dragReady_ = true;
     bool active_ = false;
     bool hovered_ = false;

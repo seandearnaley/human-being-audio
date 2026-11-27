@@ -37,6 +37,10 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
       undo_(context, "Undo", [this] { context_.model.undo(); }),
       redo_(context, "Redo", [this] { context_.model.redo(); }),
       ab_(context, "A", [this] { context_.model.toggleAB(); }) {
+    previous_.setName("Previous preset");
+    next_.setName("Next preset");
+    name_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });

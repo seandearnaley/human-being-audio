@@ -42,11 +42,16 @@ class TogglePill final : public visage::Frame, public Live {
     bool initialised_ = false;
 };
 
-class ParamSlider final : public visage::Frame, public Live {
+class ParamSlider final : public visage::Frame, public Live, public hba::ui::ParameterControl {
   public:
     ParamSlider(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent,
                 bool compact = false);
     ~ParamSlider() override;
+    std::string_view parameterKey() const override { return id_; }
+    std::string valueText() const override { return context_.model.formatValue(id_); }
+    void setFromNormalised(float v) override;
+    bool keyPress(const visage::KeyEvent& key) override;
+    void focusChanged(bool, bool) override { redraw(); }
 
     void setAccent(unsigned accent);
     void setDimmed(bool dimmed);
