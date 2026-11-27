@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 
+#include "Library.h"
 #include "Parameters.h"
 
 #include <algorithm>
@@ -241,5 +242,9 @@ void PluginModel::redo() {
 void PluginModel::toggleAB() { applySnapshot(processor_.history.toggleAB(captureSnapshot())); }
 
 void PluginModel::copyAB() { processor_.history.copyActiveToOther(captureSnapshot()); }
+
+const std::vector<ui::LibraryPattern>& PluginModel::patternLibrary() const { return factoryLibrary().patterns; }
+
+const std::vector<ui::LibraryFill>& PluginModel::fillLibrary() const { return factoryLibrary().fills; }
 
 } // namespace cl

@@ -21,12 +21,16 @@ juce_add_plugin(Cutline
 
 file(GLOB CL_PRESET_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/presets/*.json")
 juce_add_binary_data(CutlinePresets HEADER_NAME CutlinePresetsData.h NAMESPACE CutlinePresetsData SOURCES ${CL_PRESET_FILES})
+file(GLOB CL_LIBRARY_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/patterns/*.json" "${PROJECT_SOURCE_DIR}/fills/*.json")
+juce_add_binary_data(CutlineLibrary HEADER_NAME CutlineLibraryData.h NAMESPACE CutlineLibraryData SOURCES ${CL_LIBRARY_FILES})
 
 # Compile plugin sources once into Cutline (JUCE's SharedCode static archive)
 # so tests link directly instead of recompiling plugin & JUCE.
 target_sources(Cutline PRIVATE
     src/CurveStore.cpp
     src/CurveStore.h
+    src/Library.cpp
+    src/Library.h
     src/MidiExporter.cpp
     src/MidiExporter.h
     src/Parameters.cpp
@@ -56,6 +60,7 @@ target_link_libraries(Cutline
         hba_plugin_host
         cl_warnings
         CutlinePresets
+        CutlineLibrary
         juce::juce_audio_utils
     PUBLIC
         hba_studio_ui

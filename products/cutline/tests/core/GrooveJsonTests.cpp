@@ -233,3 +233,26 @@ TEST_CASE("Any sanitised bank survives a round trip unchanged", "[groove][json]"
         CHECK(*back == bank);
     }
 }
+
+TEST_CASE("A library fill file parses into a Fill, and a pattern file does not", "[core][json]") {
+    const std::string fillJson =
+        R"({"format": 3, "name": "Snare Pickup", "category": "Rolls", "beats": 1,
+            "lanes": {"snare": "............xxXX", "kick": "............x..."}})";
+    std::string name;
+    const auto fill = cl::parseFill(fillJson, nullptr, &name);
+    REQUIRE(fill.has_value());
+    CHECK(name == "Snare Pickup");
+    CHECK(cl::libraryCategory(fillJson) == "Rolls");
+    CHECK(fill->beats == 1);
+    CHECK(fill->steps[1][12].on());
+    CHECK(fill->steps[1][15].velocity == cl::kVelocityAccent);
+    CHECK(fill->steps[0][12].on());
+    CHECK_FALSE(fill->steps[1][11].on());
+
+    const std::string patternJson =
+        R"({"format": 3, "name": "P", "bars": 1, "lanes": {"kick": {"core": "x..............."}}})";
+    CHECK_FALSE(cl::parseFill(patternJson).has_value());
+    CHECK(cl::parsePattern(patternJson).has_value());
+    CHECK(cl::libraryCategory(patternJson).empty());
+    CHECK_FALSE(cl::parseFill(R"({"format": 2, "lanes": {}})").has_value());
+}

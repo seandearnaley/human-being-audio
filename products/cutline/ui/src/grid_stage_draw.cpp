@@ -76,6 +76,8 @@ GridStagePanel::Layout GridStagePanel::computeLayout(float w, float h, int steps
         pill = {sx, hdrY, px(26.0f), hdrH};
         sx += px(26.0f + 6.0f);
     }
+    // The library menu, after the pills' "bars" / "beats" label.
+    lay.btnLibrary = {sx + px(40.0f), hdrY, px(86.0f), hdrH};
 
     // The layer brush chips, right-aligned in the sidebar column, just left of Clone.
     float bx = pad + px(214.0f);
@@ -185,6 +187,7 @@ void GridStagePanel::drawHeader(visage::Canvas& canvas, const Layout& lay, const
         const Rect& last = lay.lengthPills.back();
         drawLabel(canvas, context_, fillView() ? "beats" : "bars", last.x + last.w + px(6.0f), last.y, px(40.0f),
                   last.h, colour::textFaint, visage::Font::kLeft, 9.5f, Weight::medium);
+        drawAct(lay.btnLibrary, fillView() ? "Fills \u25BE" : "Patterns \u25BE", hue, 4);
     }
 
     // Right-aligned live activity LEDs and the BPM readout.

@@ -42,6 +42,7 @@ class GridStagePanel final : public Panel {
 
     struct Layout {
         Rect btnClone, btnClear, btnVary;
+        Rect btnLibrary; // Patterns in the pattern view, Fills in the fill view
         Rect btnFill;
         std::array<Rect, 3> lengthPills{};
         std::array<Rect, 3> brushChips{}; // Core, Groove, Detail
@@ -96,13 +97,14 @@ class GridStagePanel final : public Panel {
     void showDrumStepMenu(int lane, int step);
     void showSlicerStepMenu(int step);
     void showLaneMenu(int lane);
+    void showLibraryMenu();
 
     std::array<float, 5> activityHold_{};
     int hoverLane_ = -1;
     int hoverStep_ = -1;
     int hoverLengthLane_ = -1;
     bool hoverSlicerLen_ = false;
-    int hoverAction_ = -1; // 0 = Clone, 1 = Clear, 2 = Fill, 3 = Vary, 10..12 = length pills, 20..22 = brush chips
+    int hoverAction_ = -1; // 0 = Clone, 1 = Clear, 2 = Fill, 3 = Vary, 4 = Patterns / Fills, 10..12 = length pills, 20..22 = brush chips
 
     Layer brush_ = Layer::groove; // UI state: not saved with the plugin
     DragMode dragMode_ = DragMode::none;

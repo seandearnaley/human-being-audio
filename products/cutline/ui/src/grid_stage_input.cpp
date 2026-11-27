@@ -111,6 +111,8 @@ void GridStagePanel::mouseMove(const visage::MouseEvent& e) {
         hoverAction_ = 2;
     else if (drum && !fillView() && lay.btnVary.contains(mx, my))
         hoverAction_ = 3;
+    else if (drum && lay.btnLibrary.contains(mx, my))
+        hoverAction_ = 4;
     for (std::size_t i = 0; drum && i < lay.lengthPills.size(); ++i)
         if (lay.lengthPills[i].contains(mx, my))
             hoverAction_ = 10 + static_cast<int>(i);
@@ -241,6 +243,11 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
     if (lay.btnFill.contains(mx, my)) {
         context_.fillView = !context_.fillView;
         redraw();
+        return;
+    }
+
+    if (lay.btnLibrary.contains(mx, my)) {
+        showLibraryMenu();
         return;
     }
 
@@ -580,6 +587,53 @@ void GridStagePanel::showSlicerStepMenu(int step) {
                 s.ratchet = static_cast<std::uint8_t>(choice);
             else if (choice == 10)
                 s.flam = !s.flam;
+            return true;
+        });
+    };
+    menu.show(this);
+}
+
+// The factory library, one submenu per category. A choice replaces the edited scene's pattern (pattern view) or its
+// fill (fill view), as one undo step.
+void GridStagePanel::showLibraryMenu() {
+    const bool fill = fillView();
+    visage::PopupMenu menu;
+    auto addGrouped = [&menu](const auto& items) {
+        visage::PopupMenu group;
+        std::string category;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            if (i == 0 || items[i].category != category) {
+                if (i > 0)
+                    menu.addSubMenu(std::move(group));
+                category = items[i].category;
+                group = visage::PopupMenu(category);
+            }
+            group.addOption(static_cast<int>(i) + 1, items[i].name);
+        }
+        if (!items.empty())
+            menu.addSubMenu(std::move(group));
+    };
+    if (fill)
+        addGrouped(context_.model.fillLibrary());
+    else
+        addGrouped(context_.model.patternLibrary());
+    if (menu.size() == 0)
+        return;
+    menu.onSelection() += [this, fill](int choice) {
+        const auto index = static_cast<std::size_t>(choice - 1);
+        const auto scene = static_cast<std::size_t>(editScene());
+        edit([&](GrooveBank& bank) {
+            if (fill) {
+                const auto& fills = context_.model.fillLibrary();
+                if (index >= fills.size())
+                    return false;
+                bank.scenes[scene].fill = fills[index].fill;
+                return true;
+            }
+            const auto& patterns = context_.model.patternLibrary();
+            if (index >= patterns.size())
+                return false;
+            bank.scenes[scene] = patterns[index].pattern;
             return true;
         });
     };

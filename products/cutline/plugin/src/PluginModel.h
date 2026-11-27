@@ -43,6 +43,8 @@ class PluginModel final : public ui::Model {
 
     std::string presetName() const override;
     std::vector<ui::PresetInfo> presets() const override;
+    const std::vector<ui::LibraryPattern>& patternLibrary() const override;
+    const std::vector<ui::LibraryFill>& fillLibrary() const override;
     void loadPreset(int index) override;
     void stepPreset(int delta) override;
     void savePreset() override;

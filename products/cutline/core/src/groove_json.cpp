@@ -431,6 +431,41 @@ std::optional<Pattern> parsePattern(std::string_view json, std::string* error, s
     return detail::readPattern(root, error);
 }
 
+std::optional<Fill> parseFill(std::string_view json, std::string* error, std::string* name) {
+    const detail::Json root = detail::Json::parse(json, nullptr, false);
+    if (!root.is_object() || !root.contains("lanes")) {
+        if (error != nullptr)
+            *error = "fill is not a JSON object with \"lanes\"";
+        return std::nullopt;
+    }
+    const auto format = root.find("format");
+    if (format == root.end() || !format->is_number_integer() || format->get<int>() < kGrooveFormat) {
+        if (error != nullptr)
+            *error = std::string(kOldFormatError);
+        return std::nullopt;
+    }
+    // Read it as the fill of a one-bar pattern, so fills and patterns share one reader.
+    detail::Json fill = detail::Json::object();
+    fill["lanes"] = root["lanes"];
+    if (root.contains("beats"))
+        fill["beats"] = root["beats"];
+    detail::Json wrapped = detail::Json::object();
+    wrapped["bars"] = 1;
+    wrapped["lanes"] = detail::Json::object();
+    wrapped["fill"] = std::move(fill);
+    auto pattern = detail::readPattern(wrapped, error);
+    if (!pattern)
+        return std::nullopt;
+    if (name != nullptr)
+        *name = hba::core::jsonStringOr(root, "name");
+    return pattern->fill;
+}
+
+std::string libraryCategory(std::string_view json) {
+    const detail::Json root = detail::Json::parse(json, nullptr, false);
+    return root.is_object() ? hba::core::jsonStringOr(root, "category") : std::string{};
+}
+
 std::string serialisePattern(const Pattern& pattern, std::string_view name) {
     detail::Json root = detail::Json::object();
     root["format"] = kGrooveFormat;

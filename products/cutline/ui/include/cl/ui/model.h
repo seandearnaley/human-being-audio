@@ -13,6 +13,19 @@
 
 namespace cl::ui {
 
+// A factory pattern or fill the grid's menus can load into the edited scene.
+struct LibraryPattern {
+    std::string name;
+    std::string category;
+    Pattern pattern;
+};
+
+struct LibraryFill {
+    std::string name;
+    std::string category;
+    Fill fill;
+};
+
 struct PresetInfo {
     std::string name;
     std::string category;
@@ -66,6 +79,16 @@ struct Model {
 
     virtual void cloneActiveSceneToNext() = 0;
     virtual void clearActiveScene() = 0;
+
+    // The factory pattern and fill library, in menu order (grouped by category).
+    virtual const std::vector<LibraryPattern>& patternLibrary() const {
+        static const std::vector<LibraryPattern> none;
+        return none;
+    }
+    virtual const std::vector<LibraryFill>& fillLibrary() const {
+        static const std::vector<LibraryFill> none;
+        return none;
+    }
 
     virtual void dragMidiPhrase() = 0;
     virtual std::string exportStatus() const = 0;
