@@ -41,6 +41,8 @@ ctest --preset engine
 
 Release targets produce a VST3 bundle and standalone application on all three platforms and an Audio Unit on macOS. Find Livecut outputs in `build/release/Livecut_artefacts/Release/` and Tract Form outputs in `build/release/plugin/TractForm_artefacts/Release/`. These are developer builds. To produce signed installers and a public release, follow the [studio release guide](factory/release/README.md). The build presets leave installed plugins alone.
 
+When switching JUCE versions, start the affected product preset in a fresh build directory. For example, move an existing `build/dev` to an unused sibling name before running `cmake --preset dev`. JUCE’s juceaide and VST3 manifest helper each keep a nested CMake cache tied to the SDK source path. The shared CPM source cache can be reused.
+
 CTest covers both products on each OS. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
 
 ## C++ editor and quality checks

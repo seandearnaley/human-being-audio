@@ -30,13 +30,10 @@ function(hba_add_visage)
 endfunction()
 
 function(hba_add_juce)
-    set(juce_version 9.0.6)
-    # juceaide bootstraps a nested CMake cache tied to the release's source path.
-    set(FETCHCONTENT_BASE_DIR "${FETCHCONTENT_BASE_DIR}/${juce_version}")
     CPMAddPackage(
         NAME JUCE
-        VERSION ${juce_version}
-        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/${juce_version}.tar.gz"
+        VERSION 9.0.6
+        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/9.0.6.tar.gz"
         URL_HASH SHA256=103e6c9d5f17f19bc7b5485a890573609d326513aad4db6b045181f4936ef424
         SYSTEM YES
     )
