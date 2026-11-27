@@ -5,6 +5,7 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <hba/core/wav.h>
 
@@ -184,6 +185,87 @@ TEST_CASE("Lineage host session retains exact stacked PCM and clears former step
     CHECK(proc.printStore.generation() == 3);
     model.toggleAB();
     CHECK_FALSE(proc.printStore.hasPrint());
+}
+
+TEST_CASE("Lineage migrates legacy host print metadata", "[plugin][recall][legacy]") {
+    ensureJuce();
+    ln::PluginProcessor proc;
+    proc.prepareToPlay(48000, 64);
+    auto legacy = proc.state.copyState();
+    legacy.setProperty("LineagePrintGen", 2, nullptr);
+    legacy.setProperty("LineagePrintRoot", 36, nullptr);
+    const auto open = [&] {
+        juce::MemoryBlock blob;
+        juce::AudioProcessor::copyXmlToBinary(*legacy.createXml(), blob);
+        proc.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
+    };
+    const auto savedTree = [&] {
+        juce::MemoryBlock blob;
+        proc.getStateInformation(blob);
+        return juce::ValueTree::fromXml(
+            *juce::AudioProcessor::getXmlFromBinary(blob.getData(), static_cast<int>(blob.getSize())));
+    };
+
+    SECTION("an existing imported file becomes a self-contained print") {
+        juce::TemporaryFile wav(".wav");
+        std::array<float, 512> samples{};
+        samples[96] = -0.5f;
+        samples[145] = 0.25f;
+        REQUIRE(hba::core::writeWavFloat(wav.getFile().getFullPathName().toStdString(), samples, 2, 44100));
+        ln::PluginProcessor reference;
+        REQUIRE(reference.printStore.loadAudioFile(wav.getFile(), 48000));
+        legacy.setProperty("LineagePrintFile", wav.getFile().getFullPathName(), nullptr);
+        open();
+        REQUIRE(proc.printStore.hasPrint());
+        CHECK(bool(proc.printStore.snapshot().audio->left == reference.printStore.snapshot().audio->left));
+        CHECK(bool(proc.printStore.snapshot().audio->right == reference.printStore.snapshot().audio->right));
+        REQUIRE(wav.getFile().deleteFile());
+        legacy = savedTree();
+        REQUIRE(legacy.getChildWithName("Print").isValid());
+        CHECK_FALSE(legacy.hasProperty("LineagePrintFile"));
+        open();
+        CHECK(bool(proc.printStore.snapshot().audio->left == reference.printStore.snapshot().audio->left));
+    }
+    SECTION("a generation-two bake uses the previous reader's recipe") {
+        const double bpm = GENERATE(123.0, 172.0);
+        if (bpm != 172.0)
+            legacy.setProperty("LineagePrintBpm", bpm, nullptr);
+        open();
+        const auto expected = ln::Engine::renderPrint(proc.currentParams(), proc.curves.all(), 48000, bpm, 36);
+        REQUIRE(proc.printStore.hasPrint());
+        CHECK(proc.printStore.snapshot().audio->rootMidiNote == 36);
+        CHECK(bool(proc.printStore.snapshot().audio->left == expected.left));
+        CHECK(savedTree().getChildWithName("Print").isValid());
+    }
+    SECTION("missing imports and unavailable stacked audio remain recoverable") {
+        juce::TemporaryFile missing(".wav");
+        const bool imported = GENERATE(false, true);
+        if (imported)
+            legacy.setProperty("LineagePrintFile", missing.getFile().getFullPathName(), nullptr);
+        else
+            legacy.setProperty("LineagePrintGen", 3, nullptr);
+        open();
+        CHECK_FALSE(proc.printStore.hasPrint());
+        CHECK(proc.printStore.label() != "Not printed");
+        const auto saved = savedTree();
+        CHECK(saved["LineagePrintGen"] == legacy["LineagePrintGen"]);
+        CHECK(saved["LineagePrintFile"] == legacy["LineagePrintFile"]);
+        ln::PluginModel model(proc);
+        model.toggleAB();
+        proc.printStore.clear();
+        CHECK_FALSE(savedTree().hasProperty("LineagePrintGen"));
+        model.toggleAB();
+        CHECK(savedTree()["LineagePrintGen"] == legacy["LineagePrintGen"]);
+        if (imported) {
+            std::array<float, 256> samples{};
+            samples[128] = 0.5f;
+            REQUIRE(hba::core::writeWavFloat(missing.getFile().getFullPathName().toStdString(), samples, 2, 48000));
+            legacy = savedTree();
+            open();
+            CHECK(proc.printStore.hasPrint());
+            CHECK_FALSE(savedTree().hasProperty("LineagePrintFile"));
+        }
+    }
 }
 
 TEST_CASE("Lineage recalls imported stereo audio without the file and prints four full bars", "[plugin][recall]") {

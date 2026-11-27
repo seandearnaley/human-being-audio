@@ -21,31 +21,35 @@ PrintStore::~PrintStore() {
 
 std::string PrintStore::label() const {
     const juce::ScopedLock sl(lock_);
-    return current_ ? current_->label : std::string("Not printed");
+    if (current_.audio)
+        return current_.audio->label;
+    if (current_.legacy.isValid())
+        return current_.legacy.hasProperty("LineagePrintFile") ? "File unavailable" : "Stack unavailable";
+    return "Not printed";
 }
 
 std::array<float, PrintBuffer::kWaveformPoints> PrintStore::peaks() const {
     const juce::ScopedLock sl(lock_);
-    return current_ ? current_->peaks : std::array<float, PrintBuffer::kWaveformPoints>{};
+    return current_.audio ? current_.audio->peaks : std::array<float, PrintBuffer::kWaveformPoints>{};
 }
 
 PrintBuffer PrintStore::copyBuffer() const {
-    const auto print = snapshot();
+    const auto print = snapshot().audio;
     return print ? *print : PrintBuffer{};
 }
 
-PrintHandle PrintStore::snapshot() const {
+PrintStore::Snapshot PrintStore::snapshot() const {
     const juce::ScopedLock sl(lock_);
     return current_;
 }
 
 // Caller holds lock_: the UI, host restore and worker share one publication order.
-void PrintStore::setCurrent(PrintHandle print) {
+void PrintStore::setCurrent(Snapshot print) {
     current_ = std::move(print);
-    onPublish_(current_);
-    generation_.store(current_ ? current_->generation : 0, std::memory_order_release);
+    onPublish_(current_.audio);
+    generation_.store(current_.audio ? current_.audio->generation : 0, std::memory_order_release);
     canStepBack_.store(!history_.empty(), std::memory_order_release);
-    printState_.store(current_ ? ui::PrintState::ready : ui::PrintState::idle, std::memory_order_release);
+    printState_.store(current_.audio ? ui::PrintState::ready : ui::PrintState::idle, std::memory_order_release);
 }
 
 void PrintStore::commitBuffer(PrintBuffer buf, std::uint64_t ticket) {
@@ -53,12 +57,12 @@ void PrintStore::commitBuffer(PrintBuffer buf, std::uint64_t ticket) {
     const juce::ScopedLock sl(lock_);
     if (ticket != ticketCounter_.load())
         return;
-    if (current_) {
+    if (current_.audio || current_.legacy.isValid()) {
         if (history_.size() == 4)
             history_.erase(history_.begin());
         history_.push_back(current_);
     }
-    setCurrent(std::move(next));
+    setCurrent({std::move(next), {}});
 }
 
 void PrintStore::triggerPrint(const Params& params, const LaneCurves& curves, double sampleRate, double bpm,
@@ -81,22 +85,22 @@ void PrintStore::triggerPrint(const Params& params, const LaneCurves& curves, do
 void PrintStore::renderSync(const Params& params, const LaneCurves& curves, double sampleRate, double bpm, int rootNote,
                             bool stackGeneration) {
     const auto ticket = ++ticketCounter_;
-    auto prev = stackGeneration ? snapshot() : nullptr;
+    auto prev = stackGeneration ? snapshot().audio : nullptr;
     PrintBuffer buf =
         Engine::renderPrint(params, curves, sampleRate > 8000.0 ? sampleRate : 48000.0, std::clamp(bpm, 40.0, 260.0),
                             std::clamp(rootNote, 12, 84), prev.get(), stackGeneration);
     commitBuffer(std::move(buf), ticket);
 }
 
-bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) {
+static PrintBuffer readAudioFile(const juce::File& file, double targetSampleRate) {
     if (!file.existsAsFile())
-        return false;
+        return {};
 
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
     if (reader == nullptr || reader->lengthInSamples <= 64)
-        return false;
+        return {};
 
     const double srcRate = reader->sampleRate > 8000.0 ? reader->sampleRate : 48000.0;
     const double dstRate = targetSampleRate > 8000.0 ? targetSampleRate : 48000.0;
@@ -108,7 +112,7 @@ bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) 
 
     juce::AudioBuffer<float> tmp(srcCh, maxSrcSamples);
     if (!reader->read(&tmp, 0, maxSrcSamples, 0, true, srcCh > 1))
-        return false;
+        return {};
 
     const int dstLen = std::clamp(static_cast<int>(std::floor(static_cast<double>(maxSrcSamples) / ratio)), 65,
                                   PrintBuffer::kMaxPrintSamples);
@@ -133,7 +137,7 @@ bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) 
         const float l = inL[i0] + (inL[i1] - inL[i0]) * frac;
         const float r = inR[i0] + (inR[i1] - inR[i0]) * frac;
         if (!std::isfinite(l) || !std::isfinite(r))
-            return false;
+            return {};
         buf.left[static_cast<std::size_t>(i)] = l;
         buf.right[static_cast<std::size_t>(i)] = r;
         peak = std::max(peak, std::max(std::abs(l), std::abs(r)));
@@ -164,6 +168,13 @@ bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) 
     buf.label = "EXT \xc2\xb7 " + stem;
     buf.computePeaks();
 
+    return buf;
+}
+
+bool PrintStore::loadAudioFile(const juce::File& file, double targetSampleRate) {
+    auto buf = readAudioFile(file, targetSampleRate);
+    if (!buf.valid())
+        return false;
     commitBuffer(std::move(buf), ++ticketCounter_);
     return true;
 }
@@ -197,7 +208,7 @@ bool PrintStore::stepBack() {
 
 void PrintStore::clear() { restore({}); }
 
-void PrintStore::restore(PrintHandle print) {
+void PrintStore::restore(Snapshot print) {
     const juce::ScopedLock sl(lock_);
     ++ticketCounter_;
     hasPendingJob_ = false;
@@ -205,8 +216,36 @@ void PrintStore::restore(PrintHandle print) {
     setCurrent(std::move(print));
 }
 
+void PrintStore::restoreSession(Snapshot print, const Params& params, const LaneCurves& curves, double sampleRate) {
+    if (print.legacy.isValid()) {
+        PrintBuffer recovered;
+        if (print.legacy.hasProperty("LineagePrintFile")) {
+            const auto path = print.legacy["LineagePrintFile"].toString();
+            if (juce::File::isAbsolutePath(path))
+                recovered = readAudioFile(juce::File(path), sampleRate);
+        } else if (static_cast<int>(print.legacy["LineagePrintGen"]) == 2) {
+            // The original reader used these values for sessions that omitted the root or tempo.
+            const int root = print.legacy.getProperty("LineagePrintRoot", 29);
+            const double bpm = print.legacy.getProperty("LineagePrintBpm", 172.0);
+            if (std::isfinite(bpm))
+                recovered = Engine::renderPrint(params, curves, sampleRate, std::clamp(bpm, 40.0, 260.0),
+                                                std::clamp(root, 12, 84));
+        }
+        if (recovered.valid())
+            print = {std::make_shared<const PrintBuffer>(std::move(recovered)), {}};
+    }
+    restore(std::move(print));
+}
+
 void PrintStore::appendState(juce::ValueTree& session) const {
-    const auto print = snapshot();
+    const auto saved = snapshot();
+    if (saved.legacy.isValid()) {
+        for (int i = 0; i < saved.legacy.getNumProperties(); ++i) {
+            const auto key = saved.legacy.getPropertyName(i);
+            session.setProperty(key, saved.legacy[key], nullptr);
+        }
+    }
+    const auto& print = saved.audio;
     if (!print)
         return;
     juce::MemoryOutputStream pcm(static_cast<size_t>(print->length) * 2 * sizeof(float));
@@ -224,8 +263,16 @@ void PrintStore::appendState(juce::ValueTree& session) const {
     session.appendChild(asset, nullptr);
 }
 
-bool PrintStore::decodeState(juce::ValueTree& session, PrintHandle& print) {
+bool PrintStore::decodeState(juce::ValueTree& session, Snapshot& print) {
     const auto asset = session.getChildWithName("Print");
+    if (!asset.isValid() &&
+        (session.hasProperty("LineagePrintFile") || static_cast<int>(session["LineagePrintGen"]) >= 2))
+        print.legacy = juce::ValueTree("LegacyPrint");
+    for (auto key : {"LineagePrintFile", "LineagePrintGen", "LineagePrintRoot", "LineagePrintBpm"}) {
+        if (print.legacy.isValid() && session.hasProperty(key))
+            print.legacy.setProperty(key, session[key], nullptr);
+        session.removeProperty(key, nullptr);
+    }
     if (!asset.isValid())
         return true;
     const auto* pcm = asset["pcm"].getBinaryData();
@@ -254,7 +301,7 @@ bool PrintStore::decodeState(juce::ValueTree& session, PrintHandle& print) {
             return false;
     }
     next->computePeaks();
-    print = std::move(next);
+    print.audio = std::move(next);
     session.removeChild(asset, nullptr);
     return true;
 }
@@ -284,7 +331,7 @@ void PrintStore::run() {
             job = pendingJob_;
             hasPendingJob_ = false;
             if (job.stackGeneration)
-                prev = current_;
+                prev = current_.audio;
         }
 
         if (ticketCounter_.load(std::memory_order_acquire) != job.ticket)
