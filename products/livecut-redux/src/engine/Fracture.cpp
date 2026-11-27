@@ -275,9 +275,14 @@ int GrainResampler::tapsFor(double rate) noexcept HBA_NONBLOCKING {
     return std::max (32,2*static_cast<int> (std::ceil (12*bucketRate-1e-12)));
 }
 
-void GrainResampler::prepare()
-{
-    coefficients.clear();
+struct GrainResampler::KernelBank {
+    KernelBank();
+    std::array<std::size_t, bucketCount> offsets{};
+    std::vector<float> coefficients;
+};
+
+GrainResampler::KernelBank::KernelBank() {
+
     std::size_t total = 0;
     for (int b=0;b<bucketCount;++b)
         total += static_cast<std::size_t> ((phaseCount+1)*tapsFor (std::exp2(b/8.0)));
@@ -307,16 +312,24 @@ void GrainResampler::prepare()
     }
 }
 
+void GrainResampler::prepare() {
+    // The table depends only on the fixed phase and rate buckets. First-use construction stays off the audio thread.
+    static const KernelBank kernels;
+    bank = &kernels;
+}
+
 std::span<const float> GrainResampler::coefficientsFor(double rate, int phase) const noexcept HBA_NONBLOCKING {
-    assert(phase>=0 && phase<=phaseCount && !coefficients.empty());
+    assert(phase >= 0 && phase <= phaseCount && bank != nullptr);
     const auto taps=tapsFor(rate);
-    return {coefficients.data()+offsets[static_cast<std::size_t>(bucketFor(rate))]+static_cast<std::size_t>(phase*taps),static_cast<std::size_t>(taps)};
+    return {bank->coefficients.data() + bank->offsets[static_cast<std::size_t>(bucketFor(rate))] +
+                static_cast<std::size_t>(phase * taps),
+            static_cast<std::size_t>(taps)};
 }
 
 GrainResampler::Kernel GrainResampler::kernelFor(double rate) const noexcept HBA_NONBLOCKING {
-    assert(!coefficients.empty());
+    assert(bank != nullptr);
     const auto taps=tapsFor(rate);
-    return {coefficients.data()+offsets[static_cast<std::size_t>(bucketFor(rate))],taps,taps/2-1};
+    return {bank->coefficients.data() + bank->offsets[static_cast<std::size_t>(bucketFor(rate))], taps, taps / 2 - 1};
 }
 
 std::optional<StereoFrame> GrainResampler::read(const LivePlayer& player, SourceRegion source, double position,
