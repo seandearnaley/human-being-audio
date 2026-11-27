@@ -183,28 +183,29 @@ One screen, no tabs, 16:9, resizable with a fixed aspect ratio. Default
 1280×720 logical pixels, minimum 960×540.
 
 - **Top bar**: clickable product wordmark opening the studio About page, preset name with previous/next and save, six macro
-  knobs.
+  knobs. The host preset menu offers categorized presets, Save User Preset and A/B copy.
+  Shift+Enter on A/B also copies the active slot.
 - **Signal graph**: Master, Reese A, Reese B with the feedback loop, Tract, Fold,
   Sculpt, Mid/side, Out. The sub path runs underneath from Master to Out. Each node draws
   its own live shape and holds its own values, edited by dragging.
 - **Analysis**: scope (master, growl, output), phase correlation, spectrum.
 - **Movement**: four lanes with on, rate, phase, depth and shape, drawn with a
   moving playhead. Beside them: meters, Squash, Limit, Ceiling, Quality,
-  Resample.
+  Bounce WAV.
 
 No taglines, legends or helper text. Everything is drawn as vectors; no bitmaps.
 
 `ui` reads and writes through `ui::Model`: real-valued get/set with gesture
-begin and end, preset operations, Resample, and a `Visuals` snapshot (a scope
+begin and end, preset operations, offline WAV rendering, and a `Visuals` snapshot (a scope
 phase-locked to the master, stereo field, spectrum, levels, gain reduction, lane
 state, current note). `FakeModel` drives headless rendering.
 
-## Resample
+## Bounce WAV
 
 Renders the current patch offline at 16× for exactly four bars at the host tempo
 and the last played note, writes 32-bit float WAV to
-`~/Music/Tract Form/Resamples/`, and turns the button into a drag source for
-that file.
+`~/Music/Tract Form/Resamples/`, and displays Drag WAV when the file is ready. The button displays Rendering
+while busy and Retry WAV after a failed render or write.
 
 ## Presets
 

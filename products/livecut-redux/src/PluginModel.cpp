@@ -2,6 +2,7 @@
 #include "PluginModel.h"
 
 #include "Parameters.h"
+#include <hba/host/preset_bank.h>
 
 #include <algorithm>
 #include <array>
@@ -215,10 +216,17 @@ void PluginModel::saveCapture() {
 }
 
 void PluginModel::beginDragCaptureWav() {
-    const auto file = processor_.getCaptureService().prepareDragWav(juce::String(presetName()));
-    if (!file.existsAsFile())
+    juce::File file;
+    const auto dir = hba::host::studioUserDirectory("Livecut Redux", "Captures", false);
+    const auto result = processor_.getCaptureService().prepareDragWav(juce::String(presetName()), dir, file);
+    if (result.failed()) {
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "WAV export failed",
+                                               result.getErrorMessage() + "\nTry dragging the phrase again.");
         return;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    }
+    if (!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_))
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Could not start the drag",
+                                               "Drag the saved WAV from " + file.getFullPathName());
 }
 
 void PluginModel::applyRequestedMode() { processor_.applyRequestedMode(); }

@@ -200,13 +200,13 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
     if (xml == nullptr || !xml->hasTagName(state.state.getType()))
         return;
     auto session = juce::ValueTree::fromXml(*xml);
-    PrintHandle print;
+    PrintStore::Snapshot print;
     if (!PrintStore::decodeState(session, print))
         return;
     state.replaceState(session);
     curves.reloadFromState();
     presets.reloadFromState();
-    printStore.restore(std::move(print));
+    printStore.restoreSession(std::move(print), currentParams(), curves.all(), sampleRate_);
     history = {};
 }
 

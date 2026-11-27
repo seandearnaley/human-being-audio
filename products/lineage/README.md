@@ -11,6 +11,10 @@ Lineage pairs a zero-aliasing 7-voice analog Reese, soft/hard sync, and through-
 - **Gen 2 · Live Non-Destructive Resampling (Strata)**: 1-click internal resampling (`PRINT GEN`) & multi-generation stacking (`STACK +1`) with Hermite key-tracked playback, loop-window scrubbing, Ping-Pong/Reverse/Scrub modes, external WAV loading, and instant 16× drag-to-DAW WAV export.
 - **Sculptural PLAY & STUDIO UI**: 5 living 60 fps organic X/Y performance worlds (`Sculpt`, `Reese`, `Strata`, `Disperse`, `Abyss`) with touch-to-play and `Space` Drone, plus a 1-click STUDIO deck with interactive filter/strata canvases and the unified 4-lane Free-Hz movement engine.
 
+## Opening an older Strata session
+
+Lineage imports a referenced audio file when it is still available and embeds its stereo samples the next time the project is saved. For a Gen 2 print stored as a recipe, Lineage renders it using the previous reader’s root and tempo rules. The Strata label shows “Stack unavailable” for a metadata-only stack or “File unavailable” for a missing import. Saving preserves the file reference. Put the original file back at its saved path and reopen the project to recover it. Clear or replace the print to remove the reference.
+
 ## Licence
 
 AGPL-3.0-or-later.
