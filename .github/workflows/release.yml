@@ -137,6 +137,8 @@ jobs:
       - name: Validate the installed Mac Audio Unit, VST3 and standalone
         if: runner.os == 'macOS'
         run: |
+          # The runner's AU registry may predate the just-installed bundle.
+          pkill -9 -x -u "$UID" AudioComponentRegistrar || [ "$?" -eq 1 ]
           plist="/Library/Audio/Plug-Ins/Components/$NAME.component/Contents/Info.plist"
           auval -strict -v "$(plutil -extract AudioComponents.0.type raw -o - "$plist")" \
             "$(plutil -extract AudioComponents.0.subtype raw -o - "$plist")" \
