@@ -146,3 +146,24 @@ TEST_CASE("Datum session recalls the imported click after its source is removed"
     source.setStateInformation(empty.getData(), static_cast<int>(empty.getSize()));
     CHECK_FALSE(source.clickStore.hasSample());
 }
+
+TEST_CASE("Datum redraws the preview at the new device rate after prepare", "[plugin][preview]") {
+    const juce::ScopedJuceInitialiser_GUI gui;
+    dt::PluginProcessor processor;
+    processor.setRateAndBufferSizeDetails(48000.0, 64);
+    processor.prepareToPlay(48000.0, 64);
+    dt::PluginModel model(processor);
+    const auto initial = model.preview().sumWave;
+    processor.releaseResources();
+    processor.setRateAndBufferSizeDetails(96000.0, 64);
+    processor.prepareToPlay(96000.0, 64);
+    model.refreshVisuals();
+    const auto bundle = processor.stateStore.all();
+    const auto p = processor.currentParams();
+    const auto expected = dt::Engine::renderPreview(p, bundle.pitchCurve, bundle.ampCurve, bundle.pattern, nullptr,
+                                                    p.choice(dt::ParamId::activeSlot), 96000.0);
+    REQUIRE(expected.sumWave != initial);
+    const auto& actual = model.preview().sumWave;
+    const auto mismatch = std::mismatch(actual.begin(), actual.end(), expected.sumWave.begin());
+    CHECK(std::distance(actual.begin(), mismatch.first) == static_cast<std::ptrdiff_t>(actual.size()));
+}

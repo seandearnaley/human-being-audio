@@ -1190,10 +1190,7 @@ PreviewSnapshot Engine::renderPreview(const Params& params, const hba::dsp::Enve
     PreviewSnapshot snap{};
     const double fs = std::max(22050.0, sampleRate);
 
-    Params p = params;
-    p[ParamId::seqRun] = 0.0f;
-    p[ParamId::refBassMode] = 0.0f;
-    p[ParamId::humanize] = 0.0f;
+    const Params p = previewParameters(params);
 
     ClickSlot clickSlot{};
     const ClickSlot* clickPtr = nullptr;
