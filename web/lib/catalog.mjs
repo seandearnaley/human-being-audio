@@ -194,6 +194,31 @@ const PRODUCT_DETAILS = {
     ],
     credits: "Includes 32 factory presets, 4-slot Kit Composer, Sub-Link sidechain alignment, Undo/Redo and A/B compare.",
   },
+  "prism-vein": {
+    kind: "Spectral colorizer",
+    hue: 212,
+    bpm: 172,
+    form: "lattice",
+    formLabel: "Lattice",
+    alt: "Prism Vein’s 60 FPS Spectral Prism Lattice with interactive 12-note chord strip, upward harmonic bloom and downward Bark Auto-Tame overlay, COLOR/LATTICE switcher, four movement lanes, and Voice footer bar",
+    body: "Turn raw neuro reeses, drum breaks and growls into phase-locked harmonic glass. Drive four real-time spectral engines—Chord Lattice, Carrier Morph, Harmonic Comb and Glass Freeze—from MIDI chords, an interactive chord strip or a live stereo sidechain while Bark Auto-Tame melts harshness and a mono LR4 Sub Shield protects the low end.",
+    features: [
+      [
+        "Four engines & Zero-Latency Live mode",
+        "Switch between 4× COLA Chord Lattice, stereo sidechain Carrier Morph, 16-voice stereo Harmonic Comb and shimmering Glass Freeze—or flip to Live 0 ms for zero-latency tracking with real-time FFT visualization.",
+      ],
+      [
+        "Bark Auto-Tame, Sub Shield & Transient Preserve",
+        "Keep club-ready weight intact with a phase-matched mono LR4 Sub Shield, dual-RMS Transient Preserve that lets drum cracks bypass smearing, and a two-pass 24-band Bark Auto-Tame suppressor that cuts harsh resonance spikes without dulling sheen.",
+      ],
+      [
+        "MIDI chords, Freeze, 4 movement lanes & A/B",
+        "Play polyphonic chords live with Sustain, Pitch Bend and Mod Wheel expression, paint voicings on the 12-note chord strip, capture spectral Freeze halos, and animate parameters across four tempo-locked curve lanes with 64-step Undo/Redo and A/B slots.",
+      ],
+    ],
+    credits:
+      "Includes 28 factory presets, built-in Neuro/Break audition loop, Undo/Redo and A/B compare.",
+  },
 };
 
 export const PRODUCT_SLUGS = Object.keys(studio.products);
@@ -215,6 +240,7 @@ export const SCULPTURE_FORMS = [
   { id: "membrane", label: "Membrane" },
   { id: "strata", label: "Strata" },
   { id: "piston", label: "Piston" },
+  { id: "lattice", label: "Lattice" },
 ];
 
 export const FIELD_GUIDE_CHAPTERS = [
@@ -348,6 +374,23 @@ export const FIELD_GUIDE_CHAPTERS = [
       "Schroeder & Peak-Min Crest Solver",
       "Analytic DC-Cancelled ADAA2 Shaping",
       "Sub-Link Live Sidechain Phase Alignment",
+    ],
+  },
+  {
+    num: "Chapter 09",
+    slug: "prism-vein",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG["prism-vein"].hue,
+    title: "Spectral Color Bass: 4× COLA Prism Vocoding, Bark Auto-Tame & Sub Shielding",
+    summary:
+      "Build a zero-allocation 2-for-1 stereo STFT prism engine with exact Hann² COLA overlap-add, protect drum transients via unity-sum dual-RMS separation, lock mono sub-bass with an LR4 Sub Shield, and tame resonance spikes across 24 Bark bands.",
+    topics: [
+      "2-for-1 Stereo STFT (4× Hann² COLA)",
+      "24-Band Bark Auto-Tame",
+      "Unity-Sum Transient Shield",
+      "Just-Intonation Harmonic Lattice",
     ],
   },
   {

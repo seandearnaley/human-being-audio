@@ -432,8 +432,8 @@ TEST_CASE("hba::dsp::RealFft and StereoStft achieve exact unity COLA reconstruct
     for (int i = 0; i < 1024; ++i) {
         inL[static_cast<std::size_t>(i)] =
             static_cast<float>(0.6 * std::sin(kTwoPi * 7.0 * i / 1024.0) + 0.3 * std::cos(kTwoPi * 31.0 * i / 1024.0));
-        inR[static_cast<std::size_t>(i)] =
-            static_cast<float>(-0.5 * std::cos(kTwoPi * 13.0 * i / 1024.0) + 0.4 * std::sin(kTwoPi * 53.0 * i / 1024.0));
+        inR[static_cast<std::size_t>(i)] = static_cast<float>(-0.5 * std::cos(kTwoPi * 13.0 * i / 1024.0) +
+                                                              0.4 * std::sin(kTwoPi * 53.0 * i / 1024.0));
     }
     fft.forwardStereo(inL.data(), inR.data(), reL.data(), imL.data(), reR.data(), imR.data(), scRe.data(), scIm.data());
     // Bin 7 in L has amplitude 0.6 -> |X[7]| = 0.6 * N / 2 = 307.2.

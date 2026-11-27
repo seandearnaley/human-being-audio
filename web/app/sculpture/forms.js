@@ -527,4 +527,72 @@ export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpe
       if (moving) group.rotation.y += dt * 0.13;
     };
   });
+
+  /* ---- Lattice: refracting spectral crystal prism & dispersed harmonic light veins (Prism Vein) ---- */
+  defineForm("lattice", ({ group, solid, wireOpacity, accent }) => {
+    const cyan = vec3(0.22, 0.91, 1.0);
+    const violet = vec3(0.66, 0.34, 0.97);
+    const amber = vec3(0.98, 0.72, 0.25);
+
+    const prismGeo = new THREE.CylinderGeometry(0.66, 0.66, 1.52, 3, 18);
+    const refract = Fn(() => {
+      const y = positionGeometry.y;
+      const twist = sin(y.mul(mix(float(2.4), float(7.0), U.formant)).sub(U.bars.mul(TWO_PI)))
+        .mul(0.055)
+        .mul(U.open.add(0.35));
+      const pulse = U.hit.mul(0.14);
+      return vec3(normalLocal.x.mul(twist.add(pulse)), sin(U.time.mul(1.4).add(y.mul(2.0))).mul(0.03), normalLocal.z.mul(twist.add(pulse)));
+    })();
+    const prismPos = deform(positionLocal.add(refract));
+    const prismMask = crystal(solid, vec3(1.4));
+    const prismMat = glassMaterial({ color: 0x0d1522, metalness: 0.88, roughness: 0.08, flatShading: true });
+    prismMat.positionNode = prismPos;
+    prismMat.opacityNode = prismMask.mask;
+    prismMat.alphaTest = 0.5;
+    prismMat.iridescenceThicknessNode = filmThickness(180, 920);
+    prismMat.emissiveNode = mix(cyan, violet, smoothstep(float(-0.6), float(0.6), positionGeometry.y))
+      .mul(float(0.22).add(U.hit.mul(1.1)))
+      .add(accent.mul(prismMask.edge.mul(3.4)));
+    const prism = new THREE.Mesh(prismGeo, prismMat);
+    const prismWire = new THREE.Mesh(prismGeo, wireMaterial(cyan, wireOpacity));
+    prismWire.material.positionNode = prismPos;
+
+    const veinCount = 7;
+    const veinGeo = new THREE.BoxGeometry(0.045, 0.045, 1.55);
+    const vi = instanceIndex.toFloat();
+    const normV = vi.div(float(veinCount - 1));
+    const shimmer = sin(U.bars.mul(TWO_PI).mul(float(1.0).add(normV.mul(2.0))).sub(vi.mul(0.7)))
+      .mul(mix(float(0.05), float(0.18), U.slice))
+      .add(U.hit.mul(0.22));
+    const veinPos = deform(positionLocal.add(vec3(0, shimmer, 0)));
+    const veinMask = crystal(solid, vec3(vi.mul(2.1)));
+    const veinMat = new THREE.MeshStandardNodeMaterial({ color: 0x09101a, roughness: 0.2, metalness: 0.45 });
+    veinMat.positionNode = veinPos;
+    veinMat.opacityNode = veinMask.mask;
+    veinMat.alphaTest = 0.5;
+    const lowCol = mix(cyan, violet, clamp(normV.mul(1.6), float(0), float(1)));
+    const veinCol = mix(lowCol, amber, smoothstep(float(0.55), float(1.0), normV));
+    veinMat.emissiveNode = veinCol.mul(float(1.25).add(U.hit.mul(1.35)));
+    const veins = new THREE.InstancedMesh(veinGeo, veinMat, veinCount);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < veinCount; j++) {
+      const t = j / (veinCount - 1) - 0.5;
+      const fanAngle = t * 0.92;
+      const yOff = t * 0.88;
+      v.set(Math.sin(fanAngle) * 0.62, yOff, Math.cos(fanAngle) * 0.62);
+      q.setFromEuler(new THREE.Euler(t * 0.28, fanAngle, 0));
+      s.set(1.0, 1.0, 0.85 + (1.0 - Math.abs(t)) * 0.45);
+      m.compose(v, q, s);
+      veins.setMatrixAt(j, m);
+    }
+
+    group.add(prism, prismWire, veins);
+    group.rotation.x = 0.32;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.14;
+    };
+  });
 }

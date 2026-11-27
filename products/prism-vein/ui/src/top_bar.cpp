@@ -43,6 +43,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
           context_.model.set(ParamId::demoAudition, next);
           context_.model.end(ParamId::demoAudition);
       }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });
@@ -65,6 +69,7 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
     demoBtn_.setAccent(colour::sub);
     demoBtn_.setFontSize(10.0f);
 
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick([this] {
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
@@ -115,11 +120,7 @@ void TopBar::tick() {
     redraw();
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(
-        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
-        [this] { context_.model.savePreset(); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     hba::ui::drawBrandWordmark(canvas, wordmark_, brand::prism_vein_logotype_on_dark_svg, 1660.0f / 334.0f, 24.0f, 8.0f,
