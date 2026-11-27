@@ -4,6 +4,14 @@ on:
   merge_group:
   push:
     branches: [main]
+    # PR and merge-group runs validate the combined tree. Only dependency or
+    # toolchain changes need to populate caches visible to future branches.
+    paths:
+      - cmake/CPM.cmake
+      - cmake/StudioDependencies.cmake
+      - cmake/patches/**
+      - cmake/ubuntu-26.04-packages.txt
+      - cmake/windows-release.ps1
 
 permissions:
   contents: read
