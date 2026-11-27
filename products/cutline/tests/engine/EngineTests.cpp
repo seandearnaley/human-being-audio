@@ -7,6 +7,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -28,42 +30,79 @@ struct NoteOn {
 
 struct Run {
     std::vector<NoteOn> noteOns;
-    std::vector<std::uint8_t> bytes; // every event: offset, size, data
+    std::vector<NoteOn> noteOffEvents; // note-offs of notes that were on, velocity 0
+    std::vector<std::uint8_t> bytes;   // every event: offset, size, data
     int noteOffs = 0;
     double endBeat = 0.0;
+    std::array<bool, 128> on{}; // notes sounding when the run ended
 };
 
 int blocksFor(double hostBars, double bpm, int blockSize = kBlock) {
     return static_cast<int>(std::ceil(hostBars * 4.0 / (bpm / 60.0 / kSr) / static_cast<double>(blockSize)));
 }
 
-// Plays `blocks` blocks of `blockSize` samples from ppq 0. `paramsAt(ppq)` supplies the parameters for the block
-// starting at ppq.
+// Applies one block's MIDI to `out`. `firstSample` is the block's first sample, counted from the run's start.
+// A note-on of a note that is already on is malformed MIDI (a retrigger must send the note-off first).
+void take(Run& out, const MidiEventBuffer& midi, std::int64_t firstSample) {
+    for (int i = 0; i < midi.count; ++i) {
+        const auto& ev = midi.events[static_cast<std::size_t>(i)];
+        const std::int64_t at = firstSample + ev.sampleOffset;
+        const auto note = static_cast<std::size_t>(ev.noteNumber());
+        if (ev.isNoteOn()) {
+            INFO("note " << note << " at sample " << at);
+            REQUIRE_FALSE(out.on[note]);
+            out.on[note] = true;
+            out.noteOns.push_back({ev.noteNumber(), at, static_cast<int>(ev.data[2])});
+        } else if (ev.isNoteOff() && out.on[note]) {
+            out.on[note] = false;
+            ++out.noteOffs;
+            out.noteOffEvents.push_back({ev.noteNumber(), at, 0});
+        }
+        out.bytes.push_back(static_cast<std::uint8_t>(ev.sampleOffset));
+        out.bytes.push_back(ev.size);
+        out.bytes.insert(out.bytes.end(), ev.data, ev.data + 3);
+    }
+}
+
+// Plays `blocks` blocks from `startPpq`, of `blockSize` samples or, when `sizeCycle` is not empty, of the sizes it
+// cycles through. `paramsAt(ppq)` supplies the parameters for the block starting at ppq. Samples are counted from
+// the run's start.
 template <typename ParamsAt>
-Run play(Engine& eng, double bpm, int blocks, ParamsAt&& paramsAt, int blockSize = kBlock) {
+Run play(Engine& eng, double bpm, int blocks, ParamsAt&& paramsAt, int blockSize = kBlock, double startPpq = 0.0,
+         const std::vector<int>& sizeCycle = {}) {
     Run out;
-    std::vector<float> l(static_cast<std::size_t>(blockSize)), r(static_cast<std::size_t>(blockSize));
+    int maxSize = blockSize;
+    for (const int n : sizeCycle)
+        maxSize = std::max(maxSize, n);
+    std::vector<float> l(static_cast<std::size_t>(maxSize)), r(static_cast<std::size_t>(maxSize));
     MidiEventBuffer midi;
     const double bps = bpm / 60.0 / kSr;
-    double ppq = 0.0;
+    double ppq = startPpq;
+    std::int64_t sample = 0;
     for (int blk = 0; blk < blocks; ++blk) {
+        const int n = sizeCycle.empty() ? blockSize : sizeCycle[static_cast<std::size_t>(blk) % sizeCycle.size()];
         const Params p = paramsAt(ppq);
-        eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), blockSize);
-        for (int i = 0; i < midi.count; ++i) {
-            const auto& ev = midi.events[static_cast<std::size_t>(i)];
-            const std::int64_t at = static_cast<std::int64_t>(blk) * blockSize + ev.sampleOffset;
-            if (ev.isNoteOn())
-                out.noteOns.push_back({ev.noteNumber(), at, static_cast<int>(ev.data[2])});
-            else if (ev.isNoteOff())
-                ++out.noteOffs;
-            out.bytes.push_back(static_cast<std::uint8_t>(ev.sampleOffset));
-            out.bytes.push_back(ev.size);
-            out.bytes.insert(out.bytes.end(), ev.data, ev.data + 3);
-        }
-        ppq += bps * static_cast<double>(blockSize);
+        eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), n);
+        take(out, midi, sample);
+        sample += n;
+        ppq += bps * static_cast<double>(n);
     }
     out.endBeat = ppq;
     return out;
+}
+
+// Stops the transport after `run`, which must release every note.
+void stopAndCheckReleased(Engine& eng, Run& run, double bpm, std::int64_t atSample) {
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    eng.process(Params{}, {bpm, run.endBeat, false}, midi, l.data(), r.data(), kBlock);
+    take(run, midi, atSample);
+    for (std::size_t note = 0; note < run.on.size(); ++note) {
+        INFO("note " << note << " still on after stop");
+        CHECK_FALSE(run.on[note]);
+    }
+    CHECK(eng.activeNotesLowMask() == 0);
+    CHECK(eng.activeNotesHighMask() == 0);
 }
 
 // A seeded generator for test patterns only. The engine itself has no randomness.
@@ -115,29 +154,43 @@ struct Expected {
     bool grace = false;
 };
 
-// What resolveBar and forEachHit say must sound between ppq 0 and `endBeat`, with no pads and a steady fillNow.
-std::vector<Expected> expectedNoteOns(const Pattern& pattern, const Params& p, double bpm, double endBeat) {
-    std::vector<Expected> out;
+// What resolveBar and forEachHit say must sound between `startPpq` and `endBeat`, with no pads and a steady fillNow.
+// A hit at pattern beat t sounds at host beat t / rate + Shift. `keep(gridBeat)` filters by the window-clock grid time
+// of the step that produced the hit. Samples are counted from `startPpq`.
+template <typename Keep>
+void appendExpected(const Pattern& pattern, const Params& p, double bpm, double endBeat, double startPpq, Keep&& keep,
+                    std::vector<Expected>& out) {
     const double rate = kSeqRateMultipliers[static_cast<std::size_t>(p.choice(ParamId::seqRate))];
     const double bps = bpm / 60.0 / kSr;
+    const double shift = static_cast<double>(p[ParamId::shiftMs]) * 1.0e-3 * (bpm / 60.0);
     const HitTiming timing{static_cast<double>(p[ParamId::swing]), static_cast<double>(p[ParamId::gateLen]),
                            bpm / 60000.0 * rate};
     const int every = kFillEveryBars[static_cast<std::size_t>(p.choice(ParamId::fillEvery))];
     const int bars = patternBars(pattern);
-    const auto lastBar = static_cast<std::int64_t>(std::floor(endBeat * rate / 4.0)) + 1;
-    for (std::int64_t absBar = -1; absBar <= lastBar; ++absBar) {
+    const auto firstBar = static_cast<std::int64_t>(std::floor((startPpq - shift) * rate / 4.0)) - 1;
+    const auto lastBar = static_cast<std::int64_t>(std::floor((endBeat - shift) * rate / 4.0)) + 1;
+    for (std::int64_t absBar = firstBar; absBar <= lastBar; ++absBar) {
         ResolvedBar bar;
         const int inPattern = static_cast<int>(((absBar % bars) + bars) % bars);
         const bool fill = fillScheduled(absBar, every) || p.on(ParamId::fillNow);
         resolveBar(pattern, inPattern, {p[ParamId::density], p[ParamId::dynamics], fill}, bar);
         forEachHit(pattern, bar, static_cast<double>(absBar) * 4.0, timing, [&](const Hit& h) {
-            const double host = h.beat / rate;
-            if (host < -1.0e-9 || host >= endBeat - 1.0e-9)
+            const double grid = (static_cast<double>(absBar) * 4.0 + static_cast<double>(h.step) * 0.25) / rate;
+            if (!keep(grid))
                 return;
-            out.push_back({h.lane, static_cast<std::int64_t>(std::floor(host / bps + 1.0e-7)), h.velocity,
+            const double host = h.beat / rate + shift;
+            if (host < startPpq - 1.0e-9 || host >= endBeat - 1.0e-9)
+                return;
+            out.push_back({h.lane, static_cast<std::int64_t>(std::floor((host - startPpq) / bps + 1.0e-7)), h.velocity,
                            static_cast<int>(absBar), h.step, h.grace});
         });
     }
+}
+
+std::vector<Expected> expectedNoteOns(const Pattern& pattern, const Params& p, double bpm, double endBeat,
+                                      double startPpq = 0.0) {
+    std::vector<Expected> out;
+    appendExpected(pattern, p, bpm, endBeat, startPpq, [](double) { return true; }, out);
     return out;
 }
 
@@ -242,7 +295,9 @@ TEST_CASE("Truth holds for every factory-style density of the default beat", "[e
         Engine eng;
         eng.prepare(kSr, kBlock);
         const Run run = play(eng, 172.0, blocksFor(4.0, 172.0), [&](double) { return p; });
-        requireSameNoteOns(expectedNoteOns(groove.bank.scenes[0], p, 172.0, run.endBeat), run.noteOns, 36);
+        const auto expected = expectedNoteOns(groove.bank.scenes[0], p, 172.0, run.endBeat);
+        REQUIRE(expected.size() > 0);
+        requireSameNoteOns(expected, run.noteOns, 36);
     }
 }
 
@@ -416,7 +471,9 @@ TEST_CASE("Truth holds with large host blocks", "[engine][truth]") {
         const Run run = play(eng, bpm, blocksFor(8.0, bpm, kLargeBlock), [&](double) { return p; }, kLargeBlock);
 
         INFO("seed " << seed << " bars " << patternBars(groove.bank.scenes[0]));
-        requireSameNoteOns(expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat), run.noteOns, 36);
+        const auto expected = expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat);
+        REQUIRE(expected.size() > 0);
+        requireSameNoteOns(expected, run.noteOns, 36);
     }
 }
 
@@ -444,4 +501,261 @@ TEST_CASE("Scene quantize applies to scene switches, at its 1 Bar default", "[en
 
     advanceTo(4.2); // blocks now pass beat 4
     CHECK(eng.activeScene() == 1);
+}
+
+namespace {
+
+// Strike Body: kick and snare share 36, ghost and hat share 37, clap and open hat share 38.
+int strikeBodyNote(int lane) {
+    return kKitNoteMaps[static_cast<std::size_t>(NoteMap::strikeBody)][static_cast<std::size_t>(lane)];
+}
+
+// Every expected hit has an emitted note-on of its lane's note within one sample, at least as loud.
+void requireCovered(const std::vector<Expected>& expected, const std::vector<NoteOn>& actual) {
+    for (const auto& e : expected) {
+        bool found = false;
+        for (const auto& on : actual)
+            found = found || (on.note == strikeBodyNote(e.lane) && std::llabs(on.sample - e.sample) <= 1 &&
+                              on.velocity >= e.velocity);
+        INFO("lane " << e.lane << " bar " << e.bar << " step " << e.step << (e.grace ? " (grace)" : "") << " sample "
+                     << e.sample << " velocity " << e.velocity);
+        REQUIRE(found);
+    }
+}
+
+void putStep(Pattern& p, int lane, int step, int velocity) {
+    Step& s = p.lanes[static_cast<std::size_t>(lane)].steps[static_cast<std::size_t>(step)];
+    s.velocity = static_cast<std::uint8_t>(velocity);
+    s.layer = Layer::core;
+}
+
+} // namespace
+
+TEST_CASE("A flam's main hit is not cut by its grace note's note-off", "[engine]") {
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    for (const int step : {4, 12}) {
+        putStep(bank.scenes[0], 1, step, 96);
+        bank.scenes[0].lanes[1].steps[static_cast<std::size_t>(step)].flam = true;
+    }
+    // The grace note ends 40 ms after it starts and the main hit starts 20 ms after it, so both fall in one
+    // block only when blocks are longer than 20 ms: 2048 samples is 42.7 ms.
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, 2048);
+    eng.setGroove(GrooveState(bank));
+    const Run run = play(eng, bpm, blocksFor(4.0, bpm, 2048), [](double) { return Params{}; }, 2048);
+    int mains = 0;
+    for (const auto& on : run.noteOns) {
+        if (on.note != 38 || on.velocity != 96)
+            continue; // the grace hit is 40 softer
+        ++mains;
+        std::int64_t nextOff = -1;
+        for (const auto& off : run.noteOffEvents) {
+            if (off.note == 38 && off.sample > on.sample) { // a note-off at the note-on's own sample precedes it
+                nextOff = off.sample;
+                break;
+            }
+        }
+        INFO("main snare at sample " << on.sample << ", next note-off at " << nextOff);
+        REQUIRE(nextOff >= 0);
+        CHECK(static_cast<double>(nextOff - on.sample) * bps >= 0.15);
+    }
+    CHECK(mains >= 6);
+}
+
+TEST_CASE("Two lanes sharing a note at the same sample give one note-on, at the higher velocity", "[engine]") {
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    putStep(bank.scenes[0], 0, 0, 100); // kick, note 36
+    putStep(bank.scenes[0], 1, 0, 70);  // snare, also note 36 in the Strike Body map
+    Params p;
+    p[ParamId::noteMap] = static_cast<float>(NoteMap::strikeBody);
+    const double bpm = 120.0;
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    eng.setGroove(GrooveState(bank));
+    Run run = play(eng, bpm, blocksFor(2.0, bpm), [&](double) { return p; });
+    REQUIRE(run.noteOns.size() == 2); // one per bar
+    for (const auto& on : run.noteOns) {
+        CHECK(on.note == 36);
+        CHECK(on.velocity == 100);
+    }
+    stopAndCheckReleased(eng, run, bpm, static_cast<std::int64_t>(blocksFor(2.0, bpm)) * kBlock);
+}
+
+TEST_CASE("A very large block keeps room for its note-offs", "[engine]") {
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    for (int lane = 0; lane < kDrumLaneCount; ++lane) {
+        for (int step = 0; step < kStepsPerBar; ++step) {
+            putStep(bank.scenes[0], lane, step, 60 + lane * 8);
+            Step& s = bank.scenes[0].lanes[static_cast<std::size_t>(lane)].steps[static_cast<std::size_t>(step)];
+            s.ratchet = static_cast<std::uint8_t>(1 + (step + lane) % 4);
+            s.flam = (step + lane) % 3 == 0;
+        }
+    }
+    Params p;
+    p[ParamId::seqRate] = static_cast<float>(SeqRate::doubleTime);
+    constexpr int kHuge = 32768;
+    const double bpm = 172.0;
+    Engine eng;
+    eng.prepare(kSr, kHuge);
+    eng.setGroove(GrooveState(bank));
+    Run run = play(eng, bpm, 3, [&](double) { return p; }, kHuge);
+    REQUIRE(run.noteOns.size() > 100);
+    stopAndCheckReleased(eng, run, bpm, 3 * static_cast<std::int64_t>(kHuge));
+}
+
+TEST_CASE("Truth holds with mixed block sizes, Shift and a negative start", "[engine][truth]") {
+    const std::vector<int> cycle{1, 37, 512, 4096};
+    for (std::uint32_t seed = 1; seed <= 6; ++seed) {
+        TestRng rng{seed * 2246822519u};
+        GrooveBank bank;
+        bank.scenes[0] = randomPattern(rng);
+        const GrooveState groove(bank);
+        const double bpm = 140.0;
+
+        struct Variant {
+            const char* name;
+            float shiftMs;
+            double startPpq;
+            bool mixed;
+        };
+        for (const Variant v : {Variant{"mixed blocks", 0.0f, 0.0, true}, Variant{"shift +17 ms", 17.0f, 0.0, false},
+                                Variant{"shift -23 ms", -23.0f, 0.0, true}, Variant{"start at -2", 0.0f, -2.0, true}}) {
+            Params p = truthParams();
+            p[ParamId::swing] = 0.3f;
+            p[ParamId::shiftMs] = v.shiftMs;
+            Engine eng;
+            eng.prepare(kSr, 4096);
+            eng.setGroove(groove);
+            const int blocks = v.mixed ? 4 * blocksFor(6.0, bpm, 1 + 37 + 512 + 4096) : blocksFor(6.0, bpm, 512);
+            const Run run = play(
+                eng, bpm, blocks, [&](double) { return p; }, 512, v.startPpq, v.mixed ? cycle : std::vector<int>{});
+            INFO("seed " << seed << " " << v.name);
+            const auto expected = expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat, v.startPpq);
+            REQUIRE(expected.size() > 0);
+            if (v.startPpq < 0.0) {
+                bool beforeZero = false;
+                for (const auto& e : expected)
+                    beforeZero = beforeZero || static_cast<double>(e.sample) * (bpm / 60.0 / kSr) < -v.startPpq;
+                REQUIRE(beforeZero);
+            }
+            requireSameNoteOns(expected, run.noteOns, 36);
+        }
+    }
+}
+
+TEST_CASE("A kit map with shared notes stays well-formed and covers every hit", "[engine][truth]") {
+    const std::vector<int> cycle{1, 37, 512, 4096};
+    for (std::uint32_t seed = 1; seed <= 8; ++seed) {
+        TestRng rng{seed * 3266489917u};
+        GrooveBank bank;
+        bank.scenes[0] = randomPattern(rng);
+        const GrooveState groove(bank);
+        Params p;
+        p[ParamId::noteMap] = static_cast<float>(NoteMap::strikeBody);
+        p[ParamId::swing] = 0.2f;
+        const double bpm = 160.0;
+        Engine eng;
+        eng.prepare(kSr, 4096);
+        eng.setGroove(groove);
+        const int blocks = 4 * blocksFor(6.0, bpm, 1 + 37 + 512 + 4096);
+        Run run = play(eng, bpm, blocks, [&](double) { return p; }, kBlock, 0.0, cycle);
+        INFO("seed " << seed);
+        const auto expected = expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat);
+        REQUIRE(expected.size() > 0);
+        requireCovered(expected, run.noteOns);
+        stopAndCheckReleased(eng, run, bpm, 0);
+    }
+}
+
+TEST_CASE("Truth across a scene switch: each step plays from the scene active at its grid time", "[engine][truth]") {
+    for (std::uint32_t seed = 1; seed <= 6; ++seed) {
+        for (const Quantize quant : {Quantize::oneBar, Quantize::sixteenth}) {
+            for (const float shiftMs : {0.0f, 19.0f, -21.0f}) {
+                TestRng rng{seed * 2654435761u + 77u};
+                GrooveBank bank;
+                bank.scenes[0] = randomPattern(rng);
+                bank.scenes[1] = randomPattern(rng);
+                Pattern& b = bank.scenes[1];
+                // Scene B starts its bars early: a flammed, early-nudged kick on step 0. Its other hits are kept
+                // within reach of a 1/16 switch request (at most 0.08 beat early, plus an offset of 10 ms).
+                for (auto& lane : b.lanes) {
+                    lane.offsetMs = static_cast<std::int8_t>(std::max<int>(lane.offsetMs, -10));
+                    for (auto& st : lane.steps)
+                        st.nudge = static_cast<std::int8_t>(std::max<int>(st.nudge, -8));
+                }
+                for (auto& row : b.fill.steps)
+                    for (auto& st : row)
+                        st.nudge = static_cast<std::int8_t>(std::max<int>(st.nudge, -8));
+                b.lanes[0].muted = false;
+                b.lanes[0].length = 0;
+                for (int bar = 0; bar < patternBars(b); ++bar) {
+                    Step& st = b.lanes[0].steps[static_cast<std::size_t>(bar * kStepsPerBar)];
+                    st = {};
+                    st.velocity = 110;
+                    st.layer = Layer::core;
+                    st.flam = true;
+                    st.nudge = -6;
+                }
+                const GrooveState groove(bank);
+
+                const double bpm = 120.0;
+                const double bps = bpm / 60.0 / kSr;
+                const double shift = static_cast<double>(shiftMs) * 1.0e-3 * (bpm / 60.0);
+                // Ask for scene B early in a 1/16 (window clock), so a 1/16 switch is about a 1/16 away.
+                const double requestAt = 7.51 + shift;
+                double requested = -1.0;
+                const auto paramsAt = [&](double ppq) {
+                    Params p = truthParams();
+                    p[ParamId::sceneQuantize] = static_cast<float>(quant);
+                    p[ParamId::shiftMs] = shiftMs;
+                    p[ParamId::scene] = ppq >= requestAt ? 1.0f : 0.0f;
+                    if (ppq >= requestAt && requested < 0.0)
+                        requested = ppq;
+                    return p;
+                };
+                Engine eng;
+                eng.prepare(kSr, 512);
+                eng.setGroove(groove);
+                const Run run = play(eng, bpm, blocksFor(4.0, bpm, 512), paramsAt, 512);
+                REQUIRE(requested > 0.0);
+
+                const double q = quant == Quantize::oneBar ? 4.0 : 0.25;
+                const double switchBeat = std::ceil((requested - shift - 1.0e-6) / q) * q; // window clock
+                Params p = paramsAt(0.0);
+                std::vector<Expected> expected;
+                appendExpected(
+                    groove.bank.scenes[0], p, bpm, run.endBeat, 0.0,
+                    [&](double grid) { return grid < switchBeat - 1.0e-9; }, expected);
+                appendExpected(
+                    groove.bank.scenes[1], p, bpm, run.endBeat, 0.0,
+                    [&](double grid) { return grid >= switchBeat - 1.0e-9; }, expected);
+                INFO("seed " << seed << " quantize " << static_cast<int>(quant) << " shift " << shiftMs
+                             << " switch beat " << switchBeat << " request block at " << requested << " ("
+                             << requested / bps << ")");
+                requireSameNoteOns(expected, run.noteOns, 36);
+            }
+        }
+    }
+}
+
+TEST_CASE("A fill bar keeps its whole fill when Fill is switched off inside the window", "[engine][fill]") {
+    GrooveBank bank;
+    bank.scenes[0] = fillPattern();
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    eng.setGroove(GrooveState(bank));
+    const double bpm = 132.0;
+    const Run run = play(eng, bpm, blocksFor(3.0, bpm), [](double ppq) {
+        Params p;
+        p[ParamId::fillEvery] = ppq < 6.5 ? 1.0f : 0.0f; // every 2 bars until beat 2.5 of bar 1, then Off
+        return p;
+    });
+    CHECK(countIn(run, 38, 1, bpm) == 2);
+    CHECK(countIn(run, 36, 1, bpm) == 9);
+    CHECK(countIn(run, 38, 2, bpm) == 0);
 }

@@ -49,7 +49,7 @@ struct Engine::Impl {
         bool drum = true;
     };
 
-    // fillNow as sampled for one bar.
+    // The fill decision as latched for one bar.
     struct FillLatch {
         std::int64_t bar = std::numeric_limits<std::int64_t>::min();
         bool on = false;
@@ -67,6 +67,8 @@ struct Engine::Impl {
         double beatsPerMs = 0.0; // pattern beats per millisecond
         NoteMap noteMap = NoteMap::liveRack;
         PadProgram program = PadProgram::repeat;
+        bool padOn = false;   // the pad plays this part of the block
+        bool fillNow = false; // fillNow, or Drop's right half
         bool isDrum = true;
         float padX = 0.5f;
         float padY = 0.5f;
@@ -97,10 +99,14 @@ struct Engine::Impl {
     std::array<BlockHit, kMaxBlockHits> blockHits{};
     int blockHitCount = 0;
 
-    // Quantized scene and pad state
+    // Quantized scene and pad state. Switch beats are in window time (the transport minus Shift), on the grid of the
+    // pattern as it sounds. A step plays from the scene that owns its grid time: the pending scene from
+    // sceneSwitchBeat on, the previous scene before sceneFromBeat, otherwise the current scene.
     int currentScene = 0;
     int pendingSceneIdx = -1;
     double sceneSwitchBeat = 0.0;
+    int prevScene = 0;
+    double sceneFromBeat = std::numeric_limits<double>::lowest();
     int activeProg = 0;
     int pendingProg = -1;
     bool engaged = false;
@@ -156,10 +162,14 @@ struct Engine::Impl {
     void emitContinuousAt(const Params& params, double tickBeat, int offset, MidiEventBuffer& outMidi, bool padOn,
                           float padX, float padY) noexcept CL_NONBLOCKING;
     int evalVelBias(const Params& params, double beat, bool padOn, float padY) const noexcept CL_NONBLOCKING;
-    bool fillActiveFor(std::int64_t absBar, bool fillNow, int everyBars, double scaledEnd,
+    bool fillActiveFor(const Pattern& pat, std::int64_t absBar, bool fillNow, int everyBars, double scaledEnd,
                        double beatsPerMs) noexcept CL_NONBLOCKING;
-    void pushDrumHit(const Block& b, int lane, double hostBeat, double hostDur, int velocity) noexcept CL_NONBLOCKING;
-    void playPattern(const Block& b, bool fillNow) noexcept CL_NONBLOCKING;
+    int sceneAtGrid(double gridBeat) const noexcept CL_NONBLOCKING;
+    void pushDrumHit(const Block& b, const Pattern& pat, int lane, double hostBeat, double hostDur,
+                     int velocity) noexcept CL_NONBLOCKING;
+    void playPattern(const Block& b) noexcept CL_NONBLOCKING;
+    void playBlock(const Block& b) noexcept CL_NONBLOCKING;
+    void releaseEndingBy(const Block& b, double beat, bool strict, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void emitBlockHits(const Block& b, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left, float* right,
                  int numSamples) noexcept CL_NONBLOCKING;

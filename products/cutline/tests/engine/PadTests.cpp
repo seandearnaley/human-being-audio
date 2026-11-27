@@ -36,35 +36,39 @@ struct Run {
     double endBeat = 0.0;
 };
 
-template <typename ParamsAt> Run play(Engine& eng, double hostBars, ParamsAt&& paramsAt) {
+// Applies one block's MIDI to `out`. A note-on of a note that is already on is malformed MIDI.
+void take(Run& out, const MidiEventBuffer& midi, std::int64_t firstSample) {
+    for (int i = 0; i < midi.count; ++i) {
+        const auto& ev = midi.events[static_cast<std::size_t>(i)];
+        if (ev.isNoteOn()) {
+            INFO("note " << ev.noteNumber() << " at sample " << firstSample + ev.sampleOffset);
+            // A retrigger sends the old note's note-off first, so a note is never open twice.
+            REQUIRE(out.open[ev.noteNumber()] == 0);
+            out.noteOns.push_back({ev.noteNumber(), firstSample + ev.sampleOffset, static_cast<int>(ev.data[2])});
+            ++out.open[ev.noteNumber()];
+        } else if (ev.isNoteOff()) {
+            if (out.open[ev.noteNumber()] > 0)
+                --out.open[ev.noteNumber()];
+        } else if ((ev.data[0] & 0xF0u) == 0xB0u) {
+            ++out.controlChanges;
+        }
+    }
+}
+
+template <typename ParamsAt> Run play(Engine& eng, double hostBars, ParamsAt&& paramsAt, int blockSize = kBlock) {
     Run out;
-    std::vector<float> l(kBlock), r(kBlock);
+    std::vector<float> l(static_cast<std::size_t>(blockSize)), r(static_cast<std::size_t>(blockSize));
     MidiEventBuffer midi;
     const double bps = kBpm / 60.0 / kSr;
-    const int blocks = static_cast<int>(std::ceil(hostBars * 4.0 / bps / static_cast<double>(kBlock)));
+    const int blocks = static_cast<int>(std::ceil(hostBars * 4.0 / bps / static_cast<double>(blockSize)));
     double ppq = 0.0;
-    const auto take = [&](int blk) {
-        for (int i = 0; i < midi.count; ++i) {
-            const auto& ev = midi.events[static_cast<std::size_t>(i)];
-            if (ev.isNoteOn()) {
-                out.noteOns.push_back({ev.noteNumber(), static_cast<std::int64_t>(blk) * kBlock + ev.sampleOffset,
-                                       static_cast<int>(ev.data[2])});
-                // A retrigger sends the old note's note-off first, so a note is never open twice.
-                ++out.open[ev.noteNumber()];
-            } else if (ev.isNoteOff()) {
-                --out.open[ev.noteNumber()];
-            } else if ((ev.data[0] & 0xF0u) == 0xB0u) {
-                ++out.controlChanges;
-            }
-        }
-    };
     for (int blk = 0; blk < blocks; ++blk) {
-        eng.process(paramsAt(ppq), {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
-        take(blk);
-        ppq += bps * static_cast<double>(kBlock);
+        eng.process(paramsAt(ppq), {kBpm, ppq, true}, midi, l.data(), r.data(), blockSize);
+        take(out, midi, static_cast<std::int64_t>(blk) * blockSize);
+        ppq += bps * static_cast<double>(blockSize);
     }
-    eng.process(paramsAt(ppq), {kBpm, ppq, false}, midi, l.data(), r.data(), kBlock); // stop: flushes what is held
-    take(blocks);
+    eng.process(paramsAt(ppq), {kBpm, ppq, false}, midi, l.data(), r.data(), blockSize); // stop: flushes what is held
+    take(out, midi, static_cast<std::int64_t>(blocks) * blockSize);
     out.endBeat = ppq;
     return out;
 }
@@ -315,4 +319,111 @@ TEST_CASE("A pad touched mid-beat engages on the next 1/16 at default parameters
     for (const auto& on : run.noteOns)
         hatOnBeat1 = hatOnBeat1 || (on.note == 42 && std::llabs(on.sample - static_cast<std::int64_t>(1.0 / bps)) <= 1);
     CHECK(hatOnBeat1);
+}
+
+TEST_CASE("Repeat keeps playing after the transport jumps back", "[engine][pads]") {
+    // Repeat is engaged on beat 4, so its window is anchored there. Then the host loops back to beat 2.
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    Run run;
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    const double bps = kBpm / 60.0 / kSr;
+    bool touched = false; // held from beat 4 on, through the jump
+    const auto paramsAt = [&](double ppq) {
+        touched = touched || ppq >= 4.0;
+        Params p = padParams(PadProgram::repeat, 0.1f, 0.5f);
+        p[ParamId::padTouch] = touched ? 1.0f : 0.0f;
+        return p;
+    };
+    double ppq = 0.0;
+    std::int64_t sample = 0;
+    const auto playUntil = [&](double end) {
+        while (ppq < end) {
+            eng.process(paramsAt(ppq), {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+            take(run, midi, sample);
+            sample += kBlock;
+            ppq += bps * static_cast<double>(kBlock);
+        }
+    };
+    playUntil(6.0);
+    REQUIRE(eng.padEngaged());
+    ppq = 2.0; // the jump
+    const std::int64_t jumpSample = sample;
+    playUntil(4.0);
+    int afterJump = 0;
+    for (const auto& on : run.noteOns)
+        afterJump += (on.sample >= jumpSample && static_cast<double>(on.sample - jumpSample) * bps < 1.0) ? 1 : 0;
+    CHECK(afterJump > 0);
+}
+
+TEST_CASE("A pattern hit before the pad's switch point plays, even in the block where the pad engages",
+          "[engine][pads]") {
+    // Perc A (note 43) nudged to 2.21875, just before the pad's switch point at 2.25. With 2048-sample blocks the
+    // block that commits the pad starts before both.
+    GrooveBank bank;
+    Step& s = bank.scenes[0].lanes[6].steps[9];
+    s.velocity = 90;
+    s.layer = Layer::core;
+    s.nudge = -3;
+    constexpr int kBig = 2048;
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBig);
+    eng.setGroove(GrooveState(bank));
+    const Run run = play(
+        eng, 1.0,
+        [](double ppq) {
+            Params p; // pads quantize to 1/16 whatever the scene quantize is
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
+            p[ParamId::padX] = 0.3f;
+            p[ParamId::padY] = 1.0f;
+            p[ParamId::padTouch] = ppq >= 2.05 ? 1.0f : 0.0f;
+            return p;
+        },
+        kBig);
+    const auto at = static_cast<std::int64_t>(std::floor(2.21875 / bps));
+    REQUIRE(static_cast<std::int64_t>(std::floor(2.25 / bps)) / kBig == at / kBig); // same block, as intended
+    bool percA = false;
+    for (const auto& on : run.noteOns)
+        percA = percA || (on.note == 43 && std::llabs(on.sample - at) <= 1);
+    CHECK(percA);
+    const NoteOn* firstRoll = nullptr;
+    for (const auto& on : run.noteOns) {
+        if (on.note == 38 && on.velocity == 127) {
+            firstRoll = &on;
+            break;
+        }
+    }
+    REQUIRE(firstRoll != nullptr);
+    CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor(2.25 / bps + 1.0e-7))) <= 1);
+}
+
+TEST_CASE("With Shift, a pad engages on a 1/16 of the pattern as it sounds", "[engine][pads]") {
+    // Shift +20 ms: the pattern sounds 0.044 beat late. Touching at host beat 1.27 is window beat 1.226, so the
+    // next 1/16 of the pattern is window beat 1.25, which sounds at host beat 1.25 + shift.
+    const float shiftMs = 20.0f;
+    const double shift = static_cast<double>(shiftMs) * 1.0e-3 * (kBpm / 60.0);
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    const Run run = play(eng, 1.0, [&](double ppq) {
+        Params p;
+        p[ParamId::shiftMs] = shiftMs;
+        p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
+        p[ParamId::padX] = 0.3f;
+        p[ParamId::padY] = 1.0f;
+        p[ParamId::padTouch] = ppq >= 1.27 ? 1.0f : 0.0f;
+        return p;
+    });
+    const double bps = kBpm / 60.0 / kSr;
+    const NoteOn* firstRoll = nullptr;
+    for (const auto& on : run.noteOns) {
+        if (on.note == 38 && on.velocity == 127) {
+            firstRoll = &on;
+            break;
+        }
+    }
+    REQUIRE(firstRoll != nullptr);
+    INFO("first roll note at host beat " << static_cast<double>(firstRoll->sample) * bps);
+    CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor((1.25 + shift) / bps + 1.0e-7))) <= 1);
 }

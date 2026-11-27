@@ -49,7 +49,7 @@ void Engine::Impl::playRepeat(const Block& b) noexcept CL_NONBLOCKING {
             if (at < scaledStart - kBeatEps || at >= scaledEnd - kBeatEps)
                 return;
             const double dur = std::min(h.durBeats, window * 0.85) * gate;
-            pushDrumHit(b, h.lane, at / b.rate, std::max(0.025, dur / b.rate), h.velocity);
+            pushDrumHit(b, pat, h.lane, at / b.rate, std::max(0.025, dur / b.rate), h.velocity);
         });
     }
 
@@ -68,7 +68,7 @@ void Engine::Impl::playRoll(const Block& b) noexcept CL_NONBLOCKING {
         if (beat >= b.windowEnd - kBeatEps)
             break;
         if (b.isDrum)
-            pushDrumHit(b, 1, beat, step * 0.8, velocity);
+            pushDrumHit(b, pattern(), 1, beat, step * 0.8, velocity);
     }
 }
 
