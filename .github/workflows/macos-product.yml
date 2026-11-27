@@ -11,6 +11,7 @@ permissions:
   contents: read
 
 env:
+  CTEST_PARALLEL_LEVEL: ${{ inputs.product == 'tract-form' && '4' || '1' }}
   PLUGINVAL_VERSION: v1.0.4
   CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
   CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -30,11 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: brew install ninja ccache
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -57,8 +57,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache

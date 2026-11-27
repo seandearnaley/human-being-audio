@@ -1,6 +1,11 @@
 name: Livecut Redux
 
-on: workflow_call
+on:
+  workflow_call:
+    inputs:
+      windows_only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,25 +31,16 @@ defaults:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.os == 'macos-26' && 'macOS' || 'Windows (x64)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: macOS
-            os: macos-26
-            artifact: Livecut-Redux-macOS
-            pluginval_zip: pluginval_macOS.zip
-            pluginval_bin: pluginval.app/Contents/MacOS/pluginval
-            exe_suffix: ""
-          - name: Windows (x64)
-            os: windows-2025-vs2026
-            artifact: Livecut-Redux-Windows-x64
-            pluginval_zip: pluginval_Windows.zip
-            pluginval_bin: pluginval.exe
-            exe_suffix: .exe
+        os: ${{ fromJSON(inputs.windows_only && '["windows-2025-vs2026"]' || '["macos-26","windows-2025-vs2026"]') }}
+    env:
+      PLUGINVAL_BIN: ${{ matrix.os == 'macos-26' && 'pluginval.app/Contents/MacOS/pluginval' || 'pluginval.exe' }}
+      PLUGINVAL_ZIP: ${{ matrix.os == 'macos-26' && 'pluginval_macOS.zip' || 'pluginval_Windows.zip' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -55,8 +51,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
 
       - uses: actions/cache@v5
         with:
@@ -145,17 +140,17 @@ jobs:
 
       - name: Download pluginval (if not cached)
         run: |
-          PV_BIN="$GITHUB_WORKSPACE/.pluginval/${{ matrix.pluginval_bin }}"
+          PV_BIN="$GITHUB_WORKSPACE/.pluginval/$PLUGINVAL_BIN"
           if [[ ! -f "$PV_BIN" ]]; then
             mkdir -p "$GITHUB_WORKSPACE/.pluginval"
-            curl -sSfL -o "$RUNNER_TEMP/pluginval.zip" "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/${{ matrix.pluginval_zip }}"
+            curl -sSfL -o "$RUNNER_TEMP/pluginval.zip" "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/$PLUGINVAL_ZIP"
             unzip -q -o "$RUNNER_TEMP/pluginval.zip" -d "$GITHUB_WORKSPACE/.pluginval"
           fi
 
       - name: Validate VST3
         run: |
-          "$GITHUB_WORKSPACE/.pluginval/${{ matrix.pluginval_bin }}" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
-            --vst3validator "$GITHUB_WORKSPACE/.vst3validator/validator${{ matrix.exe_suffix }}" \
+          "$GITHUB_WORKSPACE/.pluginval/$PLUGINVAL_BIN" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
+            --vst3validator "$GITHUB_WORKSPACE/.vst3validator/validator${{ runner.os == 'Windows' && '.exe' || '' }}" \
             --validate "$ARTEFACTS/VST3/Livecut Redux.vst3"
 
       - name: Validate AU
@@ -166,13 +161,13 @@ jobs:
           cp -R "$ARTEFACTS/AU/Livecut Redux.component" ~/Library/Audio/Plug-Ins/Components/
           pkill -9 -x -u "$UID" AudioComponentRegistrar || [ "$?" -eq 1 ]  # exit 1 means it was not running
           auval -strict -v aumf Lvct Sdrn
-          "$GITHUB_WORKSPACE/.pluginval/${{ matrix.pluginval_bin }}" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
+          "$GITHUB_WORKSPACE/.pluginval/$PLUGINVAL_BIN" --strictness-level 10 --skip-gui-tests --timeout-ms 300000 \
             --validate ~/"Library/Audio/Plug-Ins/Components/Livecut Redux.component"
 
       - name: Upload plugins
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: Livecut-Redux-${{ runner.os == 'macOS' && 'macOS' || 'Windows-x64' }}
           path: |
             products/livecut-redux/${{ env.ARTEFACTS }}/VST3
             products/livecut-redux/${{ env.ARTEFACTS }}/AU

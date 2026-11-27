@@ -36,6 +36,37 @@ class NativeQualityTests(unittest.TestCase):
         self.assertEqual(plan["windows"], ["future-instrument"])
         self.assertEqual(set(plan["jobs"]), {"ubuntu", "format", "realtime", "windows", "macos"})
 
+    def test_version_only_changes_keep_release_checks_and_real_native_changes(self):
+        product = "products/tract-form/CMakeLists.txt"
+        paths = [product, "products/tract-form/docs/releases/1.1.2.md"]
+        self.assertEqual(native.plan_checks(self.products, paths, {product})["jobs"], ["factory"])
+        mixed = native.plan_checks(self.products, [*paths, "products/pole-field/engine.cpp"], {product})
+        self.assertEqual(mixed["products"], ["pole-field"])
+        self.assertIn("factory", mixed["jobs"])
+
+    def test_only_the_numeric_project_version_may_change(self):
+        old = b"project(Synth VERSION 1.0.0 LANGUAGES C CXX)\nset(SIZE 8)\n"
+        new = old.replace(b"1.0.0", b"1.1.2")
+        self.assertTrue(native.only_project_version_changed(old, new))
+        for other in (old, b"", new + b"# comment\n", new.replace(b"Synth", b"Synth2"),
+                      new.replace(b"C CXX", b"C"), new.replace(b"SIZE 8", b"SIZE 9"),
+                      new.replace(b"1.1.2", b"1.1"), new + new):
+            self.assertFalse(native.only_project_version_changed(old, other))
+
+    def test_windows_patch_and_test_select_only_their_native_consumers(self):
+        products = ["livecut-redux", "cutline", "pole-field"]
+        patch = "cmake/patches/windows/visage.cmake"
+        regression = "modules/visage-ui/tests/windows/Glyph.cpp"
+        plan = native.plan_checks(products, [patch, regression])
+        self.assertEqual(set(plan["jobs"]), {"format", "windows", "livecut"})
+        self.assertEqual(plan["windows"], ["cutline", "pole-field"])
+        self.assertTrue(plan["livecut_windows_only"])
+        self.assertEqual(native.plan_checks(products, [regression])["windows"], ["cutline"])
+        combined = native.plan_checks(products, [patch, "products/livecut-redux/core/audio.cpp"])
+        self.assertFalse(combined["livecut_windows_only"])
+        self.assertEqual(combined["products"], ["livecut-redux"])
+        self.assertIn("realtime", combined["jobs"])
+
     def test_modules_and_macos_workflow_changes_trigger_dedicated_jobs(self):
         mod_plan = native.plan_checks(self.products, ["modules/core/include/hba/core/preset_json.h"])
         self.assertIn("modules", mod_plan["jobs"])

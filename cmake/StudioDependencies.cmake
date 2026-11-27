@@ -28,9 +28,7 @@ function(hba_add_visage)
         EXCLUDE_FROM_ALL
     )
     if(WIN32)
-        set(visage_platform_patch PATCHES
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch"
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-glyph-lifetime.patch")
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/windows/visage.cmake")
     endif()
     CPMAddPackage(
         NAME visage

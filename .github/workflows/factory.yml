@@ -17,11 +17,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache
