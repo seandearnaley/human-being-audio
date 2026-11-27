@@ -42,10 +42,16 @@ class PrintStore final : private juce::Thread {
     bool stepBack();
     void clear();
 
-    PrintHandle snapshot() const;
-    void restore(PrintHandle print);
+    struct Snapshot {
+        PrintHandle audio;
+        juce::ValueTree legacy;
+        bool operator==(const Snapshot&) const = default;
+    };
+    Snapshot snapshot() const;
+    void restore(Snapshot print);
+    void restoreSession(Snapshot print, const Params& params, const LaneCurves& curves, double sampleRate);
     void appendState(juce::ValueTree& session) const;
-    static bool decodeState(juce::ValueTree& session, PrintHandle& print);
+    static bool decodeState(juce::ValueTree& session, Snapshot& print);
     bool waitForIdle(int timeoutMs = 5000);
 
   private:
@@ -61,11 +67,11 @@ class PrintStore final : private juce::Thread {
 
     void run() override;
     void commitBuffer(PrintBuffer buf, std::uint64_t ticket);
-    void setCurrent(PrintHandle print);
+    void setCurrent(Snapshot print);
     std::function<void(PrintHandle)> onPublish_;
     mutable juce::CriticalSection lock_;
-    PrintHandle current_;
-    std::vector<PrintHandle> history_;
+    Snapshot current_;
+    std::vector<Snapshot> history_;
     Job pendingJob_;
     bool hasPendingJob_ = false;
     juce::WaitableEvent wakeEvent_;
