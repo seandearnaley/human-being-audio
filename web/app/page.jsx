@@ -7,6 +7,7 @@ import cutlineImage from "../../products/cutline/press/screenshots/cutline-inter
 import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-glide-interface.png";
 import strikeBodyImage from "../../products/strike-body/press/screenshots/strike-body-interface.png";
 import lineageImage from "../../products/lineage/press/screenshots/lineage-interface.png";
+import datumImage from "../../products/datum/press/screenshots/datum-interface.png";
 import { PLATFORMS, PRODUCTS, PRODUCTS_BY_SLUG, STUDIO } from "../lib/catalog.mjs";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
@@ -22,6 +23,7 @@ const PRODUCT_IMAGES = {
   "torus-glide": torusGlideImage,
   "strike-body": strikeBodyImage,
   lineage: lineageImage,
+  datum: datumImage,
 };
 
 function Product({ product, release, unavailable }) {

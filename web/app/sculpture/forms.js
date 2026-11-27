@@ -463,4 +463,68 @@ export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpe
       if (moving) group.rotation.y += dt * 0.11;
     };
   });
+
+  /* ---- Piston: phase-locked acoustic drive piston & damped zero-crossing shock rings (Datum) ---- */
+  defineForm("piston", ({ group, solid, wireOpacity, accent }) => {
+    const emerald = vec3(0.24, 0.9, 0.63);
+    const cyan = vec3(0.22, 0.91, 1.0);
+    const amber = vec3(0.96, 0.65, 0.22);
+
+    const coreGeo = new THREE.CylinderGeometry(0.46, 0.52, 1.32, 48, 20);
+    const stroke = Fn(() => {
+      const yNorm = positionGeometry.y.mul(1.5);
+      const pulse = sin(U.bars.mul(TWO_PI).sub(yNorm.mul(2.2))).mul(0.06).mul(U.open.add(0.35));
+      const slam = U.hit.mul(-0.34);
+      const radial = sin(yNorm.mul(mix(float(4.0), float(12.0), U.formant)).sub(U.time.mul(2.4)))
+        .mul(0.035)
+        .mul(U.slice.add(0.25));
+      return vec3(normalLocal.x.mul(radial), pulse.add(slam), normalLocal.z.mul(radial));
+    })();
+    const corePos = deform(positionLocal.add(stroke));
+    const coreMask = crystal(solid, vec3(1.1));
+    const coreMat = glassMaterial({ color: 0x101820, metalness: 0.88, roughness: 0.11 });
+    coreMat.positionNode = corePos;
+    coreMat.opacityNode = coreMask.mask;
+    coreMat.alphaTest = 0.5;
+    coreMat.iridescenceThicknessNode = filmThickness(200, 860);
+    coreMat.emissiveNode = emerald
+      .mul(float(0.18).add(U.hit.mul(1.3)))
+      .add(accent.mul(coreMask.edge.mul(3.2)));
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    const coreWire = new THREE.Mesh(coreGeo, wireMaterial(emerald, wireOpacity));
+    coreWire.material.positionNode = corePos;
+
+    const ringCount = 5;
+    const ringGeo = new THREE.TorusGeometry(1.0, 0.026, 14, 128);
+    const ri = instanceIndex.toFloat();
+    const waveY = sin(U.bars.mul(TWO_PI).sub(ri.mul(0.85)))
+      .mul(mix(float(0.06), float(0.24), U.open))
+      .add(U.hit.mul(0.28).mul(float(1).sub(ri.div(float(ringCount)))));
+    const ringPos = deform(positionLocal.add(vec3(0, waveY, 0)));
+    const ringMask = crystal(solid, vec3(ri.mul(2.3)));
+    const ringMat = new THREE.MeshStandardNodeMaterial({ color: 0x0a0d12, roughness: 0.28, metalness: 0.3 });
+    ringMat.positionNode = ringPos;
+    ringMat.opacityNode = ringMask.mask;
+    ringMat.alphaTest = 0.5;
+    const ringCol = mix(cyan, amber, ri.div(float(ringCount - 1)));
+    ringMat.emissiveNode = mix(emerald, ringCol, float(0.55)).mul(float(1.15).add(U.hit.mul(1.2)));
+    const rings = new THREE.InstancedMesh(ringGeo, ringMat, ringCount);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI * 0.5, 0, 0));
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < ringCount; j++) {
+      const r = 0.68 + j * 0.17;
+      v.set(0, -0.42 + j * 0.21, 0);
+      s.set(r, r, 1);
+      m.compose(v, q, s);
+      rings.setMatrixAt(j, m);
+    }
+
+    group.add(core, coreWire, rings);
+    group.rotation.x = 0.42;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.13;
+    };
+  });
 }

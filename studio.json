@@ -58,6 +58,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Lng1",
       "license": "AGPL-3.0-or-later"
+    },
+    "datum": {
+      "name": "Datum",
+      "artifacts": "plugin/Datum_artefacts/Release",
+      "bundle": "com.humanbeingmusic.datum",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Dtm1",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

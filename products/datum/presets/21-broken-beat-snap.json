@@ -1,0 +1,192 @@
+{
+    "name": "Broken Beat Snap",
+    "category": "Halftime & UKG",
+    "tuneHz": 55.0,
+    "punchAmt": 0.66,
+    "lengthMs": 128.0,
+    "clickAmt": 0.58,
+    "drive": 0.36,
+    "tight": 0.46,
+    "coreTopology": "Harmonic",
+    "startPhase": 0.0,
+    "harm2": 0.34,
+    "harm3": 0.22,
+    "harm4": 0.12,
+    "harm5": 0.06,
+    "harm6": 0.03,
+    "harmTilt": 0.68,
+    "tension": 0.32,
+    "cavityHz": 74.0,
+    "cavityQ": 0.26,
+    "pitchDepth": 0.65,
+    "beaterType": "Wood",
+    "beaterHard": 0.58,
+    "beaterTone": 3200.0,
+    "fmDepth": 0.34,
+    "fmRatio": 1.9,
+    "fmDecayMs": 11.0,
+    "noiseMode": "BP",
+    "noiseLevel": 0.24,
+    "noiseHz": 4400.0,
+    "noiseQ": 0.35,
+    "noiseDecayMs": 16.0,
+    "clickWavMix": 0.0,
+    "subLevel": 0.92,
+    "bodyLevel": 0.86,
+    "clickLevel": 0.74,
+    "envAttack": 0.18,
+    "envPunch": 0.15,
+    "envTail": 0.0,
+    "shaperType": "Tube",
+    "shaperGlue": 0.2,
+    "boxCutHz": 310.0,
+    "boxCutDb": 3.5,
+    "boxZeroPhase": true,
+    "airWidth": 0.28,
+    "phaseRotate": 0.0,
+    "disperseAmt": 0.14,
+    "disperseHz": 340.0,
+    "outputDb": 0.0,
+    "ceilingDb": -0.3,
+    "limitOn": true,
+    "humanize": 0.0,
+    "velToPunch": 0.55,
+    "activeSlot": "A · Main",
+    "slotMorph": 0.0,
+    "seqRun": false,
+    "seqSteps": "16",
+    "seqRate": "1/16",
+    "seqSwing": 0.0,
+    "keyTrack": "Kit",
+    "chokeMode": "Mono",
+    "zeroCross": true,
+    "headroomMode": "Peak-Min",
+    "quality": "4×",
+    "refBassMode": "Off",
+    "pitchCurve": [
+        {
+            "t": 0.0,
+            "y": 0.86,
+            "tension": -0.78,
+            "seg": 1
+        },
+        {
+            "t": 0.045,
+            "y": 0.3,
+            "tension": -0.52,
+            "seg": 1
+        },
+        {
+            "t": 0.18,
+            "y": 0.18,
+            "tension": -0.2,
+            "seg": 1
+        },
+        {
+            "t": 1.0,
+            "y": 0.17,
+            "tension": 0.0,
+            "seg": 0
+        }
+    ],
+    "ampCurve": [
+        {
+            "t": 0.0,
+            "y": 1.0,
+            "tension": 0.0,
+            "seg": 0
+        },
+        {
+            "t": 0.18,
+            "y": 0.88,
+            "tension": -0.25,
+            "seg": 2
+        },
+        {
+            "t": 0.5,
+            "y": 0.42,
+            "tension": -0.35,
+            "seg": 2
+        },
+        {
+            "t": 1.0,
+            "y": 0.0,
+            "tension": 0.0,
+            "seg": 0
+        }
+    ],
+    "slots": [
+        {
+            "tune": 0.0,
+            "len": 1.0,
+            "click": 1.0,
+            "drive": 1.0,
+            "level": 1.0
+        },
+        {
+            "tune": 1.0,
+            "len": 0.72,
+            "click": 0.68,
+            "drive": 0.8,
+            "level": 0.74
+        },
+        {
+            "tune": 0.5,
+            "len": 0.66,
+            "click": 0.9,
+            "drive": 0.95,
+            "level": 0.88
+        },
+        {
+            "tune": -3.0,
+            "len": 1.48,
+            "click": 0.45,
+            "drive": 0.85,
+            "level": 0.98
+        }
+    ],
+    "steps": [
+        {
+            "i": 0,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 7,
+            "v": 90,
+            "s": 1,
+            "r": 1
+        },
+        {
+            "i": 10,
+            "v": 114,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 14,
+            "v": 78,
+            "s": 2,
+            "r": 1
+        },
+        {
+            "i": 16,
+            "v": 122,
+            "s": 0,
+            "r": 1
+        },
+        {
+            "i": 23,
+            "v": 88,
+            "s": 1,
+            "r": 1
+        },
+        {
+            "i": 26,
+            "v": 114,
+            "s": 0,
+            "r": 1
+        }
+    ]
+}

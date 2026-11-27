@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1260" height="334" viewBox="0 0 1260 334">
+  <g transform="translate(46, 252)" fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <!-- datum phase-locked kick impulse mark -->
+    <line x1="8" y1="-108" x2="212" y2="-108" stroke="#364456" stroke-width="14"/>
+    <path d="M22,-108 C36,-214 54,-214 70,-108 C88,-16 112,-16 134,-108 C156,-172 178,-172 198,-108" stroke="#3ee5a0" stroke-width="24"/>
+    <path d="M22,-108 C34,-214 48,-214 60,-152" stroke="#38e8ff" stroke-width="24"/>
+    <circle cx="22" cy="-108" r="14" fill="#3ee5a0" stroke="none"/>
+    <circle cx="198" cy="-108" r="11" fill="#0a0d12" stroke="#f5a638" stroke-width="9"/>
+    <!-- d (emerald spine) -->
+    <circle cx="348" cy="-68" r="64" stroke="#e6ebf0"/>
+    <path d="M412,-216 V0" stroke="#3ee5a0"/>
+    <!-- a -->
+    <circle cx="546" cy="-68" r="64" stroke="#e6ebf0"/>
+    <path d="M610,-132 V0" stroke="#e6ebf0"/>
+    <!-- t (cyan crossbar) -->
+    <path d="M718,-204 V-24 A24,24 0 0 0 742,0 H774" stroke="#e6ebf0"/>
+    <path d="M674,-132 H772" stroke="#38e8ff"/>
+    <!-- u -->
+    <path d="M846,-132 V-52 A56,52 0 0 0 958,-52 V-132 M958,-52 V0" stroke="#e6ebf0"/>
+    <!-- m -->
+    <path d="M1032,0 V-132 M1032,-80 A42,42 0 0 1 1116,-80 V0 M1116,-80 A42,42 0 0 1 1200,-80 V0" stroke="#e6ebf0"/>
+  </g>
+</svg>
