@@ -1,6 +1,6 @@
 # Cutline 3.0 groove model: the grid is the truth
 
-Status: design, approved in conversation on 2026-11-26. Not yet implemented.
+Status: Plan 1 implemented on branch `cutline-3-groove-model`, Plan 2 on branch `cutline-3-cutover`.
 Spec 1 of 4. The grid, pattern-library and PLAY-surface specs follow and build on this one.
 
 Implementation is in two plans. Plan 1 (`docs/plans/2026-11-26-groove-model-1-foundation.md`) adds the
@@ -90,8 +90,10 @@ Rules:
 - A lane with `length` in 1..(pattern steps - 1) loops its first `length` steps and restarts
   at the start of the pattern. Any other value follows the pattern.
 - `Layer` is ignored on fill steps and slicer steps: if they are on, they sound.
-- A newly constructed bank holds the default beat (below) in scene A and empty patterns in B-D.
-  A scene the user clears is empty and stays empty.
+- A newly constructed bank holds the default beat (below) in scene A, empty patterns in B-D, and
+  the default slicer gate `x..x..x...x...x.`. A scene the user clears is empty and stays empty.
+- Banks are kept in canonical form by `sanitise`: off steps are blank, fields are in range, and
+  steps hidden by the pattern length, the fill window or the slicer length are cleared.
 
 Default beat, 1 bar, every hit Core, velocity 96:
 
@@ -212,7 +214,8 @@ At 1x rate, "every 4" fires in bars 4, 8, 12 of the host's bar ruler. The fill r
 tail of whichever pattern bar is playing in that host bar. `fillNow` is sampled once per
 bar, at the earliest moment a hit in the fill window could start (a full early nudge, lane offset and
 flam before the window), so that hits nudged early are not missed; switching it on later affects the
-next bar.
+next bar. `fillNow` and the fill schedule are latched together, once per bar: after that moment,
+changing either one affects the next bar.
 
 4/4 is assumed, as in 2.0.
 
@@ -233,6 +236,15 @@ the tests all use; none of it is random.
 - Hit times are not clamped. A hit may start before its bar (a flam, a negative nudge or a negative
   lane offset on the first step of a bar) or before beat 0 during host pre-roll. MIDI export deals with negative
   times itself.
+- Shift moves the whole pattern. Scene and pad switches fall on the shifted pattern's grid.
+- Scene switches: a step plays from the scene that is active at the step's grid time, so the old
+  scene's late hits and the new scene's early hits both sound. Known limits: a switch quantized to
+  1/16 or 1/4 cannot play a hit that should have started before the switch was requested, and only
+  one switch boundary is remembered at a time.
+- Two lanes that share a MIDI note and land on the same sample send one note-on, with the higher
+  velocity. MIDI export merges them the same way.
+- Note-offs are sent in time order with note-ons, and a block never sends more note-ons than leave
+  room for the note-offs they need.
 
 Removed: the five pocket attractors and negative groove, per-style pocket tables, the
 implicit open-hat choke, automatic flams.
@@ -241,6 +253,8 @@ implicit open-hat choke, automatic flams.
 
 Drum export writes the active scene's pattern once through, bar 1 to the last bar, with the
 current Density, Dynamics, Swing and Rate. The last bar includes the fill when Fill is not Off.
+The clip is `bars * 4 / rate` beats long. A hit that starts before bar 1 or after the last bar is
+wrapped to the other end of the clip.
 
 ## Unchanged
 
@@ -292,7 +306,10 @@ Default program is Repeat. Slice, Bounce, Swing and Poly are removed: they drove
 that no longer exist.
 
 Pads engage, and switch program, on the next 1/16 note and release at once, whatever the scene
-quantize is.
+quantize is. In the block where a pad engages, the pattern plays up to the switch point.
+
+In MIDI Slicer mode, Repeat loops the phrase's notes, Roll retriggers the held notes, and Drop's
+right half does nothing.
 
 Telemetry reports the engaged program and, for Repeat, the window's start step and length,
 so the grid can show it.
@@ -341,6 +358,8 @@ A pattern:
 - A step set in more than one layer string is an error.
 - A fill string is always 16 characters. Only the fill window is part of the fill: characters and
   edits before it are ignored on read and are not written back.
+- An edit with a missing or out-of-range `step`, or one that targets a step that is off, is an
+  error, in patterns and in the slicer alike. A fill edit before the fill window is still ignored.
 - `edits` carries what a character cannot: exact `velocity`, `ratchet`, `nudge`, `flam`.
   `"fill": true` on an edit targets the fill bar. The slicer object takes its own `edits`
   list, keyed by `step` alone.
@@ -390,6 +409,8 @@ Enough for the plugin to stay usable; the grid spec does the real design.
 - Click toggles a step (new steps: Groove, velocity 96). Vertical drag sets velocity and
   shift-click cycles ratchet, as today. The step's right-click menu sets its layer.
 - A Fill toggle switches the grid to the fill bar for editing.
+- The grid header has `1 | 2 | 4` pills for the pattern's bars and, in the fill view, for the
+  fill's beats.
 - Macro row: Density, Swing, Dynamics, Fill.
 - Removed from the grid toolbar: Mutate, Polymeter, lane Lock. Clone and Clear stay.
 - PLAY shows the four interim pad programs. Its art is unchanged.
@@ -448,6 +469,8 @@ Swing and Poly pad programs; 8-bar phrases; all random number use in playback.
 - Grid interaction design, the layer brush, the phrase strip, a Vary tool (grid spec).
 - The broader starter pattern set, a pattern browser, Strike Body presets (library spec).
 - The PLAY surface and its visuals (PLAY spec).
-- Release work: version bump, release notes, README and website copy, demos.
+- Release work: version bump, release notes, README and website copy, demos, and the release
+  recall fixture `factory/release/fixtures/cutline.vststate`, which must be regenerated before
+  Cutline 3 ships.
 - Time signatures other than 4/4.
 - A fill that silences lanes it does not draw (a deliberate drop). Use the Drop pad for now.

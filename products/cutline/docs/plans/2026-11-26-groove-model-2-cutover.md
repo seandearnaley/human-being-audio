@@ -115,7 +115,7 @@ While a preset is partly broken, do not run `ctest --preset ...` for it: CTest r
 
 ## Before you start
 
-- [ ] **Confirm the branch and a clean product tree**
+- [x] **Confirm the branch and a clean product tree**
 
 ```bash
 git branch --show-current && git status --short -- .
@@ -123,7 +123,7 @@ git branch --show-current && git status --short -- .
 
 Expected: `cutline-3-cutover`, and no lines for files under `products/cutline` other than this plan if it is not committed yet.
 
-- [ ] **Confirm the foundation branch has not moved**
+- [x] **Confirm the foundation branch has not moved**
 
 ```bash
 git rev-parse --short cutline-3-groove-model && git merge-base --is-ancestor cutline-3-groove-model HEAD && echo "foundation is an ancestor"
@@ -131,7 +131,7 @@ git rev-parse --short cutline-3-groove-model && git merge-base --is-ancestor cut
 
 Expected: `065120d`, then `foundation is an ancestor`.
 
-- [ ] **Confirm the baseline is green**
+- [x] **Confirm the baseline is green**
 
 ```bash
 cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
@@ -158,7 +158,7 @@ Everything here touches only Plan 1's files. Nothing in the 2.0 engine calls the
 - Produces, in `cl/hits.h`: `inline constexpr int kOpenHatLane = 5`, `kPercBLane = 7`, `kMaxNudge = 24`, `kMaxOffsetMs = 20`; `constexpr bool isLongNoteLane(int lane) noexcept`; `inline double maxEarlyBeats(double beatsPerMs) noexcept`; `inline double maxLateBeats(double beatsPerMs) noexcept`.
 - Behaviour changes: `resolveBar` treats a non-finite Density as 0 and a non-finite Dynamics as 0.5. `forEachHit` clamps `offsetMs` to -20..+20. `readPattern` and `readGrooveBank` return sanitised data and reject bad edits.
 
-- [ ] **Step 1: Write the failing model tests**
+- [x] **Step 1: Write the failing model tests**
 
 Append to `tests/core/GrooveTests.cpp`:
 
@@ -243,7 +243,7 @@ TEST_CASE("Growing a pattern repeats it and shrinking drops the hidden bars", "[
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests
@@ -251,7 +251,7 @@ cmake --build --preset engine --target cl-core-tests
 
 Expected: the build fails with `use of undeclared identifier 'sanitise'`.
 
-- [ ] **Step 3: Add the model code**
+- [x] **Step 3: Add the model code**
 
 In `core/include/cl/groove.h`, add `#include <algorithm>` and `#include <cstddef>` to the includes. Replace the `GrooveBank` struct with:
 
@@ -358,7 +358,7 @@ constexpr void setPatternBars(Pattern& p, int bars) noexcept CL_NONBLOCKING {
 }
 ```
 
-- [ ] **Step 4: Run the model tests**
+- [x] **Step 4: Run the model tests**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-core-tests "[groove]"
@@ -366,7 +366,7 @@ cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-co
 
 Expected: `All tests passed`. One existing test, "Patterns and banks round-trip with every field set", may now fail because the reader adds file steps on top of the default gate. Step 6 fixes the reader; carry on.
 
-- [ ] **Step 5: Write the failing JSON tests**
+- [x] **Step 5: Write the failing JSON tests**
 
 Append to `tests/core/GrooveJsonTests.cpp`:
 
@@ -482,7 +482,7 @@ TEST_CASE("Any sanitised bank survives a round trip unchanged", "[groove][json]"
 
 Add `#include <cstdint>` to that file's includes.
 
-- [ ] **Step 6: Make the reader strict and sanitised**
+- [x] **Step 6: Make the reader strict and sanitised**
 
 In `core/src/groove_json.cpp`:
 
@@ -572,7 +572,7 @@ In `readGrooveBank`, replace the `if (value.contains("slicer") && value["slicer"
     return bank;
 ```
 
-- [ ] **Step 7: Run the core tests**
+- [x] **Step 7: Run the core tests**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-core-tests
@@ -580,7 +580,7 @@ cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-co
 
 Expected: `All tests passed`. If "Patterns and banks round-trip with every field set" fails, the bank that test builds is not in canonical form (for example an off step with a ratchet, or a step beyond its pattern length). Add `sanitise(bank);` before that test serialises, and `sanitise(p);` before it serialises a pattern. Do not weaken its assertions.
 
-- [ ] **Step 8: Write the failing resolve and timing tests**
+- [x] **Step 8: Write the failing resolve and timing tests**
 
 Append to `tests/engine/ResolveTests.cpp` (add `#include <cmath>` and `#include <limits>`):
 
@@ -736,7 +736,7 @@ TEST_CASE("No hit starts earlier or later than the published bounds", "[engine][
 }
 ```
 
-- [ ] **Step 9: Run them to verify they fail**
+- [x] **Step 9: Run them to verify they fail**
 
 ```bash
 cmake --build --preset engine --target cl-engine-tests
@@ -744,7 +744,7 @@ cmake --build --preset engine --target cl-engine-tests
 
 Expected: the build fails with `use of undeclared identifier 'isLongNoteLane'`.
 
-- [ ] **Step 10: Add the timing helpers and the guards**
+- [x] **Step 10: Add the timing helpers and the guards**
 
 In `engine/include/cl/hits.h`, add `#include <cstddef>` and, after `kFlamVelocityDrop`, add:
 
@@ -795,7 +795,7 @@ In the cached `resolveBar`, replace the line that computes `density` with:
     const float density = std::clamp(rawDensity, 0.0f, 1.0f) + 1.0e-6f;
 ```
 
-- [ ] **Step 11: Run the whole engine preset**
+- [x] **Step 11: Run the whole engine preset**
 
 ```bash
 cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
@@ -803,7 +803,7 @@ cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
 
 Expected: `100% tests passed, 0 tests failed out of 56`. (40 before, plus 3 model, 4 JSON, 5 resolve and 4 timing test cases.)
 
-- [ ] **Step 12: Check formatting and commit**
+- [x] **Step 12: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -871,7 +871,7 @@ Parameter order (index, key, name, kind, range, default, automatable):
 | 34-41 | `lane2On` .. `lane2Ratio` | Lane 2 | as in 2.0 | | Off, Velocity, rate index 3, depth 0.36 | as in 2.0 |
 | 42 | `ccThinMs` | CC rate | choice | 1, 2, 4, 8 ms | 2 ms | no |
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace `tests/core/CoreTests.cpp` with:
 
@@ -1062,7 +1062,7 @@ In `tests/CMakeLists.txt`, change line 1 to:
 add_executable(cl-core-tests core/CoreTests.cpp core/GrooveTests.cpp core/GrooveJsonTests.cpp core/PresetTests.cpp)
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests
@@ -1070,7 +1070,7 @@ cmake --build --preset engine --target cl-core-tests
 
 Expected: the build fails; the first error names `ParamId::density` (`no member named 'density' in 'cl::ParamId'`).
 
-- [ ] **Step 3: Rewrite `params.h`**
+- [x] **Step 3: Rewrite `params.h`**
 
 In `core/include/cl/params.h`, replace the header comment, the `ParamId` enum, `kPerfPadCount`, the style, attractor, fill-type and pad-program enums, the `choices` namespace, the two rate tables, the `CL_LANE` invocations and the `kParams` table. Everything not shown here (`LaneField`, `LaneTarget`, `laneParam`, `EngineMode`, `NoteMap`, `SlicerStyle`, `SeqRate`, `Quantize`, `PadCcMode`, `LaneShape`, `ParamKind`, `Unit`, `ParamSpec`, `namespace detail`, the `CL_LANE` macro body, `spec`, `Params`, and the function declarations) stays as it is.
 
@@ -1201,7 +1201,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
 }};
 ```
 
-- [ ] **Step 4: Rewrite `pattern.h` and `pattern.cpp`**
+- [x] **Step 4: Rewrite `pattern.h` and `pattern.cpp`**
 
 In `core/include/cl/pattern.h`: keep the includes (drop `<cmath>` if nothing uses it), `kDrumLaneCount`, `kDrumLaneNames`, the kit-map comment, `kKitNoteMaps`, `kKitLaneNames` and `kitLaneName` exactly as they are. Delete `kMaxLaneSteps` and everything from `enum class StepState` to the end of the file except the closing namespace. Replace the header comment and the four pad label tables, and add the two declarations:
 
@@ -1249,7 +1249,7 @@ std::string midiNoteLabel(int midiNote) { return hba::core::midiNoteName(std::cl
 } // namespace cl
 ```
 
-- [ ] **Step 5: Rewrite the preset codec**
+- [x] **Step 5: Rewrite the preset codec**
 
 Replace `core/include/cl/preset.h` with:
 
@@ -1410,7 +1410,7 @@ std::string serialiseCurve(const Curve& curve) { return writeCurve(curve).dump()
 } // namespace cl
 ```
 
-- [ ] **Step 6: Run the core tests**
+- [x] **Step 6: Run the core tests**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-core-tests
@@ -1418,7 +1418,7 @@ cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-co
 
 Expected: `All tests passed`. `cl_core` builds with no warnings.
 
-- [ ] **Step 7: Check formatting and commit**
+- [x] **Step 7: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -1463,7 +1463,7 @@ How drum playback works, so the code below reads easily:
 4. The kept hits are sorted by time in a fixed buffer and then triggered. Sorting matters because two lanes can share a MIDI note (the Strike Body map does), and note-off tracking needs note-ons in time order.
 5. `fillNow` is latched once per bar, at the first block that reaches the earliest moment a fill-window hit could start. Before that moment no fill-window hit can sound, so resolving the bar with or without the latch gives the same notes.
 
-- [ ] **Step 1: Write the failing engine tests**
+- [x] **Step 1: Write the failing engine tests**
 
 Replace `tests/engine/EngineTests.cpp` with:
 
@@ -2190,7 +2190,7 @@ add_library(cl_engine STATIC
     src/resolve.cpp)
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 cmake --build --preset engine --target cl-engine-tests
@@ -2198,7 +2198,7 @@ cmake --build --preset engine --target cl-engine-tests
 
 Expected: CMake reports that `src/engine_impl.h` or `include/cl/groove_state.h` cannot be found, or the compiler reports `'cl/groove_state.h' file not found`.
 
-- [ ] **Step 3: Add `held_notes.h` and `groove_state.h`**
+- [x] **Step 3: Add `held_notes.h` and `groove_state.h`**
 
 Create `engine/include/cl/held_notes.h`. Move `kMaxHeldInputNotes` and the whole `struct HeldNotes` out of `engine/include/cl/phrase.h` unchanged (the 2.0 `phrase.h` is not compiled again until Task 4 rewrites it), and add `sameAs`:
 
@@ -2274,7 +2274,7 @@ GrooveState::GrooveState(const GrooveBank& source) noexcept : bank(source) {
 }
 ```
 
-- [ ] **Step 4: Add the pad mappings**
+- [x] **Step 4: Add the pad mappings**
 
 Create `engine/src/pad_programs.h`:
 
@@ -2330,7 +2330,7 @@ constexpr bool dropIsSilence(float x) noexcept CL_NONBLOCKING { return x < 0.5f;
 } // namespace cl::pads
 ```
 
-- [ ] **Step 5: Rewrite the engine header**
+- [x] **Step 5: Rewrite the engine header**
 
 Replace `engine/include/cl/engine.h` with:
 
@@ -2430,7 +2430,7 @@ class Engine {
 } // namespace cl
 ```
 
-- [ ] **Step 6: Declare `Engine::Impl`**
+- [x] **Step 6: Declare `Engine::Impl`**
 
 Create `engine/src/engine_impl.h`. `engine.cpp` and `pad_programs.cpp` both include it.
 
@@ -2612,7 +2612,7 @@ constexpr int floorMod(std::int64_t a, int n) noexcept CL_NONBLOCKING {
 } // namespace cl
 ```
 
-- [ ] **Step 7: Rewrite `engine.cpp`**
+- [x] **Step 7: Rewrite `engine.cpp`**
 
 Start from the 2.0 file and change it as follows.
 
@@ -3045,7 +3045,7 @@ is added. `inputNoteOn` and `inputNoteOff` are unchanged: they already use `kPer
 
 If `engine/src/audition.h` fails to compile because it names a type Task 2 removed, change only that line to the Task 2 equivalent and say so in your report.
 
-- [ ] **Step 8: Add the pad programs**
+- [x] **Step 8: Add the pad programs**
 
 Create `engine/src/pad_programs.cpp`:
 
@@ -3126,7 +3126,7 @@ void Engine::Impl::playRoll(const Block& b) noexcept CL_NONBLOCKING {
 } // namespace cl
 ```
 
-- [ ] **Step 9: Build and run the engine tests**
+- [x] **Step 9: Build and run the engine tests**
 
 ```bash
 cmake --build --preset engine --target cl-engine-tests cl-core-tests && build/engine/tests/cl-engine-tests && build/engine/tests/cl-core-tests
@@ -3136,7 +3136,7 @@ Expected: both print `All tests passed`. `cl_engine` compiles under `-Werror=fun
 
 If a truth case fails, the failure message names the lane, bar, step and sample of the first missing note. Do not loosen the test. The usual causes are a hit dropped at a bar line (check the `firstBar` / `lastBar` range) and a fill flag that differs from `fillScheduled(absBar) || fillNow`.
 
-- [ ] **Step 10: Confirm nothing random is left in what this task built**
+- [x] **Step 10: Confirm nothing random is left in what this task built**
 
 ```bash
 grep -nE "laneHash|Rng|uniform\(|rand\(" engine/src/engine.cpp engine/src/engine_impl.h engine/src/pad_programs.cpp engine/src/pad_programs.h engine/src/resolve.cpp
@@ -3144,7 +3144,7 @@ grep -nE "laneHash|Rng|uniform\(|rand\(" engine/src/engine.cpp engine/src/engine
 
 Expected: no output.
 
-- [ ] **Step 11: Update the spec's `fillNow` sentence**
+- [x] **Step 11: Update the spec's `fillNow` sentence**
 
 In `docs/specs/2026-11-26-groove-model-design.md`, in the Fills section, replace
 
@@ -3163,7 +3163,7 @@ flam before the window), so that hits nudged early are not missed; switching it 
 next bar.
 ```
 
-- [ ] **Step 12: Check formatting and commit**
+- [x] **Step 12: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -3209,7 +3209,7 @@ What the slicer keeps and loses, from the spec:
 - Slicer note times stay clamped inside the phrase, as in 2.0. Only drum hits are unclamped.
 - If a phrase would hold more than 768 notes, the notes of the last steps are dropped, as in 2.0.
 
-- [ ] **Step 1: Write the failing slicer tests**
+- [x] **Step 1: Write the failing slicer tests**
 
 Create `tests/engine/SlicerTests.cpp`:
 
@@ -3536,7 +3536,7 @@ TEST_CASE("Pads in MIDI Slicer mode release every note", "[engine][slicer]") {
 }
 ```
 
-- [ ] **Step 2: Write the failing export tests**
+- [x] **Step 2: Write the failing export tests**
 
 Create `tests/engine/SmfTests.cpp`:
 
@@ -3757,7 +3757,7 @@ In `tests/CMakeLists.txt`, add `engine/SlicerTests.cpp` and `engine/SmfTests.cpp
 
 In `engine/CMakeLists.txt`, add `include/cl/phrase.h`, `include/cl/smf.h`, `src/phrase.cpp` and `src/smf.cpp` to the `cl_engine` source list, in alphabetical position.
 
-- [ ] **Step 3: Run them to verify they fail**
+- [x] **Step 3: Run them to verify they fail**
 
 ```bash
 cmake --build --preset engine --target cl-engine-tests
@@ -3765,7 +3765,7 @@ cmake --build --preset engine --target cl-engine-tests
 
 Expected: the build fails. `phrase.cpp` still holds the 2.0 compiler, so the first errors name `styles.h` or `PhrasePlan`.
 
-- [ ] **Step 4: Rewrite the slicer compiler**
+- [x] **Step 4: Rewrite the slicer compiler**
 
 Replace `engine/include/cl/phrase.h` with:
 
@@ -4038,7 +4038,7 @@ SlicerInputs slicerInputs(const Params& params, int scene, const HeldNotes& held
 } // namespace cl
 ```
 
-- [ ] **Step 5: Play the slicer and the captured clip in the engine**
+- [x] **Step 5: Play the slicer and the captured clip in the engine**
 
 In `engine/include/cl/engine.h`, add `#include "cl/phrase.h"` and, after `position()`:
 
@@ -4235,7 +4235,7 @@ In `playRoll`, replace `if (b.isDrum) pushDrumHit(...)` with:
         }
 ```
 
-- [ ] **Step 6: Rewrite MIDI export**
+- [x] **Step 6: Rewrite MIDI export**
 
 Replace `engine/include/cl/smf.h` with:
 
@@ -4450,7 +4450,7 @@ std::vector<std::uint8_t> exportSmf(const Params& params, const LaneCurves& curv
 } // namespace cl
 ```
 
-- [ ] **Step 7: Update the command-line renderer**
+- [x] **Step 7: Update the command-line renderer**
 
 In `tools/cutline_render.cpp`:
 
@@ -4465,7 +4465,7 @@ In `tools/cutline_render.cpp`:
 
 - Replace `engine.setPatternBank(preset.bank);` with `engine.setGroove(cl::GrooveState(preset.bank));`.
 
-- [ ] **Step 8: Delete the 2.0 generator**
+- [x] **Step 8: Delete the 2.0 generator**
 
 ```bash
 git rm engine/src/styles.cpp engine/src/styles.h tools/seed_patterns.py
@@ -4475,7 +4475,7 @@ In `core/include/cl/lanes.h`, delete the line `using hba::dsp::laneHash;`. Nothi
 
 Confirm `engine/CMakeLists.txt` no longer lists `src/styles.cpp` or `src/styles.h` (Task 3 removed them).
 
-- [ ] **Step 9: Build and test the whole engine preset**
+- [x] **Step 9: Build and test the whole engine preset**
 
 ```bash
 cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
@@ -4483,7 +4483,7 @@ cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
 
 Expected: `100% tests passed, 0 tests failed out of 86`. (24 core, 5 shared DSP, 14 resolve, 10 timing, 1 lint, 8 engine, 8 pad, 11 slicer, 5 export, as the plan was first written. Tasks 3 and 4 gained tests during execution, so the real number is higher.) If your count differs because Catch2 names a case differently, report the count; the pass rate is what matters.
 
-- [ ] **Step 10: Render the default beat and count its notes**
+- [x] **Step 10: Render the default beat and count its notes**
 
 ```bash
 build/engine/tools/cutline-render --mid build/engine/default-beat.mid --bpm 172 && python3 - <<'EOF'
@@ -4494,7 +4494,7 @@ EOF
 
 Expected: a line starting `Wrote`, then `bytes` around 150 and `note-ons 12` (the byte scan can over-count by one or two if a delta-time byte happens to be `0x90`; 12 to 14 is fine). This is the calm default: 12 notes in one bar, where the 2.0 presets had a median of 26.
 
-- [ ] **Step 11: Confirm the 2.0 generator and all randomness are gone**
+- [x] **Step 11: Confirm the 2.0 generator and all randomness are gone**
 
 ```bash
 grep -rnE "laneHash|Rng|uniform\(|warpBeat|compilePhrase|styleKit|euclid|PhrasePlan|appendDrumFill" core engine tools | grep -v "engine/src/audition.h"; test ! -e engine/src/styles.cpp && test ! -e engine/src/styles.h && test ! -e tools/seed_patterns.py && echo deleted
@@ -4502,7 +4502,7 @@ grep -rnE "laneHash|Rng|uniform\(|warpBeat|compilePhrase|styleKit|euclid|PhraseP
 
 Expected: only the line `deleted`. (`engine/src/audition.h` uses `hba::dsp` noise for the hat and snare sounds; if grep prints a line from that file, it is the synth's noise source and is allowed. Any other line is a leftover.)
 
-- [ ] **Step 12: Check formatting and commit**
+- [x] **Step 12: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -4578,7 +4578,7 @@ What the port shows and does, from the spec:
 - PLAY shows the four interim pad programs with their existing art.
 - The pulse ribbon draws from `resolveBar`.
 
-- [ ] **Step 1: Write the failing grid-logic tests**
+- [x] **Step 1: Write the failing grid-logic tests**
 
 Create `tests/ui/GridEditTests.cpp`:
 
@@ -4779,7 +4779,7 @@ In `tests/CMakeLists.txt`, change the `cl-ui-tests` line to:
 
 In `ui/CMakeLists.txt`, add `src/grid_edit.cpp` and `src/grid_edit.h` to the `cl_ui` source list, before `src/grid_stage.h`.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 cmake --build --preset dev --target cl-ui-tests
@@ -4787,7 +4787,7 @@ cmake --build --preset dev --target cl-ui-tests
 
 Expected: the build fails. The first errors come from `ui/include/cl/ui/model.h` (`cl/phrase.h` no longer has `PhrasePlan`) or from the missing `grid_edit.h`.
 
-- [ ] **Step 3: Add the grid logic**
+- [x] **Step 3: Add the grid logic**
 
 Create `ui/src/grid_edit.h`:
 
@@ -5021,7 +5021,7 @@ bool setLaneLength(Pattern& pattern, int lane, int steps) noexcept {
 } // namespace cl::ui::grid
 ```
 
-- [ ] **Step 4: Rewrite the model interface and the fake model**
+- [x] **Step 4: Rewrite the model interface and the fake model**
 
 Replace `ui/include/cl/ui/model.h`: keep `PresetInfo` and every `Model` member not named below; replace the includes and `Visuals` with the versions in this task's Interfaces block; replace the four pattern members with
 
@@ -5206,7 +5206,7 @@ const Visuals& FakeModel::visuals() { return visuals_; }
 } // namespace cl::ui
 ```
 
-- [ ] **Step 5: Run the grid-logic tests**
+- [x] **Step 5: Run the grid-logic tests**
 
 `cl-ui-tests` links `cl_ui`, and `cl_ui` does not compile until every panel is ported. Go straight on to Steps 6 to 10; Step 11 runs:
 
@@ -5216,7 +5216,7 @@ cmake --build --preset dev --target cl-ui-tests && build/dev/tests/cl-ui-tests
 
 Expected (after Step 10): `All tests passed`.
 
-- [ ] **Step 6: Port the theme, the pad art and the macro row**
+- [x] **Step 6: Port the theme, the pad art and the macro row**
 
 `ui/src/theme.h`: change the header comment to "Cutline 3 dark-chrome design tokens, the 8-lane palette and the four pad colours." Replace the `pad` array with
 
@@ -5265,7 +5265,7 @@ constexpr std::array<MacroDef, 4> kMacros{{
 
 and in `SetupPanel` replace the `bars_`, `pocket_`, `fillType_` and `variation_` rows with one row, `quant_(context, ParamId::sceneQuantize, colour::iris)`. The panel's rows are then, top to bottom: `noteMap_` or `slicerStyle_` (as today, by mode), `quant_`, `strum_`, `gate_`. Update the constructor's child list, `resized()` and the member list to match.
 
-- [ ] **Step 7: Rewrite the grid stage**
+- [x] **Step 7: Rewrite the grid stage**
 
 `ui/src/grid_stage.h`: include `"grid_edit.h"`. In the class:
 
@@ -5578,7 +5578,7 @@ void GridStagePanel::showDrumStepMenu(int lane, int step) {
 
 `showLaneMenu(lane)`: "Length: Follow Pattern" (`length = 0`), "Length: 5 steps", "Length: 7 steps", "Length: 12 steps" (through `grid::setLaneLength`), a break, "Reset Lane" (`lane = DrumLane{}`), "Reset All Notes to Kit Map" (`midiNote = 0` on every lane). The Euclidean entries are gone.
 
-- [ ] **Step 8: Port the pulse ribbon**
+- [x] **Step 8: Port the pulse ribbon**
 
 `ui/src/pulse_ribbon.cpp`: include `"grid_edit.h"`. In `draw`:
 
@@ -5588,7 +5588,7 @@ void GridStagePanel::showDrumStepMenu(int lane, int step) {
 - The playhead column is `v.position.barInPattern * 16 + v.position.stepInBar` in drum mode, and that modulo `slicerLength` in slicer mode. Draw the needle at the left edge of that column.
 - The headline is `"SCN %c · %d bar"` / `"bars"` in drum mode (no style name), and the slicer style in slicer mode.
 
-- [ ] **Step 9: Port the PLAY panel**
+- [x] **Step 9: Port the PLAY panel**
 
 `ui/src/play_panel.h` and `.cpp`:
 
@@ -5627,7 +5627,7 @@ std::string PlayPanel::formatAxisValue(int prog, bool isX, float v) const {
 
 `ui/src/top_bar.cpp` needs no change beyond compiling against the new `Visuals`; it already reads `kPerfPadCount`, `padProgram`, `seqRate`, `scene` and `engineMode`.
 
-- [ ] **Step 10: Open on GRID, and update the snapshot tool**
+- [x] **Step 10: Open on GRID, and update the snapshot tool**
 
 `ui/src/editor.cpp`: `bool gridMode = true;` in `Editor::Impl`. Nothing else changes: the macro strip lays out however many knobs it has.
 
@@ -5670,7 +5670,7 @@ Two things to know while porting:
 - Write every non-ASCII character in a string literal as a `\u` escape (`"\u00d7"`, `"\u00b7"`, `"\u2194"`), as the existing UI code does.
 - At 64 columns the cells are narrow: the ratchet badge is hidden (the `cw >= px(12)` test) and the ruler shows only the bar labels. That is expected for the minimal port.
 
-- [ ] **Step 11: Build the UI, run its tests, and look at it**
+- [x] **Step 11: Build the UI, run its tests, and look at it**
 
 ```bash
 cmake --build --preset dev --target cl-ui-tests cl-ui-snapshot && build/dev/tests/cl-ui-tests
@@ -5695,7 +5695,7 @@ Expected: nine lines naming the files. Open every PNG and check it against the f
 
 If the snapshot tool cannot create a window in this environment, say so in your report; do not skip the tests.
 
-- [ ] **Step 12: Check formatting and commit**
+- [x] **Step 12: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -5730,7 +5730,7 @@ When this task ends both presets are green.
 - Produces, in `PluginProcessor`: `void loadDefaultState()`; `HistorySnapshot::bank` is a `GrooveBank`. Plugin state carries `format="3"` on its root element and the bank in the `grooveBank` property.
 - Produces: `presets/` holds exactly 16 files, all `"format": 3`.
 
-- [ ] **Step 1: Write the preset builder and build the presets**
+- [x] **Step 1: Write the preset builder and build the presets**
 
 Create `tools/build_presets.py`:
 
@@ -5829,7 +5829,7 @@ python3 tools/build_presets.py && ls presets | wc -l
 
 Expected: `wrote 16 presets to .../products/cutline/presets`, then `16`. `git status --short presets` shows the 32 old files deleted and 16 added or modified.
 
-- [ ] **Step 2: Write the failing factory-content test**
+- [x] **Step 2: Write the failing factory-content test**
 
 Create `tests/core/FactoryPresetTests.cpp`:
 
@@ -5940,7 +5940,7 @@ target_compile_definitions(cl-core-tests PRIVATE
     CL_PRESETS_DIR="${PROJECT_SOURCE_DIR}/presets")
 ```
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 ```bash
 cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-core-tests "[presets]"
@@ -5948,7 +5948,7 @@ cmake --build --preset engine --target cl-core-tests && build/engine/tests/cl-co
 
 Expected: `All tests passed (… assertions in 3 test cases)`. A failure here means `build_presets.py` and the codec disagree; read the `INFO` line for the file and the parser's reason.
 
-- [ ] **Step 4: Write the failing plugin tests**
+- [x] **Step 4: Write the failing plugin tests**
 
 Replace `tests/plugin/PluginTests.cpp` with:
 
@@ -6170,7 +6170,7 @@ TEST_CASE("processBlock renders finite audition audio", "[plugin]") {
 }
 ```
 
-- [ ] **Step 5: Run them to verify they fail**
+- [x] **Step 5: Run them to verify they fail**
 
 ```bash
 cmake --build --preset dev --target cl-plugin-tests
@@ -6178,7 +6178,7 @@ cmake --build --preset dev --target cl-plugin-tests
 
 Expected: the build fails in `plugin/src` (`PatternBank` is not declared).
 
-- [ ] **Step 6: Port the pattern store**
+- [x] **Step 6: Port the pattern store**
 
 Replace `plugin/src/PatternStore.h` with:
 
@@ -6276,7 +6276,7 @@ bool PatternStore::reloadFromState() {
 } // namespace cl
 ```
 
-- [ ] **Step 7: Port telemetry, the processor and state versioning**
+- [x] **Step 7: Port telemetry, the processor and state versioning**
 
 `plugin/src/Telemetry.h`: delete the constructor (nothing is compiled up front any more). `publish` takes the mode and copies position state instead of a phrase plan:
 
@@ -6374,7 +6374,7 @@ Add `#include "cl/groove_json.h"` for `kGrooveFormat`.
 
 Add one plugin test for this, beside the others in `tests/plugin/PluginTests.cpp`: "Saving state does not republish the bank": read `proc.patterns.revision()`, call `getStateInformation` twice, and check the revision is unchanged.
 
-- [ ] **Step 8: Port presets, export and the model**
+- [x] **Step 8: Port presets, export and the model**
 
 `plugin/src/Presets.h` and `.cpp`:
 
@@ -6497,7 +6497,7 @@ The clone test undoes a clear with one `undo()`. `cloneActiveSceneToNext` pushes
                "scenes. Switch to MIDI Slicer to chop, strum and re-groove your own chords and clips.";
 ```
 
-- [ ] **Step 9: Build and test both presets**
+- [x] **Step 9: Build and test both presets**
 
 ```bash
 cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
@@ -6511,7 +6511,7 @@ cmake --build --preset dev && ctest --preset dev 2>&1 | tail -3
 
 Expected: `100% tests passed`. The `dev` count is the 89 above, plus the UI tests (the curve-edit cases that were already there and 7 grid cases), plus 8 plugin cases and the Mac About test. Report the number you get.
 
-- [ ] **Step 10: Render the real plugin's editor state through the snapshot tool**
+- [x] **Step 10: Render the real plugin's editor state through the snapshot tool**
 
 ```bash
 build/dev/ui/cl-ui-snapshot build/dev/grid.png grid
@@ -6519,7 +6519,7 @@ build/dev/ui/cl-ui-snapshot build/dev/grid.png grid
 
 Expected: the same picture as in Task 5 (the snapshot tool uses the fake model; this is a regression check that the UI still builds and renders after the plugin work).
 
-- [ ] **Step 11: Check formatting and commit**
+- [x] **Step 11: Check formatting and commit**
 
 ```bash
 xcrun clang-format --style=file:../../.clang-format --dry-run --Werror \
@@ -6546,7 +6546,7 @@ CI builds `factory/showcase` against every product's engine (`.github/workflows/
 - Consumes: `cl::Engine::setGroove`, `cl::GrooveState`, `cl::parsePreset`, `cl::PadProgram::{repeat, roll, rate, drop}`, `cl::ParamId::swing`, the 16 preset files from Task 6.
 - Produces: nothing new.
 
-- [ ] **Step 1: Port the file**
+- [x] **Step 1: Port the file**
 
 Run from the repository root. In `factory/showcase/clips_cutline.cpp`:
 
@@ -6558,7 +6558,7 @@ Run from the repository root. In `factory/showcase/clips_cutline.cpp`:
 - Any other use of a removed parameter (`chop`, `ghosts`, `complexity`, `fills`, `ratchet`, `style`, `variation`, `fillType`, `attractor`, `phraseBars`) is deleted. Where a clip relied on one to build intensity, automate `cl::ParamId::density` over the same span instead.
 - Change the section comment from "CUTLINE 2.0" to "CUTLINE 3". Leave the clip titles and descriptions passed to `emitClip` alone: they are website copy.
 
-- [ ] **Step 2: Build the showcase**
+- [x] **Step 2: Build the showcase**
 
 ```bash
 cmake -S factory/showcase -B factory/showcase/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCPM_SOURCE_CACHE="$HOME/.cache/CPM" && cmake --build factory/showcase/build --parallel
@@ -6566,7 +6566,7 @@ cmake -S factory/showcase -B factory/showcase/build -G Ninja -DCMAKE_BUILD_TYPE=
 
 Expected: the build finishes. This compiles all the studio's engines and takes several minutes; run it in the background. If it fails in a file other than `clips_cutline.cpp`, check `git status`: nothing else should have changed.
 
-- [ ] **Step 3: Run the factory unit tests**
+- [x] **Step 3: Run the factory unit tests**
 
 ```bash
 python3 -m unittest discover -s factory/release 2>&1 | tail -3
@@ -6574,7 +6574,7 @@ python3 -m unittest discover -s factory/release 2>&1 | tail -3
 
 Expected: `OK`. (`test_recall.py` only checks that the recall fixture exists; the fixture itself is regenerated at release time. See "Deferred, with reasons".)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add factory/showcase/clips_cutline.cpp
@@ -6594,7 +6594,7 @@ git commit -m "build(showcase): compile the Cutline clips against the Cutline 3 
 - Consumes: everything above.
 - Produces: a branch on which both presets are green and the documents match the code.
 
-- [ ] **Step 1: Rewrite the README**
+- [x] **Step 1: Rewrite the README**
 
 Replace `README.md`. Keep the existing file's build, install and licence sections as they are (commands, paths and the licence do not change). Replace everything that describes what the product is and does with a description of Cutline 3, in this order and no longer than the 2.0 text it replaces:
 
@@ -6610,7 +6610,7 @@ Replace `README.md`. Keep the existing file's build, install and licence section
 
 Do not mention: styles as a live parameter, Ghosts, Chop, Ratchet or Complex macros, Mutate, Polymeter, lane Lock, Euclidean, eight pad programs, phrase length. Do not add release notes or a version number.
 
-- [ ] **Step 2: Sync the spec with what was built**
+- [x] **Step 2: Sync the spec with what was built**
 
 In `docs/specs/2026-11-26-groove-model-design.md`:
 
@@ -6631,7 +6631,7 @@ In `docs/specs/2026-11-26-groove-model-design.md`:
 
 Change nothing else in the spec.
 
-- [ ] **Step 3: Sweep for 2.0 wording in code comments**
+- [x] **Step 3: Sweep for 2.0 wording in code comments**
 
 ```bash
 grep -rnE "Cutline 2|2\.0|polymet|Polymeter|12 (multi-bar|styles)|Mutate|Euclid" core engine plugin ui tools tests CMakeLists.txt | grep -v "^docs/"
@@ -6639,7 +6639,7 @@ grep -rnE "Cutline 2|2\.0|polymet|Polymeter|12 (multi-bar|styles)|Mutate|Euclid"
 
 Expected after fixing: no line that describes current behaviour in 2.0 terms. Lines that state history on purpose ("Cutline 2 preset: not supported in Cutline 3", a test named for a Cutline 2 session, "as in 2.0" in a comment explaining a port) stay. `CMakeLists.txt`'s `VERSION 2.0.0` stays: the version bump is release work.
 
-- [ ] **Step 4: Run every test in both presets from clean object files**
+- [x] **Step 4: Run every test in both presets from clean object files**
 
 ```bash
 cmake --build --preset engine --clean-first && ctest --preset engine 2>&1 | tail -3
@@ -6651,7 +6651,7 @@ cmake --build --preset dev && ctest --preset dev 2>&1 | tail -3
 
 Expected: `100% tests passed` twice. Record both counts in your report.
 
-- [ ] **Step 5: Check the done criteria one by one**
+- [x] **Step 5: Check the done criteria one by one**
 
 ```bash
 test ! -e engine/src/styles.cpp && test ! -e engine/src/styles.h && test ! -e tools/seed_patterns.py && echo "generator deleted"
@@ -6662,7 +6662,7 @@ ls presets | wc -l
 
 Expected: `generator deleted`; the random grep prints nothing and `random grep exit: 1`; `triggerNote(` is called from exactly one place, `emitBlockHits`, which is fed only by `playPattern`, `playRepeat`, `playRoll` (drum hits through `resolveBar` and `forEachHit`, or the Roll pad's snare note) and the slicer functions; `16`.
 
-- [ ] **Step 6: Check formatting across everything this plan touched**
+- [x] **Step 6: Check formatting across everything this plan touched**
 
 ```bash
 git diff --name-only --relative main -- '*.h' '*.cpp' | grep -v third_party | xargs xcrun clang-format --style=file:../../.clang-format --dry-run --Werror 2>&1 | grep -c "error:" || true
@@ -6670,7 +6670,7 @@ git diff --name-only --relative main -- '*.h' '*.cpp' | grep -v third_party | xa
 
 Expected: `0` for files this plan created or rewrote. For files it edited in part, an error on a line this plan did not touch is not this plan's to fix; an error on a touched line is. Fix what is yours, rebuild, and rerun Step 4 if anything changed.
 
-- [ ] **Step 7: Record the outcome in this plan and commit**
+- [x] **Step 7: Record the outcome in this plan and commit**
 
 Tick the boxes in this file. The second `git status` in the block below must show nothing left unstaged under `products/cutline`: Step 3's comment edits live in source files, and `git add -u` stages them. Under a new last section, "What changed during execution", list every place the committed code differs from this plan's code blocks and why, and under "Not verified here" list at least: RealtimeSanitizer (CI only), `git-clang-format` against the pinned clang-format (CI only), a DAW session (Ableton Live: bank 1 mapping, transport loop, pre-roll, scene quantize, MIDI drag), anything heard (nobody has listened to the patterns, the fills, Swing or the pads), Windows and Linux builds, and the release recall fixture.
 
@@ -6688,3 +6688,87 @@ git commit -m "docs(cutline): describe Cutline 3 and sync the spec and plan with
 
 - The grid spec (interaction design, the layer brush, the phrase strip), the library spec (the listening pass, the wider pattern set, Strike Body presets, per-preset Swing) and the PLAY spec.
 - Release work: the version bump, release notes, the recall fixture, website copy and demo audio.
+
+## What changed during execution
+
+The plan was executed task by task on `cutline-3-cutover`, one implementer per task, each followed by a review. The committed code differs from the code blocks above in the places listed here. The spec was kept as the authority throughout: where the plan's code disagreed with it, the code was changed to match the spec.
+
+### Plan review by a second session
+
+While Tasks 1 to 3 were running, a second session reviewed the whole plan in three parts. Its findings were folded in before the tasks they affected.
+
+- **Spec coverage.** The grid draws the scene being edited and hides the playhead, the live fill and the Repeat window until the engine's active scene matches it. Clone stays in the slicer header. Pad quantize became one named value with a test at default parameters. The fill latch is indexed so that a block spanning several bars cannot mix up their decisions. The per-block hit limit was raised to the MIDI buffer's capacity, and a large-block truth test was added.
+- **Engine.** Most items went to Task 3's fix rounds (below). Two went into Task 4's text: Clip Slice visits every bar and every Repeat cell, with a test across bar lines; and MIDI export merges notes of the same pitch on the same tick.
+- **Cutover mechanics.** The randomness greps leave out the audition synth's noise source. Task 8 stages the comment edits in source files. The fill view lights only fill steps. The UI snapshot tool gained modes (`grid1`, `grid4`, `live`, `fill`, `slicer`). The plugin saves its state from a copy, with a test that saving does not move the bank's revision. `SlicerInputs` was added to `phrase.h` so that the engine and the plugin's preview cache decide in the same way when the slicer phrase must be recompiled.
+
+### Founder decision: pads at 1/16
+
+Pads engage, and switch program, on the next 1/16 note, whatever the scene quantize is, and release at once. There is no new parameter; it is one named constant, `kPadQuantizeBeats`. Scene quantize now applies to scene switches only. The spec says so in "Pad programs (interim)" and "Unchanged".
+
+### Task 1
+
+`maxLateBeats`, the furthest a hit can land after its step, now includes a swing allowance (`kMaxSwingBeats = 0.125`). The plan's bound could not pass its own test: swing delays odd steps, so a late ratchet can land past the end of its step on the grid. The allowance is generous; it is used only to choose which bars a block must look at.
+
+### Task 3: three fix rounds
+
+The review of Task 3 found that a note-off could cut a retriggered note at large block sizes, and that a pad or scene switch took over the whole block. The fixes:
+
+- Note-offs are sent in time order with note-ons, so a note-off for an earlier note never cuts the next note at the same pitch.
+- Two lanes that share a MIDI note and land on the same sample send one note-on, with the higher velocity.
+- Repeat re-anchors its window after a transport jump.
+- Each step plays from the scene that owns its grid time, so a scene switch inside a block plays the old scene up to the switch and the new scene after it. A pad engaging inside a block takes over at its switch point, not at the start of the block.
+- Note-ons never use up the room kept for the note-offs they need.
+- The whole fill decision (the schedule or `fillNow`) is latched once per bar.
+- Playback, scene switches, pad switches and the reported position all use one clock: the transport moved by Shift.
+- The second round found that the Drop pad's flush of sounding notes ran before the hits that came earlier in the block, which could send a note-on twice. Drop's flush now happens in time order. A third round closed the case where the switch point falls exactly on the end of the block.
+
+### Task 4
+
+The review found that Bass / Stab ignored the gate step. The spec says the gate is literal, so the code was changed rather than the spec. Bass / Stab now honours the gate step's ratchet, nudge, flam and velocity, and the kick step's ratchet and nudge. Clip Slice's Repeat loops from its anchor rather than from the start of the slice. Tests now pin the slicer's Repeat and Roll note positions and run the slicer with large blocks at 172 BPM and 2x.
+
+### Task 5
+
+- A click on a lane that loops a shorter length now edits the stored step that plays there, not a hidden step past the loop.
+- A drag is not a click: a velocity drag that returns to its start no longer deletes the step.
+- The fill view lights only the fill's own steps.
+- The snapshot tool's modes, listed above, were used to check the editor.
+
+### Task 6
+
+The plugin writes its saved state onto a copy, so saving changes nothing in the running plugin. The slicer preview in the editor is cached and recompiled only when its `SlicerInputs` change.
+
+### Known limits that were accepted
+
+- A scene switch quantized to 1/16 or 1/4 cannot play a hit that should have started before the switch was requested.
+- Only one scene switch boundary is remembered at a time.
+- In MIDI Slicer mode, a scene switch inside a block plays the new scene's phrase for that whole block.
+
+### Minor items left for the whole-branch review
+
+- `kMaxSwingBeats` reserves more than it needs (about 0.03 beats would do) and repeats `swingBeat`'s 0.125.
+- The clamp limits (24, 20, 127, 4) are written out in `groove.h` and `groove_json.cpp`, while `hits.h` has `kMaxNudge` and `kMaxOffsetMs`.
+- The JSON reader reads `step` with `get<int>()`, so a huge unsigned value can wrap and pass. A non-array `"edits"` is ignored without an error.
+- No test covers `setPatternBars` growing a pattern that has a short lane and a step repeat.
+- `parsePreset` and plugin state accept any `format` of 3 or more, so a future format 4 would parse.
+- The kit-map comment in `pattern.h` still mentions 2.0 preset compatibility.
+- Note 60 is "C3" in the pad hints but `midiNoteLabel(60)` returns "C4" (an older mismatch).
+- `CoreTests.cpp` includes `cl/lanes.h` without using it. `serialisePreset` always writes `"bank"`.
+- The same-note merge uses velocity 0 as its marker, and only the kept lane flashes after a merge. A merged hit keeps the kept hit's pad flag.
+- The scene-switch test checks early hits only for the 1 Bar quantize. No test shows that a refused note-on starts no audition voice. The pad tests' open-note count no longer catches stray note-offs. Drop's flush is tested only with the switch point exactly on the block's end.
+- The `silenced` flag in the engine reads inverted. Lane telemetry (phases and values) still uses the clock without Shift.
+- `slicerPlan()` returns a reference into audio-thread state and only updates while playing. Tempo ramps recompile the slicer phrase every block. The exporter pulls the last note back by 16 ticks.
+- Bass / Stab: a flammed step gets the +8 top-note accent (untested); the kick's nudge, the flam's reversal and the phrase-end clamp are untested. The Clip Repeat test uses one note at the slice start. The 2.0 "-8 on voice 1" velocity tweak is gone.
+- UI: the mouse handlers are tested only through the pure helpers. `DragGesture` has no test for an upward-only drag or a drag exactly at the threshold. No test covers `FakeModel::clearActiveScene` emptying the gate strip in MIDI Slicer mode. The PLAY dock still shows the Quant chip, which now governs scenes only, and its drag label is set at construction. At 64 columns the loop handle's hit zone is about 4.5 px either side.
+- Plugin: `getStateInformation`'s comment overstates how safe it is off the message thread. `reloadFromState` leaves unparseable text in the tree on failure and publishes twice. History is not cleared on a state load. Clone takes two undos. The telemetry's slicer plan goes stale after leaving slicer mode. `kGrooveBankProp` is defined in two files. A wrong root tag and a missing `grooveBank` are untested.
+- Showcase: clip 1's two pad stages both use Repeat, and `emitClip` titles still say "Cutline 2.0", "Poly", "Bounce" and "Stutter" (website copy).
+
+### Not verified here
+
+- RealtimeSanitizer. The `rtsan` preset is Linux-only and runs in CI. Here, only `-Werror=function-effects` was checked, by compiling.
+- `git-clang-format` against the pinned clang-format. That runs in CI. Locally, Xcode's `clang-format` was used.
+- Any DAW session. Nothing was tried in Ableton Live or any other host: the bank 1 mapping on Push, a transport loop, pre-roll, scene quantize, pad MIDI, MIDI drag and drop, and state recall in a real project.
+- Anything heard. Nobody has listened to the patterns, the fills, Swing, the pads, the slicer or the showcase clips. Audio reading was not available in the app used for this work.
+- Mouse interaction with the real editor. The grid's logic is unit-tested, and the editor was checked through rendered snapshots of a fake model, not by clicking.
+- Windows and Linux builds.
+- The release recall fixture `factory/release/fixtures/cutline.vststate`. It predates Cutline 3 and must be regenerated before release.
+- A Cutline 2 session opened in a real host. The test builds Cutline 2 state by hand.

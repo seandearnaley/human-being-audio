@@ -3,7 +3,7 @@ hba_product(cutline)
 
 juce_add_plugin(Cutline
     PRODUCT_NAME "${HBA_name}"
-    DESCRIPTION "Live MIDI breakbeat, polymeter, and rhythmic articulation slicer"
+    DESCRIPTION "Drum patterns you can read, and a MIDI slicer"
     COMPANY_NAME "${HBA_publisher}"
     COMPANY_WEBSITE "${HBA_website}"
     BUNDLE_ID "${HBA_bundle}"
