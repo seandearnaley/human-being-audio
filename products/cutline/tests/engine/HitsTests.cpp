@@ -116,3 +116,59 @@ TEST_CASE("Early hits keep their lead at the start of the timeline and before it
         CHECK(hits[1].beat < hits[2].beat);
     }
 }
+
+TEST_CASE("A flam's grace hit never drops below velocity 1", "[engine][hits]") {
+    Pattern p{};
+    p.lanes[1].steps[4] = hit(20);
+    p.lanes[1].steps[4].flam = true;
+    const auto hits = hitsOf(p, 0.0, {0.0, 0.6, 172.0 / 60000.0});
+    REQUIRE(hits.size() == 2);
+    CHECK(hits[0].grace);
+    CHECK(hits[0].velocity == 1);
+}
+
+TEST_CASE("Open hat and perc B ring longer than the gated lanes", "[engine][hits]") {
+    CHECK(isLongNoteLane(kOpenHatLane));
+    CHECK(isLongNoteLane(kPercBLane));
+    CHECK_FALSE(isLongNoteLane(4));
+    Pattern p{};
+    for (int lane = 0; lane < kDrumLaneCount; ++lane)
+        p.lanes[static_cast<std::size_t>(lane)].steps[0] = hit(96);
+    const auto hits = hitsOf(p, 0.0, {0.0, 0.0, 172.0 / 60000.0});
+    REQUIRE(hits.size() == 8);
+    for (const auto& h : hits)
+        CHECK(h.durBeats == Approx(isLongNoteLane(h.lane) ? 0.36 : 0.12));
+}
+
+TEST_CASE("Lane offset is clamped to 20 ms on the play path", "[engine][hits]") {
+    const double beatsPerMs = 120.0 / 60000.0;
+    Pattern p{};
+    p.lanes[0].steps[4] = hit(96);
+    p.lanes[0].offsetMs = 90; // out of range in memory
+    const auto hits = hitsOf(p, 0.0, {0.0, 0.6, beatsPerMs});
+    REQUIRE(hits.size() == 1);
+    CHECK(hits[0].beat == Approx(1.0 + 20.0 * beatsPerMs));
+}
+
+TEST_CASE("No hit starts earlier or later than the published bounds", "[engine][hits]") {
+    const double beatsPerMs = 96.0 / 60000.0;
+    Pattern p{};
+    for (int lane = 0; lane < kDrumLaneCount; ++lane) {
+        p.lanes[static_cast<std::size_t>(lane)].offsetMs = static_cast<std::int8_t>(lane % 2 == 0 ? -20 : 20);
+        for (int step = 0; step < kStepsPerBar; ++step) {
+            Step& s = p.lanes[static_cast<std::size_t>(lane)].steps[static_cast<std::size_t>(step)];
+            s = hit(96);
+            s.nudge = static_cast<std::int8_t>(lane % 2 == 0 ? -24 : 24);
+            s.flam = true;
+            s.ratchet = 4;
+        }
+    }
+    for (const double swing : {0.0, 0.67, 1.0}) {
+        const auto hits = hitsOf(p, 8.0, {swing, 0.6, beatsPerMs});
+        for (const auto& h : hits) {
+            const double stepStart = 8.0 + static_cast<double>(h.step) * 0.25;
+            CHECK(h.beat >= stepStart - maxEarlyBeats(beatsPerMs) - 1.0e-9);
+            CHECK(h.beat < stepStart + 0.25 + maxLateBeats(beatsPerMs));
+        }
+    }
+}

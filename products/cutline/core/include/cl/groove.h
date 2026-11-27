@@ -7,7 +7,9 @@
 #include "cl/params.h"
 #include "cl/pattern.h"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -78,13 +80,20 @@ constexpr Pattern defaultBeat() noexcept CL_NONBLOCKING {
     return p;
 }
 
+// The default slicer gate: x..x..x...x...x.
+inline constexpr std::array<int, 5> kDefaultSlicerGate{0, 3, 6, 10, 14};
+
 struct GrooveBank {
     std::array<Pattern, kSceneCount> scenes{}; // scenes A-D
     std::uint8_t slicerLength = 16;            // 1..32
     std::array<Step, kMaxSlicerSteps> slicerSteps{};
 
-    // A new bank holds the default beat in scene A and empty patterns in B-D.
-    constexpr GrooveBank() noexcept CL_NONBLOCKING { scenes[0] = defaultBeat(); }
+    // A new bank holds the default beat in scene A, empty patterns in B-D and the default slicer gate.
+    constexpr GrooveBank() noexcept CL_NONBLOCKING {
+        scenes[0] = defaultBeat();
+        for (const int step : kDefaultSlicerGate)
+            slicerSteps[static_cast<std::size_t>(step)].velocity = 96;
+    }
 
     bool operator==(const GrooveBank&) const noexcept = default;
 };
@@ -110,6 +119,85 @@ constexpr int storedStep(const Pattern& p, int lane, int stepInPattern) noexcept
 constexpr int fillWindowStart(const Fill& fill) noexcept CL_NONBLOCKING {
     const int beats = fill.beats >= 4 ? 4 : (fill.beats <= 1 ? 1 : 2);
     return kStepsPerBar - beats * 4;
+}
+
+// Canonical form. Memory, files and the engine all hold sanitised banks, so they agree on what exists:
+// an off step is blank, every field is in range, and steps hidden by the pattern length, the fill
+// window or the slicer length are cleared.
+constexpr void sanitise(Step& s) noexcept CL_NONBLOCKING {
+    if (s.velocity == 0) {
+        s = {};
+        return;
+    }
+    s.velocity = static_cast<std::uint8_t>(std::min(static_cast<int>(s.velocity), 127));
+    if (static_cast<int>(s.layer) > static_cast<int>(Layer::detail))
+        s.layer = Layer::groove;
+    s.ratchet = static_cast<std::uint8_t>(std::clamp(static_cast<int>(s.ratchet), 1, 4));
+    s.nudge = static_cast<std::int8_t>(std::clamp(static_cast<int>(s.nudge), -24, 24));
+}
+
+constexpr void sanitise(Pattern& p) noexcept CL_NONBLOCKING {
+    p.bars = static_cast<std::uint8_t>(patternBars(p));
+    const int steps = patternSteps(p);
+    for (auto& lane : p.lanes) {
+        for (int step = 0; step < kMaxPatternSteps; ++step) {
+            Step& s = lane.steps[static_cast<std::size_t>(step)];
+            if (step >= steps)
+                s = {};
+            else
+                sanitise(s);
+        }
+        if (static_cast<int>(lane.length) >= steps)
+            lane.length = 0;
+        lane.midiNote = static_cast<std::uint8_t>(std::min(static_cast<int>(lane.midiNote), 127));
+        lane.offsetMs = static_cast<std::int8_t>(std::clamp(static_cast<int>(lane.offsetMs), -20, 20));
+    }
+    const int fillFrom = fillWindowStart(p.fill);
+    p.fill.beats = static_cast<std::uint8_t>((kStepsPerBar - fillFrom) / 4);
+    for (auto& row : p.fill.steps) {
+        for (int step = 0; step < kStepsPerBar; ++step) {
+            Step& s = row[static_cast<std::size_t>(step)];
+            if (step < fillFrom) {
+                s = {};
+            } else {
+                sanitise(s);
+                if (s.on())
+                    s.layer = Layer::groove;
+            }
+        }
+    }
+}
+
+constexpr void sanitise(GrooveBank& bank) noexcept CL_NONBLOCKING {
+    for (auto& pattern : bank.scenes)
+        sanitise(pattern);
+    bank.slicerLength = static_cast<std::uint8_t>(std::clamp(static_cast<int>(bank.slicerLength), 1, kMaxSlicerSteps));
+    for (int step = 0; step < kMaxSlicerSteps; ++step) {
+        Step& s = bank.slicerSteps[static_cast<std::size_t>(step)];
+        if (step >= static_cast<int>(bank.slicerLength)) {
+            s = {};
+        } else {
+            sanitise(s);
+            if (s.on())
+                s.layer = Layer::groove;
+        }
+    }
+}
+
+// Sets the pattern length to 1, 2 or 4 bars. Growing repeats the existing bars into the new ones,
+// so the pattern sounds the same until it is edited. Shrinking clears the bars that are no longer played.
+constexpr void setPatternBars(Pattern& p, int bars) noexcept CL_NONBLOCKING {
+    const int from = patternSteps(p);
+    p.bars = static_cast<std::uint8_t>(bars >= 4 ? 4 : (bars >= 2 ? 2 : 1));
+    const int to = patternSteps(p);
+    for (auto& lane : p.lanes) {
+        for (int step = from; step < to; ++step)
+            lane.steps[static_cast<std::size_t>(step)] = lane.steps[static_cast<std::size_t>(step % from)];
+        for (int step = to; step < kMaxPatternSteps; ++step)
+            lane.steps[static_cast<std::size_t>(step)] = {};
+        if (static_cast<int>(lane.length) >= to)
+            lane.length = 0;
+    }
 }
 
 } // namespace cl

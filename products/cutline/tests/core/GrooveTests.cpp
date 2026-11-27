@@ -57,3 +57,82 @@ TEST_CASE("The fill window covers the last 1, 2 or 4 beats of the bar", "[groove
 TEST_CASE("The groove bank stays small enough to copy on the audio thread", "[groove]") {
     CHECK(sizeof(GrooveBank) < 16384);
 }
+
+TEST_CASE("A new bank has the default slicer gate", "[groove]") {
+    const GrooveBank bank;
+    for (int step = 0; step < kMaxSlicerSteps; ++step) {
+        const bool expected = step == 0 || step == 3 || step == 6 || step == 10 || step == 14;
+        CHECK(bank.slicerSteps[static_cast<std::size_t>(step)].on() == expected);
+    }
+    CHECK(bank.slicerSteps[0].velocity == 96);
+}
+
+TEST_CASE("Sanitise blanks off steps, clamps fields and clears what the lengths hide", "[groove]") {
+    GrooveBank bank;
+    Pattern& p = bank.scenes[1];
+    p.bars = 3;                      // rounds down to 2
+    p.lanes[0].steps[5].ratchet = 3; // off step carrying junk
+    p.lanes[0].steps[6].velocity = 200;
+    p.lanes[0].steps[6].ratchet = 9;
+    p.lanes[0].steps[6].nudge = 90;
+    p.lanes[0].steps[40].velocity = 96; // beyond 2 bars
+    p.lanes[0].offsetMs = 77;
+    p.lanes[0].midiNote = 200;
+    p.lanes[0].length = 40; // not shorter than the pattern: follow it
+    p.lanes[1].length = 7;
+    p.fill.beats = 3;                  // rounds to 2
+    p.fill.steps[1][4].velocity = 96;  // before the 2-beat window
+    p.fill.steps[1][12].velocity = 96; // inside it
+    p.fill.steps[1][12].layer = Layer::core;
+    bank.slicerLength = 60;
+    bank.slicerSteps[31].velocity = 96;
+    bank.slicerSteps[31].layer = Layer::detail;
+
+    sanitise(bank);
+
+    CHECK(p.bars == 2);
+    CHECK(p.lanes[0].steps[5] == Step{});
+    CHECK(p.lanes[0].steps[6].velocity == 127);
+    CHECK(p.lanes[0].steps[6].ratchet == 4);
+    CHECK(p.lanes[0].steps[6].nudge == 24);
+    CHECK_FALSE(p.lanes[0].steps[40].on());
+    CHECK(p.lanes[0].offsetMs == 20);
+    CHECK(p.lanes[0].midiNote == 127);
+    CHECK(p.lanes[0].length == 0);
+    CHECK(p.lanes[1].length == 7);
+    CHECK(p.fill.beats == 2);
+    CHECK_FALSE(p.fill.steps[1][4].on());
+    CHECK(p.fill.steps[1][12].on());
+    CHECK(p.fill.steps[1][12].layer == Layer::groove); // layer means nothing on a fill step
+    CHECK(bank.slicerLength == 32);
+    CHECK(bank.slicerSteps[31].layer == Layer::groove);
+
+    bank.slicerLength = 8;
+    sanitise(bank);
+    CHECK_FALSE(bank.slicerSteps[10].on()); // the default gate's step 10 is now hidden
+
+    const GrooveBank once = bank;
+    sanitise(bank);
+    CHECK(bank == once); // sanitising twice changes nothing
+}
+
+TEST_CASE("Growing a pattern repeats it and shrinking drops the hidden bars", "[groove]") {
+    Pattern p = defaultBeat();
+    p.lanes[6].length = 12;
+    setPatternBars(p, 2);
+    CHECK(patternSteps(p) == 32);
+    CHECK(p.lanes[0].steps[16].on());
+    CHECK(p.lanes[1].steps[20].on());
+    CHECK(p.lanes[4].steps[30].on());
+    CHECK(p.lanes[6].length == 12);
+
+    p.lanes[0].steps[20].velocity = 96;
+    setPatternBars(p, 1);
+    CHECK(patternSteps(p) == 16);
+    CHECK_FALSE(p.lanes[0].steps[16].on());
+    CHECK_FALSE(p.lanes[0].steps[20].on());
+
+    p.lanes[6].length = 16;
+    setPatternBars(p, 1);
+    CHECK(p.lanes[6].length == 0);
+}

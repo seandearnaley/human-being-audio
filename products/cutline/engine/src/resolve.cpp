@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 
 namespace cl {
 
@@ -83,7 +84,7 @@ void buildDensityMap(const Pattern& pattern, DensityMap& out) noexcept CL_NONBLO
 }
 
 std::uint8_t applyDynamics(int velocity, float dynamics) noexcept CL_NONBLOCKING {
-    const float d = std::clamp(dynamics, 0.0f, 1.0f);
+    const float d = std::isfinite(dynamics) ? std::clamp(dynamics, 0.0f, 1.0f) : 0.5f;
     const float v = 64.0f + (static_cast<float>(velocity) - 64.0f) * (0.5f + d);
     return static_cast<std::uint8_t>(std::clamp(static_cast<int>(std::lround(v)), 1, 127));
 }
@@ -93,7 +94,10 @@ void resolveBar(const Pattern& pattern, const DensityMap& map, int barInPattern,
     const int bars = patternBars(pattern);
     const int bar = ((barInPattern % bars) + bars) % bars;
     const int fillFrom = in.fillActive ? fillWindowStart(pattern.fill) : kStepsPerBar;
-    const float density = std::clamp(in.density, 0.0f, 1.0f) + 1.0e-6f;
+    // A non-finite Density plays Core only. The epsilon is there because thresholds are computed as
+    // 0.5f * i / n: a Density typed as the same fraction can land one float step below its threshold.
+    const float rawDensity = std::isfinite(in.density) ? in.density : 0.0f;
+    const float density = std::clamp(rawDensity, 0.0f, 1.0f) + 1.0e-6f;
 
     bool anySolo = false;
     for (const auto& lane : pattern.lanes)

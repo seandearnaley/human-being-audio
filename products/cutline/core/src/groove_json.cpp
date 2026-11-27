@@ -98,6 +98,18 @@ bool intField(const Json& obj, const char* key, int lo, int hi, int& out) {
     return true;
 }
 
+// Like intField, but a value outside lo..hi is a failure instead of being clamped.
+bool intInRange(const Json& obj, const char* key, int lo, int hi, int& out) {
+    const auto it = obj.find(key);
+    if (it == obj.end() || !it->is_number_integer())
+        return false;
+    const int v = it->get<int>();
+    if (v < lo || v > hi)
+        return false;
+    out = v;
+    return true;
+}
+
 void applyEdit(const Json& edit, Step& s) {
     int v = 0;
     if (intField(edit, "velocity", 1, 127, v))
@@ -220,27 +232,32 @@ std::optional<Pattern> readPattern(const Json& value, std::string* error) {
     }
 
     if (value.contains("edits") && value["edits"].is_array()) {
+        const int fillFrom = fillWindowStart(p.fill);
         for (const auto& edit : value["edits"]) {
-            if (!edit.is_object())
-                continue;
+            if (!edit.is_object()) {
+                fail(error, "every edit must be an object");
+                return std::nullopt;
+            }
             const int lane = laneOfKey(hba::core::jsonStringOr(edit, "lane"));
             const bool inFill = hba::core::jsonBoolOr(edit, "fill");
             int step = 0;
-            if (lane < 0 || !intField(edit, "step", 0, (inFill ? kStepsPerBar : steps) - 1, step)) {
-                fail(error, "edit needs a known \"lane\" and a \"step\"");
+            if (lane < 0 || !intInRange(edit, "step", 0, (inFill ? kStepsPerBar : steps) - 1, step)) {
+                fail(error, "edit needs a known \"lane\" and a \"step\" inside the pattern");
                 return std::nullopt;
             }
+            if (inFill && step < fillFrom)
+                continue; // only the fill window is part of the fill
             const auto li = static_cast<std::size_t>(lane);
             const auto si = static_cast<std::size_t>(step);
-            applyEdit(edit, inFill ? p.fill.steps[li][si] : p.lanes[li].steps[si]);
+            Step& target = inFill ? p.fill.steps[li][si] : p.lanes[li].steps[si];
+            if (!target.on()) {
+                fail(error, "edit targets a step that is off");
+                return std::nullopt;
+            }
+            applyEdit(edit, target);
         }
     }
-    // Only the fill window is part of the fill: characters and edits before it are ignored.
-    const auto fillFrom = static_cast<std::size_t>(fillWindowStart(p.fill));
-    for (auto& row : p.fill.steps) {
-        for (std::size_t step = 0; step < fillFrom; ++step)
-            row[step] = {};
-    }
+    sanitise(p);
     return p;
 }
 
@@ -341,17 +358,29 @@ std::optional<GrooveBank> readGrooveBank(const Json& value, std::string* error) 
         int v = 0;
         if (intField(so, "length", 1, kMaxSlicerSteps, v))
             bank.slicerLength = static_cast<std::uint8_t>(v);
-        if (so.contains("steps") && !readSteps(so["steps"], bank.slicerSteps.data(), kMaxSlicerSteps, false, false,
-                                               Layer::groove, "slicer.steps", error))
-            return std::nullopt;
+        if (so.contains("steps")) {
+            bank.slicerSteps = {}; // the file's strip replaces the default gate
+            if (!readSteps(so["steps"], bank.slicerSteps.data(), kMaxSlicerSteps, false, false, Layer::groove,
+                           "slicer.steps", error))
+                return std::nullopt;
+        }
         if (so.contains("edits") && so["edits"].is_array()) {
             for (const auto& edit : so["edits"]) {
                 int step = 0;
-                if (edit.is_object() && intField(edit, "step", 0, kMaxSlicerSteps - 1, step))
-                    applyEdit(edit, bank.slicerSteps[static_cast<std::size_t>(step)]);
+                if (!edit.is_object() || !intInRange(edit, "step", 0, static_cast<int>(bank.slicerLength) - 1, step)) {
+                    fail(error, "slicer edit needs a \"step\" inside the slicer length");
+                    return std::nullopt;
+                }
+                Step& target = bank.slicerSteps[static_cast<std::size_t>(step)];
+                if (!target.on()) {
+                    fail(error, "edit targets a step that is off");
+                    return std::nullopt;
+                }
+                applyEdit(edit, target);
             }
         }
     }
+    sanitise(bank);
     return bank;
 }
 

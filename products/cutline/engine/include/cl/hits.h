@@ -10,12 +10,33 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace cl {
 
 inline constexpr double kFlamMs = 20.0;
 inline constexpr int kFlamVelocityDrop = 40;
+inline constexpr int kOpenHatLane = 5;
+inline constexpr int kPercBLane = 7;
+inline constexpr int kMaxNudge = 24;            // 1/96 beats
+inline constexpr int kMaxOffsetMs = 20;         // whole-lane pocket
+inline constexpr double kMaxSwingBeats = 0.125; // a fully swung odd 16th is delayed by this much
+
+// Open hat and perc B ring for a fixed length; the other lanes follow Gate.
+constexpr bool isLongNoteLane(int lane) noexcept CL_NONBLOCKING { return lane == kOpenHatLane || lane == kPercBLane; }
+
+// How far before its step a hit can start: a full negative nudge, a full negative lane offset and the flam.
+inline double maxEarlyBeats(double beatsPerMs) noexcept CL_NONBLOCKING {
+    return static_cast<double>(kMaxNudge) / 96.0 + (static_cast<double>(kMaxOffsetMs) + kFlamMs) * beatsPerMs;
+}
+
+// How far after the end of its straight-grid step a hit can start: a full positive nudge, a full positive
+// lane offset, and the swing slack. Swing stretches an even step by up to 0.125 beats, so the last ratchet of
+// a swung step starts that much past the unswung step end.
+inline double maxLateBeats(double beatsPerMs) noexcept CL_NONBLOCKING {
+    return static_cast<double>(kMaxNudge) / 96.0 + kMaxSwingBeats + static_cast<double>(kMaxOffsetMs) * beatsPerMs;
+}
 
 // Bars between fills for each Fill choice: Off, 2, 4, 8, 16.
 inline constexpr std::array<int, 5> kFillEveryBars{0, 2, 4, 8, 16};
@@ -62,8 +83,9 @@ void forEachHit(const Pattern& pattern, const ResolvedBar& bar, double barOrigin
                 Fn&& fn) {
     for (int lane = 0; lane < kDrumLaneCount; ++lane) {
         const auto li = static_cast<std::size_t>(lane);
-        const double offsetBeats = static_cast<double>(pattern.lanes[li].offsetMs) * timing.beatsPerMs;
-        const double baseDur = (lane == 5 || lane == 7) ? 0.36 : 0.12 + 0.14 * std::clamp(timing.gateLen, 0.0, 1.0);
+        const int offsetMs = std::clamp(static_cast<int>(pattern.lanes[li].offsetMs), -kMaxOffsetMs, kMaxOffsetMs);
+        const double offsetBeats = static_cast<double>(offsetMs) * timing.beatsPerMs;
+        const double baseDur = isLongNoteLane(lane) ? 0.36 : 0.12 + 0.14 * std::clamp(timing.gateLen, 0.0, 1.0);
         for (int step = 0; step < kStepsPerBar; ++step) {
             const ResolvedStep& r = bar.lanes[li][static_cast<std::size_t>(step)];
             if (r.velocity == 0)

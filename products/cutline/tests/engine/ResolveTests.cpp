@@ -3,6 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cmath>
+#include <limits>
+
 using namespace cl;
 
 namespace {
@@ -168,4 +172,92 @@ TEST_CASE("The cached density map gives the same result as the convenience overl
         resolveBar(p, map, 0, in, b);
         CHECK(sounding(a) == sounding(b));
     }
+}
+
+TEST_CASE("Bar 2 of a pattern resolves its own steps, and a negative bar wraps", "[engine][resolve]") {
+    Pattern p{};
+    p.bars = 2;
+    p.lanes[0].steps[0] = hit(96, Layer::core);
+    p.lanes[1].steps[20] = hit(96, Layer::core); // bar 2, step 4
+    ResolvedBar bar;
+    resolveBar(p, 1, {0.5f, 0.5f, false}, bar);
+    CHECK(bar.lanes[0][0].velocity == 0);
+    CHECK(bar.lanes[1][4].velocity == 96);
+    resolveBar(p, -1, {0.5f, 0.5f, false}, bar); // the bar before bar 0 is the last bar
+    CHECK(bar.lanes[1][4].velocity == 96);
+    resolveBar(p, -2, {0.5f, 0.5f, false}, bar);
+    CHECK(bar.lanes[0][0].velocity == 96);
+}
+
+TEST_CASE("A looped lane keeps its phase across the bar line", "[engine][resolve]") {
+    Pattern p{};
+    p.bars = 2;
+    p.lanes[6].length = 5;
+    p.lanes[6].steps[0] = hit(96, Layer::core);
+    ResolvedBar bar;
+    resolveBar(p, 0, {0.5f, 0.5f, false}, bar);
+    for (int step = 0; step < kStepsPerBar; ++step)
+        CHECK((bar.lanes[6][static_cast<std::size_t>(step)].velocity > 0) == (step % 5 == 0));
+    resolveBar(p, 1, {0.5f, 0.5f, false}, bar);
+    for (int step = 0; step < kStepsPerBar; ++step)
+        CHECK((bar.lanes[6][static_cast<std::size_t>(step)].velocity > 0) == ((16 + step) % 5 == 0));
+}
+
+TEST_CASE("At one metric weight the lanes arrive kick, snare, hat, open hat, clap, ghost, perc A, perc B",
+          "[engine][resolve]") {
+    const std::array<int, kDrumLaneCount> order{0, 1, 4, 5, 3, 2, 6, 7};
+    for (std::size_t i = 0; i + 1 < order.size(); ++i) {
+        CHECK(rankBefore(order[i], 4, order[i + 1], 4));
+        CHECK_FALSE(rankBefore(order[i + 1], 4, order[i], 4));
+    }
+    Pattern p{};
+    for (int lane = 0; lane < kDrumLaneCount; ++lane)
+        p.lanes[static_cast<std::size_t>(lane)].steps[4] = hit(96, Layer::groove);
+    ResolvedBar bar;
+    for (std::size_t n = 1; n <= order.size(); ++n) {
+        resolveBar(p, 0, {0.5f * static_cast<float>(n) / 8.0f, 0.5f, false}, bar);
+        for (std::size_t i = 0; i < order.size(); ++i)
+            CHECK((bar.lanes[static_cast<std::size_t>(order[i])][4].velocity > 0) == (i < n));
+    }
+}
+
+TEST_CASE("A lane that is both soloed and muted is silent, and mute silences fill steps", "[engine][resolve]") {
+    Pattern p{};
+    p.lanes[0].steps[0] = hit(96, Layer::core);
+    p.lanes[1].steps[4] = hit(96, Layer::core);
+    p.lanes[0].solo = true;
+    p.lanes[0].muted = true;
+    ResolvedBar bar;
+    resolveBar(p, 0, {0.5f, 0.5f, false}, bar);
+    CHECK(bar.lanes[0][0].written);
+    CHECK(bar.lanes[0][0].velocity == 0);
+    CHECK(bar.lanes[1][4].velocity == 0); // another lane is soloed
+
+    Pattern f{};
+    f.fill.beats = 1;
+    f.fill.steps[1][12] = hit(96, Layer::groove);
+    f.lanes[1].muted = true;
+    resolveBar(f, 0, {0.5f, 0.5f, true}, bar);
+    CHECK(bar.lanes[1][12].written);
+    CHECK(bar.lanes[1][12].fromFill);
+    CHECK(bar.lanes[1][12].velocity == 0);
+}
+
+TEST_CASE("Resolve clamps ratchet and nudge and survives NaN controls", "[engine][resolve]") {
+    Pattern p{};
+    p.lanes[0].steps[0] = hit(96, Layer::core);
+    p.lanes[0].steps[0].ratchet = 9;
+    p.lanes[0].steps[0].nudge = 100;
+    p.lanes[4].steps[2] = hit(96, Layer::groove);
+    ResolvedBar bar;
+    resolveBar(p, 0, {0.5f, 0.5f, false}, bar);
+    CHECK(bar.lanes[0][0].ratchet == 4);
+    CHECK(bar.lanes[0][0].nudge == 24);
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    resolveBar(p, 0, {nan, nan, false}, bar);
+    CHECK(bar.lanes[0][0].velocity == 96); // Core sounds, at the identity Dynamics
+    CHECK(bar.lanes[4][2].written);
+    CHECK(bar.lanes[4][2].velocity == 0); // a NaN Density is 0%: Core only
+    CHECK(applyDynamics(96, nan) == 96);
 }
