@@ -31,7 +31,7 @@ if(CL_BUILD_PLUGIN)
     target_link_libraries(cl-plugin-tests PRIVATE Cutline Catch2::Catch2WithMain cl_warnings)
     catch_discover_tests(cl-plugin-tests DISCOVERY_MODE PRE_TEST)
 
-    add_executable(cl-ui-tests ui/CurveEditTests.cpp)
+    add_executable(cl-ui-tests ui/CurveEditTests.cpp ui/GridEditTests.cpp)
     hba_build_for_host_only(cl-ui-tests)
     target_include_directories(cl-ui-tests PRIVATE ${PROJECT_SOURCE_DIR}/ui/src)
     target_link_libraries(cl-ui-tests PRIVATE cl_ui Catch2::Catch2WithMain cl_warnings)

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline 2.0 Hero PLAY Surface: 8 Jewel Folder Tabs (C3..G3) + Giant 60fps Generative 2D X/Y Articulation Stage
-// + Sleek Bottom Performance Dock.
+// Cutline 3 PLAY surface: four pad-program folder tabs (C3 to D#3), the 60fps generative X/Y stage
+// and the bottom performance dock.
 #pragma once
 
 #include "controls.h"
@@ -53,9 +53,6 @@ class PlayPanel final : public visage::Frame, public Live {
     // Bottom Play Dock Controls
     Button holdBtn_;
     Chip quantChip_;
-    Chip styleChip_;
-    Button mutateBtn_;
-    Button polyBtn_;
     Chip ccChip_;
     Chip noteMapChip_;
     Chip slicerChip_;
@@ -64,8 +61,8 @@ class PlayPanel final : public visage::Frame, public Live {
     std::string shownExport_;
 
     // Live Animation & Touch State
-    int program_ = 4;
-    int programBefore_ = 4;
+    int program_ = 0;
+    int programBefore_ = 0;
     float change_ = 1.0f;
     float ring_ = 1.0f;
     int hoveredTab_ = -1;

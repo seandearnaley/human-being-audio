@@ -84,7 +84,7 @@ struct Editor::Impl final {
     PulseRibbon ribbon;
     PlayPanel play;
     std::unique_ptr<Panel> macros, stage, setup, expr, delivery;
-    bool gridMode = false;
+    bool gridMode = true;
     bool initialised = false;
 };
 
@@ -96,6 +96,10 @@ void Editor::attach(void* parentView, int width, int height) { impl_->host.attac
 void Editor::detach() { impl_->host.detach(); }
 void Editor::setSize(int width, int height) { impl_->host.setSize(width, height); }
 void Editor::setGridMode(bool grid) { impl_->setGridMode(grid); }
+void Editor::setFillView(bool fill) {
+    impl_->context.fillView = fill;
+    impl_->host.window().redrawAll();
+}
 
 #if defined(__linux__)
 int Editor::eventFd() const { return impl_->host.eventFd(); }

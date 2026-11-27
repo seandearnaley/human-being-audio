@@ -12,15 +12,11 @@ struct MacroDef {
     unsigned accent;
 };
 
-constexpr std::array<MacroDef, 8> kMacros{{
-    {ParamId::style, colour::iris},
-    {ParamId::gravity, colour::vermilion},
-    {ParamId::ghosts, colour::cyan},
-    {ParamId::chop, colour::coral},
-    {ParamId::ratchet, colour::amber},
-    {ParamId::complexity, colour::iris},
-    {ParamId::fills, colour::emerald},
+constexpr std::array<MacroDef, 4> kMacros{{
+    {ParamId::density, colour::iris},
+    {ParamId::swing, colour::vermilion},
     {ParamId::dynamics, colour::teal},
+    {ParamId::fillEvery, colour::emerald},
 }};
 
 class MacroStripPanel final : public Panel {
@@ -59,14 +55,12 @@ class MacroStripPanel final : public Panel {
 class SetupPanel final : public Panel {
   public:
     explicit SetupPanel(Context& context)
-        : Panel(context), bars_(context, ParamId::phraseBars, colour::iris),
-          pocket_(context, ParamId::attractor, colour::vermilion),
-          fillType_(context, ParamId::fillType, colour::emerald),
-          variation_(context, ParamId::variation, colour::amber, {}, true),
-          noteMap_(context, ParamId::noteMap, colour::iris), slicerStyle_(context, ParamId::slicerStyle, colour::cyan),
+        : Panel(context), noteMap_(context, ParamId::noteMap, colour::iris),
+          slicerStyle_(context, ParamId::slicerStyle, colour::cyan),
+          quant_(context, ParamId::sceneQuantize, colour::iris),
           strum_(context, ParamId::strumMs, colour::cyan, {}, true),
           gate_(context, ParamId::gateLen, colour::teal, {}, true) {
-        for (auto* r : {&bars_, &pocket_, &fillType_, &variation_, &noteMap_, &slicerStyle_, &strum_, &gate_})
+        for (auto* r : {&noteMap_, &slicerStyle_, &quant_, &strum_, &gate_})
             addChild(r);
         tick();
     }
@@ -86,12 +80,10 @@ class SetupPanel final : public Panel {
         const float gap = px(4.0f);
         float y = px(10.0f);
 
-        for (auto* r : {&bars_, &pocket_, &fillType_, &variation_}) {
-            r->setBounds(pad, y, w, rowH);
-            y += rowH + gap;
-        }
         noteMap_.setBounds(pad, y, w, rowH);
         slicerStyle_.setBounds(pad, y, w, rowH);
+        y += rowH + gap;
+        quant_.setBounds(pad, y, w, rowH);
         y += rowH + gap;
 
         strum_.setBounds(pad, y, w, rowH);
@@ -100,12 +92,9 @@ class SetupPanel final : public Panel {
     }
 
   private:
-    Row bars_;
-    Row pocket_;
-    Row fillType_;
-    Row variation_;
     Row noteMap_;
     Row slicerStyle_;
+    Row quant_;
     Row strum_;
     Row gate_;
 };

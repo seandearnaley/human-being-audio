@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Bespoke 60fps generative interactive artwork for Cutline 2.0's 8 playable XY articulation worlds.
+// Bespoke 60fps generative interactive artwork for the four interim pad programs.
 #pragma once
 
 #include "cl/pattern.h"
@@ -17,7 +17,6 @@ struct PadMotion {
     float impulse = 0.0f; // Hit impact flash (0..1)
     float engage = 0.0f;  // Smooth 0..1 engaged intensity
     std::array<float, kDrumLaneCount> laneFlash{};
-    std::array<int, kDrumLaneCount> laneLens{16, 16, 16, 16, 16, 16, 7, 5};
     bool isSlicer = false;
     int heldCount = 0;
 };

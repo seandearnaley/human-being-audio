@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline 2.0 Visage 1.0 vibrant dark-chrome design tokens, 8-lane palette & 8-program XY jewel colors.
+// Cutline 3 dark-chrome design tokens, the 8-lane palette and the four pad colours.
 #pragma once
 
 #include "cl/ui/model.h"
@@ -21,6 +21,7 @@ struct Context {
     Model& model;
     float scale = 1.0f;
     std::vector<Live*> live;
+    bool fillView = false; // the grid shows the fill bar instead of the pattern
 
     float px(float designPixels) const { return designPixels * scale; }
 };
@@ -37,15 +38,15 @@ using hba::ui::colour::window;
 using hba::ui::colour::withAlpha;
 
 inline constexpr unsigned onColour = 0xff0c0f15;  // Dark crisp text on bright colored tabs/sheets
-inline constexpr unsigned iris = 0xff936eff;      // 0: SLICE electric iris
+inline constexpr unsigned iris = 0xff936eff;      // Electric iris
 inline constexpr unsigned lavender = 0xffbaa3ff;  // Soft lavender (ghosts)
-inline constexpr unsigned cyan = 0xff1cd8ee;      // 3: SWING electric cyan
-inline constexpr unsigned teal = 0xff1fe4b5;      // 6: MORPH mint teal
-inline constexpr unsigned amber = 0xffffa01e;     // 2: BOUNCE solar amber
-inline constexpr unsigned vermilion = 0xffff4e3e; // 1: ROLL blaze vermilion
-inline constexpr unsigned coral = 0xffff4593;     // 5: STUTTER hyper coral
-inline constexpr unsigned emerald = 0xff28df8a;   // 4: POLY neon emerald
-inline constexpr unsigned dropRed = 0xffff6a52;   // 7: DROP laser coral-red
+inline constexpr unsigned cyan = 0xff1cd8ee;      // Electric cyan
+inline constexpr unsigned teal = 0xff1fe4b5;      // Mint teal
+inline constexpr unsigned amber = 0xffffa01e;     // Solar amber
+inline constexpr unsigned vermilion = 0xffff4e3e; // Blaze vermilion
+inline constexpr unsigned coral = 0xffff4593;     // Hyper coral
+inline constexpr unsigned emerald = 0xff28df8a;   // Neon emerald
+inline constexpr unsigned dropRed = 0xffff6a52;   // Laser coral-red
 
 inline constexpr std::array<unsigned, kDrumLaneCount> lane{
     vermilion, // 0: KICK
@@ -59,14 +60,10 @@ inline constexpr std::array<unsigned, kDrumLaneCount> lane{
 };
 
 inline constexpr std::array<unsigned, kPerfPadCount> pad{
-    iris,      // 0: Slice
+    coral,     // 0: Repeat
     vermilion, // 1: Roll
-    amber,     // 2: Bounce
-    cyan,      // 3: Swing
-    emerald,   // 4: Poly
-    coral,     // 5: Stutter
-    teal,      // 6: Morph
-    dropRed,   // 7: Drop
+    teal,      // 2: Rate
+    dropRed,   // 3: Drop
 };
 
 inline unsigned lerpArgb(unsigned a, unsigned b, float t) {

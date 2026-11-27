@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "pulse_ribbon.h"
 
+#include "grid_edit.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -85,63 +87,65 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     const float innerY = wellY + 4.0f * px;
     const float innerW = wellW - 12.0f * px;
     const float innerH = wellH - 8.0f * px;
-    const float stepW = innerW / static_cast<float>(kMaxLaneSteps);
 
-    // Subtle bar & beat dividers
-    for (int st = 0; st < kMaxLaneSteps; st += 4) {
+    // The scene being shown: the one playing, or the one the scene parameter selects.
+    const GrooveState& groove = context_.model.groove();
+    const int scIdx = std::clamp(
+        v.playing ? v.activeScene : static_cast<int>(context_.model.get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    const Pattern& pattern = groove.bank.scenes[static_cast<std::size_t>(scIdx)];
+    const int slLen = std::clamp(static_cast<int>(groove.bank.slicerLength), 1, kMaxSlicerSteps);
+    const int steps = mode == EngineMode::drum ? patternSteps(pattern) : kMaxSlicerSteps;
+    const float stepW = innerW / static_cast<float>(steps);
+    const int absStep = v.position.barInPattern * kStepsPerBar + v.position.stepInBar;
+    const int playCol = !v.playing ? -1 : (mode == EngineMode::drum ? absStep : absStep % slLen);
+
+    // Beat dividers every 4 steps, bar lines every 16.
+    for (int st = 0; st < steps; st += 4) {
         const float sx = innerX + static_cast<float>(st) * stepW;
-        const bool isBar = (st % 16) == 0;
+        const bool isBar = (st % kStepsPerBar) == 0;
         canvas.setColor(isBar ? colour::withAlpha(accent, 0.28f) : 0x12ffffffu);
         canvas.rectangle(sx, wellY + 2.0f * px, (isBar ? 1.4f : 1.0f) * px, wellH - 4.0f * px);
     }
 
     if (mode == EngineMode::drum) {
+        // What sounds, from the same function and the same maps as the engine.
+        const float density = context_.model.get(ParamId::density);
+        const float dynamics = context_.model.get(ParamId::dynamics);
+        const int liveFillBar = (v.playing && v.position.fillLive) ? v.position.barInPattern : -1;
+        const grid::View view = grid::resolveView(groove, scIdx, density, dynamics, liveFillBar);
         const float laneH = innerH / static_cast<float>(kDrumLaneCount);
-        const int playStep32 = static_cast<int>(std::floor(v.playheadBeats * 4.0));
         for (int l = 0; l < kDrumLaneCount; ++l) {
             const auto li = static_cast<std::size_t>(l);
             const float ly = innerY + static_cast<float>(l) * laneH;
             const unsigned hue = colour::lane[li];
-            const int len = std::clamp(static_cast<int>(v.plan.laneLengths[li]), 1, kMaxLaneSteps);
             const float flash = v.laneFlash[li];
-            const int activeCell = v.playing ? (playStep32 % len) : -1;
 
-            for (int st = 0; st < kMaxLaneSteps; ++st) {
-                const bool wrapped = (st >= len);
-                const int src = st % len;
-                const std::uint8_t vel = v.plan.gridVel[li][static_cast<std::size_t>(src)];
-                if (vel == 0)
-                    continue;
-                const float vNorm = static_cast<float>(vel) / 127.0f;
-                const bool isPlay = (!wrapped && st == activeCell);
-                const float alpha = wrapped ? 0.14f : (isPlay ? 1.0f : (0.34f + 0.56f * vNorm + 0.25f * flash));
+            for (int st = 0; st < steps; ++st) {
+                const grid::Cell cell = grid::cellOf(view.bar[static_cast<std::size_t>(st / kStepsPerBar)]
+                                                         .lanes[li][static_cast<std::size_t>(st % kStepsPerBar)]);
+                if (cell.look == grid::CellLook::empty || cell.look == grid::CellLook::outline)
+                    continue; // the ribbon shows only what sounds
+                const unsigned tone = cell.look == grid::CellLook::fill ? colour::amber : hue;
+                const float vNorm = static_cast<float>(cell.velocity) / 127.0f;
+                const bool isPlay = st == playCol;
+                const float alpha = isPlay ? 1.0f : (0.34f + 0.56f * vNorm + 0.25f * flash);
                 const float bx = innerX + static_cast<float>(st) * stepW + 1.0f * px;
                 const float bw = std::max(2.0f * px, stepW - 2.2f * px);
                 const float bh = std::max(2.0f * px, laneH - 1.2f * px);
-                canvas.setColor(isPlay ? 0xffffffffu : colour::withAlpha(hue, std::min(1.0f, alpha)));
+                canvas.setColor(isPlay ? 0xffffffffu : colour::withAlpha(tone, std::min(1.0f, alpha)));
                 canvas.roundedRectangle(bx, ly + 0.5f * px, bw, bh, 1.2f * px);
-            }
-
-            // Crisp polymetric loop boundary tick when lane != 16/32
-            if (len != 16 && len != 32) {
-                const float ex = innerX + static_cast<float>(len) * stepW;
-                canvas.setColor(colour::withAlpha(colour::cyan, 0.78f));
-                canvas.rectangle(ex - 0.8f * px, ly, 1.8f * px, laneH);
             }
         }
     } else {
-        // Slicer Mode: Live chord pills + sliced step gate bars
-        const int slLen = std::clamp(static_cast<int>(v.plan.slicerLength), 1, kMaxLaneSteps);
-        const int playStep = v.playing ? (static_cast<int>(std::floor(v.playheadBeats * 4.0)) % slLen) : -1;
-        for (int st = 0; st < kMaxLaneSteps; ++st) {
-            const bool wrapped = (st >= slLen);
-            const std::uint8_t vel = v.plan.slicerVel[static_cast<std::size_t>(st % slLen)];
-            if (vel == 0)
+        // MIDI Slicer: the literal gate strip up to its length, and the held notes.
+        for (int st = 0; st < slLen; ++st) {
+            const Step& step = groove.bank.slicerSteps[static_cast<std::size_t>(st)];
+            if (!step.on())
                 continue;
-            const float vNorm = static_cast<float>(vel) / 127.0f;
+            const float vNorm = static_cast<float>(step.velocity) / 127.0f;
             const float bh = innerH * (0.24f + 0.72f * vNorm);
-            const bool isPlay = (!wrapped && st == playStep);
-            canvas.setColor(colour::withAlpha(isPlay ? 0xffffffffu : colour::cyan, wrapped ? 0.14f : 0.72f));
+            const bool isPlay = st == playCol;
+            canvas.setColor(colour::withAlpha(isPlay ? 0xffffffffu : colour::cyan, 0.72f));
             canvas.roundedRectangle(innerX + static_cast<float>(st) * stepW + 1.5f * px, innerY + (innerH - bh),
                                     std::max(3.0f * px, stepW - 3.0f * px), bh, 2.0f * px);
         }
@@ -164,10 +168,9 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
         }
     }
 
-    // Live playhead needle
-    if (v.playing) {
-        const double beatIn2Bars = std::fmod(std::max(0.0, v.playheadBeats), 8.0);
-        const float pxPos = innerX + static_cast<float>(beatIn2Bars * 4.0) * stepW;
+    // Playhead needle at the left edge of the step telemetry reports.
+    if (playCol >= 0 && playCol < steps) {
+        const float pxPos = innerX + static_cast<float>(playCol) * stepW;
         canvas.setColor(colour::withAlpha(accent, 0.34f));
         canvas.rectangle(pxPos - 2.5f * px, wellY + 1.0f * px, 5.0f * px, wellH - 2.0f * px);
         canvas.setColor(0xffffffffu);
@@ -203,16 +206,12 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     canvas.setColor(v.playing ? accent : colour::textFaint);
     canvas.circle(pillX + 10.0f * px, wellY + (wellH - dotD) * 0.5f, dotD);
 
-    // Style & Scene headline
-    const int styleIdx =
-        std::clamp(static_cast<int>(context_.model.get(ParamId::style) + 0.5f), 0, kDrumStyleCount - 1);
-    const int scIdx = std::clamp(
-        v.playing ? v.activeScene : static_cast<int>(context_.model.get(ParamId::scene) + 0.5f), 0, kSceneCount - 1);
+    // Scene headline
     const char sceneChar = static_cast<char>('A' + scIdx);
     char headBuf[48]{};
     if (mode == EngineMode::drum) {
-        std::snprintf(headBuf, sizeof(headBuf), "%s \u00b7 SCN %c",
-                      std::string(choices::style[static_cast<std::size_t>(styleIdx)]).c_str(), sceneChar);
+        const int bars = patternBars(pattern);
+        std::snprintf(headBuf, sizeof(headBuf), "SCN %c \u00b7 %d %s", sceneChar, bars, bars == 1 ? "bar" : "bars");
     } else {
         const int sIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::slicerStyle) + 0.5f), 0, 4);
         std::snprintf(headBuf, sizeof(headBuf), "%s",

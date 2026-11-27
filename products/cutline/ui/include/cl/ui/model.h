@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include "cl/engine.h"
 #include "cl/lanes.h"
 #include "cl/params.h"
 #include "cl/pattern.h"
-#include "cl/phrase.h"
 
 #include <array>
 #include <cstdint>
@@ -19,18 +19,17 @@ struct PresetInfo {
 };
 
 struct Visuals {
-    PhrasePlan plan{};
+    PlayPosition position{}; // absolute bar, bar in pattern, step in bar, fill live, Repeat window
+    SlicerPlan slicerPlan{}; // the slicer keeps its plan snapshot
     HeldNotes heldNotes{};
-    std::int64_t phraseIndex = 0;
     int activeScene = 0;
     int pendingScene = -1;
-    int activePadProgram = 4;
+    int activePadProgram = 0;
     int pendingPadProgram = -1;
     bool padEngaged = false;
     std::uint8_t midiPadMask = 0;
     int capturedClipCount = 0;
     double bpm = 172.0;
-    double playheadBeats = 0.0;
     double ppq = 0.0;
     std::array<float, kLaneCount> lanePhase{};
     std::array<float, kLaneCount> laneValue{};
@@ -56,11 +55,10 @@ struct Model {
     virtual Curve laneCurve(int lane) const = 0;
     virtual void setLaneCurve(int lane, const Curve& curve) = 0;
 
-    virtual PatternBank patternBank() const = 0;
-    virtual void setPatternBank(const PatternBank& bank) = 0;
+    // The bank and the density maps the engine plays from. The grid and ribbon resolve with these.
+    virtual const GrooveState& groove() const = 0;
+    virtual void setGrooveBank(const GrooveBank& bank) = 0;
 
-    virtual void mutateActiveScene() = 0;
-    virtual void polymeterActiveScene() = 0;
     virtual void cloneActiveSceneToNext() = 0;
     virtual void clearActiveScene() = 0;
 

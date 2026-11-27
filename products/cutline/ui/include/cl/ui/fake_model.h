@@ -19,37 +19,40 @@ class FakeModel final : public Model {
     Curve laneCurve(int lane) const override { return curves_[static_cast<std::size_t>(lane)]; }
     void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
 
-    PatternBank patternBank() const override { return bank_; }
-    void setPatternBank(const PatternBank& bank) override {
-        bank_ = bank;
-        recompile();
+    const GrooveState& groove() const override { return groove_; }
+    void setGrooveBank(const GrooveBank& bank) override {
+        groove_ = GrooveState(bank);
+        refresh();
     }
 
-    void mutateActiveScene() override;
-    void polymeterActiveScene() override;
+    // For screenshots: what the snapshot tool can ask the fake model to show.
+    void showBars(int bars); // resize scene A to 1, 2 or 4 bars
+    void showLive();         // the last bar with its fill live, and a one-beat Repeat window held
+    void showSlicer();       // MIDI Slicer mode
+
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
 
     void dragMidiPhrase() override {}
-    std::string exportStatus() const override { return "Drag 4-bar .mid"; }
+    std::string exportStatus() const override { return "Drag 2-bar .mid"; }
 
     std::string presetName() const override { return presetName_; }
     std::vector<PresetInfo> presets() const override {
-        return {{"Amen Chop 172", "Breaks"}, {"Neuro 2-Step", "Neuro"}, {"UKG Stab Slicer", "MIDI Slicer"}};
+        return {{"Amen", "Breaks"}, {"Neuro", "Neuro"}, {"Slicer: UKG Chord Stabs", "MIDI Slicer"}};
     }
     void loadPreset(int) override {}
     void stepPreset(int) override {}
     void savePreset() override {}
 
   private:
-    void recompile();
+    void refresh();
 
     Params params_;
     LaneCurves curves_ = defaultLaneCurves();
-    PatternBank bank_{};
+    GrooveState groove_{};
     Visuals visuals_;
-    std::uint32_t actionSeed_ = 101U;
-    std::string presetName_ = "Amen Chop 172";
+    bool live_ = false;
+    std::string presetName_ = "Amen";
 };
 
 } // namespace cl::ui

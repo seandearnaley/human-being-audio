@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// The GRID stage: every bar of the edited scene as resolveBar plays it, or the fill bar, or the MIDI Slicer strip.
 #pragma once
 
+#include "grid_edit.h"
 #include "panels.h"
 
 #include <array>
+#include <functional>
 
 namespace cl::ui {
 
@@ -21,7 +24,7 @@ class GridStagePanel final : public Panel {
     void mouseUp(const visage::MouseEvent& e) override;
 
   private:
-    enum class DragMode { none, paintOn, paintOff, velocity, laneLength, slicerLength, laneNote };
+    enum class DragMode { none, paintOn, velocity, laneLength, slicerLength, laneNote };
 
     struct Rect {
         float x = 0.0f;
@@ -34,9 +37,10 @@ class GridStagePanel final : public Panel {
     };
 
     struct Layout {
-        Rect modeDrum, modeSlicer;
-        std::array<Rect, kSceneCount> scenes{};
-        Rect btnMutate, btnPoly, btnClone, btnClear;
+        Rect btnClone, btnClear;
+        Rect btnFill;
+        std::array<Rect, 3> lengthPills{};
+        int steps = 16; // columns in the drum grid
         float rulerY = 0.0f;
         float gridX = 0.0f;
         float gridY = 0.0f;
@@ -44,6 +48,7 @@ class GridStagePanel final : public Panel {
         float gridH = 0.0f;
         float rowH = 0.0f;
         float stepW = 0.0f;
+        float slicerStepW = 0.0f;
         float sidebarX = 0.0f;
         float sidebarW = 0.0f;
         float footerY = 0.0f;
@@ -52,12 +57,17 @@ class GridStagePanel final : public Panel {
         Rect slicerGateRect{};
     };
 
-    Layout computeLayout(float w, float h) const;
+    Layout computeLayout(float w, float h, int steps) const;
     Rect laneNoteRect(int lane, const Layout& lay) const;
     Rect laneMuteRect(int lane, const Layout& lay) const;
     Rect laneSoloRect(int lane, const Layout& lay) const;
-    Rect laneLockRect(int lane, const Layout& lay) const;
     float laneEndHandleX(int laneLen, const Layout& lay) const;
+    float slicerEndHandleX(int length, const Layout& lay) const;
+
+    int gridSteps() const;
+    int editScene() const;
+    bool fillView() const { return context_.fillView; }
+    void edit(const std::function<bool(GrooveBank&)>& change);
 
     void drawHeader(visage::Canvas& canvas, const Layout& lay, const Visuals& vis, EngineMode mode);
     void drawDrumGrid(visage::Canvas& canvas, const Layout& lay, const Visuals& vis);
@@ -71,14 +81,13 @@ class GridStagePanel final : public Panel {
     int hoverStep_ = -1;
     int hoverLengthLane_ = -1;
     bool hoverSlicerLen_ = false;
-    int hoverScene_ = -1;
-    int hoverAction_ = -1; // 0=Mutate, 1=Poly, 2=Clone, 3=Clear
+    int hoverAction_ = -1; // 0 = Clone, 1 = Clear, 2 = Fill, 10..12 = length pills
 
     DragMode dragMode_ = DragMode::none;
     int dragLane_ = -1;
     int dragStep_ = -1;
     float dragStartY_ = 0.0f;
-    int dragBaseVelOff_ = 0;
+    int dragBaseVel_ = 96;
     int dragBaseNote_ = 36;
 };
 

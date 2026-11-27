@@ -29,11 +29,8 @@ float frac(float v) { return v - std::floor(v); }
 
 PlayPanel::PlayPanel(Context& context)
     : context_(context), holdBtn_(context, "Hold", [this] { toggleHold(); }),
-      quantChip_(context, ParamId::sceneQuantize, colour::text), styleChip_(context, ParamId::style, colour::iris),
-      mutateBtn_(context, "Mutate", [this] { context_.model.mutateActiveScene(); }),
-      polyBtn_(context, "Polymeter", [this] { context_.model.polymeterActiveScene(); }),
-      ccChip_(context, ParamId::padCcMode, colour::cyan), noteMapChip_(context, ParamId::noteMap, colour::text),
-      slicerChip_(context, ParamId::slicerStyle, colour::cyan),
+      quantChip_(context, ParamId::sceneQuantize, colour::text), ccChip_(context, ParamId::padCcMode, colour::cyan),
+      noteMapChip_(context, ParamId::noteMap, colour::text), slicerChip_(context, ParamId::slicerStyle, colour::cyan),
       auditionBtn_(context, "Audition",
                    [this] {
                        const bool on = context_.model.get(ParamId::audition) >= 0.5f;
@@ -43,13 +40,10 @@ PlayPanel::PlayPanel(Context& context)
                    }),
       dragMidBtn_(context, "Drag 4-bar .mid \u2197", [this] { context_.model.dragMidiPhrase(); }) {
     setAcceptsKeystrokes(true);
-    for (visage::Frame* child :
-         std::initializer_list<visage::Frame*>{&holdBtn_, &quantChip_, &styleChip_, &mutateBtn_, &polyBtn_, &ccChip_,
-                                               &noteMapChip_, &slicerChip_, &auditionBtn_, &dragMidBtn_})
+    for (visage::Frame* child : std::initializer_list<visage::Frame*>{&holdBtn_, &quantChip_, &ccChip_, &noteMapChip_,
+                                                                      &slicerChip_, &auditionBtn_, &dragMidBtn_})
         addChild(child);
 
-    mutateBtn_.setAccent(colour::amber);
-    polyBtn_.setAccent(colour::cyan);
     dragMidBtn_.setOnDrag([this] { context_.model.dragMidiPhrase(); });
 
     program_ = playingProgram();
@@ -77,7 +71,7 @@ int PlayPanel::playingProgram() const {
 PlayPanel::Rect PlayPanel::tabRect(int index) const {
     const float gap = context_.px(kTabGap);
     const float th = context_.px(kTabHeight);
-    const float tw = (width() - 7.0f * gap) / 8.0f;
+    const float tw = (width() - static_cast<float>(kPerfPadCount - 1) * gap) / static_cast<float>(kPerfPadCount);
     return {static_cast<float>(index) * (tw + gap), 0.0f, tw, th};
 }
 
@@ -104,46 +98,24 @@ int PlayPanel::tabAt(float x, float y) const {
 
 std::string PlayPanel::formatAxisValue(int prog, bool isX, float v) const {
     char buf[32]{};
-    const int pct = static_cast<int>(std::lround(v * 100.0f));
     if (isX) {
         switch (prog) {
-        case 1: { // Roll rate
-            const char* rate =
-                v < 0.22f ? "1/8" : (v < 0.48f ? "1/16" : (v < 0.72f ? "1/16T" : (v < 0.88f ? "1/32" : "1/64")));
-            return rate;
+        case 0: // Repeat: window
+            return v < 0.25f ? "1 BEAT" : (v < 0.5f ? "1/2" : (v < 0.75f ? "1/4" : "1/8"));
+        case 1: // Roll: rate
+            return v < 0.25f ? "1/8" : (v < 0.5f ? "1/16" : (v < 0.75f ? "1/16T" : "1/32"));
+        case 2: // Rate: speed
+            return v < 1.0f / 3.0f ? "0.5\u00d7" : (v > 2.0f / 3.0f ? "2\u00d7" : "1\u00d7");
+        default: // Drop
+            return v < 0.5f ? "CUT" : "FILL";
         }
-        case 2: { // Bounce gravity
-            const int g = static_cast<int>(std::lround((v - 0.5f) * 200.0f));
-            std::snprintf(buf, sizeof(buf), "%+d%%", g);
-            return buf;
-        }
-        case 3: { // Swing pocket
-            const int sw = static_cast<int>(std::lround((v - 0.5f) * 200.0f));
-            std::snprintf(buf, sizeof(buf), "%+d%%", sw);
-            return buf;
-        }
-        case 4: { // Poly profile
-            return v < 0.24f ? "16 / 12" : (v < 0.52f ? "9 / 7" : (v < 0.80f ? "11 / 7 / 5" : "13 / 11 / 5"));
-        }
-        case 5: { // Stutter window
-            return v < 0.18f ? "1 BEAT" : (v < 0.42f ? "1/2" : (v < 0.68f ? "1/4" : (v < 0.88f ? "1/8" : "1/16")));
-        }
-        case 6: { // Morph Time Warp
-            return v < 0.33f ? "0.5\u00d7 HALF" : (v > 0.67f ? "2\u00d7 DOUBLE" : "1\u00d7 NORM");
-        }
-        case 7: { // Drop archetype
-            return v < 0.30f ? "AIR CUT" : (v < 0.65f ? "TOM RUN" : "DRILL");
-        }
-        default:
-            std::snprintf(buf, sizeof(buf), "%d%%", pct);
-            return buf;
-        }
-    } else {
-        if (prog == 6)
-            return v < 0.35f ? "SUB" : (v > 0.65f ? "TOPS" : "FULL KIT");
-        std::snprintf(buf, sizeof(buf), "%d%%", pct);
-        return buf;
     }
+    if (prog == 2)
+        return v < 0.30f ? "KICK + SNARE" : (v > 0.70f ? "NO KICK" : "FULL KIT");
+    if (prog == 3)
+        return "";
+    std::snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(std::lround(v * 100.0f)));
+    return buf;
 }
 
 std::string PlayPanel::liveStatusBadge(int prog, float x, float y, bool engaged, bool holdOn) const {
@@ -182,7 +154,6 @@ void PlayPanel::tick() {
     holdBtn_.setLabel(holdOn ? "Hold ON" : "Hold");
     holdBtn_.setAccent(holdOn ? col : colour::textDim);
     quantChip_.setAccent(col);
-    styleChip_.setAccent(col);
     ccChip_.setAccent(colour::cyan);
     noteMapChip_.setVisible(isDrum);
     slicerChip_.setVisible(!isDrum);
@@ -214,7 +185,6 @@ void PlayPanel::tick() {
     for (int l = 0; l < kDrumLaneCount; ++l) {
         const auto li = static_cast<std::size_t>(l);
         motion_.laneFlash[li] = v.laneFlash[li];
-        motion_.laneLens[li] = std::clamp(static_cast<int>(v.plan.laneLengths[li]), 1, kMaxLaneSteps);
         peakFlash = std::max(peakFlash, v.laneFlash[li]);
     }
     motion_.impulse = std::max(peakFlash, motion_.impulse * 0.86f);
@@ -222,13 +192,13 @@ void PlayPanel::tick() {
     motion_.heldCount = v.heldNotes.count;
 
     if (v.playing && v.bpm > 1.0) {
-        if (std::abs(v.playheadBeats - lastPlayhead_) > 1.0e-5) {
+        if (std::abs(v.ppq - lastPlayhead_) > 1.0e-5) {
             const int prevBeat = static_cast<int>(std::floor(lastPlayhead_));
-            const int curBeat = static_cast<int>(std::floor(v.playheadBeats));
+            const int curBeat = static_cast<int>(std::floor(v.ppq));
             if (curBeat != prevBeat && v.padEngaged)
                 ring_ = 0.0f;
-            lastPlayhead_ = v.playheadBeats;
-            motion_.beat = static_cast<float>(std::fmod(v.playheadBeats, 64.0));
+            lastPlayhead_ = v.ppq;
+            motion_.beat = static_cast<float>(std::fmod(v.ppq, 64.0));
         } else {
             motion_.beat = std::fmod(motion_.beat + dt * static_cast<float>(v.bpm / 60.0), 64.0f);
         }
@@ -248,7 +218,7 @@ void PlayPanel::draw(visage::Canvas& canvas) {
     const unsigned sheetCol =
         colour::lerpArgb(colour::programArgb(programBefore_), colour::programArgb(program_), easeOut(change_));
 
-    // 1. Folder Tabs Row: Slice [C3] .. Drop [G3]
+    // 1. Folder Tabs Row: Repeat [C3] .. Drop [D#3]
     for (int i = 0; i < kPerfPadCount; ++i) {
         const Rect tr = tabRect(i);
         const unsigned pCol = colour::programArgb(i);
@@ -361,13 +331,16 @@ void PlayPanel::draw(visage::Canvas& canvas) {
     const float yTagW = 192.0f * px;
     const float xTagW = 200.0f * px;
 
-    // Top-left Y Tag
-    canvas.setColor(sheetCol);
-    canvas.roundedRectangle(art.x - 4.0f * px, art.y - 4.0f * px, yTagW + 4.0f * px, tagH + 4.0f * px, 8.0f * px);
-    drawLabel(canvas, context_, std::string(kPerfPadYLabels[static_cast<std::size_t>(program_)]), art.x + 10.0f * px,
-              art.y, yTagW - 88.0f * px, tagH, colour::onColour, visage::Font::kLeft, 11.5f, Weight::semibold);
-    drawLabel(canvas, context_, formatAxisValue(program_, false, padY), art.x + yTagW - 84.0f * px, art.y, 74.0f * px,
-              tagH, colour::onColour, visage::Font::kRight, 11.0f, Weight::semibold);
+    // Top-left Y Tag (Drop has no Y axis, so no tag)
+    const std::string yLabel(kPerfPadYLabels[static_cast<std::size_t>(program_)]);
+    if (!yLabel.empty()) {
+        canvas.setColor(sheetCol);
+        canvas.roundedRectangle(art.x - 4.0f * px, art.y - 4.0f * px, yTagW + 4.0f * px, tagH + 4.0f * px, 8.0f * px);
+        drawLabel(canvas, context_, yLabel, art.x + 10.0f * px, art.y, yTagW - 88.0f * px, tagH, colour::onColour,
+                  visage::Font::kLeft, 11.5f, Weight::semibold);
+        drawLabel(canvas, context_, formatAxisValue(program_, false, padY), art.x + yTagW - 84.0f * px, art.y,
+                  74.0f * px, tagH, colour::onColour, visage::Font::kRight, 11.0f, Weight::semibold);
+    }
 
     // Bottom-right X Tag
     const float xTagX = art.x + art.w - xTagW;
@@ -422,9 +395,11 @@ void PlayPanel::draw(visage::Canvas& canvas) {
     const float lblY = dockY + 2.0f * px;
     (void)lblH;
     (void)lblY;
-    drawLabel(canvas, context_, "Double-click pad to Hold \u00b7 Shift for fine drag", context_.px(500.0f), dockY,
-              context_.px(244.0f), context_.px(kDockHeight), colour::textFaint, visage::Font::kCenter, 9.5f,
-              Weight::regular);
+    // The hint fills the dock to the right of the controls, which end at 664 design pixels.
+    const float hintX = context_.px(672.0f);
+    drawLabel(canvas, context_, "Double-click pad to Hold \u00b7 Shift for fine drag", hintX, dockY,
+              std::max(0.0f, width() - hintX - context_.px(12.0f)), context_.px(kDockHeight), colour::textFaint,
+              visage::Font::kCenter, 9.5f, Weight::regular);
 }
 
 void PlayPanel::resized() {
@@ -433,38 +408,20 @@ void PlayPanel::resized() {
     const float bh = px(28.0f);
     const float cy = dockY + (px(kDockHeight) - bh) * 0.5f;
 
+    // Left to right: [Hold] [Quant] [XY->CC] [Kit map / Slicer] [Audition] [Drag .mid]
     float x = px(12.0f);
     holdBtn_.setBounds(x, cy, px(76.0f), bh);
-    x += px(84.0f);
+    x += px(76.0f + 8.0f);
     quantChip_.setBounds(x, cy, px(76.0f), bh);
-    x += px(84.0f);
-    styleChip_.setBounds(x, cy, px(106.0f), bh);
-    x += px(114.0f);
-    mutateBtn_.setBounds(x, cy, px(74.0f), bh);
-    x += px(80.0f);
-    polyBtn_.setBounds(x, cy, px(88.0f), bh);
-
-    // Right cluster: [XY->CC] [KitMap / Slicer] [Audition] [Drag 4-bar .mid]
-    float rx = width() - px(12.0f);
-    const float dragW = px(142.0f);
-    rx -= dragW;
-    dragMidBtn_.setBounds(rx, cy, dragW, bh);
-
-    rx -= px(8.0f);
-    const float audW = px(74.0f);
-    rx -= audW;
-    auditionBtn_.setBounds(rx, cy, audW, bh);
-
-    rx -= px(8.0f);
-    const float mapW = px(142.0f);
-    rx -= mapW;
-    noteMapChip_.setBounds(rx, cy, mapW, bh);
-    slicerChip_.setBounds(rx, cy, mapW, bh);
-
-    rx -= px(8.0f);
-    const float ccW = px(102.0f);
-    rx -= ccW;
-    ccChip_.setBounds(rx, cy, ccW, bh);
+    x += px(76.0f + 8.0f);
+    ccChip_.setBounds(x, cy, px(102.0f), bh);
+    x += px(102.0f + 8.0f);
+    noteMapChip_.setBounds(x, cy, px(142.0f), bh);
+    slicerChip_.setBounds(x, cy, px(142.0f), bh);
+    x += px(142.0f + 8.0f);
+    auditionBtn_.setBounds(x, cy, px(74.0f), bh);
+    x += px(74.0f + 8.0f);
+    dragMidBtn_.setBounds(x, cy, px(142.0f), bh);
 }
 
 void PlayPanel::updatePointer(float x, float y, bool shiftDown) {
