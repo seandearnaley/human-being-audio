@@ -63,6 +63,7 @@ class PluginProcessor final : public juce::AudioProcessor,
         std::array<float, kParamCount> params{};
         LaneCurves curves = defaultLaneCurves();
         std::string presetName;
+        PrintHandle print;
 
         bool operator==(const HistorySnapshot&) const = default;
     };

@@ -5,6 +5,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <hba/core/wav.h>
+
 #include <cmath>
 #include <vector>
 
@@ -149,4 +151,62 @@ TEST_CASE("Lineage state round-trip, Undo/Redo and A/B history persist", "[plugi
     restored.prepareToPlay(48000.0, 256);
     restored.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
     CHECK(restored.currentParams()[ln::ParamId::filt1Hz] == Catch::Approx(2400.0f).margin(5.0f));
+}
+
+TEST_CASE("Lineage host session retains exact stacked PCM and clears former step-back history", "[plugin][recall]") {
+    ensureJuce();
+    ln::PluginProcessor proc;
+    proc.prepareToPlay(48000, 64);
+    proc.triggerPrintSync(false);
+    proc.triggerPrintSync(true);
+    const auto expected = proc.printStore.copyBuffer();
+    REQUIRE(expected.generation == 3);
+    juce::MemoryBlock saved;
+    proc.getStateInformation(saved);
+    ln::PluginProcessor restored;
+    restored.prepareToPlay(44100, 256);
+    restored.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+    REQUIRE(restored.printStore.waitForIdle());
+    const auto actual = restored.printStore.copyBuffer();
+    CHECK(actual.generation == expected.generation);
+    CHECK(actual.length == expected.length);
+    CHECK(actual.sampleRate == expected.sampleRate);
+    CHECK(actual.rootMidiNote == expected.rootMidiNote);
+    CHECK(actual.label == expected.label);
+    CHECK(bool(actual.left == expected.left));
+    CHECK(bool(actual.right == expected.right));
+    CHECK_FALSE(restored.printStore.canStepBack());
+    ln::PluginModel model(proc);
+    model.toggleAB();
+    proc.printStore.clear();
+    model.toggleAB();
+    CHECK(proc.printStore.generation() == 3);
+    model.toggleAB();
+    CHECK_FALSE(proc.printStore.hasPrint());
+}
+
+TEST_CASE("Lineage recalls imported stereo audio without the file and prints four full bars", "[plugin][recall]") {
+    ensureJuce();
+    ln::PluginProcessor source;
+    juce::TemporaryFile wav(".wav");
+    std::array<float, 512> samples{};
+    samples[96] = -0.5f;
+    samples[145] = 0.25f;
+    REQUIRE(hba::core::writeWavFloat(wav.getFile().getFullPathName().toStdString(), samples, 2, 44100));
+    REQUIRE(source.printStore.loadAudioFile(wav.getFile(), 48000));
+    juce::MemoryBlock state;
+    source.getStateInformation(state);
+    REQUIRE(wav.getFile().deleteFile());
+    ln::PluginProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    const auto actual = restored.printStore.copyBuffer();
+    const auto expected = source.printStore.copyBuffer();
+    CHECK(bool(actual.left == expected.left));
+    CHECK(bool(actual.right == expected.right));
+    CHECK(actual.label == expected.label);
+
+    auto params = source.currentParams();
+    params[ln::ParamId::printBars] = 2;
+    source.printStore.renderSync(params, source.curves.all(), 48000, 120, 29, false);
+    CHECK(source.printStore.copyBuffer().length == 384000);
 }
