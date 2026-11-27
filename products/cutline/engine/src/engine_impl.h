@@ -47,6 +47,7 @@ struct Engine::Impl {
         std::int8_t lane = 0; // drum lane, or the chord voice in MIDI Slicer mode
         std::uint8_t velocity = 0;
         bool drum = true;
+        bool padOn = false; // played while the pad is engaged (its Y can bias velocity)
     };
 
     // The fill decision as latched for one bar.
@@ -170,7 +171,7 @@ struct Engine::Impl {
     void playPattern(const Block& b) noexcept CL_NONBLOCKING;
     void playBlock(const Block& b) noexcept CL_NONBLOCKING;
     void releaseEndingBy(const Block& b, double beat, bool strict, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
-    void emitBlockHits(const Block& b, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
+    void emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left, float* right,
                  int numSamples) noexcept CL_NONBLOCKING;
     void renderAuditionAudio(const Params& params, float* left, float* right, int numSamples) noexcept CL_NONBLOCKING;

@@ -31,7 +31,8 @@ struct NoteOn {
 
 struct Run {
     std::vector<NoteOn> noteOns;
-    std::map<int, int> open; // note -> note-ons minus note-offs
+    std::map<int, int> open;      // note -> note-ons minus note-offs
+    std::vector<NoteOn> noteOffs; // note-offs of notes that were on, velocity 0
     int controlChanges = 0;
     double endBeat = 0.0;
 };
@@ -47,8 +48,10 @@ void take(Run& out, const MidiEventBuffer& midi, std::int64_t firstSample) {
             out.noteOns.push_back({ev.noteNumber(), firstSample + ev.sampleOffset, static_cast<int>(ev.data[2])});
             ++out.open[ev.noteNumber()];
         } else if (ev.isNoteOff()) {
-            if (out.open[ev.noteNumber()] > 0)
+            if (out.open[ev.noteNumber()] > 0) {
                 --out.open[ev.noteNumber()];
+                out.noteOffs.push_back({ev.noteNumber(), firstSample + ev.sampleOffset, 0});
+            }
         } else if ((ev.data[0] & 0xF0u) == 0xB0u) {
             ++out.controlChanges;
         }
@@ -426,4 +429,95 @@ TEST_CASE("With Shift, a pad engages on a 1/16 of the pattern as it sounds", "[e
     REQUIRE(firstRoll != nullptr);
     INFO("first roll note at host beat " << static_cast<double>(firstRoll->sample) * bps);
     CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor((1.25 + shift) / bps + 1.0e-7))) <= 1);
+}
+
+TEST_CASE("Drop silences in time order: the hits before its switch point are released at it", "[engine][pads]") {
+    // Snare on step 8 (Gate 1.0: it rings past beat 2.25) and a flammed snare on step 9, nudged late, whose grace
+    // hit falls just before the Drop point at 2.25. With 2048-sample blocks, the grace hit and the Drop point fall in
+    // the block that commits the pad.
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    for (const int step : {8, 9}) {
+        Step& st = bank.scenes[0].lanes[1].steps[static_cast<std::size_t>(step)];
+        st.velocity = 96;
+        st.layer = Layer::core;
+    }
+    bank.scenes[0].lanes[1].steps[9].flam = true;
+    bank.scenes[0].lanes[1].steps[9].nudge = 1;
+    constexpr int kBig = 2048;
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBig);
+    eng.setGroove(GrooveState(bank));
+    const Run run = play(
+        eng, 1.0,
+        [](double ppq) {
+            Params p;
+            p[ParamId::gateLen] = 1.0f;
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::drop);
+            p[ParamId::padX] = 0.2f; // silence
+            p[ParamId::padTouch] = (ppq >= 2.05 && ppq < 3.5) ? 1.0f : 0.0f;
+            return p;
+        },
+        kBig);
+    const auto dropAt = static_cast<std::int64_t>(std::floor(2.25 / bps));
+    const auto releasedAt = static_cast<std::int64_t>(std::ceil(3.5 / bps)) + kBig; // released on a block start
+    REQUIRE(static_cast<std::int64_t>(std::floor((2.25 - 0.044) / bps)) / kBig == dropAt / kBig);
+
+    for (const auto& on : run.noteOns) {
+        INFO("note-on " << on.note << " at host beat " << static_cast<double>(on.sample) * bps);
+        CHECK_FALSE((on.sample > dropAt + 1 && on.sample < releasedAt - 2 * kBig));
+    }
+    int before = 0;
+    for (const auto& on : run.noteOns) {
+        if (on.sample > dropAt + 1)
+            continue;
+        ++before;
+        std::int64_t off = -1;
+        for (const auto& o : run.noteOffs) {
+            if (o.note == on.note && o.sample >= on.sample) {
+                off = o.sample;
+                break;
+            }
+        }
+        INFO("note " << on.note << " on at host beat " << static_cast<double>(on.sample) * bps << ", off at "
+                     << static_cast<double>(off) * bps);
+        CHECK((off >= 0 && off <= dropAt + 1));
+    }
+    CHECK(before >= 2);
+}
+
+TEST_CASE("A pattern hit before the pad's switch point keeps its velocity in CC74 + Vel mode", "[engine][pads]") {
+    // Perc A (note 43) nudged to 2.21875, in the block that commits the Rate pad at 2.25. The pad's Y adds velocity
+    // only to what plays at or after its switch point.
+    GrooveBank bank;
+    Step& s = bank.scenes[0].lanes[6].steps[9];
+    s.velocity = 90;
+    s.layer = Layer::core;
+    s.nudge = -3;
+    constexpr int kBig = 2048;
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBig);
+    eng.setGroove(GrooveState(bank));
+    const Run run = play(
+        eng, 1.0,
+        [](double ppq) {
+            Params p;
+            p[ParamId::padCcMode] = static_cast<float>(PadCcMode::cc74AndVel);
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::rate);
+            p[ParamId::padX] = 0.5f; // 1x
+            p[ParamId::padY] = 1.0f; // +22 velocity while the pad plays
+            p[ParamId::padTouch] = ppq >= 2.05 ? 1.0f : 0.0f;
+            return p;
+        },
+        kBig);
+    const auto at = static_cast<std::int64_t>(std::floor(2.21875 / bps));
+    REQUIRE(static_cast<std::int64_t>(std::floor(2.25 / bps)) / kBig == at / kBig);
+    const NoteOn* percA = nullptr;
+    for (const auto& on : run.noteOns)
+        if (on.note == 43 && std::llabs(on.sample - at) <= 1)
+            percA = &on;
+    REQUIRE(percA != nullptr);
+    CHECK(percA->velocity == 90);
 }

@@ -363,6 +363,7 @@ void Engine::Impl::pushDrumHit(const Block& b, const Pattern& pat, int lane, dou
     hit.lane = static_cast<std::int8_t>(lane);
     hit.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
     hit.drum = true;
+    hit.padOn = b.padOn;
 }
 
 // The pattern itself: resolve every bar that can reach into this block, and keep the hits that start in it. Near a
@@ -449,8 +450,15 @@ void Engine::Impl::releaseEndingBy(const Block& b, double beat, bool strict,
 
 // Sorts this block's hits by time (stable, so equal times keep lane order) and starts them. Note-offs are sent in
 // the same time order: a note that ends after a hit starts is still active when the hit retriggers it, so its
-// note-off comes before the new note-on rather than cutting it.
-void Engine::Impl::emitBlockHits(const Block& b, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING {
+// note-off comes before the new note-on rather than cutting it. `silenceAt` (Drop's left half engaging inside the
+// block) releases everything still sounding at that beat, after the hits before it have started.
+void Engine::Impl::emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING {
+    bool silenced = !(silenceAt < b.windowEnd);
+    const auto silenceNow = [&]() noexcept CL_NONBLOCKING {
+        releaseEndingBy(b, silenceAt, true, outMidi);
+        flushAllActive(outMidi, sampleOffsetOf(silenceAt, b.rawStart, b.beatsPerSample, b.numSamples));
+        silenced = true;
+    };
     for (int i = 1; i < blockHitCount; ++i) {
         const BlockHit key = blockHits[static_cast<std::size_t>(i)];
         int j = i - 1;
@@ -484,11 +492,15 @@ void Engine::Impl::emitBlockHits(const Block& b, MidiEventBuffer& outMidi) noexc
         const BlockHit& hit = blockHits[static_cast<std::size_t>(i)];
         if (hit.velocity == 0)
             continue;
+        if (!silenced && hit.beat >= silenceAt - kBeatEps)
+            silenceNow();
         releaseEndingBy(b, hit.beat, false, outMidi);
         const int offset = sampleOffsetOf(hit.beat, b.rawStart, b.beatsPerSample, b.numSamples);
-        const int velocity = static_cast<int>(hit.velocity) + evalVelBias(*b.params, hit.beat, engaged, b.padY);
+        const int velocity = static_cast<int>(hit.velocity) + evalVelBias(*b.params, hit.beat, hit.padOn, b.padY);
         triggerNote(hit.note, velocity, hit.lane, hit.beat + std::max(0.03, hit.durBeats), offset, outMidi, hit.drum);
     }
+    if (!silenced)
+        silenceNow();
     releaseEndingBy(b, b.windowEnd - kBeatEps, true, outMidi);
     blockHitCount = 0;
 }
@@ -543,12 +555,12 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     const double windowStart = rawStart;
     const double windowEnd = rawStart + static_cast<double>(numSamples) * beatsPerSample;
 
-    // A pad that starts sounding at window beat `beat`.
-    const auto beginPad = [&](int program, double beat, int offset) noexcept CL_NONBLOCKING {
+    // A pad that starts sounding at window beat `beat`. Returns true when it silences what is sounding (Drop's left
+    // half); the caller does that in time order.
+    const auto beginPad = [&](int program, double beat) noexcept CL_NONBLOCKING {
         if (static_cast<PadProgram>(program) == PadProgram::repeat)
             beginRepeat(beat, baseRate, params.on(ParamId::fillNow), everyBars);
-        else if (static_cast<PadProgram>(program) == PadProgram::drop && pads::dropIsSilence(padX))
-            flushAllActive(outMidi, offset);
+        return static_cast<PadProgram>(program) == PadProgram::drop && pads::dropIsSilence(padX);
     };
 
     // Scene switching: at once when stopped or when Scene Quantize is Instant (the boundary is the block's start),
@@ -575,8 +587,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
         engaged = reqEngaged;
         pendingProg = -1;
         pendingEngage = false;
-        if (newlyEngaged)
-            beginPad(activeProg, windowStart, 0);
+        if (newlyEngaged && beginPad(activeProg, windowStart))
+            flushAllActive(outMidi, 0);
     } else {
         if (!reqEngaged) {
             engaged = false; // release at once, so letting go on beat 1 is tight
@@ -611,9 +623,9 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     if (!isDrum && slicerStyle != SlicerStyle::clipSlice && lastEffectiveHeld.count == 0)
         flushAllActive(outMidi, 0);
 
-    // Position telemetry, from the unshifted transport.
+    // Position telemetry, on the window clock: the step of the pattern that is sounding.
     const auto updatePosition = [&](double rate, bool fillLive) noexcept CL_NONBLOCKING {
-        const double scaled = rawPpq * rate;
+        const double scaled = windowStart * rate;
         const auto absBar = static_cast<std::int64_t>(std::floor(scaled / 4.0));
         pos.absBar = absBar;
         pos.barInPattern = floorMod(absBar, patternBars(pattern()));
@@ -643,6 +655,11 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
         sceneFromBeat = std::numeric_limits<double>::lowest();
         if (engaged && static_cast<PadProgram>(activeProg) == PadProgram::repeat)
             beginRepeat(windowStart, baseRate, params.on(ParamId::fillNow), everyBars);
+        // Pending switches fall on the next step after the new position, not on the beat they were due before.
+        if (pendingSceneIdx >= 0 && qStep > 0.0)
+            sceneSwitchBeat = std::ceil((windowStart - 1e-6) / qStep) * qStep;
+        if (pendingEngage)
+            padSwitchBeat = std::ceil((windowStart - 1e-6) / pads::kPadQuantizeBeats) * pads::kPadQuantizeBeats;
     }
     wasPlaying = true;
     expectedNextPpq = transport.ppq + static_cast<double>(numSamples) * beatsPerSample;
@@ -658,6 +675,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     const int progBefore = activeProg;
     double padAt = windowStart; // where the pad takes over, when it commits in this block
     bool padCommitted = false;
+    double silenceAt = std::numeric_limits<double>::max(); // where Drop silences what is sounding
     if (pendingEngage && windowEnd >= padSwitchBeat - kBeatEps) {
         activeProg = pendingProg >= 0 ? pendingProg : reqProg;
         engaged = true;
@@ -665,7 +683,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
         pendingProg = -1;
         padAt = std::max(windowStart, padSwitchBeat);
         padCommitted = true;
-        beginPad(activeProg, padSwitchBeat, sampleOffsetOf(padAt, rawStart, beatsPerSample, numSamples));
+        if (beginPad(activeProg, padSwitchBeat))
+            silenceAt = padAt;
     }
 
     const auto makeBlock = [&](bool padOn, int prog, double from, double to) noexcept CL_NONBLOCKING {
@@ -691,7 +710,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     };
     const Block b = makeBlock(engaged, activeProg, windowStart, windowEnd);
     {
-        const auto absBar = static_cast<std::int64_t>(std::floor(rawPpq * b.rate / 4.0));
+        const auto absBar = static_cast<std::int64_t>(std::floor(windowStart * b.rate / 4.0));
         updatePosition(
             b.rate, isDrum && fillActiveFor(pattern(), absBar, b.fillNow, everyBars, windowEnd * b.rate, b.beatsPerMs));
     }
@@ -705,7 +724,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     } else {
         playBlock(b);
     }
-    emitBlockHits(b, outMidi);
+    emitBlockHits(b, silenceAt, outMidi);
 
     // Continuous CC, expression lanes and XY -> CC.
     const auto thinIdx = static_cast<std::size_t>(std::clamp(params.choice(ParamId::ccThinMs), 0, 3));
@@ -717,7 +736,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
             break;
         if (tickBeat >= windowStart - kBeatEps) {
             const int offset = sampleOffsetOf(tickBeat, rawStart, beatsPerSample, numSamples);
-            emitContinuousAt(params, tickBeat, offset, outMidi, engaged, padX, padY);
+            const bool tickPadOn = (padCommitted && tickBeat < padAt - kBeatEps) ? engagedBefore : engaged;
+            emitContinuousAt(params, tickBeat, offset, outMidi, tickPadOn, padX, padY);
         }
         ++tickIdx;
     }

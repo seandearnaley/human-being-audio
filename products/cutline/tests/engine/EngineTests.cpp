@@ -668,7 +668,7 @@ TEST_CASE("A kit map with shared notes stays well-formed and covers every hit", 
         const auto expected = expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat);
         REQUIRE(expected.size() > 0);
         requireCovered(expected, run.noteOns);
-        stopAndCheckReleased(eng, run, bpm, 0);
+        stopAndCheckReleased(eng, run, bpm, static_cast<std::int64_t>(blocks / 4) * (1 + 37 + 512 + 4096));
     }
 }
 
@@ -758,4 +758,49 @@ TEST_CASE("A fill bar keeps its whole fill when Fill is switched off inside the 
     CHECK(countIn(run, 38, 1, bpm) == 2);
     CHECK(countIn(run, 36, 1, bpm) == 9);
     CHECK(countIn(run, 38, 2, bpm) == 0);
+}
+
+TEST_CASE("With Shift, the engine reports the step that is sounding", "[engine]") {
+    // Shift +20 ms at 120 BPM is 0.04 beat: at transport beat 8.02 the pattern sounding is at window beat 7.98,
+    // bar 1, step 15.
+    Params p;
+    p[ParamId::shiftMs] = 20.0f;
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    eng.process(p, {120.0, 8.02, true}, midi, l.data(), r.data(), kBlock);
+    const PlayPosition pos = eng.position();
+    CHECK(pos.absBar == 1);
+    CHECK(pos.stepInBar == 15);
+}
+
+TEST_CASE("A pending scene switch is re-quantized after the transport jumps back", "[engine]") {
+    // Scene B is asked for at beat 5 (1 Bar quantize: due at 8). The host loops back to beat 1 at beat 6, so the
+    // switch is due at the next bar line after the jump, beat 4.
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    bool requested = false;
+    double ppq = 0.0;
+    const auto playUntil = [&](double until) {
+        while (ppq + bps * static_cast<double>(kBlock) < until) {
+            requested = requested || ppq >= 5.0;
+            Params p;
+            p[ParamId::scene] = requested ? 1.0f : 0.0f;
+            eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+            ppq += bps * static_cast<double>(kBlock);
+        }
+    };
+    playUntil(6.0);
+    REQUIRE(eng.pendingScene() == 1);
+    ppq = 1.0; // the jump
+    playUntil(3.9);
+    CHECK(eng.activeScene() == 0);
+    CHECK(eng.pendingScene() == 1);
+    playUntil(4.2);
+    CHECK(eng.activeScene() == 1);
 }
