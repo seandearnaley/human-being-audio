@@ -179,6 +179,30 @@ const PRODUCT_DETAILS = {
     ],
     credits: "Includes 24 factory presets, four modulation lanes, Undo/Redo and A/B compare.",
   },
+  datum: {
+    kind: "Neuro kick synth",
+    hue: 152,
+    bpm: 172,
+    form: "piston",
+    formLabel: "Piston",
+    alt: "Datum’s phase-separated Sub/Body/Click/Sum waveform stage with direct-manipulation Pitch and Amp splines, six luminous macro dials, Quick-Start Archetypes, and unified Voice footer bar",
+    body: "Synthesize phase-locked neurofunk, Twin-T, and modal membrane kicks from pure DSP before any FX chain. Sculpt analytical pitch and amplitude splines with Zero-X tail snap, balance Sub/Body/Click without crossover phase smear, align directly against a live sidechain sub-bass with Sub-Link, and compose 4-slot A/B/C/D grooves.",
+    features: [
+      [
+        "Four Nord-philosophy pure-DSP cores & analytical splines",
+        "Switch between analytical Sine, nonlinear discrete Twin-T bridged-T, 6-partial Harmonic with Schroeder/Peak-Min crest optimization, and Berger tension Membrane + Helmholtz Cavity — driven by Gauss-Legendre phase-integrated splines and terminal Zero-X snap.",
+      ],
+      [
+        "Phase-native 3-band sculpting & Sub-Link alignment",
+        "Balance Sub, Body, and Click without crossover smear, saturate through 8× HIIR ADAA2 shapers with analytical DC cancellation and zero-phase Box-Cut, rotate phase with an Orchard allpass rotator, or one-click Match Phase and Tune Root against a live sidechain bass bus.",
+      ],
+      [
+        "4-slot Kit Composer, Ref Sub & Sample-0 Drag exports",
+        "Build Main, Ghost, Double and Sub kit variations across a 16/32-step velocity and ratchet sequencer with a built-in Reference Sub-Bass, or drag 16× sample-0 key-tagged .wav bounces and 960-PPQ .mid grooves straight into your DAW.",
+      ],
+    ],
+    credits: "Includes 32 factory presets, 4-slot Kit Composer, Sub-Link sidechain alignment, Undo/Redo and A/B compare.",
+  },
 };
 
 export const PRODUCT_SLUGS = Object.keys(studio.products);
@@ -199,6 +223,7 @@ export const SCULPTURE_FORMS = [
   { id: "helix", label: "Helix" },
   { id: "membrane", label: "Membrane" },
   { id: "strata", label: "Strata" },
+  { id: "piston", label: "Piston" },
 ];
 
 export const FIELD_GUIDE_CHAPTERS = [
@@ -320,6 +345,23 @@ export const FIELD_GUIDE_CHAPTERS = [
       "Equal-Power Loop Crossfade & Scrub",
       "LR4 Strata Band-Split Crossover",
       "Poly 4 Lowest-Note Mono Sub Lock",
+    ],
+  },
+  {
+    num: "Chapter 08",
+    slug: "datum",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG.datum.hue,
+    title: "Phase-Locked Kick Synthesis: Analytical Splines, Schroeder Crest & Sub-Link",
+    summary:
+      "Integrate kick pitch splines analytically with Gauss-Legendre quadrature, lower harmonic crest factor with Schroeder & Peak-Min phase solvers, eliminate DC offset in asymmetric shapers, and phase-lock kicks against a live sidechain sub-bass.",
+    topics: [
+      "Gauss-Legendre Analytical Pitch Phase",
+      "Schroeder & Peak-Min Crest Solver",
+      "Analytic DC-Cancelled ADAA2 Shaping",
+      "Sub-Link Live Sidechain Phase Alignment",
     ],
   },
   {

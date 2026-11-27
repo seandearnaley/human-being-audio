@@ -49,6 +49,13 @@ const FORM_GLYPHS = {
       <polygon points="3,11.6 13,11.2 12,13.4 4,13.8" />
     </>
   ),
+  piston: (
+    <>
+      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" strokeWidth="1.2" opacity="0.45" />
+      <path d="M2.5 8 C4 2.2 5.6 2.2 7 8 C8.6 13.4 10.6 13.4 12.2 8 L13.8 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="2.5" cy="8" r="1.4" />
+    </>
+  ),
 };
 
 export default function Hero() {

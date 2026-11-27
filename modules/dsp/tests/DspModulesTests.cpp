@@ -5,6 +5,8 @@
 #include <hba/dsp/control.h>
 #include <hba/dsp/crossover.h>
 #include <hba/dsp/denormals.h>
+#include <hba/dsp/envelope_curve.h>
+#include <hba/dsp/harmonic_phase.h>
 #include <hba/dsp/lane_math.h>
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oversampling.h>
@@ -320,4 +322,79 @@ TEST_CASE("hba::dsp::BaseRate4x, SoftClipAdaa1, and lanePhaseHz meet anti-aliasi
     CHECK(lanePhaseHz(1.5, 0.5, 0.0) == Catch::Approx(0.75));
     CHECK(lanePhaseHz(1.5, 0.5, 90.0) == Catch::Approx(0.0).margin(1e-12));
     CHECK(lanePhaseHz(2.0, -1.0, 180.0) == Catch::Approx(0.5));
+}
+
+TEST_CASE("hba::dsp::EnvelopeCurve integrates log-Hz smoothly and maintains node invariants", "[dsp]") {
+    using namespace hba::dsp;
+    auto c = defaultKickPitchCurve();
+    CHECK(c.count == 4);
+    CHECK(evaluateEnvelope(c, 0.0) == Catch::Approx(0.78));
+    CHECK(evaluateEnvelope(c, 1.0) == Catch::Approx(0.19));
+
+    // Exact integral consistency: full integral == sum of 1000 sub-intervals
+    const double whole = integrateEnvelopeLogHz(c, 0.0, 1.0, 20.0, 2400.0);
+    double fine = 0.0;
+    constexpr int N = 1000;
+    for (int i = 0; i < N; ++i)
+        fine += integrateEnvelopeLogHz(c, static_cast<double>(i) / N, static_cast<double>(i + 1) / N, 20.0, 2400.0);
+    CHECK(whole == Catch::Approx(fine).epsilon(1e-5));
+    CHECK(whole > 50.0);
+
+    // Edit helpers preserve sorted endpoints
+    const int idx = insertEnvelopeNode(c, 0.5f, 0.25f);
+    CHECK(idx > 0);
+    CHECK(c.count == 5);
+    moveEnvelopeNode(c, idx, 0.99f, 0.22f);
+    CHECK(c.nodes[0].t == 0.0f);
+    CHECK(c.nodes[static_cast<std::size_t>(c.count - 1)].t == 1.0f);
+    CHECK(removeEnvelopeNode(c, idx));
+    CHECK(c.count == 4);
+}
+
+TEST_CASE("hba::dsp harmonic crest optimizer, TwinTResonator, and analyticAsymShape meet precision specs", "[dsp]") {
+    using namespace hba::dsp;
+    const std::array<double, 6> amps{1.0, 0.45, 0.30, 0.22, 0.16, 0.10};
+    const auto optPh = optimizeCrestPhases(amps, 0.0);
+
+    auto measurePeak = [&](const std::array<double, 6>& ph) {
+        double pk = 0.0;
+        for (int i = 0; i < 512; ++i) {
+            const double th = kTwoPi * (static_cast<double>(i) / 512.0);
+            double y = 0.0;
+            for (std::size_t k = 0; k < 6; ++k)
+                y += amps[k] * std::sin(static_cast<double>(k + 1) * th + ph[k]);
+            pk = std::max(pk, std::abs(y));
+        }
+        return pk;
+    };
+    const std::array<double, 6> zeroPh{};
+    const double zeroPeak = measurePeak(zeroPh);
+    const double optPeak = measurePeak(optPh);
+    const double crestGainDb = 20.0 * std::log10(zeroPeak / optPeak);
+    INFO("Zero-phase peak=" << zeroPeak << " optPeak=" << optPeak << " crest reduction=" << crestGainDb << " dB");
+    CHECK(crestGainDb >= 1.5);
+
+    // Twin-T resonator decays smoothly and remains finite under rapid pitch sweep
+    TwinTResonator tt;
+    tt.prepare(48000.0);
+    tt.trigger(1.0, 0.0);
+    double peakTt = 0.0;
+    for (int i = 0; i < 4800; ++i) {
+        const double hz = 52.0 + 400.0 * std::exp(-static_cast<double>(i) / 400.0);
+        const double y = tt.process(hz, 0.12, 0.4);
+        REQUIRE(std::isfinite(y));
+        peakTt = std::max(peakTt, std::abs(y));
+    }
+    CHECK(peakTt > 0.5);
+    CHECK(peakTt < 1.5);
+
+    // Analytic asymmetric shaper keeps DC offset below -90 dBFS on a full-scale sine wave
+    double dcSum = 0.0;
+    constexpr int M = 1024;
+    for (int i = 0; i < M; ++i) {
+        const double x = 0.9 * std::sin(kTwoPi * static_cast<double>(i) / static_cast<double>(M));
+        dcSum += analyticAsymShape(x, 0.42, 0.9);
+    }
+    const double dcMean = std::abs(dcSum / static_cast<double>(M));
+    CHECK(dcMean < 3.0e-5); // < -90 dBFS
 }
