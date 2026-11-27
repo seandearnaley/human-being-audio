@@ -38,7 +38,7 @@ PlayPanel::PlayPanel(Context& context)
                        context_.model.set(ParamId::audition, on ? 0.0f : 1.0f);
                        context_.model.end(ParamId::audition);
                    }),
-      dragMidBtn_(context, "Drag 4-bar .mid \u2197", [this] { context_.model.dragMidiPhrase(); }) {
+      dragMidBtn_(context, context.model.exportStatus() + " \u2197", [this] { context_.model.dragMidiPhrase(); }) {
     setAcceptsKeystrokes(true);
     for (visage::Frame* child : std::initializer_list<visage::Frame*>{&holdBtn_, &quantChip_, &ccChip_, &noteMapChip_,
                                                                       &slicerChip_, &auditionBtn_, &dragMidBtn_})

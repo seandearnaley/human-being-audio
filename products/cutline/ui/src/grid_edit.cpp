@@ -63,14 +63,14 @@ bool cellAt(const Geometry& geometry, float x, float y, int& lane, int& step) no
         return false;
     const int column = static_cast<int>((x - geometry.gridX) / geometry.stepW);
     const int row = static_cast<int>((y - geometry.gridY) / geometry.rowH);
-    if (column >= geometry.steps || row >= kDrumLaneCount)
+    if (column >= geometry.steps || row >= geometry.rows)
         return false;
     lane = row;
     step = column;
     return true;
 }
 
-Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept {
+const Step* stepAt(const Pattern& pattern, bool fillView, int lane, int step) noexcept {
     if (lane < 0 || lane >= kDrumLaneCount || step < 0)
         return nullptr;
     const auto li = static_cast<std::size_t>(lane);
@@ -81,7 +81,11 @@ Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept {
     }
     if (step >= patternSteps(pattern))
         return nullptr;
-    return &pattern.lanes[li].steps[static_cast<std::size_t>(step)];
+    return &pattern.lanes[li].steps[static_cast<std::size_t>(storedStep(pattern, lane, step))];
+}
+
+Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept {
+    return const_cast<Step*>(stepAt(static_cast<const Pattern&>(pattern), fillView, lane, step));
 }
 
 bool toggleStep(Pattern& pattern, bool fillView, int lane, int step) noexcept {

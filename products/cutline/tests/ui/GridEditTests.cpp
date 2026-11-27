@@ -184,3 +184,52 @@ TEST_CASE("A lane length equal to the pattern means follow the pattern", "[grid]
     CHECK(grid::setLaneLength(p, 6, 99) == false); // clamps to the pattern: still follow
     CHECK(p.lanes[6].length == 0);
 }
+
+TEST_CASE("On a looped lane every repeat of a step edits the one stored step it repeats", "[grid]") {
+    GrooveBank bank;
+    Pattern& p = bank.scenes[0];
+    setPatternBars(p, 2);
+    p.lanes[6].length = 7;
+    CHECK(grid::stepAt(p, false, 6, 9) == &p.lanes[6].steps[2]);
+    CHECK(grid::stepAt(p, false, 6, 32) == nullptr);
+    const Pattern& constPattern = p;
+    CHECK(grid::stepAt(constPattern, false, 6, 23) == &p.lanes[6].steps[2]);
+
+    CHECK(grid::toggleStep(p, false, 6, 23)); // column 23 repeats stored step 2
+    CHECK(p.lanes[6].steps[2].velocity == 96);
+    CHECK_FALSE(p.lanes[6].steps[23].on());
+
+    const grid::View view = grid::resolveView(GrooveState(bank), 0, 1.0f, 0.5f, -1);
+    for (int column = 0; column < 32; ++column) {
+        INFO("column " << column);
+        const bool lit = column == 2 || column == 9 || column == 16 || column == 23 || column == 30;
+        const grid::Cell cell = grid::cellOf(view.bar[static_cast<std::size_t>(column / kStepsPerBar)]
+                                                 .lanes[6][static_cast<std::size_t>(column % kStepsPerBar)]);
+        CHECK((cell.look == grid::CellLook::groove) == lit);
+    }
+}
+
+TEST_CASE("A press released in place is a click; out and back is a drag", "[grid]") {
+    grid::DragGesture gesture;
+    gesture.begin(100.0f);
+    CHECK_FALSE(gesture.move(102.0f, 4.0f));
+    CHECK_FALSE(gesture.moved());
+
+    gesture.begin(100.0f);
+    CHECK(gesture.move(60.0f, 4.0f));
+    CHECK(gesture.move(100.0f, 4.0f)); // back where it started: still a drag
+    CHECK(gesture.moved());
+
+    gesture.begin(50.0f); // a new press forgets the last one
+    CHECK_FALSE(gesture.moved());
+}
+
+TEST_CASE("A one-row geometry has one row", "[grid]") {
+    const grid::Geometry strip{100.0f, 40.0f, 20.0f, 30.0f, 32, 1};
+    int row = -1;
+    int step = -1;
+    REQUIRE(grid::cellAt(strip, 145.0f, 69.0f, row, step));
+    CHECK(row == 0);
+    CHECK(step == 2);
+    CHECK_FALSE(grid::cellAt(strip, 145.0f, 71.0f, row, step)); // below the strip
+}

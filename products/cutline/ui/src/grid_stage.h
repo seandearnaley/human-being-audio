@@ -5,6 +5,7 @@
 #include "grid_edit.h"
 #include "panels.h"
 
+#include <algorithm>
 #include <array>
 #include <functional>
 
@@ -63,6 +64,8 @@ class GridStagePanel final : public Panel {
     Rect laneSoloRect(int lane, const Layout& lay) const;
     float laneEndHandleX(int laneLen, const Layout& lay) const;
     float slicerEndHandleX(int length, const Layout& lay) const;
+    // Half-width of a length handle's hit zone: narrow enough to leave the neighbouring cells clickable.
+    float handleZone(float stepW) const { return std::min(px(7.0f), stepW * 0.25f); }
 
     int gridSteps() const;
     int editScene() const;
@@ -86,7 +89,7 @@ class GridStagePanel final : public Panel {
     DragMode dragMode_ = DragMode::none;
     int dragLane_ = -1;
     int dragStep_ = -1;
-    float dragStartY_ = 0.0f;
+    grid::DragGesture gesture_; // was the last press a click or a drag?
     int dragBaseVel_ = 96;
     int dragBaseNote_ = 36;
 };

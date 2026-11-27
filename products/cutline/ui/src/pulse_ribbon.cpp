@@ -79,7 +79,7 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     const float wellW = std::max(80.0f * px, w - pillW - 3.0f * padX);
     const float wellH = std::max(20.0f * px, h - 2.0f * padY);
 
-    // 1. Left Live Polymetric Pulse Timeline Well
+    // 1. Left live pulse timeline well
     canvas.setColor(colour::window);
     canvas.roundedRectangle(wellX, wellY, wellW, wellH, 6.0f * px);
 

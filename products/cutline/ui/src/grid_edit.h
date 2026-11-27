@@ -57,14 +57,18 @@ struct Geometry {
     float stepW = 1.0f;
     float rowH = 1.0f;
     int steps = 16;
+    int rows = kDrumLaneCount;
 };
 
-// The lane and step under a point. False outside the cells.
+// The lane (row) and step under a point. False outside the cells.
 bool cellAt(const Geometry& geometry, float x, float y, int& lane, int& step) noexcept;
 
 // The step a cell edits: a main-pattern step, or a fill step when `fillView` is set.
 // Null outside the pattern, and null before the fill window in the fill view.
+// In the pattern view the column maps through the lane's loop: every repeat of a step on a looped lane
+// edits the one stored step it repeats.
 Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept;
+const Step* stepAt(const Pattern& pattern, bool fillView, int lane, int step) noexcept;
 
 // Each edit returns true when it changed something.
 bool toggleStep(Pattern& pattern, bool fillView, int lane, int step) noexcept; // off -> Groove at 96; on -> off
@@ -73,5 +77,26 @@ bool cycleRatchet(Step& step) noexcept;                                        /
 bool setStepLayer(Step& step, Layer layer) noexcept;                           // lit steps only
 bool setFillBeats(Pattern& pattern, int beats) noexcept;                       // 1, 2 or 4
 bool setLaneLength(Pattern& pattern, int lane, int steps) noexcept; // 1..pattern steps; the full length means follow
+
+// Was a press a click or a drag? A drag is a press that ever moved past the threshold, even if it came back.
+class DragGesture {
+  public:
+    void begin(float y) noexcept {
+        startY_ = y;
+        moved_ = false;
+    }
+    // Returns moved(), after taking `y` into account.
+    bool move(float y, float threshold) noexcept {
+        if (y - startY_ >= threshold || startY_ - y >= threshold)
+            moved_ = true;
+        return moved_;
+    }
+    bool moved() const noexcept { return moved_; }
+    float startY() const noexcept { return startY_; }
+
+  private:
+    float startY_ = 0.0f;
+    bool moved_ = false;
+};
 
 } // namespace cl::ui::grid

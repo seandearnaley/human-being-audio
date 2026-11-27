@@ -78,6 +78,15 @@ void FakeModel::cloneActiveSceneToNext() {
 }
 
 void FakeModel::clearActiveScene() {
+    if (params_.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
+        // MIDI Slicer: Clear empties the gate strip and leaves the scene alone.
+        GrooveBank bank = groove_.bank;
+        bank.slicerLength = 16;
+        bank.slicerSteps = {};
+        groove_ = GrooveState(bank);
+        refresh();
+        return;
+    }
     const int scene = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
     GrooveBank bank = groove_.bank;
     bank.scenes[static_cast<std::size_t>(scene)] = Pattern{};
@@ -108,11 +117,11 @@ void FakeModel::refresh() {
     visuals_.pendingPadProgram = -1;
     visuals_.padEngaged = params_.on(ParamId::padTouch) || params_.on(ParamId::padHold);
     visuals_.midiPadMask = 0;
-    // Bar 1 of the pattern, on the snare backbeat.
+    // Bar 1 of the pattern, just after the flammed snare backbeat, so the flam mark is not under the playhead.
     visuals_.position = {};
     visuals_.position.absBar = 0;
     visuals_.position.barInPattern = 0;
-    visuals_.position.stepInBar = 12;
+    visuals_.position.stepInBar = 13;
     if (live_) {
         // The last bar, inside its fill window, with Repeat holding beat 2 of that bar.
         const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);

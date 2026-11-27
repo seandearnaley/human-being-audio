@@ -244,8 +244,9 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     }
 
     // The fill window: always in the fill view, and over the live bar while a fill plays.
+    // Telemetry can lag a bar-count change by a block, so every overlay stays inside the visible columns.
     const int shadeBar = fillView() ? 0 : liveFillBar;
-    if (shadeBar >= 0) {
+    if (shadeBar >= 0 && shadeBar * kStepsPerBar < steps) {
         const float fx = lay.gridX + static_cast<float>(shadeBar * kStepsPerBar + fillFrom) * lay.stepW;
         const float fw = static_cast<float>(kStepsPerBar - fillFrom) * lay.stepW;
         canvas.setColor(colour::withAlpha(colour::amber, 0.07f));
@@ -255,9 +256,11 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     }
 
     // The Repeat window, while the pad holds it.
-    if (!fillView() && live && vis.position.repeatStartStep >= 0) {
+    if (!fillView() && live && vis.position.repeatStartStep >= 0 && vis.position.repeatStartStep < steps) {
         const float rx = lay.gridX + static_cast<float>(vis.position.repeatStartStep) * lay.stepW;
-        const float rw = static_cast<float>(vis.position.repeatBeats * 4.0) * lay.stepW;
+        const float windowSteps = std::min(static_cast<float>(vis.position.repeatBeats * 4.0),
+                                           static_cast<float>(steps - vis.position.repeatStartStep));
+        const float rw = windowSteps * lay.stepW;
         canvas.setColor(colour::withAlpha(colour::coral, 0.16f));
         canvas.rectangle(rx, lay.gridY, rw, lay.gridH);
     }
