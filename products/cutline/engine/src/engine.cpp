@@ -982,12 +982,20 @@ void Engine::Impl::releaseAll(MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING 
 
 void Engine::Impl::renderAuditionAudio(const Params& params, float* left, float* right,
                                        int numSamples) noexcept CL_NONBLOCKING {
-    if (left == nullptr || right == nullptr || numSamples <= 0)
+    if (left == nullptr || numSamples <= 0)
         return;
     const bool enabled = params.on(ParamId::audition);
     const float gainDb = params[ParamId::auditionGain];
-    for (int i = 0; i < numSamples; ++i)
-        audition.renderSample(gainDb, enabled, left[i], right[i]);
+    for (int i = 0; i < numSamples; ++i) {
+        float l = 0.0f, r = 0.0f;
+        audition.renderSample(gainDb, enabled, l, r);
+        if (right != nullptr) {
+            left[i] = l;
+            right[i] = r;
+        } else {
+            left[i] = 0.5f * (l + r);
+        }
+    }
 }
 
 Engine::Engine() : impl_(std::make_unique<Impl>()) { impl_->prepare(48000.0); }

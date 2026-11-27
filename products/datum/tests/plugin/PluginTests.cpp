@@ -146,3 +146,38 @@ TEST_CASE("Datum session recalls the imported click after its source is removed"
     source.setStateInformation(empty.getData(), static_cast<int>(empty.getSize()));
     CHECK_FALSE(source.clickStore.hasSample());
 }
+
+TEST_CASE("datum renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    dt::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 4096);
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
+    proc.processBlock(audio, midi);
+    CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}
+
+TEST_CASE("Datum retains its aliased stereo sidechain throughout a large callback", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    dt::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.inputBuses.set(0, juce::AudioChannelSet::stereo());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(2, 8192);
+    for (int i = 0; i < audio.getNumSamples(); ++i) {
+        const auto bass = static_cast<float>(0.55 * std::sin(i * 55.0 * 2.0 * std::numbers::pi / 48000.0));
+        audio.setSample(0, i, bass);
+        audio.setSample(1, i, bass);
+    }
+    juce::MidiBuffer midi;
+    proc.processBlock(audio, midi);
+    CHECK(proc.telemetry.read().scActive);
+    CHECK(proc.telemetry.read().scRootHz == Approx(55.0f).margin(4.0f));
+}

@@ -210,3 +210,19 @@ TEST_CASE("Lineage recalls imported stereo audio without the file and prints fou
     source.printStore.renderSync(params, source.curves.all(), 48000, 120, 29, false);
     CHECK(source.printStore.copyBuffer().length == 384000);
 }
+
+TEST_CASE("lineage renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    ln::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 4096);
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
+    proc.processBlock(audio, midi);
+    CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}

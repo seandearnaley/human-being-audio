@@ -92,9 +92,9 @@ class PluginProcessor final : public juce::AudioProcessor,
     double standalonePpq_ = 0.0;
 
     AudioStateBundle audioBundle_{};
-    std::vector<float> monoScratchR_;
-    std::vector<float> scScratchL_;
-    std::vector<float> scScratchR_;
+    std::array<float, 1024> monoScratchR_{};
+    std::array<float, 1024> scScratchL_{};
+    std::array<float, 1024> scScratchR_{};
 
     std::atomic<double> lastBpm_{172.0};
     std::atomic<bool> pendingPrepare_{false};
