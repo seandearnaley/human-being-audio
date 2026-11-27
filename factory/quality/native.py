@@ -23,25 +23,34 @@ def affected(products, changes):
         for p in changes)]
 
 
-def plan_checks(products, changes):
+def plan_checks(products, changes, version_only=()):
     paths = set(changes or [])
     full = changes is None or ".github/workflows/native.yml" in paths or any(p.startswith("factory/quality/") for p in paths)
-    native = affected(products, changes)
+    windows_toolchain = {p for p in paths if p.startswith("cmake/patches/windows/") or p == "cmake/windows-release.ps1"}
+    # The Cutline UI target owns these Windows-only shared editor integration tests.
+    windows_editor_tests = {p for p in paths if p.startswith("modules/visage-ui/tests/windows/")}
+    cross_platform = paths.difference(version_only, windows_toolchain, windows_editor_tests)
+    native = affected(products, None if changes is None else cross_platform)
     macos = [p for p in native if p != "livecut-redux"]
     if ".github/workflows/macos-product.yml" in paths:
         macos = [p for p in products if p != "livecut-redux"]
-    windows = [p for p in native if p != "livecut-redux"]
+    windows_products = set(products if windows_toolchain else native)
+    if windows_editor_tests and "cutline" in products:
+        windows_products.add("cutline")
+    windows = [p for p in products if p in windows_products and p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []
-    if not native and any(p.startswith("research/") and Path(p).suffix in
-            TRANSLATIONS | {".h", ".hh", ".hpp", ".hxx", ".inl"} for p in paths):
+    if not native and (windows_editor_tests or any(p.startswith("research/") and Path(p).suffix in
+            TRANSLATIONS | {".h", ".hh", ".hpp", ".hxx", ".inl"} for p in paths)):
         jobs.append("format")
-    if full or any(p.startswith(("modules/", "cmake/")) for p in paths):
+    if full or any(p.startswith(("modules/", "cmake/")) for p in cross_platform):
         jobs.append("modules")
     if windows:
         jobs.append("windows")
     if macos:
         jobs.append("macos")
-    if "livecut-redux" in native or ".github/workflows/livecut.yml" in paths:
+    livecut_all_platforms = "livecut-redux" in native or ".github/workflows/livecut.yml" in paths
+    livecut_windows_only = "livecut-redux" in windows_products and not livecut_all_platforms
+    if livecut_all_platforms or livecut_windows_only:
         jobs.append("livecut")
     if full or "studio.json" in paths or any(p.startswith(("web/", "design/studio/")) or
             "/press/screenshots/" in p or p == ".github/workflows/website.yml" for p in paths):
@@ -50,7 +59,8 @@ def plan_checks(products, changes):
             (p.startswith("products/") and len(Path(p).parts) == 3 and p.endswith("/CMakeLists.txt")) or
             p in {".github/workflows/factory.yml", ".github/workflows/release.yml"} for p in paths):
         jobs.append("factory")
-    return {"products": native, "macos": macos, "windows": windows, "jobs": jobs}
+    return {"products": native, "macos": macos, "windows": windows,
+            "livecut_windows_only": livecut_windows_only, "jobs": jobs}
 
 
 def lint_inputs(product, sources, changes):
@@ -80,6 +90,34 @@ def changed_files(base):
         return None
     output = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", base, "HEAD"], cwd=ROOT)
     return [os.fsdecode(p) for p in output.split(b"\0") if p]
+
+
+PROJECT_VERSION = re.compile(rb"^(project\(\w+[ \t]+VERSION[ \t]+)\d+\.\d+\.\d+(?=[ \t])", re.I | re.M)
+
+
+def only_project_version_changed(before, after):
+    if before == after:
+        return False
+    old, old_count = PROJECT_VERSION.subn(rb"\1", before)
+    new, new_count = PROJECT_VERSION.subn(rb"\1", after)
+    return old_count == new_count == 1 and old == new
+
+
+def version_only_projects(products, changes, base, head="HEAD"):
+    candidates = set(changes or ()).intersection(f"products/{slug}/CMakeLists.txt" for slug in products)
+    if not candidates:
+        return set()
+    # New, deleted, renamed and type-changed project files need normal native builds.
+    modified = subprocess.check_output(
+        ["git", "diff", "--no-renames", "--diff-filter=M", "--name-only", "-z", base, head, "--", *sorted(candidates)],
+        cwd=ROOT,
+    )
+
+    def blob(ref, path):
+        return subprocess.check_output(["git", "cat-file", "blob", f"{ref}:{path}"], cwd=ROOT)
+
+    paths = (os.fsdecode(name) for name in modified.split(b"\0") if name)
+    return {path for path in paths if only_project_version_changed(blob(base, path), blob(head, path))}
 
 
 def studio_commands(root, product, build):
@@ -144,7 +182,9 @@ def main():
     args = parser.parse_args()
     products = list(json.loads((ROOT / "studio.json").read_text())["products"])
     if args.action == "plan":
-        for name, value in plan_checks(products, changed_files(args.base)).items():
+        changes = changed_files(args.base)
+        version_only = version_only_projects(products, changes, args.base)
+        for name, value in plan_checks(products, changes, version_only).items():
             print(f"{name}={json.dumps(value, separators=(',', ':'))}")
     elif args.action == "lint":
         lint(args.product, args.build, changed_files(args.base), args.runner, args.tidy)

@@ -28,6 +28,7 @@ jobs:
       products: ${{ steps.plan.outputs.products }}
       macos: ${{ steps.plan.outputs.macos }}
       windows: ${{ steps.plan.outputs.windows }}
+      livecut_windows_only: ${{ steps.plan.outputs.livecut_windows_only }}
       base: ${{ steps.plan.outputs.base }}
     steps:
       - uses: actions/checkout@v7
@@ -78,11 +79,10 @@ jobs:
       CCACHE_MAXSIZE: 250M
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -108,7 +108,7 @@ jobs:
     env:
       CC: clang-22
       CXX: clang++-22
-      CTEST_PARALLEL_LEVEL: ${{ matrix.product == 'livecut-redux' && '4' || '1' }}
+      CTEST_PARALLEL_LEVEL: ${{ contains(fromJSON('["livecut-redux","tract-form"]'), matrix.product) && '4' || '1' }}
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -126,8 +126,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -169,11 +168,10 @@ jobs:
         working-directory: products/${{ matrix.product }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: .ccache
@@ -199,6 +197,7 @@ jobs:
       matrix:
         product: ${{ fromJSON(needs.plan.outputs.windows) }}
     env:
+      CTEST_PARALLEL_LEVEL: ${{ matrix.product == 'tract-form' && '4' || '1' }}
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
       HBA_TOOLS_DIR: ${{ github.workspace }}/.tools
@@ -212,8 +211,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .cpm-cache
-          key: cpm-v2-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}
-          restore-keys: cpm-v2-
+          key: cpm-plugin-v3-${{ runner.os }}-${{ hashFiles('cmake/StudioDependencies.cmake', 'cmake/CPM.cmake') }}-${{ runner.os == 'Windows' && hashFiles('cmake/patches/windows/**') || 'stock' }}
       - uses: actions/cache@v5
         with:
           path: C:\Program Files\LLVM
@@ -248,6 +246,8 @@ jobs:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'livecut')
     uses: ./.github/workflows/livecut.yml
+    with:
+      windows_only: ${{ fromJSON(needs.plan.outputs.livecut_windows_only) }}
 
   website:
     needs: plan

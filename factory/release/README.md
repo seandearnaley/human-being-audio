@@ -17,6 +17,12 @@ gh workflow run verify-downloads.yml --ref main -f tag=pole-field/v0.1.0
 
 Each release contains a universal macOS PKG, a Windows x64 installer, an Ubuntu 26.04 x86_64 archive, SHA256SUMS and release.json. Verify a downloaded file with `gh attestation verify FILE -R seandearnaley/human-being-audio`. Clone the source at the commit recorded in release.json as described in the repository README.
 
+## Investigating a slow or failed qualification
+
+Report the product, platform, failed step and run link when the error appears. For a DAW crash, capture the host PID and its crash record, reproduce the smallest failing gesture with one plugin, and run that gesture against the fix before resuming family checks. A publication hold leaves diagnosis and repair active.
+
+Start desktop validation as each platform asset arrives. Record the source commit and package SHA-256 alongside each result. A retry can reuse completed checks for those exact bytes. For a slow workflow, separate time in the runner queue from compile, CTest, notarization and installed-package checks using the Actions job timestamps.
+
 ## Signing credentials and access
 
 Contributors need only the development toolchain. Signing runs on disposable GitHub-hosted machines. The **release** environment accepts only the main branch. Maintainers with workflow access can dispatch a release from any machine.
