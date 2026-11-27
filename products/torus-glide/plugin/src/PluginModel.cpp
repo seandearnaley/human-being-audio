@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 
+#include <hba/host/external_file_drag.h>
+
 #include "MidiExporter.h"
 
 #include <algorithm>
@@ -137,7 +139,7 @@ void PluginModel::dragResampledWav() {
     const auto file = processor_.resampler.file();
     if (dragSource_ == nullptr || !file.existsAsFile())
         return;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 void PluginModel::dragExportedMidi() {
@@ -153,7 +155,7 @@ void PluginModel::dragExportedMidi() {
             "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
         return;
     }
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {

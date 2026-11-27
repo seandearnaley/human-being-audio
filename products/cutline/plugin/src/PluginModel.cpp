@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 
+#include <hba/host/external_file_drag.h>
+
 #include "Library.h"
 #include "Parameters.h"
 
@@ -178,7 +180,7 @@ void PluginModel::dragMidiPhrase() {
             "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
         return;
     }
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 std::string PluginModel::exportStatus() const {

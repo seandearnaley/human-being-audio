@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
 
+#include <hba/host/external_file_drag.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -139,7 +141,7 @@ void PluginModel::dragBouncedWav() {
     const auto file = processor_.bouncer.file();
     if (dragSource_ == nullptr || !file.existsAsFile())
         return;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    hba::host::dragExternalFile(file, dragSource_);
 }
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {

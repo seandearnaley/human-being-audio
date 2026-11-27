@@ -24,6 +24,11 @@ if(DT_BUILD_TESTS)
     endif()
 
     if(DT_BUILD_PLUGIN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(dt_x11_drag_tests "${PROJECT_SOURCE_DIR}/../../modules/visage-ui/tests/X11FileDragTests.cpp")
+        target_compile_definitions(dt_x11_drag_tests PRIVATE VISAGE_LINUX=1)
+        target_link_libraries(dt_x11_drag_tests PRIVATE hba_visage_ui Catch2::Catch2WithMain dt_warnings)
+        add_test(NAME datum-x11-file-drag COMMAND xvfb-run -a "$<TARGET_FILE:dt_x11_drag_tests>")
+
         add_test(NAME datum-editor-renders
             COMMAND /usr/bin/python3 "${PROJECT_SOURCE_DIR}/../../factory/release/standalone-linux.py"
                     "$<TARGET_FILE:Datum_Standalone>")
