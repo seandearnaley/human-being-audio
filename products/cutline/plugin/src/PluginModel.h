@@ -32,6 +32,8 @@ class PluginModel final : public ui::Model {
 
     const GrooveState& groove() const override;
     void setGrooveBank(const GrooveBank& bank) override;
+    void beginGrooveEdit() override;
+    void endGrooveEdit() override;
 
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
@@ -65,6 +67,9 @@ class PluginModel final : public ui::Model {
     std::array<juce::RangedAudioParameter*, kParamCount> parameters_{};
     ui::Visuals visuals_{};
     bool applyingSnapshot_ = false;
+    bool inGrooveEdit_ = false;       // between beginGrooveEdit and endGrooveEdit
+    bool grooveEditSnapshot_ = false; // this gesture has taken its undo snapshot
+    bool grooveEditDirty_ = false;    // this gesture changed the bank: its end writes the state
     mutable GrooveState groove_{};
     mutable std::uint32_t grooveRevision_ = 0xffffffffu; // never equal to the store's first revision
     SlicerPlan previewPlan_{};                           // the slicer phrase shown while the transport is stopped

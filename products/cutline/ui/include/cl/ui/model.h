@@ -57,7 +57,12 @@ struct Model {
 
     // The bank and the density maps the engine plays from. The grid and ribbon resolve with these.
     virtual const GrooveState& groove() const = 0;
+    // Outside a gesture, every call is its own undo step and is written to the plugin state at once. Between
+    // beginGrooveEdit() and endGrooveEdit() (one press in the grid), the first call takes the one undo snapshot and
+    // each call only publishes the bank to the engine; endGrooveEdit() writes the state once.
     virtual void setGrooveBank(const GrooveBank& bank) = 0;
+    virtual void beginGrooveEdit() {}
+    virtual void endGrooveEdit() {}
 
     virtual void cloneActiveSceneToNext() = 0;
     virtual void clearActiveScene() = 0;

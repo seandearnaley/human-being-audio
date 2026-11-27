@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <set>
 #include <string>
+#include <utility>
 
 using namespace cl;
 using Catch::Approx;
@@ -305,6 +306,101 @@ TEST_CASE("Undo, redo, clone and clear work on the groove bank", "[plugin]") {
     CHECK(model.groove().bank.scenes[1] == sceneA);
 
     CHECK(model.exportStatus() == "Drag 1-bar .mid");
+}
+
+namespace {
+
+// Counts writes of the groove bank into the plugin's state tree.
+struct BankWrites final : juce::ValueTree::Listener {
+    explicit BankWrites(juce::ValueTree tree) : tree_(std::move(tree)) { tree_.addListener(this); }
+    ~BankWrites() override { tree_.removeListener(this); }
+    void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier& property) override {
+        if (property == kGrooveBankProp)
+            ++count;
+    }
+    int count = 0;
+
+  private:
+    juce::ValueTree tree_;
+};
+
+GrooveBank withHat(GrooveBank bank, int step) {
+    bank.scenes[0].lanes[4].steps[static_cast<std::size_t>(step)].velocity = 64;
+    bank.scenes[0].lanes[4].steps[static_cast<std::size_t>(step)].layer = Layer::detail;
+    return bank;
+}
+
+} // namespace
+
+TEST_CASE("One grid gesture is one undo step and one state write", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    PluginModel model(proc);
+    BankWrites writes(proc.state.state);
+    const GrooveBank original = model.groove().bank;
+    const auto storedBank = [&proc] { return proc.state.state.getProperty(kGrooveBankProp).toString(); };
+    const juce::String storedBefore = storedBank();
+
+    // A paint drag across eight cells: every change reaches the engine at once, the state tree only at the end.
+    GrooveBank bank = original;
+    model.beginGrooveEdit();
+    for (int step = 1; step < 16; step += 2) {
+        bank = withHat(bank, step);
+        model.setGrooveBank(bank);
+        CHECK(proc.patterns.bank() == GrooveState(bank).bank);
+    }
+    CHECK(writes.count == 0);
+    CHECK(storedBank() == storedBefore);
+    model.endGrooveEdit();
+    CHECK(writes.count == 1);
+    CHECK(storedBank() == toJuce(serialiseGrooveBank(GrooveState(bank).bank)));
+
+    REQUIRE(model.canUndo());
+    model.undo();
+    CHECK(model.groove().bank == original);
+    CHECK_FALSE(model.canUndo());
+    model.redo();
+    CHECK(model.groove().bank == GrooveState(bank).bank);
+    model.undo();
+
+    // Two clicks 100 ms apart are two gestures, so two undo steps.
+    const GrooveBank first = withHat(original, 1);
+    const GrooveBank second = withHat(first, 3);
+    model.beginGrooveEdit();
+    model.setGrooveBank(first);
+    model.endGrooveEdit();
+    juce::Thread::sleep(100);
+    model.beginGrooveEdit();
+    model.setGrooveBank(second);
+    model.endGrooveEdit();
+    model.undo();
+    CHECK(model.groove().bank == GrooveState(first).bank);
+    model.undo();
+    CHECK(model.groove().bank == original);
+
+    // A gesture that edits nothing takes no snapshot and writes nothing.
+    const int before = writes.count;
+    model.beginGrooveEdit();
+    model.endGrooveEdit();
+    CHECK(writes.count == before);
+    CHECK_FALSE(model.canUndo());
+}
+
+TEST_CASE("Edits outside a gesture are each their own undo step, written at once", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    PluginModel model(proc);
+    BankWrites writes(proc.state.state);
+    const GrooveBank original = model.groove().bank;
+    const GrooveBank first = withHat(original, 1);
+    const GrooveBank second = withHat(first, 3);
+    model.setGrooveBank(first);  // a menu choice
+    model.setGrooveBank(second); // Vary, straight after: no coalescing
+    CHECK(writes.count == 2);
+    model.undo();
+    CHECK(model.groove().bank == GrooveState(first).bank);
+    model.undo();
+    CHECK(model.groove().bank == original);
 }
 
 TEST_CASE("The model serves a sanitised bank with the engine's density maps", "[plugin]") {

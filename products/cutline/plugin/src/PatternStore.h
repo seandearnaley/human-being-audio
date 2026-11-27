@@ -23,8 +23,13 @@ class PatternStore {
 
     GrooveState get() const;
     GrooveBank bank() const;
-    void set(const GrooveBank& bank);
+    void set(const GrooveBank& bank); // publishes the bank and writes it into the plugin state
     void clear();
+
+    // For a drag in the grid: setLive() publishes each change to the engine without touching the plugin state, and
+    // writeState() writes the published bank into it once, when the drag ends.
+    void setLive(const GrooveBank& bank);
+    void writeState();
 
     // Reads the bank from plugin state. Returns false when it is missing or does not parse;
     // the store then holds the default bank.

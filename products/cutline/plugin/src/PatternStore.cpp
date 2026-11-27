@@ -27,6 +27,12 @@ void PatternStore::set(const GrooveBank& bank) {
 
 void PatternStore::clear() { set(GrooveBank{}); }
 
+void PatternStore::setLive(const GrooveBank& bank) { publish(GrooveState(bank)); }
+
+void PatternStore::writeState() {
+    state_.state.setProperty(kGrooveBankProp, toJuce(serialiseGrooveBank(bank())), nullptr);
+}
+
 bool PatternStore::reloadFromState() {
     const auto text = state_.state.getProperty(kGrooveBankProp).toString();
     if (text.isNotEmpty()) {

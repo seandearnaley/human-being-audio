@@ -18,6 +18,7 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
 }
 
 PluginModel::~PluginModel() {
+    endGrooveEdit(); // an editor closed mid-drag still saves what the drag did
     *alive_ = false;
     if (saveDialog_)
         saveDialog_->exitModalState(0);
@@ -90,11 +91,34 @@ const GrooveState& PluginModel::groove() const {
     return groove_;
 }
 
+// One grid gesture is one undo step: its first edit takes the snapshot, every edit is heard at once, and the plugin
+// state is written once when the gesture ends. An edit outside a gesture is its own undo step.
 void PluginModel::setGrooveBank(const GrooveBank& bank) {
-    if (!applyingSnapshot_)
-        processor_.history.pushCoalesced(captureSnapshot(), 0x2000u,
-                                         static_cast<std::int64_t>(juce::Time::currentTimeMillis()));
-    processor_.patterns.set(bank);
+    if (!applyingSnapshot_ && !(inGrooveEdit_ && grooveEditSnapshot_))
+        processor_.history.push(captureSnapshot());
+    if (!inGrooveEdit_) {
+        processor_.patterns.set(bank);
+        return;
+    }
+    grooveEditSnapshot_ = true;
+    grooveEditDirty_ = true;
+    processor_.patterns.setLive(bank);
+}
+
+void PluginModel::beginGrooveEdit() {
+    if (inGrooveEdit_)
+        endGrooveEdit(); // a press whose release never arrived
+    inGrooveEdit_ = true;
+    grooveEditSnapshot_ = false;
+    grooveEditDirty_ = false;
+}
+
+void PluginModel::endGrooveEdit() {
+    if (inGrooveEdit_ && grooveEditDirty_)
+        processor_.patterns.writeState();
+    inGrooveEdit_ = false;
+    grooveEditSnapshot_ = false;
+    grooveEditDirty_ = false;
 }
 
 void PluginModel::cloneActiveSceneToNext() {
