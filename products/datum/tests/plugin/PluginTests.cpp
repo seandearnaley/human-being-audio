@@ -5,6 +5,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <hba/core/wav.h>
+
 #include <cmath>
 #include <numbers>
 
@@ -113,4 +115,34 @@ TEST_CASE("Datum plugin processes live sidechain without corrupting kick output"
     const auto tel = proc.telemetry.read();
     CHECK(tel.scActive);
     CHECK(tel.scRootHz == Approx(55.0f).margin(4.0f));
+}
+
+TEST_CASE("Datum session recalls the imported click after its source is removed", "[plugin][recall]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    dt::PluginProcessor source;
+    juce::MemoryBlock empty;
+    source.getStateInformation(empty);
+
+    juce::TemporaryFile wav(".wav");
+    std::array<float, 256> samples{};
+    samples[42] = -0.7f;
+    REQUIRE(hba::core::writeWavFloat(wav.getFile().getFullPathName().toStdString(), samples, 1, 44100));
+    REQUIRE(source.clickStore.loadAudioFile(wav.getFile(), source.currentParams(), source.stateStore.pitchCurve(),
+                                            source.stateStore.ampCurve()));
+    const auto expected = source.clickStore.copySample();
+    juce::MemoryBlock saved;
+    source.getStateInformation(saved);
+    REQUIRE(wav.getFile().deleteFile());
+
+    dt::PluginProcessor restored;
+    restored.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+    const auto actual = restored.clickStore.copySample();
+    CHECK(actual.mono == expected.mono);
+    CHECK(actual.sampleRate == expected.sampleRate);
+    CHECK(actual.name == expected.name);
+    CHECK(actual.polarity == expected.polarity);
+    CHECK(actual.offsetSamples == expected.offsetSamples);
+
+    source.setStateInformation(empty.getData(), static_cast<int>(empty.getSize()));
+    CHECK_FALSE(source.clickStore.hasSample());
 }

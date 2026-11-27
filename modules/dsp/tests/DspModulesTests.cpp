@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Comprehensive tests for shared studio DSP primitives (control, SVF, crossover,
 // PhaseRotator, Limiter, Oversampler, MultiShaperAdaa2, denormals) and StudioHistory.
+#include <hba/dsp/sample_exchange.h>
+
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/control.h>
 #include <hba/dsp/crossover.h>
@@ -397,4 +399,22 @@ TEST_CASE("hba::dsp harmonic crest optimizer, TwinTResonator, and analyticAsymSh
     }
     const double dcMean = std::abs(dcSum / static_cast<double>(M));
     CHECK(dcMean < 3.0e-5); // < -90 dBFS
+}
+
+TEST_CASE("Publishing supersedes unread samples and preserves both playback generations", "[dsp]") {
+    hba::dsp::SampleExchange<int> samples;
+    REQUIRE_FALSE(samples.pull());
+    for (int gen = 1; gen <= 100; ++gen) {
+        const int current = samples.current(), previous = samples.previous();
+        for (int revision = 0; revision < 7; ++revision) {
+            samples.writable() = gen * 10 + revision;
+            samples.publish();
+            REQUIRE(samples.current() == current);
+            REQUIRE(samples.previous() == previous);
+        }
+        REQUIRE(samples.pull());
+        REQUIRE(samples.current() == gen * 10 + 6);
+        REQUIRE(samples.previous() == current);
+        REQUIRE_FALSE(samples.pull());
+    }
 }

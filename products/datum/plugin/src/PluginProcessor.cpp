@@ -49,11 +49,6 @@ void PluginProcessor::prepareEngine() {
     audioBundle_ = stateStore.all();
     engine_.setCurves(audioBundle_.pitchCurve, audioBundle_.ampCurve);
     engine_.setPattern(audioBundle_.pattern);
-    if (clickStore.hasSample()) {
-        const auto s = clickStore.copySample();
-        if (s.valid())
-            engine_.publishClickSample(s);
-    }
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -209,7 +204,9 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginEditor(*this); }
 
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
-    if (const auto xml = state.copyState().createXml())
+    auto session = state.copyState();
+    clickStore.appendState(session);
+    if (const auto xml = session.createXml())
         copyXmlToBinary(*xml, destination);
 }
 
@@ -217,7 +214,12 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
     const auto xml = getXmlFromBinary(data, size);
     if (xml == nullptr || !xml->hasTagName(state.state.getType()))
         return;
-    state.replaceState(juce::ValueTree::fromXml(*xml));
+    auto session = juce::ValueTree::fromXml(*xml);
+    ClickSample sample;
+    if (!ClickStore::decodeState(session, sample))
+        return;
+    state.replaceState(session);
+    clickStore.replace(std::move(sample));
     stateStore.reloadFromState();
     presets.reloadFromState();
 }
