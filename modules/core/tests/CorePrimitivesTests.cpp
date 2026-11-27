@@ -16,16 +16,19 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <random>
 #include <vector>
 
 TEST_CASE("hba::core::writeWavFloat writes spec-compliant IEEE float WAV with fact chunk", "[core][wav]") {
-    const auto path = std::filesystem::temp_directory_path() / "hba_wave3_test.wav";
+    const auto path =
+        std::filesystem::temp_directory_path() / ("hba_wave_" + std::to_string(std::random_device{}()) + ".wav");
     const std::vector<float> samples{0.25f, -0.25f, 0.5f, -0.5f, 0.0f, 0.0f};
     REQUIRE(hba::core::writeWavFloat(path.string(), samples, 2, 48000));
 
     std::ifstream in(path, std::ios::binary);
     std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    std::filesystem::remove(path);
+    in.close();
+    REQUIRE(std::filesystem::remove(path));
 
     // 12 (RIFF) + 26 (18-byte fmt) + 12 (4-byte fact) + 8 (data hdr) + 24 (6 floats) = 82 bytes
     REQUIRE(bytes.size() == 82u);

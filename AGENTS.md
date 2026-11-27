@@ -46,7 +46,7 @@ git-clang-format --binary clang-format origin/main -- products modules research 
   ':(exclude,glob)**/third_party/**' ':(exclude,glob)**/libs/**'
 
 # Standalone shared modules unit tests (hba_dsp + hba_core):
-cmake -S modules -B modules/build -G Ninja -DCPM_SOURCE_CACHE="$HOME/.cache/CPM"
+cmake -S modules -B modules/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCPM_SOURCE_CACHE="$HOME/.cache/CPM"
 cmake --build modules/build
 ctest --test-dir modules/build --output-on-failure
 
