@@ -45,19 +45,13 @@ TEST_CASE("hba::core::encodeSmfType0 writes valid MThd/MTrk headers and sorted e
     events.push_back(hba::core::SmfEvent::msg(0, 0, 0x90, 60, 100));
 
     const auto bytes = hba::core::encodeSmfType0(std::move(events), 960, 172.0, 960);
-    REQUIRE(bytes.size() > 22u);
-    CHECK(bytes[0] == 'M');
-    CHECK(bytes[1] == 'T');
-    CHECK(bytes[2] == 'h');
-    CHECK(bytes[3] == 'd');
-    CHECK(bytes[14] == 'M');
-    CHECK(bytes[15] == 'T');
-    CHECK(bytes[16] == 'r');
-    CHECK(bytes[17] == 'k');
-    // Ends with End-of-Track meta event FF 2F 00
-    CHECK(bytes[bytes.size() - 3] == 0xFFu);
-    CHECK(bytes[bytes.size() - 2] == 0x2Fu);
-    CHECK(bytes[bytes.size() - 1] == 0x00u);
+    const std::vector<std::uint8_t> expected{
+        'M',  'T',  'h',  'd',  0, 0, 0, 6,  0, 0,    0,    1, 0x03, 0xC0,       // Type 0, one track, 960 PPQ
+        'M',  'T',  'r',  'k',  0, 0, 0, 21, 0, 0xFF, 0x51, 3, 0x05, 0x52, 0xA5, // 172 BPM
+        0,    0x90, 60,   100,                                                   // note-on at tick 0
+        0x83, 0x60, 0x80, 60,   0,                                               // note-off at tick 480
+        0x83, 0x60, 0xFF, 0x2F, 0};                                              // end at tick 960
+    CHECK(bytes == expected);
 }
 
 TEST_CASE("hba::core param_math and note_name handle edge values cleanly", "[core][param]") {
