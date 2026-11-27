@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "CaptureService.h"
+#include <hba/host/offline_export.h>
 
 namespace livecut
 {
@@ -99,7 +100,8 @@ bool CaptureService::requestSave (const juce::File& target)
     return true;
 }
 
-juce::File CaptureService::prepareDragWav(const juce::String& label) {
+juce::Result CaptureService::prepareDragWav(const juce::String& label, const juce::File& dir, juce::File& output) {
+    output = juce::File{};
     CapturedPhrase phrase;
     if (auto lease = recorder.acquireLatest()) {
         phrase.sampleRate = lease.sampleRate();
@@ -112,30 +114,19 @@ juce::File CaptureService::prepareDragWav(const juce::String& label) {
         phrase = *snap;
     }
     if (phrase.size() == 0 || !(phrase.sampleRate > 0.0))
-        return {};
+        return juce::Result::fail("Play a complete phrase before dragging a WAV.");
 
-    auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("LivecutReduxDrag");
-    if (!dir.createDirectory())
-        return {};
-
-    // Prune older drag-export temp files (retain the 8 most recent).
-    auto existing = dir.findChildFiles(juce::File::findFiles, false, "Livecut-*.wav");
-    if (existing.size() > 8) {
-        std::sort(existing.begin(), existing.end(), [](const juce::File& a, const juce::File& b) {
-            return a.getLastModificationTime() > b.getLastModificationTime();
-        });
-        for (int i = 8; i < existing.size(); ++i)
-            existing[i].deleteFile();
-    }
-
-    juce::String safe = juce::File::createLegalFileName(label.trim());
-    if (safe.isEmpty())
-        safe = "Phrase";
-    const auto stamp = juce::String(juce::Time::currentTimeMillis());
-    const auto target = dir.getChildFile("Livecut-" + safe + "-" + stamp + ".wav");
-    if (writeWav(phrase, target).failed())
-        return {};
-    return target;
+    if (const auto created = dir.createDirectory(); created.failed())
+        return juce::Result::fail("Cannot create the capture folder " + dir.getFullPathName() + ". " +
+                                  created.getErrorMessage());
+    auto name = juce::File::createLegalFileName(label.trim());
+    if (name.isEmpty())
+        name = "Phrase";
+    const auto target = hba::host::uniqueExportFile(dir.getChildFile("Livecut-" + name + ".wav"));
+    if (const auto result = writeWav(phrase, target); result.failed())
+        return juce::Result::fail(result.getErrorMessage() + " (" + target.getFullPathName() + ")");
+    output = target;
+    return juce::Result::ok();
 }
 
 juce::Result CaptureService::writeWav (const CapturedPhrase& phrase, const juce::File& target)

@@ -239,7 +239,9 @@ TEST_CASE("One-drag WAV capture exports a valid stereo 32-bit float WAV file", "
         ppq += 400.0 * 120.0 / 60.0 / 8000.0;
     }
 
-    const auto wavFile = proc.getCaptureService().prepareDragWav("TestPhrase");
+    juce::TemporaryFile folder;
+    juce::File wavFile;
+    REQUIRE(proc.getCaptureService().prepareDragWav("TestPhrase", folder.getFile(), wavFile).wasOk());
     REQUIRE(wavFile.existsAsFile());
     CHECK(wavFile.getSize() > 1024);
 

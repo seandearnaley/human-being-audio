@@ -6,8 +6,7 @@
 
 namespace livecut
 {
-// All snapshot allocation and file IO happen on this service's worker. UI
-// polling/callbacks hold no references to an editor; destroying one is safe.
+// Capture and Save run on the worker. Dragging writes synchronously on the UI thread.
 class CaptureService
 {
 public:
@@ -16,9 +15,8 @@ public:
     const PhraseCapture& rolling() const { return recorder; }
     bool requestCapture();
     bool requestSave (const juce::File& target);
-    // One-drag phrase export: writes the latest completed (or captured) phrase to a
-    // clean temp 32-bit float stereo WAV ready for DAW drag-and-drop. Non-audio thread only.
-    juce::File prepareDragWav(const juce::String& label = "Phrase");
+    // Each drag publishes a new stereo float WAV. Hosts may retain its path in saved sessions.
+    juce::Result prepareDragWav(const juce::String& label, const juce::File& directory, juce::File& output);
     bool hasPhraseReady() const { return recorder.hasLatest() || captured() != nullptr; }
     bool isBusy() const { return working.load (std::memory_order_acquire); }
     std::shared_ptr<const CapturedPhrase> captured() const;

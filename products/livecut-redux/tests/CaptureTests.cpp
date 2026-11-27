@@ -302,3 +302,43 @@ TEST_CASE ("Capture service preserves and describes spectral warmup", "[capture]
     CHECK (snapshot->channels[0][0] == .5f);
     CHECK (service.statusText().contains ("Captured while spectral path was warming"));
 }
+
+TEST_CASE("Repeated drags retain every exported phrase and explain write failures", "[capture][drag-export]") {
+    livecut::CaptureService service;
+    auto& capture = service.rolling();
+    capture.prepare(48000.0, 16);
+    capture.startPhrase(true);
+    phrase(capture, 0.25f);
+
+    juce::TemporaryFile folder;
+    juce::File first;
+    REQUIRE(service.prepareDragWav("Break", folder.getFile(), first).wasOk());
+    juce::MemoryBlock firstBytes;
+    REQUIRE(first.loadFileAsData(firstBytes));
+    REQUIRE(firstBytes.getSize() > 0);
+    livecut::CaptureService secondService;
+    secondService.rolling().prepare(48000.0, 16);
+    secondService.rolling().startPhrase(true);
+    phrase(secondService.rolling(), 0.5f);
+    // A DAW may reference the original path when a project is reopened.
+    for (int index = 0; index < 12; ++index) {
+        juce::File next;
+        REQUIRE(secondService.prepareDragWav("Break", folder.getFile(), next).wasOk());
+        CHECK(next != first);
+    }
+    juce::MemoryBlock retainedBytes;
+    REQUIRE(first.loadFileAsData(retainedBytes));
+    CHECK(retainedBytes == firstBytes);
+    CHECK(folder.getFile().getNumberOfChildFiles(juce::File::findFiles, "*.wav") == 13);
+
+    juce::TemporaryFile obstruction;
+    REQUIRE(obstruction.getFile().create().wasOk());
+    juce::File output = first;
+    const auto blocked = service.prepareDragWav("Break", obstruction.getFile(), output);
+    REQUIRE(blocked.failed());
+    CHECK(blocked.getErrorMessage().contains(obstruction.getFile().getFullPathName()));
+    CHECK(output == juce::File{});
+    REQUIRE(obstruction.getFile().deleteFile());
+    REQUIRE(service.prepareDragWav("Break", obstruction.getFile(), output).wasOk());
+    CHECK(output.existsAsFile());
+}
