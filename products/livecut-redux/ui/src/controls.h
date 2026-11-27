@@ -18,10 +18,24 @@ class ActionButton final : public hba::ui::ActionButtonBase<Context> {
     void draw(visage::Canvas& canvas) override;
 };
 
-class TogglePill final : public visage::Frame, public Live {
+class DiscreteParameter : public visage::Frame, public Live, public hba::ui::ParameterControl {
+  public:
+    DiscreteParameter(Context& context, std::string id, const std::string& label);
+    ~DiscreteParameter() override;
+    std::string_view parameterKey() const override { return id_; }
+    std::string valueText() const override { return context_.model.formatValue(id_); }
+    void setFromNormalised(float value) override;
+    bool keyPress(const visage::KeyEvent& key) override;
+    void focusChanged(bool, bool) override { redraw(); }
+
+  protected:
+    Context& context_;
+    const std::string id_;
+};
+
+class TogglePill final : public DiscreteParameter {
   public:
     TogglePill(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent);
-    ~TogglePill() override;
 
     void setAccent(unsigned accent);
     void setDimmed(bool dimmed);
@@ -32,8 +46,6 @@ class TogglePill final : public visage::Frame, public Live {
     void mouseDown(const visage::MouseEvent& e) override;
 
   private:
-    Context& context_;
-    std::string id_;
     std::string label_;
     unsigned accent_;
     bool dimmed_ = false;
@@ -113,10 +125,9 @@ class RangeSlider final : public visage::Frame, public Live {
     float drawnHigh_ = -1.0f;
 };
 
-class ChoiceRow final : public visage::Frame, public Live {
+class ChoiceRow final : public DiscreteParameter {
   public:
     ChoiceRow(Context& context, std::string paramId, std::string label, unsigned accent = colour::accent);
-    ~ChoiceRow() override;
 
     void setDimmed(bool dimmed);
     void tick() override;
@@ -129,8 +140,6 @@ class ChoiceRow final : public visage::Frame, public Live {
   private:
     void showMenu();
 
-    Context& context_;
-    std::string id_;
     std::string label_;
     unsigned accent_;
     bool dimmed_ = false;
@@ -164,19 +173,16 @@ class SegmentedBar final : public visage::Frame {
 };
 
 // Parameter-bound segmented selector (e.g. Pad|Classic, Beat|Bar, Procedure, Reader Family).
-class ParamSegmented final : public visage::Frame, public Live {
+class ParamSegmented final : public DiscreteParameter {
   public:
-    ParamSegmented(Context& context, std::string paramId, std::vector<std::string> labels,
+    ParamSegmented(Context& context, std::string paramId, const std::string& name, std::vector<std::string> labels,
                    unsigned accent = colour::accent);
-    ~ParamSegmented() override;
 
     void setAccent(unsigned accent);
     void tick() override;
     void resized() override;
 
   private:
-    Context& context_;
-    std::string id_;
     int count_ = 1;
     int drawn_ = -1;
     SegmentedBar bar_;

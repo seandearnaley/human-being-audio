@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <hba/host/external_file_drag.h>
 #include <hba/host/offline_export.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -61,4 +62,16 @@ TEST_CASE("Concurrent exports keep both renders at a shared destination", "[plug
     CHECK(second.file().getSize() == 74);
     CHECK(first.file().deleteFile());
     CHECK(second.file().deleteFile());
+}
+
+TEST_CASE("An exported file keeps reserved filename characters across native drag transport", "[plugin][export]") {
+    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("A + B #1 50%.wav");
+    const auto path = hba::host::externalDragPath(file);
+#if JUCE_LINUX
+    CHECK(path.startsWith("file:///"));
+    CHECK(path.endsWith("A%20%2B%20B%20%231%2050%25.wav"));
+    CHECK(juce::URL(path).getLocalFile() == file);
+#else
+    CHECK(path == file.getFullPathName());
+#endif
 }

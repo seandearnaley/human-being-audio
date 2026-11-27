@@ -17,6 +17,10 @@
 
 namespace hba::ui {
 
+#if defined(__linux__)
+void releasePointerForFileDrag(visage::Frame& source, const visage::MouseEvent& event);
+#endif
+
 inline constexpr float kUiPi = 3.14159265f;
 
 inline std::string withoutUnit(std::string text) {
@@ -595,6 +599,9 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame, publ
             draggedOut_ = true;
             pressed_ = false;
             redraw();
+#if defined(__linux__)
+            releasePointerForFileDrag(*this, e);
+#endif
             onDragOut_();
         }
     }

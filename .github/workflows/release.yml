@@ -134,9 +134,13 @@ jobs:
         if: runner.os == 'macOS'
         with:
           python-version: '3.12'
-      - name: Open the installed Mac plug-ins in pluginval
+      - name: Validate the installed Mac Audio Unit, VST3 and standalone
         if: runner.os == 'macOS'
         run: |
+          plist="/Library/Audio/Plug-Ins/Components/$NAME.component/Contents/Info.plist"
+          auval -strict -v "$(plutil -extract AudioComponents.0.type raw -o - "$plist")" \
+            "$(plutil -extract AudioComponents.0.subtype raw -o - "$plist")" \
+            "$(plutil -extract AudioComponents.0.manufacturer raw -o - "$plist")"
           python3 factory/release/verify_product.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
           python -m pip install --only-binary=:all: pedalboard==0.9.26
           python factory/release/verify_recall.py "$PRODUCT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"

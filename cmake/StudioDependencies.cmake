@@ -19,6 +19,14 @@ function(hba_add_nlohmann_json)
 endfunction()
 
 function(hba_add_visage)
+    # Override Visage's Git clone with the identical FreeType 2.14.1 commit from its upstream mirror.
+    # Visage still configures the font engine before it calls FetchContent_MakeAvailable.
+    include(FetchContent)
+    FetchContent_Declare(freetype
+        URL "https://github.com/freetype/freetype/archive/526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b.tar.gz"
+        URL_HASH SHA256=d24f53b60034dc5c48e90d122d432a8f04a05b9e0a98c8d8e49b4a759207ce2e
+        EXCLUDE_FROM_ALL
+    )
     if(WIN32)
         # DXGI can return NOT_CURRENTLY_AVAILABLE in a headless host. Only S_OK owns an output.
         set(visage_platform_patch PATCHES "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch")

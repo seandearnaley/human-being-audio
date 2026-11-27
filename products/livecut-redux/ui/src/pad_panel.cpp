@@ -39,7 +39,7 @@ float frac(float v) { return v - std::floor(v); }
 PadPanel::PadPanel(Context& context)
     : context_(context), hold_(context, "padHold", "Hold", colour::accent),
       straight_(context, "padStraight", "Straight", colour::accent),
-      quantize_(context, "padQuantize", {"Beat", "Bar"}, colour::accent),
+      quantize_(context, "padQuantize", "Quantize", {"Beat", "Bar"}, colour::accent),
       rollSeed_(context, "Roll Seed", [this] { context_.model.rollSeed(); }),
       dragWav_(context, "Drag .wav", [this] { context_.model.requestCapture(); }),
       trim_(context, "outputTrim", "Trim", colour::textDim, true), mix_(context, "wet", "Mix", colour::accent, true) {

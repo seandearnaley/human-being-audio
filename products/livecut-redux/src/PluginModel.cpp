@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PluginModel.h"
 
+#include <hba/host/external_file_drag.h>
+
 #include "Parameters.h"
 #include <hba/host/preset_bank.h>
 
@@ -224,7 +226,7 @@ void PluginModel::beginDragCaptureWav() {
                                                result.getErrorMessage() + "\nTry dragging the phrase again.");
         return;
     }
-    if (!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_))
+    if (!hba::host::dragExternalFile(file, dragSource_))
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Could not start the drag",
                                                "Drag the saved WAV from " + file.getFullPathName());
 }
