@@ -28,8 +28,9 @@ function(hba_add_visage)
         EXCLUDE_FROM_ALL
     )
     if(WIN32)
-        # DXGI can return NOT_CURRENTLY_AVAILABLE in a headless host. Only S_OK owns an output.
-        set(visage_platform_patch PATCHES "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch")
+        set(visage_platform_patch PATCHES
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-glyph-lifetime.patch")
     endif()
     CPMAddPackage(
         NAME visage
