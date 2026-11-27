@@ -232,7 +232,7 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::choice("padProgram", "Pad mode", choices::padProgram, 0, true),
     detail::toggle("padTouch", "Pad touch", false, true),
     detail::toggle("padHold", "Hold", false, true),
-    detail::choice("padCcMode", "XY \u2192 CC", choices::padCcMode, 0, false),
+    detail::choice("padCcMode", "XY to CC", choices::padCcMode, 0, false),
 
     CL_LANE(1, false, LaneTarget::cc74Slide, 2, 0.0f, 0.48f),
     CL_LANE(2, false, LaneTarget::velocity, 3, 0.0f, 0.36f),
