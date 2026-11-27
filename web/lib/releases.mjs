@@ -85,7 +85,7 @@ export async function readCatalog(read = readJson) {
   const latest = new Map();
   for (let page = 1; page <= 20; page++) {
     const rows = await read(api + "/releases?per_page=100&page=" + page);
-    if (!Array.isArray(rows)) break;
+    if (!Array.isArray(rows)) throw new Error("Expected a GitHub release list");
     for (const row of rows) {
       const match = /^([\w-]+)\/v(\d+\.\d+\.\d+)$/.exec(row?.tag_name ?? "");
       if (
@@ -108,5 +108,16 @@ export async function readCatalog(read = readJson) {
   const sorted = [...latest.values()].sort(
     (a, b) => PRODUCT_SLUGS.indexOf(a.slug) - PRODUCT_SLUGS.indexOf(b.slug),
   );
-  return Promise.all(sorted.map((entry) => publishedRelease(entry, read)));
+  const results = await Promise.allSettled(sorted.map((entry) => publishedRelease(entry, read)));
+  const releases = [];
+  const errors = new Map();
+  for (const [index, result] of results.entries()) {
+    if (result.status === "fulfilled") {
+      releases.push(result.value);
+    } else {
+      const { slug, row } = sorted[index];
+      errors.set(slug, new Error("Unavailable release " + row.tag_name, { cause: result.reason }));
+    }
+  }
+  return { releases, errors };
 }

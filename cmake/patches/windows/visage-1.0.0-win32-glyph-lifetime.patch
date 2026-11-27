@@ -1,0 +1,22 @@
+--- a/visage_graphics/win32/emoji_win32.cpp
++++ b/visage_graphics/win32/emoji_win32.cpp
+@@ -151,14 +151,15 @@
+     ComPtr<IWICImagingFactory> wic_factory_;
+   };
+ 
+-  EmojiRasterizer::EmojiRasterizer() {
+-    impl_ = std::make_unique<EmojiRasterizerImpl>();
+-  }
++  EmojiRasterizer::EmojiRasterizer() = default;
+ 
+   EmojiRasterizer::~EmojiRasterizer() = default;
+ 
+   void EmojiRasterizer::drawIntoBuffer(char32_t emoji, int font_size, int write_width,
+                                        unsigned int* dest, int dest_width, int x, int y) {
+-    impl_->drawIntoBuffer(emoji, font_size, write_width, dest, dest_width, x, y);
++    // The glyph atlas caches the pixels. Release native resources on this thread,
++    // before a plugin host can unload the module under the Windows loader lock.
++    EmojiRasterizerImpl rasterizer;
++    rasterizer.drawIntoBuffer(emoji, font_size, write_width, dest, dest_width, x, y);
+   }
+ }

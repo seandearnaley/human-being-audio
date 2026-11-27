@@ -12,7 +12,9 @@
 #include <hba/dsp/lane_math.h>
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oversampling.h>
+#include <hba/dsp/stft.h>
 #include <hba/dsp/svf.h>
+#include <hba/dsp/transient_split.h>
 
 #include "../../studio-ui/StudioHistory.h"
 
@@ -417,4 +419,114 @@ TEST_CASE("Publishing supersedes unread samples and preserves both playback gene
         REQUIRE(samples.previous() == current);
         REQUIRE_FALSE(samples.pull());
     }
+}
+
+TEST_CASE("hba::dsp::RealFft and StereoStft achieve exact unity COLA reconstruction and latency", "[dsp][engine]") {
+    using namespace hba::dsp;
+
+    // 1. RealFft mono and 2-for-1 stereo round-trip accuracy.
+    RealFft<1024> fft;
+    fft.prepare(1024);
+    std::array<float, 1024> inL{}, inR{}, outL{}, outR{}, scRe{}, scIm{};
+    std::array<float, 513> reL{}, imL{}, reR{}, imR{};
+    for (int i = 0; i < 1024; ++i) {
+        inL[static_cast<std::size_t>(i)] =
+            static_cast<float>(0.6 * std::sin(kTwoPi * 7.0 * i / 1024.0) + 0.3 * std::cos(kTwoPi * 31.0 * i / 1024.0));
+        inR[static_cast<std::size_t>(i)] = static_cast<float>(-0.5 * std::cos(kTwoPi * 13.0 * i / 1024.0) +
+                                                              0.4 * std::sin(kTwoPi * 53.0 * i / 1024.0));
+    }
+    fft.forwardStereo(inL.data(), inR.data(), reL.data(), imL.data(), reR.data(), imR.data(), scRe.data(), scIm.data());
+    // Bin 7 in L has amplitude 0.6 -> |X[7]| = 0.6 * N / 2 = 307.2.
+    CHECK(std::hypot(reL[7], imL[7]) == Catch::Approx(307.2f).margin(1e-2f));
+    // Bin 13 in R has amplitude 0.5 -> |X[13]| = 0.5 * N / 2 = 256.0.
+    CHECK(std::hypot(reR[13], imR[13]) == Catch::Approx(256.0f).margin(1e-2f));
+
+    fft.inverseStereo(reL.data(), imL.data(), reR.data(), imR.data(), outL.data(), outR.data());
+    float maxFftErr = 0.0f;
+    for (int i = 0; i < 1024; ++i) {
+        maxFftErr = std::max(maxFftErr, std::abs(outL[static_cast<std::size_t>(i)] - inL[static_cast<std::size_t>(i)]));
+        maxFftErr = std::max(maxFftErr, std::abs(outR[static_cast<std::size_t>(i)] - inR[static_cast<std::size_t>(i)]));
+    }
+    CHECK(maxFftErr < 1.0e-5f);
+
+    // 2. StereoStft 4x COLA pass-through impulse latency is exact `fftSize` across arbitrary phases.
+    for (int impulseAt : {0, 1, 17, 255, 256, 257, 777}) {
+        StereoStft<1024> stft;
+        stft.prepare(1024);
+        REQUIRE(stft.latencySamples() == 1024);
+        float maxErr = 0.0f;
+        for (int t = 0; t < impulseAt + 2048; ++t) {
+            const float xL = (t == impulseAt) ? 1.0f : 0.0f;
+            const float xR = (t == impulseAt) ? -0.75f : 0.0f;
+            float yL = 0.0f, yR = 0.0f;
+            stft.processSample(xL, xR, 0.0f, 0.0f, false, yL, yR, [](StereoStft<1024>::FrameBuffers&) noexcept {});
+            const float expL = (t == impulseAt + 1024) ? 1.0f : 0.0f;
+            const float expR = (t == impulseAt + 1024) ? -0.75f : 0.0f;
+            maxErr = std::max(maxErr, std::abs(yL - expL));
+            maxErr = std::max(maxErr, std::abs(yR - expR));
+        }
+        CHECK(maxErr < 2.0e-5f);
+    }
+
+    // 3. StereoStft sidechain carrier frames align sample-identically with main frames.
+    StereoStft<1024> scStft;
+    scStft.prepare(1024);
+    int checkedFrames = 0;
+    bool allHadSidechain = true;
+    float maxScDiff = 0.0f;
+    for (int t = 0; t < 3072; ++t) {
+        const float xL = std::sin(static_cast<float>(kTwoPi * 440.0 * t / 48000.0));
+        const float xR = std::cos(static_cast<float>(kTwoPi * 660.0 * t / 48000.0));
+        float yL = 0.0f, yR = 0.0f;
+        scStft.processSample(xL, xR, xL, xR, true, yL, yR, [&](StereoStft<1024>::FrameBuffers& fb) noexcept {
+            if (!fb.hasSidechain)
+                allHadSidechain = false;
+            for (int k = 0; k < fb.numBins; ++k) {
+                maxScDiff = std::max(maxScDiff, std::abs(fb.reL[k] - fb.scReL[k]));
+                maxScDiff = std::max(maxScDiff, std::abs(fb.imR[k] - fb.scImR[k]));
+            }
+            ++checkedFrames;
+        });
+    }
+    CHECK(allHadSidechain);
+    CHECK(checkedFrames >= 8);
+    CHECK(maxScDiff < 1.0e-6f);
+}
+
+TEST_CASE("hba::dsp::TransientSplit maintains exact unity sum and isolates attacks from sustain", "[dsp][engine]") {
+    using namespace hba::dsp;
+    TransientSplit split;
+    split.prepare(48000.0);
+
+    // Steady sustained 80 Hz sub and 1 kHz tones should settle cleanly in body (zero false transient trigger).
+    for (double hz : {80.0, 1000.0}) {
+        split.reset();
+        double maxSustMask = 0.0;
+        double maxUnityErr = 0.0;
+        for (int i = 0; i < 9600; ++i) {
+            const double x = 0.8 * std::sin(kTwoPi * hz * i / 48000.0);
+            double tL = 0.0, tR = 0.0, bL = 0.0, bR = 0.0;
+            const double m = split.process(x, x, 1.0, 0.65, tL, tR, bL, bR);
+            maxUnityErr = std::max(maxUnityErr, std::abs((tL + bL) - x));
+            maxUnityErr = std::max(maxUnityErr, std::abs((tR + bR) - x));
+            if (i >= 6000)
+                maxSustMask = std::max(maxSustMask, m);
+        }
+        CHECK(maxUnityErr < 1.0e-12);
+        CHECK(maxSustMask < 0.03);
+    }
+
+    // Sharp 3 kHz drum attack burst after silence must spike transient mask strongly.
+    split.reset();
+    double peakBurstMask = 0.0;
+    for (int i = 0; i < 2000; ++i) {
+        const double env = (i >= 200 && i < 600) ? std::exp(-static_cast<double>(i - 200) / 140.0) : 0.0;
+        const double x = env * std::sin(kTwoPi * 3000.0 * i / 48000.0);
+        double tL = 0.0, tR = 0.0, bL = 0.0, bR = 0.0;
+        const double m = split.process(x, -x * 0.8, 1.0, 0.65, tL, tR, bL, bR);
+        CHECK(std::abs((tL + bL) - x) < 1.0e-12);
+        if (i >= 200 && i < 500)
+            peakBurstMask = std::max(peakBurstMask, m);
+    }
+    CHECK(peakBurstMask > 0.65);
 }
