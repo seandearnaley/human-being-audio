@@ -22,7 +22,7 @@ struct Transport {
 };
 
 struct PrintBuffer {
-    static constexpr int kMaxPrintSamples = 192000; // 4.0 s @ 48 kHz
+    static constexpr int kMaxPrintSamples = 24 * 96000; // Four 4/4 bars at 40 BPM, at the maximum bake rate.
     static constexpr int kWaveformPoints = 192;
 
     std::vector<float> left;
@@ -40,6 +40,8 @@ struct PrintBuffer {
 
     void computePeaks();
 };
+
+using PrintHandle = std::shared_ptr<const PrintBuffer>;
 
 struct TelemetrySnapshot {
     static constexpr int kScopePoints = 64;
@@ -110,7 +112,7 @@ class Engine {
     // Called from a worker/message thread to publish a newly printed or loaded Gen-2 buffer.
     // Swaps into the audio engine lock-free with a click-free crossfade.
     void publishPrint(const PrintBuffer& buffer);
-    void clearPrint() noexcept LN_NONBLOCKING;
+    void publishPrint(PrintHandle buffer);
 
     void process(const Params& params, const Transport& transport, float* left, float* right,
                  int numSamples) noexcept LN_NONBLOCKING;

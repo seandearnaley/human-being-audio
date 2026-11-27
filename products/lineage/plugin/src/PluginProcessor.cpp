@@ -16,8 +16,7 @@ const juce::String kDroneNoteId{"droneNote"};
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       state(*this, nullptr, "Lineage", makeParameterLayout()), values_(state), curves(state),
-      printStore(
-          state, [this](const PrintBuffer& buf) { engine_.publishPrint(buf); }, [this] { engine_.clearPrint(); }),
+      printStore([this](PrintHandle print) { engine_.publishPrint(std::move(print)); }),
       presets(state, curves, [this](const Params& p, const LaneCurves& c, bool autoPrint) {
           if (autoPrint) {
               const auto perf = lastPerformance();
@@ -48,9 +47,6 @@ void PluginProcessor::prepareEngine() {
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[qualityIdx]);
     engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
     engine_.setLaneCurves(curves.all());
-    const auto existingPrint = printStore.copyBuffer();
-    if (existingPrint.valid())
-        engine_.publishPrint(existingPrint);
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -220,7 +216,9 @@ void PluginProcessor::triggerPrintSync(bool stackGeneration) {
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginEditor(*this); }
 
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
-    if (const auto xml = state.copyState().createXml())
+    auto session = state.copyState();
+    printStore.appendState(session);
+    if (const auto xml = session.createXml())
         copyXmlToBinary(*xml, destination);
 }
 
@@ -228,10 +226,15 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
     const auto xml = getXmlFromBinary(data, size);
     if (xml == nullptr || !xml->hasTagName(state.state.getType()))
         return;
-    state.replaceState(juce::ValueTree::fromXml(*xml));
+    auto session = juce::ValueTree::fromXml(*xml);
+    PrintHandle print;
+    if (!PrintStore::decodeState(session, print))
+        return;
+    state.replaceState(session);
     curves.reloadFromState();
     presets.reloadFromState();
-    printStore.reloadFromState(currentParams(), curves.all(), sampleRate_);
+    printStore.restore(std::move(print));
+    history = {};
 }
 
 } // namespace ln

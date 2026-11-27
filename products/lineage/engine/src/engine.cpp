@@ -12,6 +12,7 @@
 #include <hba/dsp/oscillator.h>
 #include <hba/dsp/oversampling.h>
 #include <hba/dsp/pitch.h>
+#include <hba/dsp/sample_exchange.h>
 #include <hba/dsp/svf.h>
 
 #include <algorithm>
@@ -164,15 +165,6 @@ struct PhaserUnit {
     }
 };
 
-struct PrintSlot {
-    std::array<float, PrintBuffer::kMaxPrintSamples> left{};
-    std::array<float, PrintBuffer::kMaxPrintSamples> right{};
-    int length = 0;
-    double sampleRate = 48000.0;
-    int rootMidiNote = 29;
-    int generation = 0;
-};
-
 } // namespace
 
 struct Engine::Impl {
@@ -182,12 +174,7 @@ struct Engine::Impl {
     double controlCoef = 0.01;
     double xfadeStep = 0.001;
 
-    // Triple-buffered pre-allocated print storage for lock-free zero-allocation Gen-2 swaps
-    std::array<PrintSlot, 3> printSlots{};
-    std::atomic<int> activeSlot{-1};
-    std::atomic<int> readingSlot{-1};
-    std::atomic<int> pendingSlot{-1};
-    int prevSlot = -1;
+    hba::dsp::SampleExchange<PrintHandle> prints;
     double printXfade = 1.0;
 
     // Oversamplers (stereo mid-top Gen-1 path)
@@ -559,49 +546,10 @@ struct Engine::Impl {
         }
     }
 
-    void publishPrint(const PrintBuffer& buf) {
-        if (!buf.valid())
-            return;
-        const int curActive = activeSlot.load(std::memory_order_acquire);
-        const int curReading = readingSlot.load(std::memory_order_acquire);
-        int target = 0;
-        for (int s = 0; s < 3; ++s) {
-            if (s != curActive && s != curReading) {
-                target = s;
-                break;
-            }
-        }
-        auto& slot = printSlots[static_cast<std::size_t>(target)];
-        const int len = std::min(buf.length, PrintBuffer::kMaxPrintSamples);
-        for (int i = 0; i < len; ++i) {
-            const auto ii = static_cast<std::size_t>(i);
-            slot.left[ii] = buf.left[ii];
-            slot.right[ii] = buf.right[ii];
-        }
-        slot.length = len;
-        slot.sampleRate = buf.sampleRate > 8000.0 ? buf.sampleRate : 48000.0;
-        slot.rootMidiNote = buf.rootMidiNote;
-        slot.generation = std::max(1, buf.generation);
-        pendingSlot.store(target, std::memory_order_release);
-    }
-
-    void clearPrint() noexcept LN_NONBLOCKING {
-        pendingSlot.store(-2, std::memory_order_release); // -2 sentinel = clear
-    }
-
     // Evaluates one sample of the Gen-2 printed buffer with key-tracked pitch, smooth equal-power
     // loop crossfades (strataFade), ping-pong wall softening, and tape-head scrub inertia.
-    void readStrataSlot(int slotIdx, double pitchRatio, double pos01, double span01, StrataDir dir, double fadeMs,
-                        float& outL, float& outR) noexcept LN_NONBLOCKING {
-        if (slotIdx < 0 || slotIdx >= 3) {
-            outL = outR = 0.0f;
-            return;
-        }
-        const auto& slot = printSlots[static_cast<std::size_t>(slotIdx)];
-        if (slot.length <= 64) {
-            outL = outR = 0.0f;
-            return;
-        }
+    void readStrataSlot(const PrintBuffer& slot, double pitchRatio, double pos01, double span01, StrataDir dir,
+                        double fadeMs, float& outL, float& outR) noexcept LN_NONBLOCKING {
         const double totalLen = static_cast<double>(slot.length);
         const double winLen = std::max(256.0, totalLen * std::clamp(span01, 0.05, 1.0));
         const double maxStart = std::max(0.0, totalLen - winLen);
@@ -706,16 +654,8 @@ struct Engine::Impl {
             return;
 
         // Pick up any newly printed Gen-2 buffer lock-free
-        const int incoming = pendingSlot.exchange(-1, std::memory_order_acq_rel);
-        if (incoming == -2) {
-            prevSlot = -1;
-            activeSlot.store(-1, std::memory_order_release);
-            readingSlot.store(-1, std::memory_order_release);
-            printXfade = 1.0;
-        } else if (incoming >= 0 && incoming < 3) {
-            prevSlot = activeSlot.load(std::memory_order_acquire);
-            activeSlot.store(incoming, std::memory_order_release);
-            printXfade = (prevSlot >= 0) ? 0.0 : 1.0;
+        if (prints.pull()) {
+            printXfade = prints.previous() && prints.current() ? 0.0 : 1.0;
             strataCursor = 0.0;
             strataPingDir = 1.0;
         }
@@ -801,9 +741,8 @@ struct Engine::Impl {
         double rmsSum = 0.0;
         double minLimGain = 1.0;
 
-        const int curSlot = activeSlot.load(std::memory_order_acquire);
-        readingSlot.store(curSlot, std::memory_order_release);
-        const bool hasValidPrint = (curSlot >= 0 && printSlots[static_cast<std::size_t>(curSlot)].length > 64);
+        const auto* currentPrint = prints.current().get();
+        const bool hasValidPrint = currentPrint != nullptr;
 
         const auto laneCfgs = extractLaneConfigs(params);
         const double motionAmt = static_cast<double>(params[ParamId::motion]);
@@ -1042,8 +981,8 @@ struct Engine::Impl {
                 right[n] = 0.0f;
                 if (n == numSamples - 1)
                     publishTelemetry(ppq, notePpq, freeSec, noteSec, params, sends, sF1, sF2, sDrive, sTone, sGenMix,
-                                     sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, curSlot, 0, false,
-                                     wantPadNote, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                                     sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, currentPrint, 0,
+                                     false, wantPadNote, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
                 continue;
             }
 
@@ -1349,14 +1288,15 @@ struct Engine::Impl {
             // 3. Gen 2 · Live Non-Destructive Resampled Strata Playback (Optional Key-Track + Sub-Split Protected!)
             double g2L = 0.0, g2R = 0.0;
             if (hasValidPrint && sGenMix > 1.0e-4) {
-                const auto& slot = printSlots[static_cast<std::size_t>(curSlot)];
+                const auto& slot = *currentPrint;
                 const double trackOffset = strataKeytrack ? (totalMidi - static_cast<double>(slot.rootMidiNote)) : 0.0;
                 const double pitchRatio = std::exp2((trackOffset + sStrataPitch) / 12.0);
                 float curL = 0.0f, curR = 0.0f;
-                readStrataSlot(curSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade, curL, curR);
-                if (printXfade < 1.0 && prevSlot >= 0) {
+                readStrataSlot(slot, pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade, curL, curR);
+                if (printXfade < 1.0) {
                     float oldL = 0.0f, oldR = 0.0f;
-                    readStrataSlot(prevSlot, pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade, oldL, oldR);
+                    readStrataSlot(*prints.previous(), pitchRatio, sStrataPos, sStrataSpan, strataDir, sStrataFade,
+                                   oldL, oldR);
                     const double ang = printXfade * (kPi * 0.5);
                     g2L = std::sin(ang) * static_cast<double>(curL) + std::cos(ang) * static_cast<double>(oldL);
                     g2R = std::sin(ang) * static_cast<double>(curR) + std::cos(ang) * static_cast<double>(oldR);
@@ -1441,7 +1381,7 @@ struct Engine::Impl {
             if (n == numSamples - 1) {
                 const float rmsVal = static_cast<float>(std::sqrt(rmsSum / static_cast<double>(numSamples)));
                 publishTelemetry(ppq, notePpq, freeSec, noteSec, params, sends, sF1, sF2, sDrive, sTone, sGenMix,
-                                 sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, curSlot,
+                                 sStrataPos, sStrataSpan, sDisperse, sDensity, sWidth, sSubWarm, currentPrint,
                                  activeVoicesNow, effectiveAmpEnv > 1.0e-3, wantPadNote, blockPeakL, blockPeakR, rmsVal,
                                  blockSubPk, static_cast<float>(minLimGain));
             }
@@ -1451,9 +1391,9 @@ struct Engine::Impl {
     void publishTelemetry(double ppq, double notePpq, double freeSec, double noteSec, const Params& params,
                           const std::array<float, kLaneCount>& sends, double sF1, double sF2, double sDrive,
                           double sTone, double sGenMix, double sStrataPos, double sStrataSpan, double sDisperse,
-                          double sDensity, double sWidth, double sSubWarm, int curSlot, int numActiveVoices,
-                          bool isSounding, bool isPadOn, float pkL, float pkR, float rmsVal, float subPk,
-                          float limGain) noexcept LN_NONBLOCKING {
+                          double sDensity, double sWidth, double sSubWarm, const PrintBuffer* currentPrint,
+                          int numActiveVoices, bool isSounding, bool isPadOn, float pkL, float pkR, float rmsVal,
+                          float subPk, float limGain) noexcept LN_NONBLOCKING {
         tel.peakL = pkL;
         tel.peakR = pkR;
         tel.rms = rmsVal;
@@ -1488,8 +1428,8 @@ struct Engine::Impl {
         for (int v = 0; v < kNumVoices; ++v)
             tel.voicePhases[static_cast<std::size_t>(v)] = static_cast<float>(voicePhase[static_cast<std::size_t>(v)]);
 
-        if (curSlot >= 0 && printSlots[static_cast<std::size_t>(curSlot)].length > 64) {
-            const auto& slot = printSlots[static_cast<std::size_t>(curSlot)];
+        if (currentPrint != nullptr) {
+            const auto& slot = *currentPrint;
             tel.hasPrint = true;
             tel.generation = slot.generation;
             const double totalLen = static_cast<double>(slot.length);
@@ -1534,8 +1474,14 @@ void Engine::setAftertouch(float norm01) noexcept LN_NONBLOCKING {
 void Engine::sustain(bool down) noexcept LN_NONBLOCKING { impl_->sustain(down); }
 void Engine::allNotesOff() noexcept LN_NONBLOCKING { impl_->allNotesOff(); }
 void Engine::setLaneCurves(const LaneCurves& curves) noexcept LN_NONBLOCKING { impl_->laneCurves = curves; }
-void Engine::publishPrint(const PrintBuffer& buffer) { impl_->publishPrint(buffer); }
-void Engine::clearPrint() noexcept LN_NONBLOCKING { impl_->clearPrint(); }
+void Engine::publishPrint(const PrintBuffer& buffer) { publishPrint(std::make_shared<const PrintBuffer>(buffer)); }
+
+void Engine::publishPrint(PrintHandle buffer) {
+    if (buffer && !buffer->valid())
+        return;
+    impl_->prints.writable() = std::move(buffer);
+    impl_->prints.publish();
+}
 
 void Engine::process(const Params& params, const Transport& transport, float* left, float* right,
                      int numSamples) noexcept LN_NONBLOCKING {
