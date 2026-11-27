@@ -20,7 +20,7 @@
 - Every new C++ file starts with `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - Studio targets compile with `-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror`.
 - Every function marked `CL_NONBLOCKING` must be allocation-free, lock-free and syscall-free, and must pass `-Wfunction-effects -Werror=function-effects`. `cl_engine` is built with that flag on this Mac, so a violation is a compile error here.
-- No random numbers anywhere in playback: no `Rng`, no `laneHash`, no `uniform()` in `core/`, `engine/src/engine*.cpp`, `engine/src/pad_programs.cpp`, `engine/src/phrase.cpp`, `engine/src/resolve.cpp`, `engine/src/smf.cpp`. The audition synth's noise oscillator (`engine/src/audition.h`) is a sound source and stays. Tests may use a seeded generator to build patterns.
+- No random numbers anywhere in playback: no `Rng`, no `laneHash`, no `uniform()` in `core/`, `engine/src/engine*.cpp`, `engine/src/pad_programs.cpp`, `engine/src/phrase.cpp`, `engine/src/resolve.cpp`, `engine/src/smf.cpp`. The audition synth's noise oscillator (`engine/src/audition.h`) is a sound source and stays. The expression lanes' "Steps" shape (`hba::dsp::laneStepValue`, in the shared DSP module) is a fixed function of lane and step, is unchanged by the spec, and stays; the unused `using hba::dsp::laneHash;` in `core/include/cl/lanes.h` is deleted in Task 4. Tests may use a seeded generator to build patterns.
 - 4/4 only: 16 steps per bar, 4 beats per bar.
 - Lane order is fixed: 0 kick, 1 snare, 2 ghost, 3 clap, 4 closed hat, 5 open hat, 6 perc A, 7 perc B.
 - `clang-format` is not on `PATH`. Use `xcrun clang-format --style=file:../../.clang-format`. Format only files you created or rewrote; in files you edited in part, format only the lines you touched.
@@ -37,11 +37,11 @@ The tree cannot build as a whole between Task 2 and Task 6. Each task names the 
 | After task | Must build | Must pass | Known broken until |
 |---|---|---|---|
 | 1 | everything in the `engine` preset | `ctest --preset engine` | none |
-| 2 | `cl_core`, `cl-core-tests` | `build/engine/tests/cl-core-tests` | `cl_engine`, tools, engine tests (Task 3/4); UI and plugin (Task 5/6) |
-| 3 | `cl_engine`, `cl-engine-tests`, `cl-core-tests` | both test binaries | `cutline-render` (Task 4); UI and plugin (Task 5/6) |
-| 4 | everything in the `engine` preset | `ctest --preset engine` | UI and plugin (Task 5/6) |
-| 5 | `cl_ui`, `cl-ui-tests`, `cl-ui-snapshot` in the `dev` preset | `build/dev/tests/cl-ui-tests` | plugin (Task 6) |
-| 6 | everything in both presets | `ctest --preset engine`, `ctest --preset dev` | none |
+| 2 | `cl_core`, `cl-core-tests` | `build/engine/tests/cl-core-tests` | `cl_engine`, tools, engine tests (Task 3/4); UI and plugin (Task 5/6); `factory/showcase` (Task 7) |
+| 3 | `cl_engine`, `cl-engine-tests`, `cl-core-tests` | both test binaries | `cutline-render` (Task 4); UI and plugin (Task 5/6); `factory/showcase` (Task 7) |
+| 4 | everything in the `engine` preset | `ctest --preset engine` | UI and plugin (Task 5/6); `factory/showcase` (Task 7) |
+| 5 | `cl_ui`, `cl-ui-tests`, `cl-ui-snapshot` in the `dev` preset | `build/dev/tests/cl-ui-tests` | plugin (Task 6); `factory/showcase` (Task 7) |
+| 6 | everything in both presets | `ctest --preset engine`, `ctest --preset dev` | `factory/showcase` (Task 7) |
 | 7 | `factory/showcase` | it compiles | none |
 | 8 | everything | everything | none |
 
@@ -69,7 +69,7 @@ While a preset is partly broken, do not run `ctest --preset ...` for it: CTest r
 - **Default slicer gate.** A new bank's slicer strip is `x..x..x...x...x.` (the spec's own example), not empty. Otherwise switching the default state to MIDI Slicer plays nothing.
 - **Pattern length control.** The grid header gets `1 | 2 | 4` bar pills, and the fill view gets `1 | 2 | 4` beat pills. Growing a pattern copies the existing bars into the new ones, so it sounds the same until edited. Shrinking drops the hidden bars.
 - **Pads in MIDI Slicer mode.** Repeat loops the slicer's notes inside its window, Roll retriggers the held notes, Rate works as in drum mode, Drop's left half is silence and its right half does nothing.
-- **Pattern presets carry default parameters.** The 11 pattern presets are the pattern plus defaults (Swing 0%). The five slicer presets carry their 2.0 Swing where their 2.0 pocket was MPC Swing. Per-preset Swing for the pattern presets waits for the library spec's listening pass.
+- **Pattern presets carry default parameters.** The 11 pattern presets are the pattern plus defaults (Swing 0%). The five slicer presets carry their 2.0 Swing where their 2.0 pocket was MPC Swing. They do not carry their 2.0 Dynamics (0.70 to 0.76): that knob meant accent, jitter and swell amount in 2.0 and means velocity contrast around 64 in 3.0, where 50% is the identity, so they load at 50%. Per-preset Swing for the pattern presets waits for the library spec's listening pass.
 - **Factory categories.** Breaks (Amen, Think, Electro), Neuro (Neuro, Halftime), Club (UKG, Footwork, Stepper, Trap, Drill, Afro), MIDI Slicer (5).
 - **MIDI export length.** The clip is the pattern once through at the current Rate: `bars * 4 / rate` host beats.
 
@@ -3195,7 +3195,7 @@ When this task ends the whole `engine` preset is green again.
 
 **Interfaces:**
 - Consumes: `GrooveState`, `HeldNotes`, `Engine::Impl`, `Block`, `BlockHit`, `kBeatEps` (Task 3); `swingBeat`, `forEachHit`, `HitTiming` (`cl/hits.h`); `resolveBar`, `applyDynamics` (`cl/resolve.h`); `hba::core::SmfEvent`, `hba::core::encodeSmfType0` (`<hba/core/smf.h>`).
-- Produces, in `cl/phrase.h`: `struct SlicerNote { double beat; double durBeats; std::int8_t note; std::int8_t voice; std::int16_t step; std::uint8_t velocity; }`; `inline constexpr int kMaxSlicerNotes = 768`; `struct SlicerPlan { double phraseBeats; int noteCount; std::array<SlicerNote, kMaxSlicerNotes> notes; }`; `void compileSlicer(const Params&, const GrooveState&, int scene, const HeldNotes&, double bpm, SlicerPlan& out) noexcept CL_NONBLOCKING`. Removed: `CompiledNote`, `PhrasePlan`, `kMaxPhraseNotes`, `warpBeat`, `phraseSignature`, `compilePhrase`, `appendDrumFill`.
+- Produces, in `cl/phrase.h`: `struct SlicerInputs { ...; bool sameAs(const SlicerInputs&) const; }` and `SlicerInputs slicerInputs(const Params&, int scene, const HeldNotes&, double bpm, std::uint32_t grooveRevision)` (what a compiled phrase depends on, so the engine and the UI model recompile only on change); `struct SlicerNote { double beat; double durBeats; std::int8_t note; std::int8_t voice; std::int16_t step; std::uint8_t velocity; }`; `inline constexpr int kMaxSlicerNotes = 768`; `struct SlicerPlan { double phraseBeats; int noteCount; std::array<SlicerNote, kMaxSlicerNotes> notes; }`; `void compileSlicer(const Params&, const GrooveState&, int scene, const HeldNotes&, double bpm, SlicerPlan& out) noexcept CL_NONBLOCKING`. Removed: `CompiledNote`, `PhrasePlan`, `kMaxPhraseNotes`, `warpBeat`, `phraseSignature`, `compilePhrase`, `appendDrumFill`.
 - Produces, in `cl/smf.h`: `inline constexpr std::uint16_t kSmfPpq = 960`; `std::vector<std::uint8_t> exportSmf(const Params&, const LaneCurves&, const HeldNotes&, double bpm, int scene, const GrooveBank& bank)`. Removed: `exportPhraseSmf`.
 - Produces, in `cl/engine.h`: `const SlicerPlan& Engine::slicerPlan() const noexcept CL_NONBLOCKING`.
 
@@ -3380,6 +3380,19 @@ TEST_CASE("Clip Slice and an empty chord compile to nothing, and compiling twice
     }
 }
 
+TEST_CASE("Slicer inputs compare equal until something the phrase depends on changes", "[slicer]") {
+    Params p = slicerParams(SlicerStyle::stabChop);
+    const SlicerInputs a = slicerInputs(p, 0, chord(), 120.0, 7);
+    CHECK_FALSE(a.sameAs(SlicerInputs{})); // nothing compiled yet
+    CHECK(a.sameAs(slicerInputs(p, 0, chord(), 120.0, 7)));
+    CHECK_FALSE(a.sameAs(slicerInputs(p, 1, chord(), 120.0, 7)));
+    CHECK_FALSE(a.sameAs(slicerInputs(p, 0, chord(), 121.0, 7)));
+    CHECK_FALSE(a.sameAs(slicerInputs(p, 0, chord(), 120.0, 8)));
+    CHECK_FALSE(a.sameAs(slicerInputs(p, 0, HeldNotes{}, 120.0, 7)));
+    p[ParamId::swing] = 0.2f;
+    CHECK_FALSE(a.sameAs(slicerInputs(p, 0, chord(), 120.0, 7)));
+}
+
 TEST_CASE("The engine plays the slicer phrase: your notes only, and no pitch bend", "[engine][slicer]") {
     const std::set<int> allowed{41, 48, 56, 60, 67};
     for (int style = 0; style < 4; ++style) {
@@ -3445,35 +3458,41 @@ TEST_CASE("The engine emits exactly the compiled slicer phrase, phrase after phr
     CHECK(noteOns == 30);
 }
 
-TEST_CASE("Clip Slice replays the notes it captured", "[engine][slicer]") {
+TEST_CASE("Clip Slice replays every captured note in every bar, also across bar lines", "[engine][slicer]") {
     Engine eng;
     eng.prepare(kSr, kBlock);
     Params p = slicerParams(SlicerStyle::clipSlice);
-    p[ParamId::swing] = 0.3f;
+    p[ParamId::swing] = 0.3f; // beats 0 and 1 are even 16ths: Swing does not move them
 
-    eng.inputNoteOn(36, 118, 0.0);
+    eng.inputNoteOn(36, 118, 0.0); // on the downbeat
     eng.inputNoteOff(36, 0.25);
     eng.inputNoteOn(38, 114, 1.0);
     eng.inputNoteOff(38, 1.25);
     REQUIRE(eng.capturedClipCount() == 2);
 
+    // From beat 4 to just past beat 20. At 140 BPM a 64-sample block is not a whole fraction of a bar,
+    // so the blocks straddle the bar lines at 8, 12, 16 and 20.
     std::vector<float> l(kBlock), r(kBlock);
     MidiEventBuffer midi;
     const double bps = 140.0 / 60.0 / kSr;
     double ppq = 4.0;
-    int replayed = 0;
-    for (int blk = 0; blk < 1400; ++blk) {
+    int downbeats = 0;
+    int backbeats = 0;
+    const int blocks = static_cast<int>(std::ceil(16.2 / bps / static_cast<double>(kBlock)));
+    for (int blk = 0; blk < blocks; ++blk) {
         eng.process(p, {140.0, ppq, true}, midi, l.data(), r.data(), kBlock);
         for (int i = 0; i < midi.count; ++i) {
             const auto& ev = midi.events[static_cast<std::size_t>(i)];
-            if (ev.isNoteOn()) {
-                ++replayed;
-                CHECK((ev.noteNumber() == 36 || ev.noteNumber() == 38));
-            }
+            if (!ev.isNoteOn())
+                continue;
+            CHECK((ev.noteNumber() == 36 || ev.noteNumber() == 38));
+            downbeats += ev.noteNumber() == 36 ? 1 : 0;
+            backbeats += ev.noteNumber() == 38 ? 1 : 0;
         }
         ppq += bps * static_cast<double>(kBlock);
     }
-    CHECK(replayed >= 2);
+    CHECK(downbeats == 5); // beats 4, 8, 12, 16, 20
+    CHECK(backbeats == 4); // beats 5, 9, 13, 17
 }
 
 TEST_CASE("Pads in MIDI Slicer mode release every note", "[engine][slicer]") {
@@ -3698,6 +3717,22 @@ TEST_CASE("A hit before bar 1 or after the last bar wraps to the other end of th
     CHECK(smf.noteOffs == 3);
 }
 
+TEST_CASE("Two lanes that share a note on the same step export one note, the louder one", "[smf]") {
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    bank.scenes[0].lanes[0].steps[0].velocity = 96; // kick
+    bank.scenes[0].lanes[0].steps[0].layer = Layer::core;
+    bank.scenes[0].lanes[1].steps[0].velocity = 118; // snare: the Strike Body map plays both as note 36
+    bank.scenes[0].lanes[1].steps[0].layer = Layer::core;
+    Params p;
+    p[ParamId::noteMap] = static_cast<float>(NoteMap::strikeBody);
+    const Smf smf = parse(exportSmf(p, defaultLaneCurves(), HeldNotes{}, 120.0, 0, bank));
+    REQUIRE(smf.noteOns.size() == 1);
+    CHECK(smf.noteOns[0].note == 36);
+    CHECK(smf.noteOns[0].velocity == 118);
+    CHECK(smf.noteOffs == 1);
+}
+
 TEST_CASE("Slicer export writes the compiled phrase, and Clip Slice writes no notes", "[smf]") {
     const GrooveBank bank;
     HeldNotes held;
@@ -3772,6 +3807,29 @@ struct SlicerPlan {
 // notes inside the engine.
 void compileSlicer(const Params& params, const GrooveState& groove, int scene, const HeldNotes& held, double bpm,
                    SlicerPlan& out) noexcept CL_NONBLOCKING;
+
+// Everything a compiled phrase depends on besides the bank's contents, which callers track with a
+// revision counter. The engine and the UI model both keep the inputs of their last compile and
+// recompile only when sameAs() says something changed. Compared field by field; nothing is hashed.
+struct SlicerInputs {
+    bool valid = false; // false until the first compile
+    std::uint32_t grooveRevision = 0;
+    int scene = 0;
+    int style = 0;
+    int rateIdx = 0;
+    float density = 0.0f;
+    float dynamics = 0.0f;
+    float swing = 0.0f;
+    float gateLen = 0.0f;
+    float strumMs = 0.0f;
+    double bpm = 0.0;
+    HeldNotes held{};
+
+    bool sameAs(const SlicerInputs& other) const noexcept CL_NONBLOCKING;
+};
+
+SlicerInputs slicerInputs(const Params& params, int scene, const HeldNotes& held, double bpm,
+                          std::uint32_t grooveRevision) noexcept CL_NONBLOCKING;
 
 } // namespace cl
 ```
@@ -3952,6 +4010,31 @@ void compileSlicer(const Params& params, const GrooveState& groove, int scene, c
     sortNotes(out);
 }
 
+bool SlicerInputs::sameAs(const SlicerInputs& other) const noexcept CL_NONBLOCKING {
+    return valid && other.valid && grooveRevision == other.grooveRevision && scene == other.scene &&
+           style == other.style && rateIdx == other.rateIdx && density == other.density && dynamics == other.dynamics &&
+           swing == other.swing && gateLen == other.gateLen && strumMs == other.strumMs && bpm == other.bpm &&
+           held.sameAs(other.held);
+}
+
+SlicerInputs slicerInputs(const Params& params, int scene, const HeldNotes& held, double bpm,
+                          std::uint32_t grooveRevision) noexcept CL_NONBLOCKING {
+    SlicerInputs in;
+    in.valid = true;
+    in.grooveRevision = grooveRevision;
+    in.scene = scene;
+    in.style = params.choice(ParamId::slicerStyle);
+    in.rateIdx = params.choice(ParamId::seqRate);
+    in.density = params[ParamId::density];
+    in.dynamics = params[ParamId::dynamics];
+    in.swing = params[ParamId::swing];
+    in.gateLen = params[ParamId::gateLen];
+    in.strumMs = params[ParamId::strumMs];
+    in.bpm = bpm;
+    in.held = held;
+    return in;
+}
+
 } // namespace cl
 ```
 
@@ -3966,24 +4049,8 @@ In `engine/include/cl/engine.h`, add `#include "cl/phrase.h"` and, after `positi
 In `engine/src/engine_impl.h`, add `#include "cl/phrase.h"`, and inside `struct Engine::Impl` add:
 
 ```cpp
-    // What the slicer phrase was last compiled from. Compared field by field; nothing is hashed.
-    struct SlicerKey {
-        bool valid = false;
-        std::uint32_t revision = 0;
-        int scene = 0;
-        int style = 0;
-        int rateIdx = 0;
-        float density = 0.0f;
-        float dynamics = 0.0f;
-        float swing = 0.0f;
-        float gateLen = 0.0f;
-        float strumMs = 0.0f;
-        double bpm = 0.0;
-        HeldNotes held{};
-    };
-
     SlicerPlan slicerPlanData{};
-    SlicerKey slicerKey{};
+    SlicerInputs slicerKey{}; // what slicerPlanData was last compiled from
 ```
 
 and these declarations:
@@ -4015,28 +4082,11 @@ void Engine::Impl::pushNoteHit(int note, int voice, double hostBeat, double host
 
 // Recompiles the slicer phrase only when something it depends on changed.
 void Engine::Impl::ensureSlicerPlan(const Params& params, double bpm) noexcept CL_NONBLOCKING {
-    SlicerKey key;
-    key.valid = true;
-    key.revision = grooveRevision;
-    key.scene = currentScene;
-    key.style = params.choice(ParamId::slicerStyle);
-    key.rateIdx = params.choice(ParamId::seqRate);
-    key.density = params[ParamId::density];
-    key.dynamics = params[ParamId::dynamics];
-    key.swing = params[ParamId::swing];
-    key.gateLen = params[ParamId::gateLen];
-    key.strumMs = params[ParamId::strumMs];
-    key.bpm = bpm;
-    key.held = lastEffectiveHeld;
-    const SlicerKey& old = slicerKey;
-    const bool same = old.valid && old.revision == key.revision && old.scene == key.scene && old.style == key.style &&
-                      old.rateIdx == key.rateIdx && old.density == key.density && old.dynamics == key.dynamics &&
-                      old.swing == key.swing && old.gateLen == key.gateLen && old.strumMs == key.strumMs &&
-                      old.bpm == key.bpm && old.held.sameAs(key.held);
-    if (same)
+    const SlicerInputs now = slicerInputs(params, currentScene, lastEffectiveHeld, bpm, grooveRevision);
+    if (now.sameAs(slicerKey))
         return;
     compileSlicer(params, groove, currentScene, lastEffectiveHeld, bpm, slicerPlanData);
-    slicerKey = key;
+    slicerKey = now;
 }
 
 // The compiled phrase, looping at the pattern's length.
@@ -4061,29 +4111,47 @@ void Engine::Impl::playSlicer(const Block& b) noexcept CL_NONBLOCKING {
 
 // Clip Slice: replays the notes captured from the MIDI input, bar by bar, with Swing.
 // While Repeat is engaged it loops the captured notes inside the Repeat window instead.
+// A block can straddle a bar line (or a Repeat cell), so every bar and cell the block touches is visited:
+// working from the block's start alone would skip a captured note that sits exactly on the downbeat.
 void Engine::Impl::playClip(const Block& b) noexcept CL_NONBLOCKING {
     const double swing = static_cast<double>((*b.params)[ParamId::swing]);
     const double scaledStart = b.windowStart * b.rate;
-    const double barOrigin = std::floor(scaledStart / 4.0) * 4.0;
+    const double scaledEnd = b.windowEnd * b.rate;
     const bool repeating = engaged && b.program == PadProgram::repeat;
     const double window = pads::repeatWindowBeats(b.padX);
     const double anchorInBar = repeatAnchor - std::floor(repeatAnchor / 4.0) * 4.0;
     const double sliceStart = std::min(anchorInBar, 4.0 - window);
+    const int cellsPerBar = static_cast<int>(std::lround(4.0 / window));
 
-    for (const auto& ev : captured) {
-        if (!ev.active)
-            continue;
-        double barBeat = ev.barBeat;
-        if (repeating) {
+    const auto firstBar = static_cast<std::int64_t>(std::floor(scaledStart / 4.0));
+    const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd - kBeatEps) / 4.0));
+    for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + kMaxBarsPerBlock; ++bar) {
+        const double barOrigin = static_cast<double>(bar) * 4.0;
+        const auto emitAt = [&](const CapturedEvent& ev, double barBeat) noexcept CL_NONBLOCKING {
+            const double at = barOrigin + swingBeat(barBeat, swing);
+            if (at < scaledStart - kBeatEps || at >= scaledEnd - kBeatEps)
+                return;
+            pushNoteHit(ev.note, 0, at / b.rate, std::max(0.04, ev.durBeats / b.rate), static_cast<int>(ev.vel));
+        };
+        for (const auto& ev : captured) {
+            if (!ev.active)
+                continue;
+            if (!repeating) {
+                emitAt(ev, ev.barBeat);
+                continue;
+            }
             if (ev.barBeat < sliceStart || ev.barBeat >= sliceStart + window)
                 continue;
-            const double cell = std::floor((scaledStart - barOrigin) / window) * window;
-            barBeat = cell + (ev.barBeat - sliceStart);
+            // Every cell of the bar replays the slice. Visit the cells this block can reach, with one
+            // cell of margin on each side because Swing moves a note by up to an eighth of a beat.
+            const double offset = ev.barBeat - sliceStart;
+            const int firstCell =
+                std::max(0, static_cast<int>(std::floor((scaledStart - barOrigin - offset) / window)) - 1);
+            const int lastCell = std::min(cellsPerBar - 1,
+                                          static_cast<int>(std::floor((scaledEnd - barOrigin - offset) / window)) + 1);
+            for (int cell = firstCell; cell <= lastCell; ++cell)
+                emitAt(ev, static_cast<double>(cell) * window + offset);
         }
-        const double at = (barOrigin + swingBeat(barBeat, swing)) / b.rate;
-        if (at < b.windowStart - kBeatEps || at >= b.windowEnd - kBeatEps)
-            continue;
-        pushNoteHit(ev.note, 0, at, std::max(0.04, ev.durBeats / b.rate), static_cast<int>(ev.vel));
     }
 }
 ```
@@ -4303,9 +4371,29 @@ std::vector<std::uint8_t> exportSmf(const Params& params, const LaneCurves& curv
         }
     }
 
-    // A note ends when the same pitch starts again.
     std::stable_sort(notes.begin(), notes.end(),
                      [](const ClipNote& a, const ClipNote& b) { return a.start < b.start; });
+
+    // Two lanes can share a MIDI note (the Strike Body map does). A pitch can only start once per tick:
+    // keep one note, with the higher velocity and the later end.
+    std::vector<ClipNote> merged;
+    merged.reserve(notes.size());
+    for (const ClipNote& n : notes) {
+        bool duplicate = false;
+        for (auto it = merged.rbegin(); it != merged.rend() && it->start == n.start; ++it) {
+            if (it->note != n.note)
+                continue;
+            it->velocity = std::max(it->velocity, n.velocity);
+            it->end = std::max(it->end, n.end);
+            duplicate = true;
+            break;
+        }
+        if (!duplicate)
+            merged.push_back(n);
+    }
+    notes = std::move(merged);
+
+    // A note ends when the same pitch starts again.
     for (std::size_t i = 0; i < notes.size(); ++i) {
         for (std::size_t j = 0; j < i; ++j) {
             if (notes[j].note == notes[i].note && notes[j].end > notes[i].start)
@@ -4383,6 +4471,8 @@ In `tools/cutline_render.cpp`:
 git rm engine/src/styles.cpp engine/src/styles.h tools/seed_patterns.py
 ```
 
+In `core/include/cl/lanes.h`, delete the line `using hba::dsp::laneHash;`. Nothing in Cutline calls it any more. (The other three using-declarations there are used by the expression lanes and stay.) Rebuild `cl-core-tests` to confirm.
+
 Confirm `engine/CMakeLists.txt` no longer lists `src/styles.cpp` or `src/styles.h` (Task 3 removed them).
 
 - [ ] **Step 9: Build and test the whole engine preset**
@@ -4391,7 +4481,7 @@ Confirm `engine/CMakeLists.txt` no longer lists `src/styles.cpp` or `src/styles.
 cmake --build --preset engine && ctest --preset engine 2>&1 | tail -3
 ```
 
-Expected: `100% tests passed, 0 tests failed out of 86`. (24 core, 5 shared DSP, 14 resolve, 10 timing, 1 lint, 8 engine, 8 pad, 11 slicer, 5 export.) If your count differs because Catch2 names a case differently, report the count; the pass rate is what matters.
+Expected: `100% tests passed, 0 tests failed out of 86`. (24 core, 5 shared DSP, 14 resolve, 10 timing, 1 lint, 8 engine, 8 pad, 11 slicer, 5 export, as the plan was first written. Tasks 3 and 4 gained tests during execution, so the real number is higher.) If your count differs because Catch2 names a case differently, report the count; the pass rate is what matters.
 
 - [ ] **Step 10: Render the default beat and count its notes**
 
@@ -4407,7 +4497,7 @@ Expected: a line starting `Wrote`, then `bytes` around 150 and `note-ons 12` (th
 - [ ] **Step 11: Confirm the 2.0 generator and all randomness are gone**
 
 ```bash
-grep -rnE "laneHash|Rng|uniform\(|warpBeat|compilePhrase|styleKit|euclid|PhrasePlan|appendDrumFill" core engine tools; test ! -e engine/src/styles.cpp && test ! -e engine/src/styles.h && test ! -e tools/seed_patterns.py && echo deleted
+grep -rnE "laneHash|Rng|uniform\(|warpBeat|compilePhrase|styleKit|euclid|PhrasePlan|appendDrumFill" core engine tools | grep -v "engine/src/audition.h"; test ! -e engine/src/styles.cpp && test ! -e engine/src/styles.h && test ! -e tools/seed_patterns.py && echo deleted
 ```
 
 Expected: only the line `deleted`. (`engine/src/audition.h` uses `hba::dsp` noise for the hat and snare sounds; if grep prints a line from that file, it is the synth's noise source and is allowed. Any other line is a leftover.)
@@ -4474,7 +4564,7 @@ struct Visuals {
 ```
 
   and on `Model`: `virtual const GrooveState& groove() const = 0;` (the bank and the density maps the engine plays from) and `virtual void setGrooveBank(const GrooveBank& bank) = 0;` in place of `patternBank()` and `setPatternBank()`. `mutateActiveScene()` and `polymeterActiveScene()` are removed. `cloneActiveSceneToNext()` and `clearActiveScene()` stay. Removed from `Visuals`: `plan`, `phraseIndex`, `playheadBeats`.
-- Produces, in `ui/src/grid_edit.h` (namespace `cl::ui::grid`): `CellLook`, `Cell`, `cellOf`, `heightFraction`, `View`, `resolveView`, `resolveFillView`, `stepAt`, `toggleStep`, `setStepVelocity`, `cycleRatchet`, `setStepLayer`, `setFillBeats`, `setLaneLength`. Signatures are in Step 3.
+- Produces, in `ui/src/grid_edit.h` (namespace `cl::ui::grid`): `CellLook`, `Cell`, `cellOf`, `fillCellOf`, `heightFraction`, `Geometry`, `cellAt`, `View`, `resolveView`, `resolveFillView`, `stepAt`, `toggleStep`, `setStepVelocity`, `cycleRatchet`, `setStepLayer`, `setFillBeats`, `setLaneLength`. Signatures are in Step 3.
 
 What the port shows and does, from the spec:
 
@@ -4565,6 +4655,13 @@ TEST_CASE("A live fill shows its steps in the fill look, in its own bar only", "
     const ResolvedBar fillBar = grid::resolveFillView(groove, 1, 0.5f, 0.5f);
     CHECK(grid::cellOf(fillBar.lanes[1][14]).look == grid::CellLook::fill);
     CHECK(grid::cellOf(fillBar.lanes[4][2]).look == grid::CellLook::core); // the last bar's own hat shows through
+
+    // The fill editor lights only fill steps. A main-pattern step that shows through is an outline.
+    CHECK(grid::fillCellOf(fillBar.lanes[1][14]).look == grid::CellLook::fill);
+    CHECK(grid::fillCellOf(fillBar.lanes[1][14]).velocity == 118);
+    CHECK(grid::fillCellOf(fillBar.lanes[4][2]).look == grid::CellLook::outline);
+    CHECK(grid::fillCellOf(fillBar.lanes[4][2]).velocity == 0);
+    CHECK(grid::fillCellOf(fillBar.lanes[4][5]).look == grid::CellLook::empty);
 }
 
 TEST_CASE("A muted lane's steps are outlines, and the three layers have three heights", "[grid]") {
@@ -4577,6 +4674,28 @@ TEST_CASE("A muted lane's steps are outlines, and the three layers have three he
     CHECK(grid::heightFraction(Layer::core) == Approx(1.0f));
     CHECK(grid::heightFraction(Layer::groove) < grid::heightFraction(Layer::core));
     CHECK(grid::heightFraction(Layer::detail) < grid::heightFraction(Layer::groove));
+}
+
+TEST_CASE("A point maps to its lane and step at 16, 32 and 64 columns", "[grid]") {
+    for (const int steps : {16, 32, 64}) {
+        const grid::Geometry g{100.0f, 40.0f, 640.0f / static_cast<float>(steps), 20.0f, steps};
+        int lane = -1;
+        int step = -1;
+        INFO("steps " << steps);
+        REQUIRE(grid::cellAt(g, 100.0f, 40.0f, lane, step));
+        CHECK(lane == 0);
+        CHECK(step == 0);
+        REQUIRE(grid::cellAt(g, 100.0f + 639.0f, 40.0f + 159.0f, lane, step));
+        CHECK(lane == 7);
+        CHECK(step == steps - 1);
+        REQUIRE(grid::cellAt(g, 100.0f + 320.5f, 40.0f + 61.0f, lane, step)); // just past the middle, fourth row
+        CHECK(lane == 3);
+        CHECK(step == steps / 2);
+        CHECK_FALSE(grid::cellAt(g, 99.0f, 50.0f, lane, step));   // left of the grid: the sidebar
+        CHECK_FALSE(grid::cellAt(g, 741.0f, 50.0f, lane, step));  // right of the last column
+        CHECK_FALSE(grid::cellAt(g, 200.0f, 39.0f, lane, step));  // above the first lane
+        CHECK_FALSE(grid::cellAt(g, 200.0f, 201.0f, lane, step)); // below the last lane
+    }
 }
 
 TEST_CASE("Toggling a step writes a Groove step at velocity 96, or clears it", "[grid]") {
@@ -4705,6 +4824,11 @@ struct Cell {
 
 Cell cellOf(const ResolvedStep& step) noexcept;
 
+// The same step as the fill editor shows it: lit only if it comes from the fill. A main-pattern step
+// (one that shows through on a lane that draws nothing in the fill) is an outline, so a click on it
+// is clearly adding a fill step, not editing a lit one.
+Cell fillCellOf(const ResolvedStep& step) noexcept;
+
 // Bar height as a fraction of the row: Core 1.0, Groove 0.72, Detail 0.44.
 float heightFraction(Layer layer) noexcept;
 
@@ -4718,6 +4842,18 @@ View resolveView(const GrooveState& groove, int scene, float density, float dyna
 
 // What the fill editor shows: the pattern's last bar with its fill switched on.
 ResolvedBar resolveFillView(const GrooveState& groove, int scene, float density, float dynamics) noexcept;
+
+// Where the step cells are, in panel pixels: `steps` columns of `stepW` from `gridX`, eight rows of `rowH` from `gridY`.
+struct Geometry {
+    float gridX = 0.0f;
+    float gridY = 0.0f;
+    float stepW = 1.0f;
+    float rowH = 1.0f;
+    int steps = 16;
+};
+
+// The lane and step under a point. False outside the cells.
+bool cellAt(const Geometry& geometry, float x, float y, int& lane, int& step) noexcept;
 
 // The step a cell edits: a main-pattern step, or a fill step when `fillView` is set.
 // Null outside the pattern, and null before the fill window in the fill view.
@@ -4765,6 +4901,15 @@ Cell cellOf(const ResolvedStep& step) noexcept {
     return cell;
 }
 
+Cell fillCellOf(const ResolvedStep& step) noexcept {
+    Cell cell = cellOf(step);
+    if (cell.look != CellLook::empty && cell.look != CellLook::fill) {
+        cell.look = CellLook::outline;
+        cell.velocity = 0;
+    }
+    return cell;
+}
+
 float heightFraction(Layer layer) noexcept {
     return layer == Layer::core ? 1.0f : (layer == Layer::detail ? 0.44f : 0.72f);
 }
@@ -4786,6 +4931,18 @@ ResolvedBar resolveFillView(const GrooveState& groove, int scene, float density,
     ResolvedBar bar;
     resolveBar(pattern, groove.maps[idx], patternBars(pattern) - 1, {density, dynamics, true}, bar);
     return bar;
+}
+
+bool cellAt(const Geometry& geometry, float x, float y, int& lane, int& step) noexcept {
+    if (geometry.stepW <= 0.0f || geometry.rowH <= 0.0f || x < geometry.gridX || y < geometry.gridY)
+        return false;
+    const int column = static_cast<int>((x - geometry.gridX) / geometry.stepW);
+    const int row = static_cast<int>((y - geometry.gridY) / geometry.rowH);
+    if (column >= geometry.steps || row >= kDrumLaneCount)
+        return false;
+    lane = row;
+    step = column;
+    return true;
 }
 
 Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept {
@@ -4887,7 +5044,14 @@ In `ui/include/cl/ui/fake_model.h`: replace `PatternBank patternBank()` and `set
         groove_ = GrooveState(bank);
         refresh();
     }
+
+    // For screenshots: what the snapshot tool can ask the fake model to show.
+    void showBars(int bars); // resize scene A to 1, 2 or 4 bars
+    void showLive();         // the last bar with its fill live, and a one-beat Repeat window held
+    void showSlicer();       // MIDI Slicer mode
 ```
+
+add the private member `bool live_ = false;`,
 
 remove `mutateActiveScene`, `polymeterActiveScene` and `actionSeed_`; rename `recompile()` to `refresh()`; replace the `bank_` member with `GrooveState groove_{};`; change `exportStatus()` to return `"Drag 2-bar .mid"`; change the preset list and `presetName_` to `{"Amen", "Breaks"}, {"Neuro", "Neuro"}, {"Slicer: UKG Chord Stabs", "MIDI Slicer"}` and `"Amen"`.
 
@@ -4981,6 +5145,20 @@ void FakeModel::clearActiveScene() {
     refresh();
 }
 
+void FakeModel::showBars(int bars) {
+    GrooveBank bank = groove_.bank;
+    setPatternBars(bank.scenes[0], bars);
+    groove_ = GrooveState(bank);
+    refresh();
+}
+
+void FakeModel::showLive() {
+    live_ = true;
+    refresh();
+}
+
+void FakeModel::showSlicer() { set(ParamId::engineMode, static_cast<float>(EngineMode::slicer)); }
+
 void FakeModel::refresh() {
     const int scene = std::clamp(params_.choice(ParamId::scene), 0, kSceneCount - 1);
     visuals_.bpm = 172.0;
@@ -4995,6 +5173,17 @@ void FakeModel::refresh() {
     visuals_.position.absBar = 0;
     visuals_.position.barInPattern = 0;
     visuals_.position.stepInBar = 12;
+    if (live_) {
+        // The last bar, inside its fill window, with Repeat holding beat 2 of that bar.
+        const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);
+        visuals_.position.absBar = bars - 1;
+        visuals_.position.barInPattern = bars - 1;
+        visuals_.position.stepInBar = 13;
+        visuals_.position.fillLive = true;
+        visuals_.position.repeatStartStep = (bars - 1) * kStepsPerBar + 4;
+        visuals_.position.repeatBeats = 1.0;
+        visuals_.padEngaged = true;
+    }
     visuals_.ppq = 3.0;
     visuals_.playing = true;
     visuals_.lastBlockEvents = 6;
@@ -5082,23 +5271,27 @@ and in `SetupPanel` replace the `bars_`, `pocket_`, `fillType_` and `variation_`
 
 - `DragMode` becomes `{ none, paintOn, velocity, laneLength, slicerLength, laneNote }`.
 - `Layout`: remove `modeDrum`, `modeSlicer`, `scenes`, `btnMutate`, `btnPoly`. Keep `btnClone`, `btnClear`. Add `Rect btnFill;`, `std::array<Rect, 3> lengthPills{};`, `int steps = 16;` (columns in the drum grid) and `float slicerStepW = 0.0f;`.
-- Remove `laneLockRect`. `laneEndHandleX(int laneLen, const Layout&)` stays.
+- Remove `laneLockRect`. `laneEndHandleX(int laneLen, const Layout&)` stays for the drum lanes. Add `float slicerEndHandleX(int length, const Layout&) const;`, which returns `lay.gridX + clamp(length, 1, kMaxSlicerSteps) * lay.slicerStepW`: the gate strip always has 32 columns, whatever the pattern's length, so it must not use the drum grid's `stepW`. Every slicer hover, drag and draw of the length handle uses it.
 - `computeLayout` takes the column count: `Layout computeLayout(float w, float h, int steps) const;`.
-- Add `int gridSteps() const;` (16 in the fill view, otherwise the active scene's `patternSteps`), `int editScene() const;` (the `scene` parameter, clamped), and `void edit(const std::function<bool(GrooveBank&)>& change);`, which copies `context_.model.groove().bank`, applies `change`, and calls `context_.model.setGrooveBank(bank)` only if `change` returned true.
-- Members: remove `hoverScene_`; `hoverAction_` is now `0 = Clone, 1 = Clear, 2 = Fill, 10..12 = length pills`; replace `dragBaseVelOff_` with `int dragBaseVel_ = 96;`; add `bool fillView_ = false;`.
+- Add `int gridSteps() const;` (16 in the fill view, otherwise `patternSteps` of the EDITED scene, `editScene()`: layout, drawing and edits all follow the scene the `scene` parameter selects, and only the playhead, live-fill and Repeat overlays wait for the engine to report that scene as active), `int editScene() const;` (the `scene` parameter, clamped), and `void edit(const std::function<bool(GrooveBank&)>& change);`, which copies `context_.model.groove().bank`, applies `change`, and calls `context_.model.setGrooveBank(bank)` only if `change` returned true.
+- Members: remove `hoverScene_`; `hoverAction_` is now `0 = Clone, 1 = Clear, 2 = Fill, 10..12 = length pills`; replace `dragBaseVelOff_` with `int dragBaseVel_ = 96;`; add the accessor `bool fillView() const { return context_.fillView; }`. The flag itself lives in the shared UI `Context` (`ui/src/theme.h`: add `bool fillView = false;`), so the editor and the snapshot tool can switch the view.
 
 `ui/src/grid_stage_draw.cpp`. Keep `drawPill`, the activity LED code and `tick()`. Change the rest as follows.
 
 `computeLayout`: the header row holds, left to right from `pad + px(222)`: Clone (68 wide), Clear (54), Fill (48), then three pills of 26 each for `1`, `2`, `4`, each separated by `px(6)`. `lay.steps = steps`, `lay.stepW = lay.gridW / steps`, `lay.slicerStepW = lay.gridW / kMaxSlicerSteps`. The slicer rectangles are as before.
 
-`drawHeader`: the title is `"PATTERN"`, `"FILL"` when `fillView_`, or `"MIDI SLICER"` in slicer mode. Draw Clone and Clear as today. Draw Fill lit (amber, filled) when `fillView_`. Draw the three pills; the lit one is the pattern's bars, or the fill's beats when `fillView_`; put a small label `"bars"` or `"beats"` after them. In slicer mode draw only Clear. The right-hand readout is `"%.0f BPM"` plus the Rate choice when it is not 1x; it no longer names a style.
+`drawHeader`: the title is `"PATTERN"`, `"FILL"` when `fillView()`, or `"MIDI SLICER"` in slicer mode. Draw Clone and Clear as today. Draw Fill lit (amber, filled) when `fillView()`. Draw the three pills; the lit one is the pattern's bars, or the fill's beats when `fillView()`; put a small label `"bars"` or `"beats"` after them. In slicer mode draw Clone and Clear only (no Fill, no pills): the spec keeps both. The right-hand readout is `"%.0f BPM"` plus the Rate choice when it is not 1x; it no longer names a style.
 
 `drawDrumGrid`, in full:
 
 ```cpp
 void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, const Visuals& vis) {
     const GrooveState& groove = context_.model.groove();
-    const int scene = vis.playing ? vis.activeScene : editScene();
+    // The grid always shows the scene that edits go to. While a quantized scene switch is pending, the
+    // engine is still playing the previous scene, so the playhead, live fill and Repeat window are hidden
+    // until the engine reports this scene as the active one.
+    const int scene = editScene();
+    const bool live = vis.playing && vis.activeScene == scene;
     const Pattern& pattern = groove.bank.scenes[static_cast<std::size_t>(scene)];
     const float density = context_.model.get(ParamId::density);
     const float dynamics = context_.model.get(ParamId::dynamics);
@@ -5107,7 +5300,7 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     const bool anySolo = std::any_of(pattern.lanes.begin(), pattern.lanes.end(), [](const DrumLane& l) { return l.solo; });
 
     // What sounds, from the same function and the same maps as the engine.
-    const int liveFillBar = (vis.playing && vis.position.fillLive) ? vis.position.barInPattern : -1;
+    const int liveFillBar = (live && vis.position.fillLive) ? vis.position.barInPattern : -1;
     const grid::View view = grid::resolveView(groove, scene, density, dynamics, liveFillBar);
     const ResolvedBar fillBar = grid::resolveFillView(groove, scene, density, dynamics);
     const int fillFrom = fillWindowStart(pattern.fill);
@@ -5119,8 +5312,10 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
         const int bar = st / kStepsPerBar + 1;
         const int beat = (st % kStepsPerBar) / 4 + 1;
         char label[16]{};
-        if (beat == 1)
-            std::snprintf(label, sizeof(label), fillView_ ? "FILL" : "BAR %d", bar);
+        if (beat == 1 && fillView())
+            std::snprintf(label, sizeof(label), "FILL");
+        else if (beat == 1)
+            std::snprintf(label, sizeof(label), "BAR %d", bar);
         else
             std::snprintf(label, sizeof(label), "%d.%d", bar, beat);
         if (steps <= 32 || beat == 1)
@@ -5146,7 +5341,7 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     }
 
     // The fill window: always in the fill view, and over the live bar while a fill plays.
-    const int shadeBar = fillView_ ? 0 : liveFillBar;
+    const int shadeBar = fillView() ? 0 : liveFillBar;
     if (shadeBar >= 0) {
         const float fx = lay.gridX + static_cast<float>(shadeBar * kStepsPerBar + fillFrom) * lay.stepW;
         const float fw = static_cast<float>(kStepsPerBar - fillFrom) * lay.stepW;
@@ -5157,15 +5352,15 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     }
 
     // The Repeat window, while the pad holds it.
-    if (!fillView_ && vis.position.repeatStartStep >= 0) {
+    if (!fillView() && live && vis.position.repeatStartStep >= 0) {
         const float rx = lay.gridX + static_cast<float>(vis.position.repeatStartStep) * lay.stepW;
         const float rw = static_cast<float>(vis.position.repeatBeats * 4.0) * lay.stepW;
         canvas.setColor(colour::withAlpha(colour::coral, 0.16f));
         canvas.rectangle(rx, lay.gridY, rw, lay.gridH);
     }
 
-    const int playCol = !vis.playing ? -1
-                                     : (fillView_ ? (vis.position.fillLive ? vis.position.stepInBar : -1)
+    const int playCol = !live ? -1
+                                     : (fillView() ? (vis.position.fillLive ? vis.position.stepInBar : -1)
                                                   : vis.position.barInPattern * kStepsPerBar + vis.position.stepInBar);
 
     for (int l = 0; l < kDrumLaneCount; ++l) {
@@ -5204,7 +5399,7 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
                  lane.solo ? colour::withAlpha(colour::amber, 0.36f) : colour::raised,
                  lane.solo ? colour::amber : colour::edge, lane.solo ? colour::text : colour::textFaint, 9.0f,
                  Weight::semibold);
-        if (!fillView_) {
+        if (!fillView()) {
             char lenBuf[8]{};
             std::snprintf(lenBuf, sizeof(lenBuf), "%d", loop);
             const bool looped = loop != patternSteps(pattern);
@@ -5219,14 +5414,16 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
             const float cw = std::max(px(2.0f), lay.stepW - px(4.0f));
             const float cy = ry + px(4.0f);
             const float ch = lay.rowH - px(8.0f);
-            const bool editable = !fillView_ || st >= fillFrom;
+            const bool editable = !fillView() || st >= fillFrom;
             const bool isHover = editable && hoverLane_ == l && hoverStep_ == st;
             const bool isPlay = st == playCol;
             const ResolvedStep& resolved =
-                fillView_ ? fillBar.lanes[li][static_cast<std::size_t>(st)]
+                fillView() ? fillBar.lanes[li][static_cast<std::size_t>(st)]
                           : view.bar[static_cast<std::size_t>(st / kStepsPerBar)].lanes[li][static_cast<std::size_t>(st % kStepsPerBar)];
-            const grid::Cell cell = grid::cellOf(resolved);
-            const float dim = editable ? 1.0f : 0.35f; // in the fill view, the bar before the window is context only
+            // In the fill view only fill steps are lit. The main pattern's steps (before the window, and
+            // inside it on lanes that draw nothing in the fill) are dim outlines: context, not content.
+            const grid::Cell cell = fillView() ? grid::fillCellOf(resolved) : grid::cellOf(resolved);
+            const float dim = (fillView() && cell.look == grid::CellLook::outline) ? 0.45f : 1.0f;
 
             canvas.setColor(isHover ? 0x24ffffff : (isPlay ? 0x1affffff : 0x10ffffff));
             canvas.roundedRectangle(cx, cy, cw, ch, px(3.5f));
@@ -5267,7 +5464,7 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
         }
 
         // Loop-length handle, in the pattern view.
-        if (!fillView_) {
+        if (!fillView()) {
             const float hx = laneEndHandleX(loop, lay);
             const bool hot = (hoverLengthLane_ == l) || (dragMode_ == DragMode::laneLength && dragLane_ == l);
             canvas.setColor(colour::withAlpha(loop != patternSteps(pattern) ? colour::cyan : hue, hot ? 1.0f : 0.50f));
@@ -5302,17 +5499,17 @@ void GridStagePanel::edit(const std::function<bool(GrooveBank&)>& change) {
 }
 ```
 
-`mouseMove`: as today, but the header hover tests are Clone (0), Clear (1), Fill (2) and the three pills (10, 11, 12); the column is `(mx - lay.gridX) / lay.stepW` clamped to `lay.steps - 1`; in the fill view the length handle is not hoverable; in slicer mode the column uses `lay.slicerStepW` and `kMaxSlicerSteps`.
+`mouseMove`: as today, but the header hover tests are Clone (0), Clear (1), Fill (2) and the three pills (10, 11, 12); the lane and column under the mouse come from `grid::cellAt({lay.gridX, lay.gridY, lay.stepW, lay.rowH, lay.steps}, mx, my, lane, step)` (use the same call in `mouseDown` and `mouseDrag`; do not repeat the arithmetic in the panel); in the fill view the length handle is not hoverable; in slicer mode the column uses `lay.slicerStepW` and `kMaxSlicerSteps`.
 
 `mouseDown`, drum mode, in this order:
 
-1. Clone: `context_.model.cloneActiveSceneToNext()`. Clear: `context_.model.clearActiveScene()`. Fill: `fillView_ = !fillView_; redraw();`.
-2. A length pill with value `n` (1, 2 or 4): `edit([&](GrooveBank& b) { Pattern& p = b.scenes[scene]; if (fillView_) return grid::setFillBeats(p, n); if (patternBars(p) == n) return false; setPatternBars(p, n); return true; });`
+1. Clone: `context_.model.cloneActiveSceneToNext()`. Clear: `context_.model.clearActiveScene()`. Fill: `context_.fillView = !context_.fillView; redraw();`.
+2. A length pill with value `n` (1, 2 or 4): `edit([&](GrooveBank& b) { Pattern& p = b.scenes[scene]; if (fillView()) return grid::setFillBeats(p, n); if (patternBars(p) == n) return false; setPatternBars(p, n); return true; });`
 3. Mute and solo pills toggle `muted` and `solo` on the lane.
 4. The note badge: right-click sets `midiNote = 0`; otherwise start `DragMode::laneNote` with `dragBaseNote_ = effectiveLaneMidiNote(noteMap, lane, pattern.lanes[lane].midiNote)`.
 5. Elsewhere in the sidebar: right-click opens `showLaneMenu(lane)`.
 6. Near the loop handle (pattern view only): start `DragMode::laneLength`.
-7. In the grid: if `grid::stepAt(pattern, fillView_, lane, step)` is null, return. Right-click opens `showDrumStepMenu(lane, step)`. Shift-click: if the step is off, `grid::toggleStep` it on first; then `grid::cycleRatchet`. Plain click on a lit step: start `DragMode::velocity` with `dragBaseVel_ = step.velocity` and `dragStartY_ = my`. Plain click on an off step: `grid::toggleStep` and start `DragMode::paintOn`.
+7. In the grid: if `grid::stepAt(pattern, fillView(), lane, step)` is null, return. Right-click opens `showDrumStepMenu(lane, step)`. Shift-click: if the step is off, `grid::toggleStep` it on first; then `grid::cycleRatchet`. Plain click on a lit step: start `DragMode::velocity` with `dragBaseVel_ = step.velocity` and `dragStartY_ = my`. Plain click on an off step: `grid::toggleStep` and start `DragMode::paintOn`.
 
 `mouseDrag`:
 
@@ -5324,13 +5521,13 @@ void GridStagePanel::edit(const std::function<bool(GrooveBank&)>& change) {
 
 `mouseUp`: a velocity drag that moved less than `px(4)` switches the step off (`grid::toggleStep` for a drum step; `Step{}` for a slicer step). Then clear the drag state.
 
-Slicer mode `mouseDown`: Clear in the header; the length handle; in the strip, a step at or beyond `slicerLength` does nothing; right-click opens `showSlicerStepMenu`; shift-click cycles ratchet on a lit step (lighting it first if needed); plain click starts a velocity drag on a lit step or lights an off one (`velocity = 96`) and starts `paintOn`.
+Slicer mode `mouseDown`: Clone and Clear in the header; the length handle; in the strip, a step at or beyond `slicerLength` does nothing; right-click opens `showSlicerStepMenu`; shift-click cycles ratchet on a lit step (lighting it first if needed); plain click starts a velocity drag on a lit step or lights an off one (`velocity = 96`) and starts `paintOn`.
 
 `showDrumStepMenu(lane, step)`:
 
 ```cpp
 void GridStagePanel::showDrumStepMenu(int lane, int step) {
-    const bool fill = fillView_;
+    const bool fill = fillView();
     visage::PopupMenu menu;
     if (!fill) { // a fill step has no layer: if it is drawn, it sounds
         menu.addOption(20, "Layer: Core");
@@ -5434,17 +5631,44 @@ std::string PlayPanel::formatAxisValue(int prog, bool isX, float v) const {
 
 `ui/src/editor.cpp`: `bool gridMode = true;` in `Editor::Impl`. Nothing else changes: the macro strip lays out however many knobs it has.
 
-`ui/tools/snapshot.cpp`: the usage line becomes `usage: cl-ui-snapshot <out.png> [width height] [grid|play|0..3]`. The default is the grid. `play` shows the PLAY surface with the model's program; a number shows PLAY with that program:
+`ui/include/cl/ui/editor.h` and `ui/src/editor.cpp`: add `void setFillView(bool fill);` to `Editor`. It sets `impl_->context.fillView` and redraws.
+
+`ui/tools/snapshot.cpp`: the usage line becomes `usage: cl-ui-snapshot <out.png> [width height] [grid|grid1|grid4|live|fill|slicer|play|0..3]`. The default is the grid.
 
 ```cpp
     cl::ui::FakeModel model;
     bool showGrid = true;
-    if (modeArg != nullptr && std::strcmp(modeArg, "grid") != 0) {
-        showGrid = false;
-        if (std::strcmp(modeArg, "play") != 0)
-            model.set(cl::ParamId::padProgram, static_cast<float>(std::atoi(modeArg)));
+    bool showFill = false;
+    const std::string mode = modeArg != nullptr ? modeArg : "grid";
+    if (mode == "grid1") {
+        model.showBars(1);
+    } else if (mode == "grid4") {
+        model.showBars(4);
+    } else if (mode == "live") {
+        model.showLive();
+    } else if (mode == "fill") {
+        showFill = true;
+    } else if (mode == "slicer") {
+        model.showSlicer();
+    } else if (mode != "grid") {
+        showGrid = false; // PLAY: "play" keeps the model's program, a number selects one
+        if (mode != "play")
+            model.set(cl::ParamId::padProgram, static_cast<float>(std::atoi(mode.c_str())));
     }
+
+    cl::ui::Editor editor(model);
+    editor.setGridMode(showGrid);
+    editor.setFillView(showFill);
+    editor.renderToPng(argv[1], width, height);
+    std::printf("%s %dx%d (%s)\n", argv[1], width, height, mode.c_str());
 ```
+
+Add `#include <string>`.
+
+Two things to know while porting:
+
+- Write every non-ASCII character in a string literal as a `\u` escape (`"\u00d7"`, `"\u00b7"`, `"\u2194"`), as the existing UI code does.
+- At 64 columns the cells are narrow: the ratchet badge is hidden (the `cw >= px(12)` test) and the ruler shows only the bar labels. That is expected for the minimal port.
 
 - [ ] **Step 11: Build the UI, run its tests, and look at it**
 
@@ -5455,14 +5679,19 @@ cmake --build --preset dev --target cl-ui-tests cl-ui-snapshot && build/dev/test
 Expected: the build finishes with no warnings and the tests print `All tests passed`.
 
 ```bash
-build/dev/ui/cl-ui-snapshot build/dev/grid.png grid && build/dev/ui/cl-ui-snapshot build/dev/play.png play && build/dev/ui/cl-ui-snapshot build/dev/play-drop.png 3
+for mode in grid grid1 grid4 live fill slicer play 3; do build/dev/ui/cl-ui-snapshot build/dev/shot-$mode.png $mode; done
+build/dev/ui/cl-ui-snapshot build/dev/shot-min.png 960 540 grid
 ```
 
-Expected: three lines naming the files. Open the three PNGs and check, against the fake model's pattern:
+Expected: nine lines naming the files. Open every PNG and check it against the fake model's pattern:
 
-- `grid.png`: the editor opens on GRID. The macro row has four knobs: Density, Swing, Dynamics, Fill. The grid has 32 columns with "BAR 1" and "BAR 2". The kick and hat lanes show three bar heights. At Density 60% some Detail steps are outlines. The snare's flam mark and the hat's `x2` badge are visible. PERC A shows a loop length of 7 and repeats across both bars. The header has Clone, Clear, Fill and `1 2 4` with `2` lit. There is no Mutate, Polymeter or lane lock.
-- `play.png`: four tabs, Repeat, Roll, Rate, Drop, labelled C3 to D#3; the ribbon across the top shows both bars.
-- `play-drop.png`: the Drop tab is selected.
+- `shot-grid.png`: the editor opens on GRID. The macro row has four knobs: Density, Swing, Dynamics, Fill. The grid has 32 columns with "BAR 1" and "BAR 2". The kick and hat lanes show three bar heights. At Density 60% some Detail steps are outlines. The snare's flam mark and the hat's `x2` badge are visible. PERC A shows a loop length of 7 and repeats across both bars. The header has Clone, Clear, Fill and `1 2 4` with `2` lit. There is no Mutate, Polymeter or lane lock.
+- `shot-grid1.png`: 16 columns, `1` lit. `shot-grid4.png`: 64 columns, `4` lit, four bar labels, nothing overlapping.
+- `shot-live.png`: the playhead is in bar 2; the last two beats of bar 2 are shaded amber and the fill's snare and kick steps are amber; the Repeat window tints one beat.
+- `shot-fill.png`: 16 columns titled FILL, the last two beats shaded; only the drawn fill steps (snare and kick) are lit; the hat's main-pattern steps inside the window are dim outlines; the pills read `1 2 4` with `2` lit and the label "beats".
+- `shot-slicer.png`: the gate strip has 32 columns with the default gate lit on steps 1, 4, 7, 11 and 15 of the first 16, and the length handle sits at the end of step 16 (half way along the strip), not at the far right. The header shows Clone and Clear.
+- `shot-play.png`: four tabs, Repeat, Roll, Rate, Drop, labelled C3 to D#3; the ribbon across the top shows both bars. `shot-3.png`: the Drop tab is selected.
+- `shot-min.png` (960 by 540, the minimum size): nothing is clipped or overlapping.
 
 If the snapshot tool cannot create a window in this environment, say so in your report; do not skip the tests.
 
@@ -6102,12 +6331,16 @@ bool PatternStore::reloadFromState() {
 ```cpp
 namespace {
 const juce::Identifier kFormatProp{"format"};
+const juce::Identifier kGrooveBankProp{"grooveBank"}; // the same property PatternStore writes
 } // namespace
 
+// Saving must not change the plugin: hosts call this often, and not always on the message thread.
+// Stamp the format and the bank on a COPY of the state, so nothing is re-published to the audio thread.
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
-    state.state.setProperty(kFormatProp, kGrooveFormat, nullptr);
-    patterns.set(patterns.bank()); // make sure the bank is in the tree, also for an untouched instance
-    if (const auto xml = state.copyState().createXml())
+    juce::ValueTree copy = state.copyState();
+    copy.setProperty(kFormatProp, kGrooveFormat, nullptr);
+    copy.setProperty(kGrooveBankProp, toJuce(serialiseGrooveBank(patterns.bank())), nullptr);
+    if (const auto xml = copy.createXml())
         copyXmlToBinary(*xml, destination);
 }
 
@@ -6139,7 +6372,7 @@ void PluginProcessor::loadDefaultState() {
 
 Add `#include "cl/groove_json.h"` for `kGrooveFormat`.
 
-`patterns.set(patterns.bank())` inside `getStateInformation` bumps the store's revision and re-publishes an identical bank. That is harmless, but if the host calls `getStateInformation` often it re-copies the bank to the audio thread each time; if you prefer, give `PatternStore` a `void writeToState()` that only writes the property and call that instead. Either is acceptable; say which you chose.
+Add one plugin test for this, beside the others in `tests/plugin/PluginTests.cpp`: "Saving state does not republish the bank": read `proc.patterns.revision()`, call `getStateInformation` twice, and check the revision is unchanged.
 
 - [ ] **Step 8: Port presets, export and the model**
 
@@ -6164,6 +6397,8 @@ remove `mutateActiveScene`, `polymeterActiveScene` and `actionCounter_`, and add
 ```cpp
     mutable GrooveState groove_{};
     mutable std::uint32_t grooveRevision_ = 0xffffffffu; // never equal to the store's first revision
+    SlicerPlan previewPlan_{};     // the slicer phrase shown while the transport is stopped
+    SlicerInputs previewInputs_{}; // what previewPlan_ was compiled from
 ```
 
 `plugin/src/PluginModel.cpp`:
@@ -6203,8 +6438,16 @@ void PluginModel::refreshVisuals() {
     visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
     visuals_.position = {};
     visuals_.bpm = bpm;
-    if (p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer))
-        compileSlicer(p, groove(), scene, visuals_.heldNotes, bpm, visuals_.slicerPlan);
+    if (p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
+        // The preview phrase: recompiled only when something it depends on changed, not on every UI tick.
+        const GrooveState& state = groove();
+        const SlicerInputs now = slicerInputs(p, scene, visuals_.heldNotes, bpm, grooveRevision_);
+        if (!now.sameAs(previewInputs_)) {
+            compileSlicer(p, state, scene, visuals_.heldNotes, bpm, previewPlan_);
+            previewInputs_ = now;
+        }
+        visuals_.slicerPlan = previewPlan_;
+    }
 }
 
 void PluginModel::cloneActiveSceneToNext() {
@@ -6309,7 +6552,7 @@ Run from the repository root. In `factory/showcase/clips_cutline.cpp`:
 
 - Add `#include "cl/groove_state.h"`.
 - Every `clEng.setPatternBank(clParsed->bank);` becomes `clEng.setGroove(cl::GrooveState(clParsed->bank));`.
-- Preset file names: `amen-chop-172.json` becomes `amen.json`; `strike-body-neuro-snare.json` becomes `neuro.json`; `afro-7-11-polyrhythm.json` becomes `afro.json`; `halftime-85-colossus.json` becomes `halftime.json`. The two slicer presets keep their names.
+- Preset file names: `amen-chop-172.json` becomes `amen.json`; `strike-body-neuro-snare.json` becomes `neuro.json`; `afro-7-11-polyrhythm.json` becomes `afro.json`; `halftime-85-colossus.json` becomes `halftime.json`. The two slicer presets keep their names. The clip that used `strike-body-neuro-snare.json` drives the Strike Body engine, and `neuro.json` uses the default kit map: after loading it, set `clP[cl::ParamId::noteMap] = static_cast<float>(cl::NoteMap::strikeBody);` so the notes still reach Strike Body's articulations.
 - Pad programs: `cl::PadProgram::poly`, `slice` and `stutter` become `cl::PadProgram::repeat`; `bounce` becomes `cl::PadProgram::roll`; `roll` and `drop` keep their names.
 - `clParams[cl::ParamId::gravity] = ...` becomes `clParams[cl::ParamId::swing] = ...` with the same expression scaled into 0..1 (multiply by 0.76 and clamp).
 - Any other use of a removed parameter (`chop`, `ghosts`, `complexity`, `fills`, `ratchet`, `style`, `variation`, `fillType`, `attractor`, `phraseBars`) is deleted. Where a clip relied on one to build intensity, automate `cl::ParamId::density` over the same span instead.
@@ -6377,6 +6620,13 @@ In `docs/specs/2026-11-26-groove-model-design.md`:
 - MIDI export: the clip is `bars * 4 / rate` beats long, and a hit that starts before bar 1 or after the last bar is wrapped to the other end of the clip.
 - Pad programs: one sentence on what the pads do in MIDI Slicer mode (Repeat loops the phrase's notes, Roll retriggers the held notes, Drop's right half does nothing).
 - UI: the grid header has `1 | 2 | 4` pills for bars and, in the fill view, for fill beats.
+- Resolve / Timing, from the engine review rounds in Task 3. Add, in the engine's own terms:
+  - Scene switches: a step plays from the scene that is active at the step's grid time, so the old scene's late hits and the new scene's early hits both sound. Known limits: a switch quantized to 1/16 or 1/4 cannot play a hit that should have started before the switch was requested, and only one switch boundary is remembered at a time.
+  - Shift moves the whole pattern, and scene and pad switches fall on the shifted pattern's grid.
+  - `fillNow` and the fill schedule are latched together, once per bar.
+  - Two lanes that share a MIDI note and land on the same sample send one note-on, with the higher velocity (live and in export).
+  - Note-offs are sent in time order with note-ons, and a block never sends more note-ons than leave room for the note-offs they need.
+- Pad programs: pads engage on the next 1/16 and release at once (already added in Task 3); in the block where a pad engages, the pattern plays up to the switch point.
 - Out of scope, release work: add "the release recall fixture `factory/release/fixtures/cutline.vststate`, which must be regenerated before Cutline 3 ships".
 
 Change nothing else in the spec.
@@ -6422,10 +6672,13 @@ Expected: `0` for files this plan created or rewrote. For files it edited in par
 
 - [ ] **Step 7: Record the outcome in this plan and commit**
 
-Tick the boxes in this file. Under a new last section, "What changed during execution", list every place the committed code differs from this plan's code blocks and why, and under "Not verified here" list at least: RealtimeSanitizer (CI only), `git-clang-format` against the pinned clang-format (CI only), a DAW session (Ableton Live: bank 1 mapping, transport loop, pre-roll, scene quantize, MIDI drag), anything heard (nobody has listened to the patterns, the fills, Swing or the pads), Windows and Linux builds, and the release recall fixture.
+Tick the boxes in this file. The second `git status` in the block below must show nothing left unstaged under `products/cutline`: Step 3's comment edits live in source files, and `git add -u` stages them. Under a new last section, "What changed during execution", list every place the committed code differs from this plan's code blocks and why, and under "Not verified here" list at least: RealtimeSanitizer (CI only), `git-clang-format` against the pinned clang-format (CI only), a DAW session (Ableton Live: bank 1 mapping, transport loop, pre-roll, scene quantize, MIDI drag), anything heard (nobody has listened to the patterns, the fills, Swing or the pads), Windows and Linux builds, and the release recall fixture.
 
 ```bash
+git status --short -- .
 git add README.md docs
+git add -u -- core engine plugin ui tools tests CMakeLists.txt
+git status --short -- .
 git commit -m "docs(cutline): describe Cutline 3 and sync the spec and plan with what was built"
 ```
 
