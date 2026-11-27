@@ -66,6 +66,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Dtm1",
       "license": "AGPL-3.0-or-later"
+    },
+    "prism-vein": {
+      "name": "Prism Vein",
+      "artifacts": "plugin/PrismVein_artefacts/Release",
+      "bundle": "com.humanbeingmusic.prismvein",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Prvn",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }
