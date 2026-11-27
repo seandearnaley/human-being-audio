@@ -34,6 +34,7 @@ struct Run {
     std::map<int, int> open;      // note -> note-ons minus note-offs
     std::vector<NoteOn> noteOffs; // note-offs of notes that were on, velocity 0
     int controlChanges = 0;
+    std::vector<std::int64_t> ccSamples; // where each control change was sent
     double endBeat = 0.0;
 };
 
@@ -54,23 +55,25 @@ void take(Run& out, const MidiEventBuffer& midi, std::int64_t firstSample) {
             }
         } else if ((ev.data[0] & 0xF0u) == 0xB0u) {
             ++out.controlChanges;
+            out.ccSamples.push_back(firstSample + ev.sampleOffset);
         }
     }
 }
 
-template <typename ParamsAt> Run play(Engine& eng, double hostBars, ParamsAt&& paramsAt, int blockSize = kBlock) {
+template <typename ParamsAt>
+Run play(Engine& eng, double hostBars, ParamsAt&& paramsAt, int blockSize = kBlock, double bpm = kBpm) {
     Run out;
     std::vector<float> l(static_cast<std::size_t>(blockSize)), r(static_cast<std::size_t>(blockSize));
     MidiEventBuffer midi;
-    const double bps = kBpm / 60.0 / kSr;
+    const double bps = bpm / 60.0 / kSr;
     const int blocks = static_cast<int>(std::ceil(hostBars * 4.0 / bps / static_cast<double>(blockSize)));
     double ppq = 0.0;
     for (int blk = 0; blk < blocks; ++blk) {
-        eng.process(paramsAt(ppq), {kBpm, ppq, true}, midi, l.data(), r.data(), blockSize);
+        eng.process(paramsAt(ppq), {bpm, ppq, true}, midi, l.data(), r.data(), blockSize);
         take(out, midi, static_cast<std::int64_t>(blk) * blockSize);
         ppq += bps * static_cast<double>(blockSize);
     }
-    eng.process(paramsAt(ppq), {kBpm, ppq, false}, midi, l.data(), r.data(), blockSize); // stop: flushes what is held
+    eng.process(paramsAt(ppq), {bpm, ppq, false}, midi, l.data(), r.data(), blockSize); // stop: flushes what is held
     take(out, midi, static_cast<std::int64_t>(blocks) * blockSize);
     out.endBeat = ppq;
     return out;
@@ -520,4 +523,123 @@ TEST_CASE("A pattern hit before the pad's switch point keeps its velocity in CC7
             percA = &on;
     REQUIRE(percA != nullptr);
     CHECK(percA->velocity == 90);
+}
+
+TEST_CASE("Drop silences when its switch point lands on the block's end", "[engine][pads]") {
+    // 120 BPM, 1000-sample blocks: every 6th block ends exactly on a 1/16, so the block ending at 2.5 commits the
+    // Drop with its switch point on the block's end. The snare at 2.28125 (step 9, nudged +3, Gate 1.0) would ring
+    // to 2.54: it must stop at the Drop point.
+    GrooveBank bank;
+    bank.scenes[0] = Pattern{};
+    for (const int step : {8, 9}) {
+        Step& st = bank.scenes[0].lanes[1].steps[static_cast<std::size_t>(step)];
+        st.velocity = 96;
+        st.layer = Layer::core;
+    }
+    bank.scenes[0].lanes[1].steps[9].nudge = 3;
+    constexpr int kGridBlock = 1000;
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kGridBlock);
+    eng.setGroove(GrooveState(bank));
+    const Run run = play(
+        eng, 1.0,
+        [](double ppq) {
+            Params p;
+            p[ParamId::gateLen] = 1.0f;
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::drop);
+            p[ParamId::padX] = 0.2f; // silence
+            p[ParamId::padTouch] = ppq >= 2.30 ? 1.0f : 0.0f;
+            return p;
+        },
+        kGridBlock, bpm);
+    const auto dropAt = static_cast<std::int64_t>(std::llround(2.5 / bps));
+    REQUIRE(dropAt % kGridBlock == 0); // the Drop point is a block boundary
+    const auto snareAt = static_cast<std::int64_t>(std::floor(2.28125 / bps + 1.0e-7));
+    bool snare = false;
+    for (const auto& on : run.noteOns) {
+        if (on.note != 38 || std::llabs(on.sample - snareAt) > 1)
+            continue;
+        snare = true;
+        std::int64_t off = -1;
+        for (const auto& o : run.noteOffs) {
+            if (o.note == 38 && o.sample >= on.sample) {
+                off = o.sample;
+                break;
+            }
+        }
+        INFO("snare off at host beat " << static_cast<double>(off) * bps);
+        CHECK((off >= 0 && off <= dropAt + 1));
+    }
+    CHECK(snare);
+}
+
+TEST_CASE("A pending pad engage is re-quantized after the transport jumps back", "[engine][pads]") {
+    // Roll is touched at beat 5.1 (due at 5.25); the host jumps back to 1.03 before it commits, so the first roll
+    // note falls on the next 1/16 after the jump, 1.25.
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    Run run;
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    const double bps = kBpm / 60.0 / kSr;
+    bool touched = false;
+    double ppq = 0.0;
+    std::int64_t sample = 0;
+    const auto step = [&]() {
+        touched = touched || ppq >= 5.1;
+        Params p;
+        p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
+        p[ParamId::padX] = 0.3f;
+        p[ParamId::padY] = 1.0f;
+        p[ParamId::padTouch] = touched ? 1.0f : 0.0f;
+        eng.process(p, {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        take(run, midi, sample);
+        sample += kBlock;
+        ppq += bps * static_cast<double>(kBlock);
+    };
+    while (!touched)
+        step();
+    REQUIRE_FALSE(eng.padEngaged());
+    ppq = 1.03; // the jump, before the engage commits
+    const std::int64_t jumpSample = sample;
+    while (ppq < 2.0)
+        step();
+    const NoteOn* firstRoll = nullptr;
+    for (const auto& on : run.noteOns) {
+        if (on.sample >= jumpSample && on.note == 38 && on.velocity == 127) {
+            firstRoll = &on;
+            break;
+        }
+    }
+    REQUIRE(firstRoll != nullptr);
+    const double at = 1.03 + static_cast<double>(firstRoll->sample - jumpSample) * bps;
+    INFO("first roll note at beat " << at);
+    CHECK(std::abs(at - 1.25) <= 2.0 * bps);
+}
+
+TEST_CASE("No pad CC is sent before the pad's switch point in the block where it engages", "[engine][pads]") {
+    constexpr int kBig = 2048;
+    const double bps = kBpm / 60.0 / kSr;
+    Engine eng;
+    eng.prepare(kSr, kBig);
+    const Run run = play(
+        eng, 1.0,
+        [](double ppq) {
+            Params p;
+            p[ParamId::padCcMode] = static_cast<float>(PadCcMode::cc74AndCc1);
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::rate);
+            p[ParamId::padX] = 0.5f;
+            p[ParamId::padTouch] = ppq >= 2.05 ? 1.0f : 0.0f;
+            return p;
+        },
+        kBig);
+    const auto padAt = static_cast<std::int64_t>(std::floor(2.25 / bps));
+    REQUIRE(padAt % kBig != 0); // the switch point is inside a block
+    REQUIRE_FALSE(run.ccSamples.empty());
+    for (const auto at : run.ccSamples) {
+        INFO("CC at host beat " << static_cast<double>(at) * bps);
+        CHECK(at >= padAt - 1);
+    }
 }

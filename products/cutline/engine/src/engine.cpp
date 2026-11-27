@@ -450,10 +450,13 @@ void Engine::Impl::releaseEndingBy(const Block& b, double beat, bool strict,
 
 // Sorts this block's hits by time (stable, so equal times keep lane order) and starts them. Note-offs are sent in
 // the same time order: a note that ends after a hit starts is still active when the hit retriggers it, so its
-// note-off comes before the new note-on rather than cutting it. `silenceAt` (Drop's left half engaging inside the
-// block) releases everything still sounding at that beat, after the hits before it have started.
+// note-off comes before the new note-on rather than cutting it. `silenceAt` (Drop's left half committing in this
+// block; the double maximum when none) releases everything still sounding at that beat, after the hits before it have
+// started.
 void Engine::Impl::emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING {
-    bool silenced = !(silenceAt < b.windowEnd);
+    // A silence is requested whenever silenceAt is given, even when it lands on (or within kBeatEps past) the block's
+    // end, where the pad commits too; the flush offset then clamps to the block's last sample.
+    bool silenced = silenceAt == std::numeric_limits<double>::max();
     const auto silenceNow = [&]() noexcept CL_NONBLOCKING {
         releaseEndingBy(b, silenceAt, true, outMidi);
         flushAllActive(outMidi, sampleOffsetOf(silenceAt, b.rawStart, b.beatsPerSample, b.numSamples));
