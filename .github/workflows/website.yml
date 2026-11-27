@@ -17,6 +17,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Check that the production download tests load
+        run: npx playwright test --config release --list
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
