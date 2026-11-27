@@ -38,6 +38,7 @@ if(CL_BUILD_PLUGIN)
 
     add_executable(cl-ui-tests ui/CurveEditTests.cpp ui/GridEditTests.cpp)
     hba_build_for_host_only(cl-ui-tests)
+    target_sources(cl-ui-tests PRIVATE ui/PlaySurfaceTests.cpp)
     target_include_directories(cl-ui-tests PRIVATE ${PROJECT_SOURCE_DIR}/ui/src)
     target_link_libraries(cl-ui-tests PRIVATE cl_ui Catch2::Catch2WithMain cl_warnings)
     catch_discover_tests(cl-ui-tests DISCOVERY_MODE PRE_TEST)

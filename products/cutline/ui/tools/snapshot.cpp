@@ -8,9 +8,8 @@
 
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 5) {
-        std::fprintf(
-            stderr,
-            "usage: cl-ui-snapshot <out.png> [width height] [grid|grid1|grid4|live|fill|slicer|play|padmidi|0..3]\n");
+        std::fprintf(stderr, "usage: cl-ui-snapshot <out.png> [width height] "
+                             "[grid|grid1|grid4|live|fill|slicer|play|padmidi|pad0..pad5|slicerplay|slicerpad0..5]\n");
         return 2;
     }
     int width = cl::ui::kDefaultWidth;
@@ -41,12 +40,24 @@ int main(int argc, char** argv) {
     } else if (mode == "slicer") {
         model.showSlicer();
     } else if (mode == "padmidi") {
-        showGrid = false; // PLAY with Pad MIDI on
-        model.set(cl::ParamId::padMidi, 1.0f);
+        showGrid = false; // PLAY with Pad MIDI on, Roll held from its key (C#3)
+        model.showPad(1, true);
+    } else if (mode.rfind("slicerpad", 0) == 0) {
+        showGrid = false; // PLAY in MIDI Slicer mode with a program engaged
+        model.showSlicer();
+        model.showPad(std::atoi(mode.c_str() + 9));
+    } else if (mode == "slicerplay") {
+        showGrid = false; // PLAY in MIDI Slicer mode, a chord held
+        model.showSlicer();
+        model.showPlaying();
+    } else if (mode.rfind("pad", 0) == 0) {
+        showGrid = false; // PLAY with program N engaged partway through the bar
+        model.showPad(std::atoi(mode.c_str() + 3));
     } else if (mode != "grid") {
-        showGrid = false; // PLAY: "play" keeps the model's program, a number selects one
+        showGrid = false; // PLAY: "play" keeps the model's program, a number selects one; the pattern plays
         if (mode != "play")
             model.set(cl::ParamId::padProgram, static_cast<float>(std::atoi(mode.c_str())));
+        model.showPlaying();
     }
 
     cl::ui::Editor editor(model);

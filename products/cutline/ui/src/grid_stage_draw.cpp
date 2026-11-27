@@ -331,8 +331,8 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     const int scene = editScene();
     const bool live = vis.playing && vis.activeScene == scene;
     const Pattern& pattern = groove.bank.scenes[static_cast<std::size_t>(scene)];
-    const float density = context_.model.get(ParamId::density);
-    const float dynamics = context_.model.get(ParamId::dynamics);
+    const float density = vis.position.density;   // the engine's: the Density pad's while it is held
+    const float dynamics = vis.position.dynamics; // likewise
     const auto noteMap = static_cast<NoteMap>(
         std::clamp(static_cast<int>(context_.model.get(ParamId::noteMap) + 0.5f), 0, kNoteMapCount - 1));
     const bool anySolo =

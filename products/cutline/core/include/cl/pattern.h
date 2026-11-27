@@ -18,11 +18,9 @@ inline constexpr int kDrumLaneCount = 8;
 inline constexpr std::array<std::string_view, kDrumLaneCount> kDrumLaneNames{"KICK",   "SNARE",  "GHOST",  "CLAP",
                                                                              "CL HAT", "OP HAT", "PERC A", "PERC B"};
 
+// The PLAY programs, in padProgram order. Their X and Y zones are drawn from cl/pad_programs.h.
 inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadLabels{"Repeat", "Roll", "Density",
                                                                             "Rate",   "Drop", "Fill"};
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadXLabels{"Window", "Rate", "Density",
-                                                                             "Speed",  "Drop", ""};
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadYLabels{"Gate", "Lane", "Dynamics", "Kit", "", ""};
 // Pad MIDI: C3 to F3 engage the programs in this order.
 inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadHints{"C3", "C#3", "D3", "D#3", "E3", "F3"};
 

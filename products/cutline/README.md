@@ -19,18 +19,22 @@ Literal steps on 8 lanes, in three layers: Core, Groove and Detail. Nothing in p
 
 Drawn, and off by default. A lane with nothing drawn in the fill keeps playing the main pattern.
 
-## Pads (interim)
+## PLAY
 
-Four programs on the PLAY surface. They engage on the next 1/16 and release at once.
+Six programs on the PLAY surface, locked to the grid. They engage on the next 1/16, release at once, and return to the pattern in phase.
 
 | Pad | X | Y |
 |-----|---|---|
 | Repeat | window: 1, 1/2, 1/4 or 1/8 beat | gate length |
-| Roll | snare roll: 1/8, 1/16, 1/16T, 1/32 | velocity |
+| Roll | 1/8, 1/16, 1/16T, 1/32; velocity rises from 72 to 120 across each bar | lane: kick, snare, closed hat (bottom to top); the other lanes keep playing |
+| Density | Density, while held | Dynamics, while held |
 | Rate | 0.5x, 1x or 2x | under 30% kick and snare; over 70% no kick |
-| Drop | left half silence, right half the fill | none |
+| Drop | four zones: silence; kick only; kick and snare; everything except kick | none |
+| Fill | none: while held, every bar plays its fill | none |
 
-Pad MIDI (C3 to D#3) and XY to CC are off by default.
+The surface draws the notes Cutline actually sent, one row per lane, fading over a bar, over faint outlines of the pattern. In MIDI Slicer mode it draws one row per pitch; Density and Fill do nothing there, and Drop only silences.
+
+Pad MIDI (C3 to F3, in drum mode) and XY to CC are off by default. Bypassing Cutline sends a note-off for every note it has sounding.
 
 ## MIDI Slicer
 

@@ -33,6 +33,10 @@ class FakeModel final : public Model {
     void showLive();         // the last bar with its fill live, and a one-beat Repeat window held
     void showSlicer();       // MIDI Slicer mode
     void showPending();      // a 1 Bar scene switch to scene B waiting for the next bar
+    // PLAY: the real engine plays the pattern for a few bars, so the surface draws the notes it sent.
+    void showPlaying();
+    // ...and engages a program (0..5) partway through the last bar, by touch or, with `viaMidi`, by its Pad MIDI key.
+    void showPad(int program, bool viaMidi = false);
 
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
@@ -50,6 +54,7 @@ class FakeModel final : public Model {
 
   private:
     void refresh();
+    void simulate();
 
     Params params_;
     LaneCurves curves_ = defaultLaneCurves();
@@ -63,6 +68,11 @@ class FakeModel final : public Model {
     int undoSnapshots_ = 0;
     int stateWrites_ = 0;
     std::string presetName_ = "Amen";
+    // PLAY simulation: off until showPlaying or showPad.
+    bool simulate_ = false;
+    int simProgram_ = -1; // the program engaged partway through, or -1
+    bool simViaMidi_ = false;
+    std::uint32_t simSeq_ = 0;
 };
 
 } // namespace cl::ui

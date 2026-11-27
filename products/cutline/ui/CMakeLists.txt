@@ -19,6 +19,7 @@ add_library(cl_ui STATIC
     src/movement_panel.cpp
     src/pad_art.cpp
     src/pad_art.h
+    src/sent_history.h
     src/panel.cpp
     src/panels.h
     src/play_panel.cpp

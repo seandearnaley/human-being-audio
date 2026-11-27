@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cutline 3 dark-chrome design tokens, the 8-lane palette and the four pad colours.
+// Cutline 3 dark-chrome design tokens, the 8-lane palette and the six pad colours.
 #pragma once
 
 #include "cl/ui/model.h"
@@ -46,7 +46,7 @@ inline constexpr unsigned amber = 0xffffa01e;     // Solar amber
 inline constexpr unsigned vermilion = 0xffff4e3e; // Blaze vermilion
 inline constexpr unsigned coral = 0xffff4593;     // Hyper coral
 inline constexpr unsigned emerald = 0xff28df8a;   // Neon emerald
-inline constexpr unsigned dropRed = 0xffff6a52;   // Laser coral-red
+inline constexpr unsigned sky = 0xff4f8cff;       // Signal blue
 
 inline constexpr std::array<unsigned, kDrumLaneCount> lane{
     vermilion, // 0: KICK
@@ -62,8 +62,10 @@ inline constexpr std::array<unsigned, kDrumLaneCount> lane{
 inline constexpr std::array<unsigned, kPerfPadCount> pad{
     coral,     // 0: Repeat
     vermilion, // 1: Roll
-    teal,      // 2: Rate
-    dropRed,   // 3: Drop
+    iris,      // 2: Density (the GRID's Density knob)
+    teal,      // 3: Rate
+    sky,       // 4: Drop
+    amber,     // 5: Fill (the GRID's fill colour)
 };
 
 inline unsigned lerpArgb(unsigned a, unsigned b, float t) {

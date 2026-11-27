@@ -4,8 +4,10 @@
 #include "cl/phrase.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace cl::ui {
 
@@ -159,6 +161,10 @@ void FakeModel::refresh() {
     // flam is not under the playhead. A switch to scene B waits for the next bar.
     const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);
     visuals_.position = {};
+    visuals_.position.density = params_[ParamId::density];
+    visuals_.position.dynamics = params_[ParamId::dynamics];
+    visuals_.position.beatInBar = 3.25f;
+    visuals_.sentCount = 0;
     visuals_.position.absBar = 12;
     visuals_.position.barInPattern = 12 % bars;
     visuals_.position.stepInBar = 13;
@@ -189,6 +195,108 @@ void FakeModel::refresh() {
             lanePhase(visuals_.ppq, laneLengthQuarters(params_, l), params_[laneParam(l, LaneField::phase)]));
         visuals_.laneValue[idx] = static_cast<float>(laneSend(params_, curves_, l, visuals_.ppq));
     }
+    if (simulate_)
+        simulate();
+}
+
+void FakeModel::showPlaying() {
+    simulate_ = true;
+    refresh();
+}
+
+void FakeModel::showPad(int program, bool viaMidi) {
+    // Where each program's puck sits in the screenshots: a half-beat Repeat, a 1/16T snare roll, Density up with
+    // Dynamics down, double speed, kick and snare only, and Fill (no axes).
+    struct Puck {
+        float x;
+        float y;
+    };
+    constexpr std::array<Puck, kPerfPadCount> kPucks{
+        {{0.30f, 0.62f}, {0.62f, 0.50f}, {0.95f, 0.30f}, {0.86f, 0.50f}, {0.62f, 0.50f}, {0.50f, 0.50f}}};
+    const int p = std::clamp(program, 0, kPerfPadCount - 1);
+    params_[ParamId::padProgram] = static_cast<float>(p);
+    params_[ParamId::padX] = kPucks[static_cast<std::size_t>(p)].x;
+    params_[ParamId::padY] = kPucks[static_cast<std::size_t>(p)].y;
+    if (viaMidi)
+        params_[ParamId::padMidi] = 1.0f;
+    simProgram_ = p;
+    simViaMidi_ = viaMidi;
+    simulate_ = true;
+    refresh();
+}
+
+// Plays the bank through the real engine from beat 0 to step 13 of the third bar, the program engaged on beat 2 of
+// that bar, and shows the last bar of what it sent, with the telemetry the plugin would read at that moment.
+void FakeModel::simulate() {
+    constexpr double kSampleRate = 48000.0;
+    constexpr int kBlock = 256;
+    const double bpm = visuals_.bpm;
+    const double end = 4.0 * 2.0 + 3.35;
+    const double engageAt = 4.0 * 2.0 + 1.0;
+    const bool slicer = params_.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer);
+
+    Engine engine;
+    engine.prepare(kSampleRate, kBlock);
+    engine.setGroove(groove_);
+    engine.setLaneCurves(curves_);
+    if (slicer)
+        for (const int note : {48, 55, 67}) // a held chord, clear of the Pad MIDI keys
+            engine.inputNoteOn(note, 100, 0.0);
+
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    std::vector<SentNote> sent;
+    const double beatsPerBlock = bpm / 60.0 / kSampleRate * static_cast<double>(kBlock);
+    double ppq = 0.0;
+    bool engaged = false;
+    for (; ppq + beatsPerBlock <= end; ppq += beatsPerBlock) {
+        Params p = params_;
+        p[ParamId::padTouch] = 0.0f;
+        p[ParamId::padHold] = 0.0f;
+        if (simProgram_ >= 0 && ppq >= engageAt) {
+            if (simViaMidi_ && !engaged)
+                engine.inputNoteOn(60 + simProgram_, 100, ppq);
+            else if (!simViaMidi_)
+                p[ParamId::padTouch] = 1.0f;
+            engaged = true;
+        }
+        engine.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        for (const SentNote& note : engine.sentNotes())
+            sent.push_back(note);
+    }
+
+    // The last bar of what was sent (on the pattern's clock), newest last, numbered as the plugin's ring numbers them.
+    const PlayPosition pos = engine.position();
+    const double barHost = 4.0 / std::max(0.05, static_cast<double>(pos.rate));
+    std::vector<SentNote> recent;
+    for (const SentNote& note : sent)
+        if (note.ppq > ppq - barHost)
+            recent.push_back(note);
+    const std::size_t from = recent.size() > static_cast<std::size_t>(kMaxSentPerRefresh)
+                                 ? recent.size() - static_cast<std::size_t>(kMaxSentPerRefresh)
+                                 : 0;
+    visuals_.sentCount = 0;
+    for (std::size_t i = from; i < recent.size(); ++i) {
+        SentNote& out = visuals_.sent[static_cast<std::size_t>(visuals_.sentCount++)];
+        out = recent[i];
+        out.seq = ++simSeq_;
+    }
+
+    visuals_.position = pos;
+    visuals_.ppq = engine.lanePpq();
+    visuals_.playing = true;
+    visuals_.activeScene = engine.activeScene();
+    visuals_.pendingScene = engine.pendingScene();
+    visuals_.activePadProgram = engine.activePadProgram();
+    visuals_.pendingPadProgram = engine.pendingPadProgram();
+    visuals_.padEngaged = engine.padEngaged();
+    visuals_.midiPadMask = engine.midiPadMask();
+    visuals_.laneFlash = engine.laneHitFlashes();
+    visuals_.heldNotes = engine.activeHeldNotes();
+    if (slicer)
+        visuals_.slicerPlan = engine.slicerPlan();
+    visuals_.activityMask =
+        static_cast<std::uint8_t>(kActNote | (visuals_.padEngaged ? kActPad : 0) | (slicer ? kActSlice : 0));
 }
 
 const Visuals& FakeModel::visuals() { return visuals_; }

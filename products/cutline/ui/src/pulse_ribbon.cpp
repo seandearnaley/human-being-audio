@@ -108,9 +108,10 @@ void PulseRibbon::draw(visage::Canvas& canvas) {
     }
 
     if (mode == EngineMode::drum) {
-        // What sounds, from the same function and the same maps as the engine.
-        const float density = context_.model.get(ParamId::density);
-        const float dynamics = context_.model.get(ParamId::dynamics);
+        // What sounds, from the same function and the same maps as the engine, with the Density and Dynamics the
+        // engine reports (the Density pad's while it is held).
+        const float density = v.position.density;
+        const float dynamics = v.position.dynamics;
         const int liveFillBar = (v.playing && v.position.fillLive) ? v.position.barInPattern : -1;
         const grid::View view = grid::resolveView(groove, scIdx, density, dynamics, liveFillBar);
         const float laneH = innerH / static_cast<float>(kDrumLaneCount);
