@@ -42,7 +42,7 @@ Plays the notes you hold through a literal gate strip of up to 32 steps: Stab Ch
 
 ## Files
 
-Patterns and presets are JSON with `"format": 3`. Cutline 2 presets are rejected, and a Cutline 2 session opens on the default beat.
+Patterns and presets are JSON with `"format": 3`. Cutline 2 presets are not loaded: they do not appear in the preset list, and no message says why. A Cutline 2 session opens on the default beat.
 
 ## For developers
 

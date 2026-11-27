@@ -67,7 +67,7 @@ While a preset is partly broken, do not run `ctest --preset ...` for it: CTest r
 ### Decisions this plan makes where the spec is silent
 
 - **Default slicer gate.** A new bank's slicer strip is `x..x..x...x...x.` (the spec's own example), not empty. Otherwise switching the default state to MIDI Slicer plays nothing.
-- **Pattern length control.** The grid header gets `1 | 2 | 4` bar pills, and the fill view gets `1 | 2 | 4` beat pills. Growing a pattern copies the existing bars into the new ones, so it sounds the same until edited. Shrinking drops the hidden bars.
+- **Pattern length control.** The grid header gets `1 | 2 | 4` bar pills, and the fill view gets `1 | 2 | 4` beat pills. Growing a pattern copies the existing bars into the new ones, so a lane that follows the pattern sounds the same until edited. A lane with its own loop length keeps that length and loops on across the new bars instead of restarting each bar (corrected in the final fix round: a 12-step lane in a 1-bar pattern plays 0..11, 0..3; grown to 2 bars it plays 0..11, 0..11, 0..7). Shrinking drops the hidden bars.
 - **Pads in MIDI Slicer mode.** Repeat loops the slicer's notes inside its window, Roll retriggers the held notes, Rate works as in drum mode, Drop's left half is silence and its right half does nothing.
 - **Pattern presets carry default parameters.** The 11 pattern presets are the pattern plus defaults (Swing 0%). The five slicer presets carry their 2.0 Swing where their 2.0 pocket was MPC Swing. They do not carry their 2.0 Dynamics (0.70 to 0.76): that knob meant accent, jitter and swell amount in 2.0 and means velocity contrast around 64 in 3.0, where 50% is the identity, so they load at 50%. Per-preset Swing for the pattern presets waits for the library spec's listening pass.
 - **Factory categories.** Breaks (Amen, Think, Electro), Neuro (Neuro, Halftime), Club (UKG, Footwork, Stepper, Trap, Drill, Afro), MIDI Slicer (5).
@@ -6742,6 +6742,7 @@ The plugin writes its saved state onto a copy, so saving changes nothing in the 
 - A scene switch quantized to 1/16 or 1/4 cannot play a hit that should have started before the switch was requested.
 - Only one scene switch boundary is remembered at a time.
 - In MIDI Slicer mode, a scene switch inside a block plays the new scene's phrase for that whole block.
+- Cutline 2 user presets are not loaded and no message is shown. `Presets::scan` reads user presets through the shared `hba::host::appendUserPresets`, which drops a file that does not parse together with its error, so `kOldFormatError` never reaches anyone: a Cutline 2 preset simply does not appear in the list. The shared module was left alone. Whether to show a message is a decision for the founder.
 
 ### Minor items left for the whole-branch review
 
@@ -6761,6 +6762,25 @@ The plugin writes its saved state onto a copy, so saving changes nothing in the 
 - UI: the mouse handlers are tested only through the pure helpers. `DragGesture` has no test for an upward-only drag or a drag exactly at the threshold. No test covers `FakeModel::clearActiveScene` emptying the gate strip in MIDI Slicer mode. The PLAY dock still shows the Quant chip, which now governs scenes only, and its drag label is set at construction. At 64 columns the loop handle's hit zone is about 4.5 px either side.
 - Plugin: `getStateInformation`'s comment overstates how safe it is off the message thread. `reloadFromState` leaves unparseable text in the tree on failure and publishes twice. History is not cleared on a state load. Clone takes two undos. The telemetry's slicer plan goes stale after leaving slicer mode. `kGrooveBankProp` is defined in two files. A wrong root tag and a missing `grooveBank` are untested.
 - Showcase: clip 1's two pad stages both use Repeat, and `emitClip` titles still say "Cutline 2.0", "Poly", "Bounce" and "Stutter" (website copy).
+
+### Final fix round (whole-branch review)
+
+The whole-branch review returned "merge with fixes". This round made them:
+
+- **Contiguous block windows.** While the transport runs on, each block's window starts where the last one ended, in the shifted window clock, so under tempo or Shift automation every pattern instant is played exactly once; on a start, loop or jump it starts at the host position as before. A step back of up to 1/64 beat counts as tempo automation, not a loop (a host integrates the tempo, while a block's length in beats uses the tempo at its start). A hit that falls before the block's first sample is sent on that sample and keeps its full length from there, and a hit that would start on the sample where Drop silences is not started. A test plays the default beat under a 30 BPM/s ramp at 64, 512 and 2048-sample blocks, and another automates Shift.
+- **Fill latch on a Rate change.** The latches are cleared when the block's effective rate (Rate times the Rate pad) differs from the previous block's, so a bar latched at one rate no longer plays its fill at another.
+- **Tests.** The truth tests' expected list applies the engine's same-note, same-sample merge, with an explicit test of a step nudged onto its neighbour. A seeded fuzz in drum and MIDI Slicer mode, a 4-bar loop test, a plugin test with a playing transport (default beat, an edit, a state load), state with a wrong root tag or no bank, and a test that pins `setPatternBars` on a looped lane.
+- **PLAY.** The dock has a Pad MIDI toggle in place of the Quant chip (scene quantize stays in the GRID setup panel). The tabs' key hints and the badge's "MIDI C3" show only while Pad MIDI is on. The fill view's footer no longer mentions layers.
+- **Clean-ups.** The engine's `silenced` flag is now `silencePending`. `kGrooveBankProp` is defined once. Comments corrected: `setPatternBars`, the kit-map order, `getStateInformation`'s thread safety, and the showcase's clip 3.
+
+### Open questions for the founder
+
+- The pattern plays during host pre-roll at negative positions, including a count-in. Cutline 2 was silent before beat 0; the spec only says hit times are not clamped.
+- Bypassing the plugin while a slicer note sounds may leave that note hanging: `processBlockBypassed` is not overridden (the same as 2.0).
+- A host loop whose length the pattern does not divide (a 3-bar loop over a 2-bar pattern): the pattern follows the transport position, so each pass cuts the pattern short and starts again from the loop start's position. Nothing was decided for it.
+- All grid edits share one undo tag, so two different edits within the coalescing window undo together.
+- Every drag tick serialises the whole bank into the state tree.
+- Whether to tell the user that a Cutline 2 preset was not loaded (see "Known limits that were accepted").
 
 ### Not verified here
 

@@ -243,7 +243,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                  std::move(out), -12.2);
     }
 
-    // 3. Afro 7/11 Polyrhythm + Bounce Gravity X/Y
+    // 3. Afro 7/11 Polyrhythm + Roll X/Y turnaround
     {
         auto audio = renderCutlineDrums(clDir / "afro.json", 126.0, 4, [](cl::Params& p, double t) {
             if (t >= 0.62 && t < 0.88) {

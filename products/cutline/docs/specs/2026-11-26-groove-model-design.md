@@ -241,8 +241,9 @@ the tests all use; none of it is random.
   scene's late hits and the new scene's early hits both sound. Known limits: a switch quantized to
   1/16 or 1/4 cannot play a hit that should have started before the switch was requested, and only
   one switch boundary is remembered at a time.
-- Two lanes that share a MIDI note and land on the same sample send one note-on, with the higher
-  velocity. MIDI export merges them the same way.
+- Two hits of the same note on the same sample send one note-on with the higher velocity, whether
+  they come from two lanes sharing a note or from one lane (for example a step nudged onto its
+  neighbour). MIDI export merges them the same way.
 - Note-offs are sent in time order with note-ons, and a block never sends more note-ons than leave
   room for the note-offs they need.
 
@@ -321,6 +322,7 @@ Ported, not redesigned.
 - The gate strip is `slicerSteps`: literal on/off, velocity, ratchet, flam, nudge.
 - The slicer phrase is as long as the active scene's pattern.
 - Bass / Stab takes its bass rhythm from the kick lane of the resolved bar.
+- Bass / Stab resolves the kick lane with Density but without fills.
 - Chop and random ratchets are removed from the slicer; a step ratchets only if its
   `ratchet` says so.
 - Clip Slice keeps its capture buffer; its Chop repeat and Ratchet echo are removed.
@@ -415,6 +417,8 @@ Enough for the plugin to stay usable; the grid spec does the real design.
 - Removed from the grid toolbar: Mutate, Polymeter, lane Lock. Clone and Clear stay.
 - PLAY shows the four interim pad programs. Its art is unchanged.
 - The pulse ribbon draws from `resolveBar`.
+- During a pending scene switch, the grid shows the scene being edited while the ribbon shows the
+  scene that is playing.
 
 ## Telemetry
 
