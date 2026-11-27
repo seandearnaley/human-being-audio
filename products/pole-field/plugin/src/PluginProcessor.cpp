@@ -39,6 +39,8 @@ void PluginProcessor::prepareEngine() {
     const auto quality = static_cast<std::size_t>(
         std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
+    for (auto& delay : dryDelay_)
+        delay.prepare(engine_.latencySamples());
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -104,6 +106,33 @@ void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
     midiParser_.process(message, Sink{engine_});
 }
 
+void PluginProcessor::reset() {
+    engine_.reset();
+    for (auto& delay : dryDelay_)
+        delay.clear();
+}
+
+void PluginProcessor::advanceDryDelay(juce::AudioBuffer<float>& buffer, bool bypassed) {
+    const int channels = std::min(getMainBusNumInputChannels(), buffer.getNumChannels());
+    for (int ch = 0; ch < channels; ++ch) {
+        auto& delay = dryDelay_[static_cast<std::size_t>(ch)];
+        auto* data = buffer.getWritePointer(ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i) {
+            const float dry = delay.process(data[i]);
+            if (bypassed)
+                data[i] = dry;
+        }
+    }
+}
+
+void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    advanceDryDelay(buffer, true);
+    for (const auto event : midi)
+        if (event.numBytes <= 3)
+            handleMidi(event.getMessage());
+    midi.clear();
+}
+
 void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
 
@@ -112,6 +141,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (numSamples <= 0 || totalChannels < 1)
         return;
 
+    advanceDryDelay(buffer, false);
     const int bus0Count = std::max(1, getChannelCountOfBus(true, 0));
     const int mainCh = std::min(totalChannels, bus0Count);
     const bool isMono = mainCh == 1;

@@ -8,6 +8,7 @@
 #include "StudioHistory.h"
 #include "pf/engine.h"
 
+#include <hba/dsp/control.h>
 #include <hba/host/midi_expression.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -26,8 +27,11 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    void reset() override;
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
+
+    void processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -69,11 +73,13 @@ public:
     void parameterChanged(const juce::String& id, float value) override;
     void handleAsyncUpdate() override;
     void prepareEngine();
+    void advanceDryDelay(juce::AudioBuffer<float>& buffer, bool bypassed);
     Transport readTransport() const;
     void handleMidi(const juce::MidiMessage& message) noexcept;
 
     ParameterValues values_;
     Engine engine_;
+    std::array<hba::dsp::DelayLine<float>, 2> dryDelay_;
     hba::host::MidiExpressionParser midiParser_{2.0f};
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
