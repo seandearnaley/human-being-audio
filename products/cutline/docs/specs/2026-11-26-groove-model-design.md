@@ -236,6 +236,12 @@ the tests all use; none of it is random.
 - Hit times are not clamped. A hit may start before its bar (a flam, a negative nudge or a negative
   lane offset on the first step of a bar) or before beat 0 during host pre-roll. MIDI export deals with negative
   times itself.
+- The engine is silent before beat 0 (host pre-roll and count-in): bars before bar 1 of the timeline do not
+  play, nor do the slicer, pads or CC; the first bar's own early hits may still start just before beat 0.
+  Beat 0 is on the shifted clock, where the shifted pattern's first bar starts. A pad engaged before beat 0
+  takes effect from beat 0, and the reported position waits on the first step. From beat 0 on nothing changes:
+  a late last step of the bar before (late Swing, nudge or offset) that lands at or after beat 0 still plays,
+  as it does when the transport starts at beat 0.
 - Shift moves the whole pattern. Scene and pad switches fall on the shifted pattern's grid.
 - Scene switches: a step plays from the scene that is active at the step's grid time, so the old
   scene's late hits and the new scene's early hits both sound. Known limits: a switch quantized to

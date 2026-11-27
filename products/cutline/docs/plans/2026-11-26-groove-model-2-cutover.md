@@ -6778,9 +6778,12 @@ The whole-branch review returned "merge with fixes". This round made them:
 - **PLAY.** The dock has a Pad MIDI toggle in place of the Quant chip (scene quantize stays in the GRID setup panel). The tabs' key hints and the badge's "MIDI C3" show only while Pad MIDI is on. The fill view's footer no longer mentions layers.
 - **Clean-ups.** The engine's `silenced` flag is now `silencePending`. `kGrooveBankProp` is defined once. Comments corrected: `setPatternBars`, the kit-map order, `getStateInformation`'s thread safety, and the showcase's clip 3.
 
+### Founder decision: silent before beat 0
+
+Asked whether Cutline should stay silent before beat 0 (host pre-roll and count-in), as Cutline 2 did, the founder chose silence. Beat 0 is on the shifted window clock, where the pattern's first bar starts. Before it, no hit of an earlier bar plays, and neither does the MIDI Slicer phrase, Clip Slice, a pad program (Roll, Repeat) or any CC; the first bar's own early hits (a flam's grace, a negative nudge or lane offset) still start just before beat 0. A pad engaged during pre-roll takes effect from beat 0 (Repeat anchors there), and the reported position waits on bar 0, step 0 with no fill. From beat 0 on nothing changed: a late last step of the bar before that lands at or after beat 0 still plays, as it does when the transport starts at beat 0, so every test that starts at beat 0 kept its expectations. The rule is one constant, `kTimelineStart` in `engine_impl.h`, applied in `playBlock` (every source but the pattern plays from it), `playPattern` (earlier bars' hits before it are dropped), `beginRepeat`, the CC loop and the position telemetry. The truth test that starts at a negative position now expects only the first bar's early hits before beat 0, and new tests cover the default beat, the slicer, Clip Slice, Roll, Repeat, CC, the position and Shift during pre-roll.
+
 ### Open questions for the founder
 
-- The pattern plays during host pre-roll at negative positions, including a count-in. Cutline 2 was silent before beat 0; the spec only says hit times are not clamped.
 - Bypassing the plugin while a slicer note sounds may leave that note hanging: `processBlockBypassed` is not overridden (the same as 2.0).
 - A host loop whose length the pattern does not divide (a 3-bar loop over a 2-bar pattern): the pattern follows the transport position, so each pass cuts the pattern short and starts again from the loop start's position. Nothing was decided for it.
 - All grid edits share one undo tag, so two different edits within the coalescing window undo together.
