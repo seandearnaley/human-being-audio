@@ -77,6 +77,44 @@ struct NotesOn {
     }
 };
 
+struct NoteAt {
+    int note = 0;
+    double beat = 0.0;
+    int velocity = 0;
+};
+
+// Plays from `fromPpq` to `toPpq` under the well-formedness check and returns every note-on with its host beat.
+template <typename ParamsAt>
+std::vector<NoteAt> playNotes(Engine& eng, double bpm, double fromPpq, double toPpq, ParamsAt&& paramsAt) {
+    std::vector<NoteAt> out;
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    NotesOn notes;
+    const double bps = bpm / 60.0 / kSr;
+    for (double ppq = fromPpq; ppq < toPpq; ppq += bps * static_cast<double>(kBlock)) {
+        eng.process(paramsAt(ppq), {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        notes.take(midi);
+        for (int i = 0; i < midi.count; ++i) {
+            const auto& ev = midi.events[static_cast<std::size_t>(i)];
+            if (ev.isNoteOn())
+                out.push_back(
+                    {ev.noteNumber(), ppq + static_cast<double>(ev.sampleOffset) * bps, static_cast<int>(ev.data[2])});
+        }
+    }
+    return out;
+}
+
+// The notes of `plan` produced by gate step `step` for MIDI note `note`.
+std::vector<SlicerNote> notesOf(const SlicerPlan& plan, int step, int note) {
+    std::vector<SlicerNote> out;
+    for (int i = 0; i < plan.noteCount; ++i) {
+        const auto& n = plan.notes[static_cast<std::size_t>(i)];
+        if (n.step == step && n.note == note)
+            out.push_back(n);
+    }
+    return out;
+}
+
 } // namespace
 
 TEST_CASE("Stab Chop plays every held note on every lit gate step", "[slicer]") {
@@ -173,6 +211,59 @@ TEST_CASE("Bass / Stab takes its bass rhythm from the resolved kick lane", "[sli
     CHECK(bass == 3); // at Density 100% the Detail kick sounds, so the bass follows it
 }
 
+TEST_CASE("Bass / Stab stabs honour the gate step's ratchet, nudge, flam and velocity", "[slicer]") {
+    Params p = slicerParams(SlicerStyle::bassStab);
+    p[ParamId::strumMs] = 0.0f;
+
+    SECTION("a ratchet of 3 gives three stab hits per upper note") {
+        GrooveBank bank;
+        bank.slicerSteps[3].ratchet = 3;
+        const auto plan = compile(p, GrooveState(bank), chord());
+        CHECK(notesOf(*plan, 3, 55).size() == 3);
+        CHECK(notesOf(*plan, 3, 60).size() == 3);
+        CHECK(notesAt(*plan, 0.75 + 0.25 / 3.0) == 2);
+    }
+    SECTION("a nudge moves the stab notes by nudge / 96 beats") {
+        GrooveBank bank;
+        bank.slicerSteps[6].nudge = 12;
+        const auto plan = compile(p, GrooveState(bank), chord());
+        CHECK(notesAt(*plan, 1.5) == 0);
+        CHECK(notesAt(*plan, 1.5 + 12.0 / 96.0) == 2);
+    }
+    SECTION("a flam strums the step by the full Strum amount") {
+        GrooveBank bank;
+        bank.slicerSteps[6].flam = true;
+        p[ParamId::strumMs] = 20.0f; // 0.04 beats at 120 BPM
+        const auto plan = compile(p, GrooveState(bank), chord());
+        const auto a = notesOf(*plan, 6, 55);
+        const auto b = notesOf(*plan, 6, 60);
+        REQUIRE(a.size() == 1);
+        REQUIRE(b.size() == 1);
+        CHECK(std::abs(a[0].beat - b[0].beat) == Approx(0.04));
+        CHECK(std::min(a[0].beat, b[0].beat) == Approx(1.5));
+    }
+    SECTION("a louder gate step gives a louder stab") {
+        GrooveBank bank;
+        bank.slicerSteps[10].velocity = 127;
+        const auto plan = compile(p, GrooveState(bank), chord());
+        const auto quiet = notesOf(*plan, 3, 55);
+        const auto loud = notesOf(*plan, 10, 55);
+        REQUIRE(quiet.size() == 1);
+        REQUIRE(loud.size() == 1);
+        CHECK(loud[0].velocity > quiet[0].velocity);
+    }
+    SECTION("a kick step with ratchet 2 gives two bass notes") {
+        GrooveBank bank;
+        bank.scenes[0].lanes[0].steps[0].ratchet = 2;
+        const auto plan = compile(p, GrooveState(bank), chord());
+        int bass = 0;
+        for (int i = 0; i < plan->noteCount; ++i)
+            bass += plan->notes[static_cast<std::size_t>(i)].note == 48 ? 1 : 0;
+        CHECK(bass == 3); // two on step 0, one on step 8
+        CHECK(notesAt(*plan, 0.125) == 1);
+    }
+}
+
 TEST_CASE("Clip Slice and an empty chord compile to nothing, and compiling twice gives the same phrase", "[slicer]") {
     const GrooveState groove;
     CHECK(compile(slicerParams(SlicerStyle::clipSlice), groove, chord())->noteCount == 0);
@@ -252,45 +343,51 @@ TEST_CASE("The engine plays the slicer phrase: your notes only, and no pitch ben
 
 TEST_CASE("Slicer MIDI stays well formed with large blocks", "[engine][slicer]") {
     constexpr int kBig = 2048;
-    for (int style = 0; style < 4; ++style) {
-        Engine eng;
-        eng.prepare(kSr, kBig);
-        const HeldNotes held = chord();
-        for (int i = 0; i < held.count; ++i)
-            eng.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
-        GrooveBank bank;
-        bank.slicerSteps[3].ratchet = 4;
-        bank.slicerSteps[6].flam = true;
-        bank.slicerSteps[10].nudge = -24;
-        eng.setGroove(GrooveState(bank));
-        Params p = slicerParams(static_cast<SlicerStyle>(style));
-        p[ParamId::slicerLatch] = 1.0f;
-        p[ParamId::swing] = 0.6f;
-        p[ParamId::gateLen] = 1.0f;
+    struct Run {
+        double bpm;
+        int rate;
+    };
+    for (const Run run : {Run{132.0, 1}, Run{172.0, 2}})
+        for (int style = 0; style < 4; ++style) {
+            Engine eng;
+            eng.prepare(kSr, kBig);
+            const HeldNotes held = chord();
+            for (int i = 0; i < held.count; ++i)
+                eng.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
+            GrooveBank bank;
+            bank.slicerSteps[3].ratchet = 4;
+            bank.slicerSteps[6].flam = true;
+            bank.slicerSteps[10].nudge = -24;
+            eng.setGroove(GrooveState(bank));
+            Params p = slicerParams(static_cast<SlicerStyle>(style));
+            p[ParamId::slicerLatch] = 1.0f;
+            p[ParamId::swing] = 0.6f;
+            p[ParamId::gateLen] = 1.0f;
+            p[ParamId::seqRate] = static_cast<float>(run.rate);
 
-        std::vector<float> l(kBig), r(kBig);
-        MidiEventBuffer midi;
-        NotesOn notes;
-        const double bps = 132.0 / 60.0 / kSr;
-        double ppq = 0.0;
-        int noteOns = 0;
-        const int blocks = static_cast<int>(std::ceil(16.0 / bps / static_cast<double>(kBig))); // four bars
-        for (int blk = 0; blk < blocks; ++blk) {
-            eng.process(p, {132.0, ppq, true}, midi, l.data(), r.data(), kBig);
+            std::vector<float> l(kBig), r(kBig);
+            MidiEventBuffer midi;
+            NotesOn notes;
+            const double bps = run.bpm / 60.0 / kSr;
+            double ppq = 0.0;
+            int noteOns = 0;
+            const int blocks = static_cast<int>(std::ceil(16.0 / bps / static_cast<double>(kBig))); // four host bars
+            for (int blk = 0; blk < blocks; ++blk) {
+                eng.process(p, {run.bpm, ppq, true}, midi, l.data(), r.data(), kBig);
+                notes.take(midi);
+                for (int i = 0; i < midi.count; ++i)
+                    noteOns += midi.events[static_cast<std::size_t>(i)].isNoteOn() ? 1 : 0;
+                ppq += bps * static_cast<double>(kBig);
+            }
+            INFO("style " << style << " at " << run.bpm << " BPM, rate " << run.rate);
+            CHECK(noteOns > 8);
+
+            eng.process(p, {run.bpm, ppq, false}, midi, l.data(), r.data(), kBig);
             notes.take(midi);
-            for (int i = 0; i < midi.count; ++i)
-                noteOns += midi.events[static_cast<std::size_t>(i)].isNoteOn() ? 1 : 0;
-            ppq += bps * static_cast<double>(kBig);
+            CHECK_FALSE(notes.anyOn());
+            CHECK(eng.activeNotesLowMask() == 0);
+            CHECK(eng.activeNotesHighMask() == 0);
         }
-        INFO("style " << style);
-        CHECK(noteOns > 8);
-
-        eng.process(p, {132.0, ppq, false}, midi, l.data(), r.data(), kBig);
-        notes.take(midi);
-        CHECK_FALSE(notes.anyOn());
-        CHECK(eng.activeNotesLowMask() == 0);
-        CHECK(eng.activeNotesHighMask() == 0);
-    }
 }
 
 TEST_CASE("The engine emits exactly the compiled slicer phrase, phrase after phrase", "[engine][slicer]") {
@@ -398,5 +495,85 @@ TEST_CASE("Pads in MIDI Slicer mode release every note", "[engine][slicer]") {
         CHECK(noteOns > 4);
         CHECK(balance == 0);
         CHECK(eng.activeNotesLowMask() == 0);
+    }
+}
+
+TEST_CASE("Clip Slice Repeat loops from where it was pressed", "[engine][slicer]") {
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    eng.inputNoteOn(38, 110, 1.25); // beat 1.25 of its bar
+    eng.inputNoteOff(38, 1.5);
+    Params p = slicerParams(SlicerStyle::clipSlice);
+    p[ParamId::padProgram] = static_cast<float>(PadProgram::repeat);
+    p[ParamId::padX] = 0.1f; // a one-beat window
+
+    // Touched just after beat 5.1, so Repeat engages on the next 1/16: beat 5.25, which is not on a beat.
+    const auto notes = playNotes(eng, 120.0, 4.0, 9.0, [&](double ppq) {
+        Params q = p;
+        q[ParamId::padTouch] = ppq >= 5.1 ? 1.0f : 0.0f;
+        return q;
+    });
+    std::vector<double> beats;
+    for (const auto& n : notes)
+        if (n.beat >= 5.1)
+            beats.push_back(n.beat);
+    REQUIRE(beats.size() == 4);
+    for (std::size_t i = 0; i < beats.size(); ++i)
+        CHECK(beats[i] == Approx(5.25 + static_cast<double>(i)).margin(1.0e-3)); // the anchor, then every window
+}
+
+TEST_CASE("Slicer Repeat loops exactly the phrase notes inside its window, from the anchor", "[engine][slicer]") {
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    const HeldNotes held = chord();
+    for (int i = 0; i < held.count; ++i)
+        eng.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
+    Params p = slicerParams(SlicerStyle::stabChop);
+    p[ParamId::padProgram] = static_cast<float>(PadProgram::repeat);
+    p[ParamId::padX] = 0.3f; // a half-beat window
+
+    // Engages on beat 0.75, the default gate's second step: the window [0.75, 1.25) holds that step's three notes.
+    const auto notes = playNotes(eng, 120.0, 0.0, 4.0, [&](double ppq) {
+        Params q = p;
+        q[ParamId::padTouch] = ppq >= 0.6 ? 1.0f : 0.0f;
+        return q;
+    });
+    std::vector<NoteAt> looped;
+    for (const auto& n : notes)
+        if (n.beat >= 0.6)
+            looped.push_back(n);
+    REQUIRE(looped.size() == 21); // seven windows from 0.75 to 4.0, three notes each
+    for (std::size_t i = 0; i < looped.size(); ++i) {
+        const double expected = 0.75 + 0.5 * static_cast<double>(i / 3);
+        CHECK(looped[i].beat == Approx(expected).margin(1.0e-3));
+        CHECK((looped[i].note == 48 || looped[i].note == 55 || looped[i].note == 60));
+    }
+}
+
+TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid at the Y velocity", "[engine][slicer]") {
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    const HeldNotes held = chord();
+    for (int i = 0; i < held.count; ++i)
+        eng.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
+    Params p = slicerParams(SlicerStyle::stabChop);
+    p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
+    p[ParamId::padX] = 0.1f; // 1/8 notes
+    p[ParamId::padY] = 0.5f; // velocity 64
+
+    const auto notes = playNotes(eng, 120.0, 0.0, 4.0, [&](double ppq) {
+        Params q = p;
+        q[ParamId::padTouch] = ppq >= 0.9 ? 1.0f : 0.0f; // engages on beat 1
+        return q;
+    });
+    std::vector<NoteAt> rolled;
+    for (const auto& n : notes)
+        if (n.beat >= 0.9)
+            rolled.push_back(n);
+    REQUIRE(rolled.size() == 18); // six 1/8 steps from beat 1 to 4, three held notes each
+    for (std::size_t i = 0; i < rolled.size(); ++i) {
+        CHECK(rolled[i].beat == Approx(1.0 + 0.5 * static_cast<double>(i / 3)).margin(1.0e-3));
+        CHECK(rolled[i].note == held.notes[i % 3]);
+        CHECK(rolled[i].velocity == 64);
     }
 }

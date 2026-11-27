@@ -469,47 +469,46 @@ void Engine::Impl::playSlicer(const Block& b) noexcept CL_NONBLOCKING {
 }
 
 // Clip Slice: replays the notes captured from the MIDI input, bar by bar, with Swing.
-// While Repeat is engaged it loops the captured notes inside the Repeat window instead.
-// A block can straddle a bar line (or a Repeat cell), so every bar and cell the block touches is visited:
-// working from the block's start alone would skip a captured note that sits exactly on the downbeat.
+// While Repeat is engaged it loops the captured notes inside the Repeat window instead, from the Repeat anchor, as
+// the drum and slicer Repeat do. A block can straddle a bar line (or a Repeat cycle), so every bar and cycle the
+// block touches is visited: working from the block's start alone would skip a note that sits exactly on the boundary.
 void Engine::Impl::playClip(const Block& b) noexcept CL_NONBLOCKING {
     const double swing = static_cast<double>((*b.params)[ParamId::swing]);
     const double scaledStart = b.windowStart * b.rate;
     const double scaledEnd = b.windowEnd * b.rate;
-    const bool repeating = b.padOn && b.program == PadProgram::repeat;
-    const double window = pads::repeatWindowBeats(b.padX);
-    const double anchorInBar = repeatAnchor - std::floor(repeatAnchor / 4.0) * 4.0;
-    const double sliceStart = std::min(anchorInBar, 4.0 - window);
-    const int cellsPerBar = static_cast<int>(std::lround(4.0 / window));
+    const auto emitAt = [&](const CapturedEvent& ev, double gridBeat) noexcept CL_NONBLOCKING {
+        const double at = swingBeat(gridBeat, swing);
+        if (at < scaledStart - kBeatEps || at >= scaledEnd - kBeatEps)
+            return;
+        pushNoteHit(b, ev.note, 0, at / b.rate, std::max(0.04, ev.durBeats / b.rate), static_cast<int>(ev.vel));
+    };
+
+    if (b.padOn && b.program == PadProgram::repeat) {
+        const double window = pads::repeatWindowBeats(b.padX);
+        const double anchorInBar = repeatAnchor - std::floor(repeatAnchor / 4.0) * 4.0;
+        const double sliceStart = std::min(anchorInBar, 4.0 - window); // keep the slice inside its bar
+        // Swing delays a position by at most kMaxSwingBeats, so a cycle can reach this block from that far before it.
+        const auto first = std::max<std::int64_t>(
+            0, static_cast<std::int64_t>(std::floor((scaledStart - kMaxSwingBeats - repeatAnchor) / window)));
+        const auto last = static_cast<std::int64_t>(std::floor((scaledEnd - repeatAnchor) / window));
+        for (std::int64_t cycle = first; cycle <= last && cycle < first + 64; ++cycle) {
+            const double origin = repeatAnchor + static_cast<double>(cycle) * window;
+            for (const auto& ev : captured) {
+                if (ev.active && ev.barBeat >= sliceStart && ev.barBeat < sliceStart + window)
+                    emitAt(ev, origin + (ev.barBeat - sliceStart));
+            }
+        }
+        return;
+    }
 
     const auto firstBar = static_cast<std::int64_t>(std::floor(scaledStart / 4.0));
     const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd - kBeatEps) / 4.0));
     for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + kMaxBarsPerBlock; ++bar) {
+        // swingBeat is periodic over half a beat, so swinging the absolute beat equals swinging the bar beat.
         const double barOrigin = static_cast<double>(bar) * 4.0;
-        const auto emitAt = [&](const CapturedEvent& ev, double barBeat) noexcept CL_NONBLOCKING {
-            const double at = barOrigin + swingBeat(barBeat, swing);
-            if (at < scaledStart - kBeatEps || at >= scaledEnd - kBeatEps)
-                return;
-            pushNoteHit(b, ev.note, 0, at / b.rate, std::max(0.04, ev.durBeats / b.rate), static_cast<int>(ev.vel));
-        };
         for (const auto& ev : captured) {
-            if (!ev.active)
-                continue;
-            if (!repeating) {
-                emitAt(ev, ev.barBeat);
-                continue;
-            }
-            if (ev.barBeat < sliceStart || ev.barBeat >= sliceStart + window)
-                continue;
-            // Every cell of the bar replays the slice. Visit the cells this block can reach, with one
-            // cell of margin on each side because Swing moves a note by up to an eighth of a beat.
-            const double offset = ev.barBeat - sliceStart;
-            const int firstCell =
-                std::max(0, static_cast<int>(std::floor((scaledStart - barOrigin - offset) / window)) - 1);
-            const int lastCell =
-                std::min(cellsPerBar - 1, static_cast<int>(std::floor((scaledEnd - barOrigin - offset) / window)) + 1);
-            for (int cell = firstCell; cell <= lastCell; ++cell)
-                emitAt(ev, static_cast<double>(cell) * window + offset);
+            if (ev.active)
+                emitAt(ev, barOrigin + ev.barBeat);
         }
     }
 }
