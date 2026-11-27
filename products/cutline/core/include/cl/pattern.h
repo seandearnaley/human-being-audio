@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Fixed-capacity, allocation-free 8-lane polymetric drum pattern, 4-scene bank,
-// and live MIDI slicer step store. Safe on the real-time audio thread.
+// Drum lanes, kit note maps and pad labels. The pattern data itself lives in cl/groove.h.
 #pragma once
 
 #include "cl/nonblocking.h"
@@ -8,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -16,22 +14,16 @@
 namespace cl {
 
 inline constexpr int kDrumLaneCount = 8;
-inline constexpr int kMaxLaneSteps = 32;
 
 inline constexpr std::array<std::string_view, kDrumLaneCount> kDrumLaneNames{"KICK",   "SNARE",  "GHOST",  "CLAP",
                                                                              "CL HAT", "OP HAT", "PERC A", "PERC B"};
 
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadLabels{"Slice", "Roll",    "Bounce", "Swing",
-                                                                            "Poly",  "Stutter", "Morph",  "Drop"};
-
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadXLabels{
-    "Chop", "Rate", "Gravity", "Pocket", "Polymeter", "Window", "Time Warp", "Build"};
-
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadYLabels{
-    "Density", "Escalate", "Swarm", "Ghosts", "Rotate", "Gate Pump", "Sub \u2194 Tops", "Tension"};
-
-inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadHints{"C3", "C#3", "D3",  "D#3",
-                                                                           "E3", "F3",  "F#3", "G3"};
+inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadLabels{"Repeat", "Roll", "Rate", "Drop"};
+inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadXLabels{"Window", "Rate", "Speed",
+                                                                             "Cut \u2194 Fill"};
+inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadYLabels{"Gate", "Velocity", "Kick \u2194 Tops",
+                                                                             ""};
+inline constexpr std::array<std::string_view, kPerfPadCount> kPerfPadHints{"C3", "C#3", "D3", "D#3"};
 
 // Ten built-in MIDI output maps for the 8 drum lanes (preserving indices 0..2 for preset compatibility):
 //   0 = Live Rack / GM:     Kick 36, Snare 38, Sidestick 37, Clap 39, CH 42, OH 46, Floor Tom 43, Crash 49
@@ -77,115 +69,8 @@ constexpr std::string_view kitLaneName(NoteMap map, int lane) noexcept {
     return kKitLaneNames[mIdx][lIdx];
 }
 
-enum class StepState : std::int8_t {
-    autoGen = 0,   // Follow active style / Euclidean generator
-    forceOn = 1,   // Explicitly painted ON
-    forceOff = -1, // Explicitly muted / cleared OFF
-};
-
-struct StepEdit {
-    StepState state = StepState::autoGen;
-    std::int8_t velOffset = 0;  // -64..+64 velocity sculpt
-    std::uint8_t ratchet = 0;   // 0 = auto, 2/3/4 = explicit sub-hit ratchet burst
-    std::int8_t microNudge = 0; // -24..+24 (1/96 beat => +-1/4 beat)
-    bool flam = false;          // Pre-hit grace flam (-16 ms)
-
-    bool hasAny() const noexcept CL_NONBLOCKING {
-        return state != StepState::autoGen || velOffset != 0 || ratchet != 0 || microNudge != 0 || flam;
-    }
-    bool operator==(const StepEdit&) const noexcept = default;
-};
-
-struct LaneConfig {
-    std::uint8_t stepLength = 0; // 0 = auto from style (16 or polymetric default), else 1..32
-    std::uint8_t midiNote = 0;   // 0 = use active KitMap note, else 1..127 custom MIDI note
-    bool muted = false;
-    bool solo = false;
-    bool locked = false;
-    std::uint8_t euclidHits = 0; // 0 = auto, 1..32 explicit Euclidean hits
-    std::uint8_t euclidRot = 0;  // 0..31 rotation
-    std::uint8_t lockedVar = 0;  // 0 = follow global, 1..64 captured variation when locked
-    std::array<StepEdit, kMaxLaneSteps> steps{};
-
-    bool hasAny() const noexcept CL_NONBLOCKING {
-        if (stepLength != 0 || midiNote != 0 || muted || solo || locked || euclidHits != 0 || euclidRot != 0 ||
-            lockedVar != 0)
-            return true;
-        for (const auto& s : steps) {
-            if (s.hasAny())
-                return true;
-        }
-        return false;
-    }
-    bool operator==(const LaneConfig&) const noexcept = default;
-};
-
-struct SceneData {
-    bool customized = false;
-    std::int8_t styleOverride = -1;    // -1 = inherit global param, else 0..11
-    std::int8_t fillTypeOverride = -1; // -1 = inherit global param, else 0..5
-    std::int8_t variationOffset = 0;   // -32..+32 relative variation shift
-    float complexityBias = 0.0f;       // -1..+1 relative complexity bias
-    float chopBias = 0.0f;             // -1..+1 relative chop bias
-    float ghostBias = 0.0f;            // -1..+1 relative ghost bias
-    std::array<LaneConfig, kDrumLaneCount> lanes{};
-
-    bool hasAny() const noexcept CL_NONBLOCKING {
-        if (customized || styleOverride >= 0 || fillTypeOverride >= 0 || variationOffset != 0 ||
-            std::abs(complexityBias) > 1e-4f || std::abs(chopBias) > 1e-4f || std::abs(ghostBias) > 1e-4f)
-            return true;
-        for (const auto& l : lanes) {
-            if (l.hasAny())
-                return true;
-        }
-        return false;
-    }
-    bool operator==(const SceneData&) const noexcept = default;
-};
-
-struct PatternBank {
-    std::array<SceneData, kSceneCount> scenes{};
-    std::uint8_t slicerLength = 16; // 1..32 polymetric slicer gate length
-    std::array<StepEdit, kMaxLaneSteps> slicerSteps{};
-
-    bool hasAny() const noexcept CL_NONBLOCKING {
-        if (slicerLength != 16)
-            return true;
-        for (const auto& sc : scenes) {
-            if (sc.hasAny())
-                return true;
-        }
-        for (const auto& st : slicerSteps) {
-            if (st.hasAny())
-                return true;
-        }
-        return false;
-    }
-
-    void clear() noexcept CL_NONBLOCKING {
-        scenes = {};
-        slicerLength = 16;
-        slicerSteps = {};
-    }
-
-    bool operator==(const PatternBank&) const noexcept = default;
-};
-
-// Resolve effective MIDI note number for a drum lane under a given KitMap.
-std::int8_t effectiveLaneMidiNote(NoteMap map, int lane, const LaneConfig& cfg) noexcept CL_NONBLOCKING;
-
-// Returns the built-in scene character biases when a scene hasn't been manually customized yet:
-//   Scene A (0): Main dialed groove
-//   Scene B (1): Elevated chop + higher complexity variation
-//   Scene C (2): Stripped tight intro/verse groove
-//   Scene D (3): Polyrhythmic / syncopated contrast switch
-SceneData effectiveSceneData(const PatternBank& bank, int sceneIdx) noexcept CL_NONBLOCKING;
-
-// Tactile UI action helpers (respect locked lanes!).
-void mutateUnlockedLanes(SceneData& scene, std::uint32_t seed) noexcept;
-void applyPolymeterToUnlocked(SceneData& scene, std::uint32_t seed) noexcept;
-void cloneSceneSlot(PatternBank& bank, int fromIdx, int toIdx, bool mutateClone, std::uint32_t seed) noexcept;
-void clearSceneEdits(SceneData& scene) noexcept;
+// The MIDI note a drum lane plays: its override when that is 1..127, otherwise the kit map's note.
+std::int8_t effectiveLaneMidiNote(NoteMap map, int lane, int overrideNote) noexcept CL_NONBLOCKING;
 
 std::string midiNoteLabel(int midiNote);
 
