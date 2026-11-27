@@ -54,18 +54,40 @@ class NativeQualityTests(unittest.TestCase):
             self.assertFalse(native.only_project_version_changed(old, other))
 
     def test_windows_patch_and_test_select_only_their_native_consumers(self):
-        products = ["livecut-redux", "cutline", "pole-field"]
+        products = ["livecut-redux", "cutline", "torus-glide", "pole-field"]
         patch = "cmake/patches/windows/visage.cmake"
-        regression = "modules/visage-ui/tests/windows/Glyph.cpp"
+        regression = "modules/plugin-host/tests/windows/WindowsGlyphLifetimeTests.cpp"
         plan = native.plan_checks(products, [patch, regression])
         self.assertEqual(set(plan["jobs"]), {"format", "windows", "livecut"})
-        self.assertEqual(plan["windows"], ["cutline", "pole-field"])
+        self.assertEqual(plan["windows"], products[1:])
+        self.assertFalse(plan["windows_editor_only"])
         self.assertTrue(plan["livecut_windows_only"])
-        self.assertEqual(native.plan_checks(products, [regression])["windows"], ["cutline"])
         combined = native.plan_checks(products, [patch, "products/livecut-redux/core/audio.cpp"])
         self.assertFalse(combined["livecut_windows_only"])
         self.assertEqual(combined["products"], ["livecut-redux"])
         self.assertIn("realtime", combined["jobs"])
+
+    def test_windows_editor_target_is_selected_without_replacing_product_coverage(self):
+        products = list(json.loads((native.ROOT / "studio.json").read_text())["products"])
+        directory = "modules/plugin-host/tests/windows/"
+        for name in ("WindowsEditorLifetimeTests.cpp", "WindowsGlyphLifetimeTests.cpp", "CMakeLists.txt"):
+            with self.subTest(name=name):
+                plan = native.plan_checks(products, [directory + name])
+                self.assertEqual(set(plan["jobs"]), {"format", "windows"})
+                self.assertEqual(plan["windows"], ["torus-glide"])
+                self.assertTrue(plan["windows_editor_only"])
+
+        test = directory + "WindowsEditorLifetimeTests.cpp"
+        other = native.plan_checks(products, [test, "products/cutline/ui/src/Grid.cpp"])
+        self.assertEqual(set(other["windows"]), {"cutline", "torus-glide"})
+        self.assertTrue(other["windows_editor_only"])
+        adapter = native.plan_checks(products, [test, "products/torus-glide/plugin/src/PluginEditor.cpp"])
+        self.assertFalse(adapter["windows_editor_only"])
+        shared = native.plan_checks(products, [test, "modules/plugin-host/include/hba/host/plugin_editor.h"])
+        self.assertEqual(shared["products"], products)
+        self.assertEqual(shared["windows"], [p for p in products if p != "livecut-redux"])
+        self.assertIn("livecut", shared["jobs"])
+        self.assertFalse(shared["windows_editor_only"])
 
     def test_modules_and_macos_workflow_changes_trigger_dedicated_jobs(self):
         mod_plan = native.plan_checks(self.products, ["modules/core/include/hba/core/preset_json.h"])
