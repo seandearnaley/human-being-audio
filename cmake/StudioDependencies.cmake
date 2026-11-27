@@ -32,9 +32,9 @@ endfunction()
 function(hba_add_juce)
     CPMAddPackage(
         NAME JUCE
-        VERSION 9.0.5
-        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/9.0.5.tar.gz"
-        URL_HASH SHA256=d92207f51ba728d3d195b6d5e93ecd049717a915fc250ff6844c32ea7272315a
+        VERSION 9.0.6
+        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/9.0.6.tar.gz"
+        URL_HASH SHA256=103e6c9d5f17f19bc7b5485a890573609d326513aad4db6b045181f4936ef424
         SYSTEM YES
     )
     set(JUCE_SOURCE_DIR "${JUCE_SOURCE_DIR}" PARENT_SCOPE)
