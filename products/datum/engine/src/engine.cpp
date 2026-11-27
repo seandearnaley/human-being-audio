@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "dt/engine.h"
 
+#include <hba/dsp/sample_exchange.h>
+
 #include <hba/core/smf.h>
 #include <hba/dsp/adaa.h>
 #include <hba/dsp/allpass.h>
@@ -557,10 +559,7 @@ struct Engine::Impl {
     std::uint64_t triggerCounter = 0;
     std::uint32_t randSeed = 0x13579BDFu;
 
-    // Lock-free double-buffered Click WAV slot
-    std::array<ClickSlot, 2> clickSlots{};
-    std::atomic<int> activeClickIdx{-1};
-    int writeClickIdx = 0;
+    hba::dsp::SampleExchange<ClickSlot> clicks;
 
     // 8x HIIR Oversampled ADAA2 Body Shaper (L/R)
     hba::dsp::Oversampler osL, osR;
@@ -865,9 +864,8 @@ struct Engine::Impl {
         }
         pendingCount = 0;
 
-        const int clickIdx = activeClickIdx.load(std::memory_order_acquire);
-        const ClickSlot* clickPtr =
-            (clickIdx == 0 || clickIdx == 1) ? &clickSlots[static_cast<std::size_t>(clickIdx)] : nullptr;
+        clicks.pull();
+        const ClickSlot* clickPtr = &clicks.current();
 
         const double subLvl = static_cast<double>(p[ParamId::subLevel]);
         const double bodyLvl = static_cast<double>(p[ParamId::bodyLevel]);
@@ -1162,19 +1160,20 @@ void Engine::publishClickSample(const ClickSample& sample) {
         clearClickSample();
         return;
     }
-    const int target = impl_->writeClickIdx;
-    auto& slot = impl_->clickSlots[static_cast<std::size_t>(target)];
+    auto& slot = impl_->clicks.writable();
     const int n = std::min(ClickSample::kMaxSamples, static_cast<int>(sample.mono.size()));
     std::copy_n(sample.mono.data(), n, slot.mono.data());
     slot.length = n;
     slot.sampleRate = sample.sampleRate > 8000.0 ? sample.sampleRate : 48000.0;
     slot.offsetSamples = sample.offsetSamples;
     slot.polarity = sample.polarity >= 0.0f ? 1.0f : -1.0f;
-    impl_->activeClickIdx.store(target, std::memory_order_release);
-    impl_->writeClickIdx = 1 - target;
+    impl_->clicks.publish();
 }
 
-void Engine::clearClickSample() noexcept DT_NONBLOCKING { impl_->activeClickIdx.store(-1, std::memory_order_release); }
+void Engine::clearClickSample() noexcept DT_NONBLOCKING {
+    impl_->clicks.writable().length = 0;
+    impl_->clicks.publish();
+}
 
 void Engine::process(const Params& params, const Transport& transport, float* left, float* right, int numSamples,
                      const float* sidechainL, const float* sidechainR) noexcept DT_NONBLOCKING {

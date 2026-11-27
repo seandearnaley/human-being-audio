@@ -27,6 +27,9 @@ class ClickStore {
     void alignCurrent(const Params& params, const hba::dsp::EnvelopeCurve& pitchCurve,
                       const hba::dsp::EnvelopeCurve& ampCurve);
     void clear();
+    void appendState(juce::ValueTree& session) const;
+    static bool decodeState(juce::ValueTree& session, ClickSample& sample);
+    void replace(ClickSample sample);
 
     bool hasSample() const noexcept { return hasSample_.load(std::memory_order_acquire); }
     std::uint64_t version() const noexcept { return version_.load(std::memory_order_acquire); }

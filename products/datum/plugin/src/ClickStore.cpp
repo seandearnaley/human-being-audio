@@ -23,7 +23,8 @@ bool ClickStore::loadAudioFile(const juce::File& file, const Params& params, con
 
     const int maxRead = static_cast<int>(std::min<juce::int64>(reader->lengthInSamples, ClickSample::kMaxSamples));
     juce::AudioBuffer<float> tmp(static_cast<int>(reader->numChannels), maxRead);
-    reader->read(&tmp, 0, maxRead, 0, true, true);
+    if (!reader->read(&tmp, 0, maxRead, 0, true, true))
+        return false;
 
     ClickSample s;
     s.sampleRate = reader->sampleRate > 8000.0 ? reader->sampleRate : 48000.0;
@@ -37,6 +38,8 @@ bool ClickStore::loadAudioFile(const juce::File& file, const Params& params, con
         for (int ch = 0; ch < tmp.getNumChannels(); ++ch)
             sum += tmp.getSample(ch, i);
         const float v = sum * invCh;
+        if (!std::isfinite(v))
+            return false;
         s.mono[static_cast<std::size_t>(i)] = v;
         peak = std::max(peak, std::abs(v));
     }
@@ -48,14 +51,7 @@ bool ClickStore::loadAudioFile(const juce::File& file, const Params& params, con
 
     Engine::autoAlignClick(params, pitchCurve, ampCurve, s);
 
-    {
-        const juce::ScopedLock scoped(lock_);
-        sample_ = s;
-    }
-    hasSample_.store(true, std::memory_order_release);
-    version_.fetch_add(1, std::memory_order_acq_rel);
-    if (onPublish_)
-        onPublish_(s);
+    replace(std::move(s));
     return true;
 }
 
@@ -75,28 +71,69 @@ void ClickStore::browseLoadWavAsync(std::function<void(const juce::File&)> onCho
 
 void ClickStore::alignCurrent(const Params& params, const hba::dsp::EnvelopeCurve& pitchCurve,
                               const hba::dsp::EnvelopeCurve& ampCurve) {
-    ClickSample s = copySample();
-    if (!s.valid())
+    const juce::ScopedLock scoped(lock_);
+    if (!sample_.valid())
         return;
+    auto s = sample_;
     Engine::autoAlignClick(params, pitchCurve, ampCurve, s);
-    {
-        const juce::ScopedLock scoped(lock_);
-        sample_ = s;
-    }
-    version_.fetch_add(1, std::memory_order_acq_rel);
-    if (onPublish_)
-        onPublish_(s);
+    replace(std::move(s));
 }
 
-void ClickStore::clear() {
-    {
-        const juce::ScopedLock scoped(lock_);
-        sample_ = {};
-    }
-    hasSample_.store(false, std::memory_order_release);
-    version_.fetch_add(1, std::memory_order_acq_rel);
-    if (onClear_)
+void ClickStore::replace(ClickSample sample) {
+    const juce::ScopedLock scoped(lock_);
+    sample_ = std::move(sample);
+    if (sample_.valid())
+        onPublish_(sample_);
+    else
         onClear_();
+    hasSample_.store(sample_.valid(), std::memory_order_release);
+    version_.fetch_add(1, std::memory_order_release);
+}
+
+void ClickStore::clear() { replace({}); }
+
+void ClickStore::appendState(juce::ValueTree& session) const {
+    const auto sample = copySample();
+    if (!sample.valid())
+        return;
+    juce::MemoryOutputStream pcm;
+    for (float v : sample.mono)
+        pcm.writeFloat(v);
+    juce::ValueTree click("ClickSample");
+    click.setProperty("version", 1, nullptr);
+    click.setProperty("rate", sample.sampleRate, nullptr);
+    click.setProperty("offset", sample.offsetSamples, nullptr);
+    click.setProperty("polarity", sample.polarity, nullptr);
+    click.setProperty("name", juce::String(sample.name), nullptr);
+    click.setProperty("pcm", pcm.getMemoryBlock(), nullptr);
+    session.appendChild(click, nullptr);
+}
+
+bool ClickStore::decodeState(juce::ValueTree& session, ClickSample& sample) {
+    const auto click = session.getChildWithName("ClickSample");
+    if (!click.isValid())
+        return true;
+    const auto* pcm = click["pcm"].getBinaryData();
+    if (static_cast<int>(click["version"]) != 1 || pcm == nullptr || pcm->isEmpty() ||
+        pcm->getSize() % sizeof(float) != 0 || pcm->getSize() > ClickSample::kMaxSamples * sizeof(float))
+        return false;
+    sample.sampleRate = click["rate"];
+    sample.offsetSamples = click["offset"];
+    sample.polarity = click["polarity"];
+    sample.name = click["name"].toString().toStdString();
+    const auto frames = pcm->getSize() / sizeof(float);
+    if (!std::isfinite(sample.sampleRate) || sample.sampleRate <= 0 || sample.offsetSamples < 0 ||
+        static_cast<std::size_t>(sample.offsetSamples) >= frames || std::abs(sample.polarity) != 1.0f)
+        return false;
+    juce::MemoryInputStream stream(*pcm, false);
+    sample.mono.resize(frames);
+    for (float& v : sample.mono) {
+        v = stream.readFloat();
+        if (!std::isfinite(v))
+            return false;
+    }
+    session.removeChild(click, nullptr);
+    return true;
 }
 
 std::string ClickStore::name() const {
