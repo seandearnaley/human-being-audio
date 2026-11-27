@@ -136,3 +136,14 @@ test("the CI credential only accompanies release API requests", async (t) => {
   const [release] = await readCatalog();
   assert.equal(release.downloads.length, 3);
 });
+
+test("Cutline describes the bank shipped with the plugin", async () => {
+  const { readdir } = await import("node:fs/promises");
+  const counts = await Promise.all(["patterns", "fills", "presets"].map(async (directory) =>
+    (await readdir(new URL(`../../products/cutline/${directory}/`, import.meta.url))).filter(name => name.endsWith(".json")).length));
+  const product = PRODUCTS.find(({ slug }) => slug === "cutline");
+  const [patterns, fills, presets] = counts;
+  assert.ok(product.credits.includes(`${patterns} patterns`));
+  assert.ok(product.credits.includes(`${fills} fills`));
+  assert.ok(product.credits.includes(`${presets} factory presets`));
+});

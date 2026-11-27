@@ -2,16 +2,15 @@
 
 * all plugins made with AI assistance by professional engineers with audio experience for free, made with love, care and support.
 
-Studio source for [Livecut Redux](products/livecut-redux), the live beat slicer, [Tract Form](products/tract-form), the bass synthesizer, [Pole Field](products/pole-field), the morphing filterbank, and [Cutline](products/cutline), the expressive MIDI phrase articulator. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
+The studio makes eight plugins. [Datum](products/datum) designs kicks, [Strike Body](products/strike-body) synthesizes percussion and [Cutline](products/cutline) sequences drums and slices MIDI. [Livecut Redux](products/livecut-redux) slices live audio and [Pole Field](products/pole-field) morphs filterbanks. [Tract Form](products/tract-form), [Lineage](products/lineage) and [Torus Glide](products/torus-glide) cover sub-locked bass, layered Reese synthesis and pitch glides. Each product owns its sound, presets, stable plugin IDs, license and release version. The [studio website](https://humanbeingaudio.com) lives in the same checkout.
 
 ## First build
 
-Clone the repository and choose any product (`livecut-redux`, `tract-form`, `pole-field`, or `cutline`). All dependencies are fetched and cached automatically via `cmake/CPM.cmake` (no git submodules required).
+Clone the repository and choose a directory under `products/`. All dependencies are fetched and cached automatically via `cmake/CPM.cmake` (no git submodules required).
 
 ```sh
 git clone https://github.com/seandearnaley/human-being-audio.git
 cd human-being-audio/products/livecut-redux
-# Or enter products/tract-form, products/pole-field, or products/cutline from the repo root.
 cmake --workflow --preset check
 ```
 
@@ -28,7 +27,7 @@ Tract Form checks at configure time that the compiler both accepts an annotated 
 ## Builds and tests
 
 ```sh
-# Run inside either product
+# Run inside the selected product
 cmake --preset release
 cmake --build --preset release
 ctest --preset release
@@ -41,7 +40,7 @@ ctest --preset engine
 
 Release targets produce a VST3 bundle and standalone application on all three platforms and an Audio Unit on macOS. Find Livecut outputs in `build/release/Livecut_artefacts/Release/` and Tract Form outputs in `build/release/plugin/TractForm_artefacts/Release/`. These are developer builds. To produce signed installers and a public release, follow the [studio release guide](factory/release/README.md). The build presets leave installed plugins alone.
 
-CTest covers both products on each OS. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
+CTest covers the product engines and host integrations. Tract Form also runs its Apple libmalloc instrumentation on macOS. Its [fixed-lane audio fixtures](products/tract-form/tests/engine/fixtures) preserve the pre-migration samples and original hashes. See each product's tests for host state, presets and DSP behavior.
 
 ## C++ editor and quality checks
 

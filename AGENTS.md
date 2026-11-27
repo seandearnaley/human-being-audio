@@ -12,10 +12,12 @@
 - `products/`:
   - `tract-form` — Sub-locked neuro bass synthesizer (JUCE 9 + Visage 1.0)
   - `pole-field` — 14-pole Z-plane morphing filterbank (JUCE 9 + Visage 1.0)
-  - `cutline` — Expressive phrase grammar, microtiming & MPE/CC MIDI articulator (JUCE 9 + Visage 1.0)
+  - `cutline` — Eight-lane drum sequencer, PLAY performance pad & MIDI slicer (JUCE 9 + Visage 1.0)
   - `torus-glide` — Bar-locked Shepard-Risset & polyphonic chord-bend pitch-manifold synth (JUCE 9 + Visage 1.0)
   - `strike-body` — Phase-locked neuro snare, kick & nonlinear modal percussion synthesizer (JUCE 9 + Visage 1.0)
   - `livecut-redux` — Breakbeat & spectral live slicer (JUCE 9 + Visage 1.0)
+  - `datum` — Kick synthesizer with transient import and sidechain alignment (JUCE 9 + Visage 1.0)
+  - `lineage` — Reese synthesizer with stereo print generation and stacking (JUCE 9 + Visage 1.0)
 - `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), and CI/quality tooling (`factory/quality/`).
 - `web/`: Next.js + React website (`https://humanbeingaudio.com`).
 
