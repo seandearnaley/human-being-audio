@@ -3,6 +3,7 @@
 // Geraint Luff's design (https://signalsmith-audio.co.uk/writing/2022/limiter/).
 #pragma once
 
+#include <span>
 #include <hba/dsp/control.h>
 
 #include <algorithm>
@@ -147,6 +148,17 @@ private:
     std::array<std::array<float, 2 * kWidth + 1>, 2> history_ {};
     int pos_ = 0;
 };
+
+// Offline peak of a complete interleaved stereo render, including the FIR tail.
+inline double stereoTruePeak(std::span<const float> samples) {
+    TruePeakDetector meter;
+    double peak = 0.0;
+    for (std::size_t i = 1; i < samples.size(); i += 2)
+        peak = std::max(peak, meter.process(samples[i - 1], samples[i]));
+    for (int i = 0; i < TruePeakDetector::kWidth; ++i)
+        peak = std::max(peak, meter.process(0.0, 0.0));
+    return peak;
+}
 
 // Monotonic-queue sliding minimum over the last `window` values.
 class MovingMinimum {
