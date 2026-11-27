@@ -656,7 +656,8 @@ void SegmentedBar::mouseDown(const visage::MouseEvent& e) {
 
 // --- ParamSegmented ---------------------------------------------------------
 
-ParamSegmented::ParamSegmented(Context& context, std::string paramId, const std::string& name, std::vector<std::string> labels, unsigned accent)
+ParamSegmented::ParamSegmented(Context& context, std::string paramId, const std::string& name,
+                               std::vector<std::string> labels, unsigned accent)
     : DiscreteParameter(context, std::move(paramId), name), count_(std::max(1, static_cast<int>(labels.size()))),
       bar_(
           context, std::move(labels),

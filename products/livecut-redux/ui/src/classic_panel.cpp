@@ -106,8 +106,9 @@ ClassicPanel::ClassicPanel(Context& context)
     transMix_ = std::make_unique<ParamSlider>(context, "impactTransientMix", "Transient Mix", colour::emerald);
 
     // Tab 2 — Fracture
-    fractureFamily_ = std::make_unique<ParamSegmented>(
-        context, "fractureProcedure", "Reader family", std::vector<std::string>{"Classic", "GrainCut", "TapeCut"}, colour::cyan);
+    fractureFamily_ =
+        std::make_unique<ParamSegmented>(context, "fractureProcedure", "Reader family",
+                                         std::vector<std::string>{"Classic", "GrainCut", "TapeCut"}, colour::cyan);
     fracActivity_ = std::make_unique<ParamSlider>(context, "fractureActivity", "Activity", colour::cyan);
     grainSize_ = std::make_unique<ParamSlider>(context, "fractureGrainSizeMs", "Grain Size", colour::cyan);
     grainDensity_ = std::make_unique<ParamSlider>(context, "fractureGrainDensity", "Density", colour::cyan);
