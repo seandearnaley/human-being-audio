@@ -66,10 +66,11 @@ TEST_CASE("The Cutline 2 generator parameters are gone", "[core]") {
     for (const char* key : {"style", "gravity", "ghosts", "chop", "ratchet", "complexity", "fills", "phraseBars",
                             "attractor", "fillType", "variation"})
         CHECK_FALSE(findParam(key).has_value());
-    CHECK(kPerfPadCount == 4);
-    CHECK(spec(ParamId::padProgram).choices.size() == 4);
+    CHECK(kPerfPadCount == 6);
+    CHECK(spec(ParamId::padProgram).choices.size() == 6);
     CHECK(kPerfPadLabels[0] == "Repeat");
-    CHECK(kPerfPadLabels[3] == "Drop");
+    CHECK(kPerfPadLabels[5] == "Fill");
+    CHECK(kPerfPadHints[5] == "F3");
 }
 
 TEST_CASE("Kit note maps resolve built-in notes and per-lane overrides", "[core]") {

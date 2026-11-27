@@ -221,7 +221,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                 clP[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::roll);
                 clP[cl::ParamId::padTouch] = 1.0f;
                 clP[cl::ParamId::padX] = lerpF(0.30f, 0.85f, (prog - 0.72) / 0.28);
-                clP[cl::ParamId::padY] = lerpF(0.45f, 0.96f, (prog - 0.72) / 0.28);
+                clP[cl::ParamId::padY] = 0.5f; // Roll's Y picks the lane: the snare
             } else {
                 clP[cl::ParamId::padTouch] = 0.0f;
             }
@@ -250,7 +250,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                 p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::roll);
                 p[cl::ParamId::padTouch] = 1.0f;
                 p[cl::ParamId::padX] = lerpF(0.25f, 0.82f, (t - 0.62) / 0.26);
-                p[cl::ParamId::padY] = 0.72f;
+                p[cl::ParamId::padY] = 0.5f; // Roll's Y picks the lane: the snare
             } else {
                 p[cl::ParamId::padTouch] = 0.0f;
             }
@@ -325,10 +325,9 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
             p[cl::ParamId::seqRate] =
                 static_cast<float>(t < 0.50 ? cl::SeqRate::half : cl::SeqRate::normal);
             if (t >= 0.78) {
-                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::drop);
+                // The build: every bar plays its fill (Drop's old right half is now the Fill program).
+                p[cl::ParamId::padProgram] = static_cast<float>(cl::PadProgram::fill);
                 p[cl::ParamId::padTouch] = 1.0f;
-                p[cl::ParamId::padX] = 0.78f;
-                p[cl::ParamId::padY] = 0.85f;
             } else {
                 p[cl::ParamId::padTouch] = 0.0f;
             }

@@ -48,6 +48,7 @@ struct Engine::Impl {
     struct BlockHit {
         double beat = 0.0;
         double durBeats = 0.1;
+        double rate = 1.0; // the pattern's clock where it plays: beat * rate is its pattern beat
         std::int8_t note = 0;
         std::int8_t lane = 0; // drum lane, or the chord voice in MIDI Slicer mode
         std::uint8_t velocity = 0;
@@ -64,7 +65,8 @@ struct Engine::Impl {
     // One block's transport and controls, shared by playback and the pad programs.
     struct Block {
         const Params* params = nullptr;
-        double rawStart = 0.0;    // host beats at sample 0 of the block
+        double hostStart = 0.0;   // the transport at sample 0 of the block, before Shift
+        double rawStart = 0.0;    // window beats (the transport minus Shift) at sample 0 of the block
         double windowStart = 0.0; // host beats: notes starting in [windowStart, windowEnd) belong to this block
         double windowEnd = 0.0;
         double beatsPerSample = 0.0;
@@ -74,10 +76,12 @@ struct Engine::Impl {
         NoteMap noteMap = NoteMap::liveRack;
         PadProgram program = PadProgram::repeat;
         bool padOn = false;   // the pad plays this part of the block
-        bool fillNow = false; // fillNow, or Drop's right half
+        bool fillNow = false; // fillNow, or the Fill pad
         bool isDrum = true;
         float padX = 0.5f;
         float padY = 0.5f;
+        float density = 0.5f;  // Density, or the Density pad's X while it is engaged
+        float dynamics = 0.5f; // Dynamics, or the Density pad's Y while it is engaged
     };
 
     double sampleRate = 48000.0;
@@ -104,6 +108,10 @@ struct Engine::Impl {
     std::array<ActiveNote, kMaxActiveNotes> active{};
     std::array<BlockHit, kMaxBlockHits> blockHits{};
     int blockHitCount = 0;
+
+    // The note-ons this block sent, for the PLAY surface.
+    std::array<SentNote, kMaxMidiEventsPerBlock> sent{};
+    int sentCount = 0;
 
     // Quantized scene and pad state. Switch beats are in window time (the transport minus Shift), on the grid of the
     // pattern as it sounds. A step plays from the scene that owns its grid time: the pending scene from
@@ -167,8 +175,9 @@ struct Engine::Impl {
     const Pattern& pattern() const noexcept CL_NONBLOCKING;
     const DensityMap& densityMap() const noexcept CL_NONBLOCKING;
     void flushAllActive(MidiEventBuffer& outMidi, int sampleOffset) noexcept CL_NONBLOCKING;
-    void triggerNote(std::int8_t noteNum, int velocity, int laneHint, double absEndBeat, int offset,
+    bool triggerNote(std::int8_t noteNum, int velocity, int laneHint, double absEndBeat, int offset,
                      MidiEventBuffer& outMidi, bool isDrum) noexcept CL_NONBLOCKING;
+    void recordSent(const Block& b, const BlockHit& hit, int offset, int velocity) noexcept CL_NONBLOCKING;
     void recordClipNoteOn(int midiNote, int vel, double ppq) noexcept CL_NONBLOCKING;
     void recordClipNoteOff(int midiNote, double ppq) noexcept CL_NONBLOCKING;
     void emitContinuousAt(const Params& params, double tickBeat, int offset, MidiEventBuffer& outMidi, bool padOn,
@@ -190,6 +199,7 @@ struct Engine::Impl {
     void emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left, float* right,
                  int numSamples) noexcept CL_NONBLOCKING;
+    void releaseAll(MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void renderAuditionAudio(const Params& params, float* left, float* right, int numSamples) noexcept CL_NONBLOCKING;
 
     // pad_programs.cpp

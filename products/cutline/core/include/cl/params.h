@@ -38,8 +38,8 @@ enum class ParamId : std::uint8_t {
     auditionGain,
     motion,
 
-    // Interim pad surface
-    padProgram, // 0..3: Repeat, Roll, Rate, Drop
+    // PLAY pad surface
+    padProgram, // 0..5: Repeat, Roll, Density, Rate, Drop, Fill
     padTouch,
     padHold,
     padCcMode,
@@ -70,7 +70,7 @@ inline constexpr int kParamCount = static_cast<int>(ParamId::count);
 static_assert(kParamCount <= 64, "Cutline stays within Ableton Live's 64-parameter direct configure limit");
 
 inline constexpr int kLaneCount = 2;
-inline constexpr int kPerfPadCount = 4;
+inline constexpr int kPerfPadCount = 6;
 inline constexpr int kSceneCount = 4;
 
 enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, follow, ratio };
@@ -108,7 +108,7 @@ inline constexpr int kNoteMapCount = 10;
 enum class SlicerStyle : std::uint8_t { stabChop = 0, strumFlam = 1, breakArp = 2, bassStab = 3, clipSlice = 4 };
 enum class SeqRate : std::uint8_t { half = 0, normal = 1, doubleTime = 2 };
 enum class Quantize : std::uint8_t { instant = 0, sixteenth = 1, quarter = 2, oneBar = 3 };
-enum class PadProgram : std::uint8_t { repeat = 0, roll = 1, rate = 2, drop = 3 };
+enum class PadProgram : std::uint8_t { repeat = 0, roll = 1, density = 2, rate = 3, drop = 4, fill = 5 };
 enum class PadCcMode : std::uint8_t { off = 0, cc74AndCc1 = 1, cc74AndVel = 2, cc1AndAt = 3 };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
 
@@ -140,7 +140,8 @@ inline constexpr std::array<std::string_view, 5> slicerStyle{"Stab Chop", "Strum
 inline constexpr std::array<std::string_view, 3> seqRate{"0.5\u00d7", "1\u00d7", "2\u00d7"};
 inline constexpr std::array<std::string_view, 4> scene{"A", "B", "C", "D"};
 inline constexpr std::array<std::string_view, 4> sceneQuantize{"Instant", "1/16", "1/4", "1 Bar"};
-inline constexpr std::array<std::string_view, 4> padProgram{"Repeat", "Roll", "Rate", "Drop"};
+inline constexpr std::array<std::string_view, kPerfPadCount> padProgram{"Repeat", "Roll", "Density",
+                                                                        "Rate",   "Drop", "Fill"};
 inline constexpr std::array<std::string_view, 4> padCcMode{"Off", "CC74 + CC1", "CC74 + Vel", "CC1 + AT"};
 inline constexpr std::array<std::string_view, 4> ccThinMs{"1 ms", "2 ms", "4 ms", "8 ms"};
 inline constexpr std::array<std::string_view, 12> laneRate{"8 bars", "4 bars", "2 bars", "1 bar", "1/2",   "1/4",

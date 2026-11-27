@@ -1,16 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The four interim pad programs: Repeat, Roll, Rate, Drop.
+// The six PLAY programs: Repeat, Roll, Density, Rate, Drop, Fill.
 #include "cl/engine.h"
 #include "cl/groove_state.h"
-#include "pad_programs.h"
+#include "cl/pad_programs.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <set>
+#include <string_view>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 using namespace cl;
@@ -101,6 +108,15 @@ int countInBeat(const Run& run, int note, int beat) {
     return n;
 }
 
+// The first note-on of `note` at or after `fromSample`: with the default beat's snare on beats 1 and 3, a snare after
+// the pad was touched is the roll's first note.
+const NoteOn* firstNoteFrom(const Run& run, int note, std::int64_t fromSample) {
+    for (const auto& on : run.noteOns)
+        if (on.note == note && on.sample >= fromSample)
+            return &on;
+    return nullptr;
+}
+
 // Default beat with a drawn two-beat snare fill.
 GrooveState beatWithFill() {
     GrooveBank bank;
@@ -123,8 +139,13 @@ TEST_CASE("Pad X and Y map to the documented steps", "[pads]") {
     CHECK(pads::rollStepBeats(0.3f) == Approx(0.25));
     CHECK(pads::rollStepBeats(0.6f) == Approx(1.0 / 6.0));
     CHECK(pads::rollStepBeats(1.0f) == Approx(0.125));
-    CHECK(pads::rollVelocity(0.0f) == 1);
-    CHECK(pads::rollVelocity(1.0f) == 127);
+    CHECK(pads::rollLane(0.1f) == 0); // bottom third: kick
+    CHECK(pads::rollLane(0.5f) == 1); // middle third: snare
+    CHECK(pads::rollLane(0.9f) == 4); // top third: closed hat
+    CHECK(pads::rollVelocity(0.0, 0.25) == 72);
+    CHECK(pads::rollVelocity(3.75, 0.25) == 120);
+    CHECK(pads::rollVelocity(3.875, 0.125) == 120);
+    CHECK(pads::rollVelocity(23.0 / 6.0, 1.0 / 6.0) == 120);
     CHECK(pads::rateMultiplier(0.1f) == Approx(0.5));
     CHECK(pads::rateMultiplier(0.5f) == Approx(1.0));
     CHECK(pads::rateMultiplier(0.9f) == Approx(2.0));
@@ -135,7 +156,22 @@ TEST_CASE("Pad X and Y map to the documented steps", "[pads]") {
     CHECK_FALSE(pads::rateKeepsLane(0.9f, 0));
     CHECK(pads::rateKeepsLane(0.9f, 4));
     CHECK(pads::dropIsSilence(0.2f));
-    CHECK_FALSE(pads::dropIsSilence(0.8f));
+    CHECK_FALSE(pads::dropIsSilence(0.3f));
+    CHECK(pads::dropZone(0.3f) == pads::DropZone::kickOnly);
+    CHECK(pads::dropZone(0.6f) == pads::DropZone::kickAndSnare);
+    CHECK(pads::dropZone(0.9f) == pads::DropZone::noKick);
+}
+
+TEST_CASE("The six programs are in the documented order", "[pads]") {
+    CHECK(kPerfPadCount == 6);
+    const std::array<std::string_view, kPerfPadCount> expected{"Repeat", "Roll", "Density", "Rate", "Drop", "Fill"};
+    for (int i = 0; i < kPerfPadCount; ++i) {
+        CHECK(spec(ParamId::padProgram).choices[static_cast<std::size_t>(i)] == expected[static_cast<std::size_t>(i)]);
+        CHECK(kPerfPadLabels[static_cast<std::size_t>(i)] == expected[static_cast<std::size_t>(i)]);
+    }
+    CHECK(static_cast<int>(PadProgram::density) == 2);
+    CHECK(static_cast<int>(PadProgram::fill) == 5);
+    CHECK(Params{}.choice(ParamId::padProgram) == static_cast<int>(PadProgram::repeat));
 }
 
 TEST_CASE("Every pad program releases all its notes", "[engine][pads]") {
@@ -185,6 +221,28 @@ TEST_CASE("A C3 note does not engage a pad with default parameters", "[engine][p
     CHECK(armed.activePadProgram() == static_cast<int>(PadProgram::roll));
 }
 
+TEST_CASE("Pad MIDI: C3 to F3 engage the six programs in order", "[engine][pads]") {
+    for (int program = 0; program < kPerfPadCount; ++program) {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        eng.inputNoteOn(60 + program, 100, 0.0);
+        std::vector<float> l(kBlock), r(kBlock);
+        MidiEventBuffer midi;
+        Params p;
+        p[ParamId::padMidi] = 1.0f;
+        eng.process(p, {kBpm, 0.0, true}, midi, l.data(), r.data(), kBlock);
+        INFO("note " << 60 + program);
+        CHECK(eng.padEngaged());
+        CHECK(eng.activePadProgram() == program);
+        CHECK(eng.midiPadMask() == (1u << static_cast<unsigned>(program)));
+    }
+    // F#3 is not a pad.
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    eng.inputNoteOn(66, 100, 0.0);
+    CHECK(eng.midiPadMask() == 0);
+}
+
 TEST_CASE("Repeat loops the hits inside its window", "[engine][pads]") {
     Engine eng;
     eng.prepare(kSr, kBlock);
@@ -204,17 +262,123 @@ TEST_CASE("Repeat loops the hits inside its window", "[engine][pads]") {
     CHECK(eng.position().repeatBeats == Approx(1.0));
 }
 
-TEST_CASE("Roll plays the snare lane's note on a grid, at the velocity Y sets", "[engine][pads]") {
-    Engine eng;
-    eng.prepare(kSr, kBlock);
-    const Run run = play(eng, 2.0, [](double) { return padParams(PadProgram::roll, 0.3f, 1.0f); });
-    REQUIRE(run.noteOns.size() > 16);
-    for (const auto& on : run.noteOns) {
-        CHECK(on.note == 38);
-        CHECK(on.velocity == 127);
+TEST_CASE("Roll rolls the lane Y picks, rising from 72 to 120 across each bar, over the pattern", "[engine][pads]") {
+    Engine plain;
+    plain.prepare(kSr, kBlock);
+    const Run reference = play(plain, 2.0, [](double) { return Params{}; });
+
+    struct Case {
+        float y;
+        int note;
+    };
+    for (const Case c : {Case{0.1f, 36}, Case{0.5f, 38}, Case{0.9f, 42}}) {
+        INFO("Y " << c.y << ", note " << c.note);
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const Run run = play(eng, 2.0, [&](double) { return padParams(PadProgram::roll, 0.3f, c.y); });
+
+        // The rolled lane: every 1/16, and in each bar 72 on its first note, rising to 120 on its last.
+        std::vector<NoteOn> rolled;
+        for (const auto& on : run.noteOns)
+            if (on.note == c.note && beatOf(on) < 8) // play() can reach the next bar's downbeat
+                rolled.push_back(on);
+        REQUIRE(rolled.size() == 32); // two bars of 1/16
+        for (int beat = 0; beat < 8; ++beat)
+            CHECK(countInBeat(run, c.note, beat) == 4);
+        for (std::size_t i = 0; i < rolled.size(); ++i) {
+            const int k = static_cast<int>(i % 16);
+            INFO("roll note " << i);
+            CHECK(rolled[i].velocity == static_cast<int>(std::lround(72.0 + 48.0 * k / 15.0)));
+        }
+        CHECK(rolled[0].velocity == 72);
+        CHECK(rolled[15].velocity == 120);
+        CHECK(rolled[16].velocity == 72);
+
+        // The other lanes keep playing the pattern.
+        std::vector<NoteOn> others, expected;
+        for (const auto& on : run.noteOns)
+            if (on.note != c.note)
+                others.push_back(on);
+        for (const auto& on : reference.noteOns)
+            if (on.note != c.note)
+                expected.push_back(on);
+        REQUIRE_FALSE(expected.empty());
+        CHECK(others == expected);
     }
-    for (int beat = 1; beat <= 6; ++beat)
-        CHECK(countInBeat(run, 38, beat) == 4); // 1/16
+}
+
+TEST_CASE("Density's X and Y replace Density and Dynamics while it is held, and telemetry reports them",
+          "[engine][pads]") {
+    // Core, Groove and Detail hits at several velocities, so Density and Dynamics both change what is sent.
+    GrooveBank bank;
+    Pattern& pat = bank.scenes[0];
+    pat = Pattern{};
+    const auto put = [&pat](int lane, int step, int velocity, Layer layer) {
+        Step& s = pat.lanes[static_cast<std::size_t>(lane)].steps[static_cast<std::size_t>(step)];
+        s.velocity = static_cast<std::uint8_t>(velocity);
+        s.layer = layer;
+    };
+    put(0, 0, 118, Layer::core);
+    put(0, 10, 96, Layer::groove);
+    put(1, 4, 118, Layer::core);
+    put(1, 12, 110, Layer::core);
+    put(2, 7, 56, Layer::detail);
+    put(2, 15, 50, Layer::detail);
+    for (int step = 0; step < kStepsPerBar; step += 2)
+        put(4, step, step % 4 == 0 ? 100 : 70, step % 8 == 0 ? Layer::core : Layer::groove);
+    put(4, 3, 40, Layer::detail);
+
+    for (const auto& [x, y] : {std::pair{0.95f, 0.2f}, std::pair{0.1f, 0.9f}, std::pair{0.6f, 0.5f}}) {
+        INFO("X " << x << ", Y " << y);
+        Engine pad;
+        pad.prepare(kSr, kBlock);
+        pad.setGroove(GrooveState(bank));
+        const Run held = play(pad, 2.0, [&](double) { return padParams(PadProgram::density, x, y); });
+
+        Engine param;
+        param.prepare(kSr, kBlock);
+        param.setGroove(GrooveState(bank));
+        const Run reference = play(param, 2.0, [&](double) {
+            Params p;
+            p[ParamId::density] = x;
+            p[ParamId::dynamics] = y;
+            return p;
+        });
+        REQUIRE(reference.noteOns.size() > 10);
+        CHECK(held.noteOns == reference.noteOns);
+
+        std::vector<float> l(kBlock), r(kBlock);
+        MidiEventBuffer midi;
+        pad.process(padParams(PadProgram::density, x, y), {kBpm, held.endBeat, true}, midi, l.data(), r.data(), kBlock);
+        CHECK(pad.position().density == Approx(x));
+        CHECK(pad.position().dynamics == Approx(y));
+        Params released = padParams(PadProgram::density, x, y);
+        released[ParamId::padTouch] = 0.0f;
+        pad.process(released, {kBpm, held.endBeat + 0.01, true}, midi, l.data(), r.data(), kBlock);
+        CHECK(pad.position().density == Approx(spec(ParamId::density).def));
+        CHECK(pad.position().dynamics == Approx(spec(ParamId::dynamics).def));
+    }
+}
+
+TEST_CASE("Fill plays every bar's fill while it is held, as fillNow does", "[engine][pads]") {
+    Engine pad;
+    pad.prepare(kSr, kBlock);
+    pad.setGroove(beatWithFill());
+    const Run held = play(pad, 3.0, [](double) { return padParams(PadProgram::fill, 0.5f, 0.5f); });
+
+    Engine param;
+    param.prepare(kSr, kBlock);
+    param.setGroove(beatWithFill());
+    const Run reference = play(param, 3.0, [](double) {
+        Params p;
+        p[ParamId::fillNow] = 1.0f;
+        return p;
+    });
+    REQUIRE(reference.noteOns.size() > 10);
+    CHECK(held.noteOns == reference.noteOns);
+    // Every bar plays the fill's snare on steps 10 and 13: beats 2.5 and 3.25 of each bar.
+    for (int bar = 0; bar < 3; ++bar)
+        CHECK(countInBeat(held, 38, bar * 4 + 2) == 1);
 }
 
 TEST_CASE("Rate changes the speed and Y filters the kit", "[engine][pads]") {
@@ -246,28 +410,32 @@ TEST_CASE("Rate changes the speed and Y filters the kit", "[engine][pads]") {
         CHECK(on.note != 36);
 }
 
-TEST_CASE("Drop is silence on the left and the fill on the right", "[engine][pads]") {
-    Engine left;
-    left.prepare(kSr, kBlock);
-    left.setGroove(beatWithFill());
-    const Run silent = play(left, 2.0, [](double) { return padParams(PadProgram::drop, 0.2f, 0.5f); });
-    CHECK(silent.noteOns.empty());
+TEST_CASE("Drop's four zones: silence, kick only, kick and snare, everything except kick", "[engine][pads]") {
+    // Kick, snare, ghost and closed hat, so each zone keeps a different set.
+    GrooveBank bank;
+    bank.scenes[0].lanes[2].steps[7].velocity = 60;
+    bank.scenes[0].lanes[2].steps[7].layer = Layer::core;
+    Engine plain;
+    plain.prepare(kSr, kBlock);
+    plain.setGroove(GrooveState(bank));
+    const Run reference = play(plain, 2.0, [](double) { return Params{}; });
 
-    Engine right;
-    right.prepare(kSr, kBlock);
-    right.setGroove(beatWithFill());
-    const Run dropped = play(right, 2.0, [](double) { return padParams(PadProgram::drop, 0.8f, 0.5f); });
-
-    Engine param;
-    param.prepare(kSr, kBlock);
-    param.setGroove(beatWithFill());
-    const Run reference = play(param, 2.0, [](double) {
-        Params p;
-        p[ParamId::fillNow] = 1.0f;
-        return p;
-    });
-    REQUIRE(reference.noteOns.size() > 10);
-    CHECK(dropped.noteOns == reference.noteOns);
+    struct Zone {
+        float x;
+        std::vector<int> keeps; // notes the zone lets through
+    };
+    for (const Zone& zone : {Zone{0.1f, {}}, Zone{0.4f, {36}}, Zone{0.6f, {36, 38}}, Zone{0.9f, {38, 37, 42}}}) {
+        INFO("X " << zone.x);
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        eng.setGroove(GrooveState(bank));
+        const Run run = play(eng, 2.0, [&](double) { return padParams(PadProgram::drop, zone.x, 0.5f); });
+        std::vector<NoteOn> expected;
+        for (const auto& on : reference.noteOns)
+            if (std::find(zone.keeps.begin(), zone.keeps.end(), on.note) != zone.keeps.end())
+                expected.push_back(on);
+        CHECK(run.noteOns == expected);
+    }
 }
 
 TEST_CASE("Releasing a pad returns to the pattern in phase", "[engine][pads]") {
@@ -304,21 +472,16 @@ TEST_CASE("A pad touched mid-beat engages on the next 1/16 at default parameters
         Params p; // sceneQuantize left at its default
         p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
         p[ParamId::padX] = 0.3f; // 1/16 roll
-        p[ParamId::padY] = 1.0f; // velocity 127
+        p[ParamId::padY] = 0.5f; // on the snare
         p[ParamId::padTouch] = ppq >= 1.1 ? 1.0f : 0.0f;
         return p;
     });
     const double bps = kBpm / 60.0 / kSr;
 
-    const NoteOn* firstRoll = nullptr;
-    for (const auto& on : run.noteOns) {
-        if (on.note == 38 && on.velocity == 127) {
-            firstRoll = &on;
-            break;
-        }
-    }
+    const NoteOn* firstRoll = firstNoteFrom(run, 38, static_cast<std::int64_t>(1.1 / bps));
     REQUIRE(firstRoll != nullptr);
     CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor(1.25 / bps + 1.0e-7))) <= 1);
+    CHECK(firstRoll->velocity == pads::rollVelocity(1.25, 0.25));
 
     // The pattern's closed hat on beat 1 still sounds: the pad had not engaged yet.
     bool hatOnBeat1 = false;
@@ -381,9 +544,8 @@ TEST_CASE("A pattern hit before the pad's switch point plays, even in the block 
         eng, 1.0,
         [](double ppq) {
             Params p; // pads quantize to 1/16 whatever the scene quantize is
-            p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
-            p[ParamId::padX] = 0.3f;
-            p[ParamId::padY] = 1.0f;
+            p[ParamId::padProgram] = static_cast<float>(PadProgram::drop);
+            p[ParamId::padX] = 0.3f; // kick only, from the switch point on
             p[ParamId::padTouch] = ppq >= 2.05 ? 1.0f : 0.0f;
             return p;
         },
@@ -394,15 +556,11 @@ TEST_CASE("A pattern hit before the pad's switch point plays, even in the block 
     for (const auto& on : run.noteOns)
         percA = percA || (on.note == 43 && std::llabs(on.sample - at) <= 1);
     CHECK(percA);
-    const NoteOn* firstRoll = nullptr;
+    // From the switch point on, only the kick plays: the hats on 2.5 and 3.0 and the snare on 3.0 are dropped.
     for (const auto& on : run.noteOns) {
-        if (on.note == 38 && on.velocity == 127) {
-            firstRoll = &on;
-            break;
-        }
+        INFO("note " << on.note << " at host beat " << static_cast<double>(on.sample) * bps);
+        CHECK((on.sample < static_cast<std::int64_t>(std::floor(2.25 / bps)) || on.note == 36));
     }
-    REQUIRE(firstRoll != nullptr);
-    CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor(2.25 / bps + 1.0e-7))) <= 1);
 }
 
 TEST_CASE("With Shift, a pad engages on a 1/16 of the pattern as it sounds", "[engine][pads]") {
@@ -417,18 +575,12 @@ TEST_CASE("With Shift, a pad engages on a 1/16 of the pattern as it sounds", "[e
         p[ParamId::shiftMs] = shiftMs;
         p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
         p[ParamId::padX] = 0.3f;
-        p[ParamId::padY] = 1.0f;
+        p[ParamId::padY] = 0.5f; // on the snare
         p[ParamId::padTouch] = ppq >= 1.27 ? 1.0f : 0.0f;
         return p;
     });
     const double bps = kBpm / 60.0 / kSr;
-    const NoteOn* firstRoll = nullptr;
-    for (const auto& on : run.noteOns) {
-        if (on.note == 38 && on.velocity == 127) {
-            firstRoll = &on;
-            break;
-        }
-    }
+    const NoteOn* firstRoll = firstNoteFrom(run, 38, static_cast<std::int64_t>(1.27 / bps));
     REQUIRE(firstRoll != nullptr);
     INFO("first roll note at host beat " << static_cast<double>(firstRoll->sample) * bps);
     CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor((1.25 + shift) / bps + 1.0e-7))) <= 1);
@@ -592,7 +744,7 @@ TEST_CASE("A pending pad engage is re-quantized after the transport jumps back",
         Params p;
         p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
         p[ParamId::padX] = 0.3f;
-        p[ParamId::padY] = 1.0f;
+        p[ParamId::padY] = 0.5f; // on the snare
         p[ParamId::padTouch] = touched ? 1.0f : 0.0f;
         eng.process(p, {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
         take(run, midi, sample);
@@ -606,13 +758,8 @@ TEST_CASE("A pending pad engage is re-quantized after the transport jumps back",
     const std::int64_t jumpSample = sample;
     while (ppq < 2.0)
         step();
-    const NoteOn* firstRoll = nullptr;
-    for (const auto& on : run.noteOns) {
-        if (on.sample >= jumpSample && on.note == 38 && on.velocity == 127) {
-            firstRoll = &on;
-            break;
-        }
-    }
+    // After the jump the pattern's next snare is on beat 3, so the first snare is the roll's.
+    const NoteOn* firstRoll = firstNoteFrom(run, 38, jumpSample);
     REQUIRE(firstRoll != nullptr);
     const double at = 1.03 + static_cast<double>(firstRoll->sample - jumpSample) * bps;
     INFO("first roll note at beat " << at);
@@ -651,7 +798,7 @@ TEST_CASE("Pre-roll: Roll held from before beat 0 plays its first note on beat 0
     std::vector<float> l(kBlock), r(kBlock);
     MidiEventBuffer midi;
     Run run;
-    const Params p = padParams(PadProgram::roll, 0.0f, 1.0f);
+    const Params p = padParams(PadProgram::roll, 0.0f, 0.5f); // 1/8 on the snare
     double ppq = -4.0;
     std::int64_t sample = 0;
     while (ppq < 1.0) {
@@ -668,7 +815,10 @@ TEST_CASE("Pre-roll: Roll held from before beat 0 plays its first note on beat 0
     }
     const double first = -4.0 + static_cast<double>(run.noteOns.front().sample) * bps;
     CHECK(std::abs(first) <= 2.0 * bps);
-    CHECK(run.noteOns.front().note == 38);
+    const NoteOn* firstRoll = firstNoteFrom(run, 38, 0);
+    REQUIRE(firstRoll != nullptr);
+    CHECK(std::abs(-4.0 + static_cast<double>(firstRoll->sample) * bps) <= 2.0 * bps);
+    CHECK(firstRoll->velocity == 72);
 }
 
 TEST_CASE("Pre-roll: Repeat held from before beat 0 loops from beat 0", "[engine][pads]") {
@@ -698,4 +848,190 @@ TEST_CASE("Pre-roll: Repeat held from before beat 0 loops from beat 0", "[engine
     CHECK(countInBeat(run, 36, 4) == 1);
     CHECK(countInBeat(run, 36, 5) == 1);
     CHECK(std::abs(-4.0 + static_cast<double>(run.noteOns.front().sample) * bps) <= 2.0 * bps);
+}
+
+TEST_CASE("In MIDI Slicer mode Density and Fill do nothing and Drop only silences", "[engine][pads][slicer]") {
+    const auto slicerRun = [](PadProgram program, float x, float y, bool touch) {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        eng.setGroove(beatWithFill());
+        for (const int note : {48, 55, 67})
+            eng.inputNoteOn(note, 100, 0.0);
+        return play(eng, 2.0, [&](double) {
+            Params p;
+            p[ParamId::engineMode] = static_cast<float>(EngineMode::slicer);
+            p[ParamId::padProgram] = static_cast<float>(program);
+            p[ParamId::padX] = x;
+            p[ParamId::padY] = y;
+            p[ParamId::padTouch] = touch ? 1.0f : 0.0f;
+            return p;
+        });
+    };
+    const Run reference = slicerRun(PadProgram::repeat, 0.5f, 0.5f, false);
+    REQUIRE(reference.noteOns.size() > 8);
+    CHECK(slicerRun(PadProgram::density, 0.05f, 0.95f, true).noteOns == reference.noteOns);
+    CHECK(slicerRun(PadProgram::fill, 0.5f, 0.5f, true).noteOns == reference.noteOns);
+    for (const float x : {0.3f, 0.6f, 0.9f}) {
+        INFO("Drop X " << x);
+        CHECK(slicerRun(PadProgram::drop, x, 0.5f, true).noteOns == reference.noteOns);
+    }
+    CHECK(slicerRun(PadProgram::drop, 0.1f, 0.5f, true).noteOns.empty());
+    // Rate applies: the phrase plays twice as fast.
+    CHECK(slicerRun(PadProgram::rate, 0.9f, 0.5f, true).noteOns.size() > reference.noteOns.size());
+}
+
+TEST_CASE("The sent-note telemetry lists exactly the note-ons in the MIDI buffer", "[engine][pads]") {
+    // A busy two-bar groove: ratchets, a flam, nudges, swing and a fill, with the pads switching underneath.
+    GrooveBank bank;
+    Pattern& pat = bank.scenes[0];
+    setPatternBars(pat, 2);
+    for (int step = 0; step < 32; step += 3) {
+        Step& s = pat.lanes[6].steps[static_cast<std::size_t>(step)];
+        s.velocity = 80;
+        s.layer = Layer::groove;
+        s.nudge = static_cast<std::int8_t>(step % 5 - 2);
+    }
+    pat.lanes[4].steps[6].ratchet = 3;
+    pat.lanes[1].steps[12].flam = true;
+    pat.fill.steps[1][14].velocity = 110;
+
+    for (const bool slicer : {false, true}) {
+        INFO((slicer ? "MIDI Slicer" : "drums"));
+        Engine eng;
+        eng.prepare(kSr, 512);
+        eng.setGroove(GrooveState(bank));
+        for (const int note : {48, 55, 67})
+            eng.inputNoteOn(note, 100, 0.0);
+        std::vector<float> l(512), r(512);
+        MidiEventBuffer midi;
+        const double bps = kBpm / 60.0 / kSr;
+        double ppq = 0.0;
+        std::size_t total = 0;
+        for (int blk = 0; ppq < 24.0; ++blk) {
+            const int n = 64 + (blk * 37) % 449; // uneven block sizes
+            Params p;
+            p[ParamId::engineMode] = slicer ? 1.0f : 0.0f;
+            p[ParamId::swing] = 0.4f;
+            p[ParamId::fillEvery] = 1.0f; // every 2 bars
+            p[ParamId::padProgram] = static_cast<float>(static_cast<int>(ppq / 2.0) % kPerfPadCount);
+            p[ParamId::padTouch] = std::fmod(ppq, 2.0) < 1.4 ? 1.0f : 0.0f;
+            p[ParamId::padX] = static_cast<float>(std::fmod(ppq * 0.37, 1.0));
+            p[ParamId::padY] = static_cast<float>(std::fmod(ppq * 0.53, 1.0));
+            eng.process(p, {kBpm, ppq, true}, midi, l.data(), r.data(), n);
+
+            std::multiset<std::tuple<int, int, int>> fromMidi, fromTelemetry;
+            for (int i = 0; i < midi.count; ++i) {
+                const auto& ev = midi.events[static_cast<std::size_t>(i)];
+                if (ev.isNoteOn())
+                    fromMidi.insert({ev.noteNumber(), ev.sampleOffset, static_cast<int>(ev.data[2])});
+            }
+            const auto sentNotes = eng.sentNotes();
+            for (const SentNote& s : sentNotes) {
+                fromTelemetry.insert({s.note, s.sampleOffset, s.velocity});
+                CHECK(s.beatInBar >= 0.0f);
+                CHECK(s.beatInBar <= 4.0f);
+                CHECK(s.ppq == Approx(ppq + static_cast<double>(s.sampleOffset) * bps));
+                if (slicer) {
+                    CHECK(s.lane == -1);
+                } else {
+                    REQUIRE(s.lane >= 0);
+                    REQUIRE(s.lane < kDrumLaneCount);
+                    CHECK(s.note == kKitNoteMaps[0][static_cast<std::size_t>(s.lane)]);
+                }
+            }
+            INFO("block " << blk << " at beat " << ppq);
+            CHECK(fromMidi == fromTelemetry);
+            total += sentNotes.size();
+            ppq += bps * static_cast<double>(n);
+        }
+        CHECK(total > 100);
+    }
+}
+
+TEST_CASE("A sent note's place in the bar is on the pattern's clock", "[engine][pads]") {
+    // The default beat's kick is on beats 0 and 2 of each bar. At 2x (the Rate pad) a bar lasts two host beats.
+    for (const auto& [x, rate] : {std::pair{0.5f, 1.0f}, std::pair{0.9f, 2.0f}}) {
+        INFO("rate " << rate);
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        std::vector<float> l(kBlock), r(kBlock);
+        MidiEventBuffer midi;
+        const double bps = kBpm / 60.0 / kSr;
+        std::vector<float> kicks;
+        for (double ppq = 0.0; ppq < 8.0 - bps * kBlock; ppq += bps * kBlock) { // two host bars, not beat 8
+            eng.process(padParams(PadProgram::rate, x, 0.5f), {kBpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+            for (const SentNote& s : eng.sentNotes()) {
+                if (s.note != 36)
+                    continue;
+                kicks.push_back(s.beatInBar);
+                CHECK(s.rate == Approx(rate));
+            }
+        }
+        REQUIRE(kicks.size() == static_cast<std::size_t>(4.0f * rate));
+        for (std::size_t i = 0; i < kicks.size(); ++i)
+            CHECK(kicks[i] == Approx(i % 2 == 0 ? 0.0f : 2.0f).margin(1.0e-4f));
+    }
+}
+
+TEST_CASE("SentNoteRing hands notes over in order, numbers them and drops what does not fit", "[pads]") {
+    auto ring = std::make_unique<SentNoteRing>();
+    for (int i = 0; i < 10; ++i) {
+        SentNote n;
+        n.note = static_cast<std::int8_t>(i);
+        CHECK(ring->push(n));
+    }
+    std::array<SentNote, 4> out{};
+    REQUIRE(ring->drain(out.data(), 4) == 4);
+    for (int i = 0; i < 4; ++i) {
+        CHECK(out[static_cast<std::size_t>(i)].note == i);
+        CHECK(out[static_cast<std::size_t>(i)].seq == static_cast<std::uint32_t>(i + 1));
+    }
+    std::vector<SentNote> rest(16);
+    CHECK(ring->drain(rest.data(), 16) == 6);
+    CHECK(rest[5].seq == 10u);
+
+    for (std::uint32_t i = 0; i < SentNoteRing::kCapacity; ++i)
+        CHECK(ring->push(SentNote{}));
+    CHECK_FALSE(ring->push(SentNote{})); // full: the UI has not drained
+    ring->discard();
+    CHECK(ring->drain(rest.data(), 16) == 0);
+    CHECK(ring->push(SentNote{}));
+}
+
+TEST_CASE("releaseAll sends a note-off for every sounding note and does not catch up afterwards", "[engine][pads]") {
+    const double bps = kBpm / 60.0 / kSr;
+    const double block = bps * static_cast<double>(kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+
+    SECTION("Note-offs for what is sounding") {
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        eng.process(Params{}, {kBpm, 0.0, true}, midi, l.data(), r.data(), kBlock); // kick and hat on beat 0
+        REQUIRE(eng.activeNotesLowMask() != 0);
+        eng.releaseAll(midi);
+        std::multiset<int> offs;
+        for (int i = 0; i < midi.count; ++i) {
+            const auto& ev = midi.events[static_cast<std::size_t>(i)];
+            CHECK(ev.isNoteOff());
+            CHECK(ev.sampleOffset == 0);
+            offs.insert(ev.noteNumber());
+        }
+        CHECK(offs == std::multiset<int>{36, 42});
+        CHECK(eng.activeNotesLowMask() == 0);
+        CHECK(eng.sentNotes().empty());
+    }
+    SECTION("The bypassed block's notes are not sent late") {
+        // Bypassed for the one block that holds the hat on beat 0.5, then processing again on the next block.
+        Engine eng;
+        eng.prepare(kSr, kBlock);
+        const auto bypassed = static_cast<std::int64_t>(std::floor(0.5 / block));
+        for (std::int64_t blk = 0; blk < bypassed; ++blk)
+            eng.process(Params{}, {kBpm, static_cast<double>(blk) * block, true}, midi, l.data(), r.data(), kBlock);
+        eng.releaseAll(midi);
+        eng.process(Params{}, {kBpm, static_cast<double>(bypassed + 1) * block, true}, midi, l.data(), r.data(),
+                    kBlock);
+        for (int i = 0; i < midi.count; ++i)
+            CHECK_FALSE(midi.events[static_cast<std::size_t>(i)].isNoteOn());
+    }
 }

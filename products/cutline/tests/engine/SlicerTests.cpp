@@ -550,7 +550,7 @@ TEST_CASE("Slicer Repeat loops exactly the phrase notes inside its window, from 
     }
 }
 
-TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid at the Y velocity", "[engine][slicer]") {
+TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid, rising across the bar", "[engine][slicer]") {
     Engine eng;
     eng.prepare(kSr, kBlock);
     const HeldNotes held = chord();
@@ -559,7 +559,7 @@ TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid at the
     Params p = slicerParams(SlicerStyle::stabChop);
     p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
     p[ParamId::padX] = 0.1f; // 1/8 notes
-    p[ParamId::padY] = 0.5f; // velocity 64
+    p[ParamId::padY] = 0.5f; // the lane: no meaning for the slicer
 
     const auto notes = playNotes(eng, 120.0, 0.0, 4.0, [&](double ppq) {
         Params q = p;
@@ -572,10 +572,13 @@ TEST_CASE("Slicer Roll retriggers exactly the held notes on the Roll grid at the
             rolled.push_back(n);
     REQUIRE(rolled.size() == 18); // six 1/8 steps from beat 1 to 4, three held notes each
     for (std::size_t i = 0; i < rolled.size(); ++i) {
-        CHECK(rolled[i].beat == Approx(1.0 + 0.5 * static_cast<double>(i / 3)).margin(1.0e-3));
+        const double beat = 1.0 + 0.5 * static_cast<double>(i / 3);
+        CHECK(rolled[i].beat == Approx(beat).margin(1.0e-3));
         CHECK(rolled[i].note == held.notes[i % 3]);
-        CHECK(rolled[i].velocity == 64);
+        // 72 on the bar's first 1/8, 120 on its last (beat 3.5).
+        CHECK(rolled[i].velocity == static_cast<int>(std::lround(72.0 + 48.0 * beat / 3.5)));
     }
+    CHECK(rolled.back().velocity == 120);
 }
 
 TEST_CASE("Pre-roll: MIDI Slicer and Clip Slice are silent before beat 0", "[engine][slicer]") {

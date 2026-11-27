@@ -1059,7 +1059,7 @@ void fuzz(std::uint32_t seed, bool slicer, int blocks) {
         if (rng.chance(1))
             p[ParamId::padHold] = rng.chance(30) ? 1.0f : 0.0f;
         if (rng.chance(3))
-            p[ParamId::padProgram] = static_cast<float>(rng.range(0, 3));
+            p[ParamId::padProgram] = static_cast<float>(rng.range(0, kPerfPadCount - 1));
         if (rng.chance(5))
             p[ParamId::padX] = static_cast<float>(rng.range(0, 100)) / 100.0f;
         if (rng.chance(5))
@@ -1213,7 +1213,7 @@ TEST_CASE("A hit before the block's first sample is not started on the sample wh
     for (int blk = 0; ppq < 2.0; ++blk) {
         Params p = truthParams();
         p[ParamId::padProgram] = static_cast<float>(PadProgram::drop);
-        p[ParamId::padX] = 0.2f;                         // the silence half
+        p[ParamId::padX] = 0.2f;                         // the silence zone
         p[ParamId::padTouch] = ppq >= 0.9 ? 1.0f : 0.0f; // due at beat 1
         p[ParamId::shiftMs] = ppq >= 0.989 ? -25.0f : 0.0f;
         eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);

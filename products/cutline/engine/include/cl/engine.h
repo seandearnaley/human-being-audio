@@ -11,10 +11,12 @@
 #include "cl/params.h"
 #include "cl/pattern.h"
 #include "cl/phrase.h"
+#include "cl/sent_notes.h"
 
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace cl {
 
@@ -40,6 +42,12 @@ struct PlayPosition {
     bool fillLive = false;    // this bar plays its fill
     int repeatStartStep = -1; // step in the pattern where the Repeat window starts; -1 when Repeat is not engaged
     double repeatBeats = 0.0; // length of the Repeat window in beats
+    // The Density and Dynamics the drums resolve with: the parameters, or the Density pad's X and Y while it is held.
+    // The grid and ribbon resolve with these, so they show what plays.
+    float density = 0.5f;
+    float dynamics = 0.5f;
+    float rate = 1.0f;      // pattern beats per host beat: Rate, times the Rate pad while it is engaged
+    float beatInBar = 0.0f; // 0..4 on the pattern's clock, at the start of the last block
 };
 
 class Engine {
@@ -55,7 +63,7 @@ class Engine {
     void setLaneCurves(const LaneCurves& curves) noexcept CL_NONBLOCKING;
     void setGroove(const GrooveState& groove) noexcept CL_NONBLOCKING;
 
-    // Live MIDI input: C3-D#3 engage the pad programs when Pad MIDI is on (drum mode); in MIDI Slicer
+    // Live MIDI input: C3-F3 engage the six pad programs when Pad MIDI is on (drum mode); in MIDI Slicer
     // mode the notes are the chord to slice, or the clip to capture.
     void inputNoteOn(int midiNote, int velocity, double ppq = -1.0) noexcept CL_NONBLOCKING;
     void inputNoteOff(int midiNote, double ppq = -1.0) noexcept CL_NONBLOCKING;
@@ -66,7 +74,13 @@ class Engine {
     void process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left, float* right,
                  int numSamples) noexcept CL_NONBLOCKING;
 
+    // Bypass: writes a note-off for every note Cutline has sounding into `outMidi` (cleared first), at sample 0, and
+    // forgets the transport, so the next process() starts afresh instead of catching up on the bypassed time.
+    void releaseAll(MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
+
     // Telemetry for the 60 Hz UI.
+    // The note-ons the last process() call sent, drum and slicer alike, in time order.
+    std::span<const SentNote> sentNotes() const noexcept CL_NONBLOCKING;
     PlayPosition position() const noexcept CL_NONBLOCKING;
     const SlicerPlan& slicerPlan() const noexcept CL_NONBLOCKING;
     HeldNotes activeHeldNotes() const noexcept CL_NONBLOCKING;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "engine_impl.h"
-#include "pad_programs.h"
+#include "cl/pad_programs.h"
 
 #include <hba/dsp/denormals.h>
 
@@ -69,6 +69,7 @@ void Engine::Impl::reset() noexcept CL_NONBLOCKING {
     for (auto& slot : active)
         slot.active = false;
     blockHitCount = 0;
+    sentCount = 0;
     physicalHeld.clear();
     held.clear();
     latched.clear();
@@ -132,7 +133,8 @@ void Engine::Impl::flushAllActive(MidiEventBuffer& outMidi, int sampleOffset) no
     audition.allNotesOff();
 }
 
-void Engine::Impl::triggerNote(std::int8_t noteNum, int velocity, int laneHint, double absEndBeat, int offset,
+// Returns whether the note-on was sent.
+bool Engine::Impl::triggerNote(std::int8_t noteNum, int velocity, int laneHint, double absEndBeat, int offset,
                                MidiEventBuffer& outMidi, bool isDrum) noexcept CL_NONBLOCKING {
     const std::uint8_t ch = 1;
     for (auto& slot : active) {
@@ -163,7 +165,7 @@ void Engine::Impl::triggerNote(std::int8_t noteNum, int velocity, int laneHint, 
     // every note that did start still has room for its note-off.
     const int clampedVel = std::clamp(velocity, 1, 127);
     if (!outMidi.push(MidiEvent::noteOn(offset, ch, noteNum, clampedVel)))
-        return;
+        return false;
 
     auto& slot = active[static_cast<std::size_t>(chosen)];
     slot.active = true;
@@ -179,6 +181,24 @@ void Engine::Impl::triggerNote(std::int8_t noteNum, int velocity, int laneHint, 
         audition.triggerDrumLane(laneHint >= 0 ? laneHint : 0, clampedVel);
     else
         audition.noteOn(noteNum, clampedVel, false, laneHint);
+    return true;
+}
+
+// Lists a note-on that was sent, where it sounds on the pattern's clock, for the PLAY surface.
+void Engine::Impl::recordSent(const Block& b, const BlockHit& hit, int offset, int velocity) noexcept CL_NONBLOCKING {
+    if (sentCount >= static_cast<int>(sent.size()))
+        return;
+    const double patternBeat = hit.beat * hit.rate;
+    const double inBar = patternBeat - std::floor(patternBeat / 4.0) * 4.0;
+    SentNote& s = sent[static_cast<std::size_t>(sentCount++)];
+    s.ppq = b.hostStart + static_cast<double>(offset) * b.beatsPerSample;
+    s.beatInBar = static_cast<float>(std::clamp(inBar, 0.0, 4.0));
+    s.rate = static_cast<float>(hit.rate);
+    s.seq = 0;
+    s.sampleOffset = offset;
+    s.note = hit.note;
+    s.lane = hit.drum ? hit.lane : static_cast<std::int8_t>(-1);
+    s.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
 }
 
 void Engine::Impl::recordClipNoteOn(int midiNote, int vel, double ppq) noexcept CL_NONBLOCKING {
@@ -369,6 +389,7 @@ void Engine::Impl::pushDrumHit(const Block& b, const Pattern& pat, int lane, dou
     BlockHit& hit = blockHits[static_cast<std::size_t>(blockHitCount++)];
     hit.beat = hostBeat;
     hit.durBeats = hostDur;
+    hit.rate = b.rate;
     hit.note = effectiveLaneMidiNote(b.noteMap, lane, pat.lanes[static_cast<std::size_t>(lane)].midiNote);
     hit.lane = static_cast<std::int8_t>(lane);
     hit.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
@@ -389,7 +410,21 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
     const double late = maxLateBeats(b.beatsPerMs);
     const auto firstBar = static_cast<std::int64_t>(std::floor((scaledStart - late) / 4.0));
     const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd + early) / 4.0));
-    const bool filterKit = b.padOn && b.program == PadProgram::rate;
+    // The pads that thin the kit: Rate's Y, Drop's zones, and Roll, whose lane plays the roll instead.
+    const auto keepsLane = [&](int lane) noexcept CL_NONBLOCKING {
+        if (!b.padOn)
+            return true;
+        switch (b.program) {
+        case PadProgram::rate:
+            return pads::rateKeepsLane(b.padY, lane);
+        case PadProgram::drop:
+            return pads::dropKeepsLane(b.padX, lane);
+        case PadProgram::roll:
+            return lane != pads::rollLane(b.padY);
+        default:
+            return true;
+        }
+    };
     // Silent before beat 0: of the hits that start before it, only bar 0's own early hits play. A hit of an earlier
     // bar that lands at or after beat 0 (late Swing, nudge or offset on its last step) plays as it always has.
     const double silentBefore = kTimelineStart * b.rate;
@@ -419,8 +454,7 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
         for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + kMaxBarsPerBlock; ++bar) {
             const bool fill = fillActiveFor(pat, bar, b.fillNow, everyBars, scaledEnd, b.beatsPerMs);
             ResolvedBar resolved;
-            resolveBar(pat, map, floorMod(bar, bars), {params[ParamId::density], params[ParamId::dynamics], fill},
-                       resolved);
+            resolveBar(pat, map, floorMod(bar, bars), {b.density, b.dynamics, fill}, resolved);
             forEachHit(
                 pat, resolved, static_cast<double>(bar) * 4.0, timing, [&](const Hit& h) noexcept CL_NONBLOCKING {
                     if (h.beat < scaledStart - kBeatEps || h.beat >= scaledEnd - kBeatEps)
@@ -430,7 +464,7 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
                     const double grid = (static_cast<double>(bar) * 4.0 + static_cast<double>(h.step) * 0.25) / b.rate;
                     if (sceneAtGrid(grid) != scene)
                         return;
-                    if (filterKit && !pads::rateKeepsLane(b.padY, h.lane))
+                    if (!keepsLane(h.lane))
                         return;
                     pushDrumHit(b, pat, h.lane, h.beat / b.rate, h.durBeats / b.rate, h.velocity);
                 });
@@ -445,6 +479,7 @@ void Engine::Impl::pushNoteHit(const Block& b, int note, int voice, double hostB
     BlockHit& hit = blockHits[static_cast<std::size_t>(blockHitCount++)];
     hit.beat = hostBeat;
     hit.durBeats = hostDur;
+    hit.rate = b.rate;
     hit.note = static_cast<std::int8_t>(std::clamp(note, 0, 127));
     hit.lane = static_cast<std::int8_t>(std::clamp(voice, 0, 7));
     hit.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
@@ -529,6 +564,8 @@ void Engine::Impl::playClip(const Block& b) noexcept CL_NONBLOCKING {
 // One part of a block: a pad program, the pattern, or in MIDI Slicer mode the phrase or the captured clip.
 // Silent before beat 0: every source but the pattern plays only the part of the block from kTimelineStart on. The
 // pattern sees the whole block, because bar 0's early hits start before beat 0; it drops the earlier bars' hits there.
+// Roll plays over the pattern: its lane rolls and the other lanes keep playing. Density, Rate, Drop's lane zones and
+// Fill change how the pattern plays (playPattern and makeBlock). In MIDI Slicer mode Density and Fill do nothing.
 void Engine::Impl::playBlock(const Block& b) noexcept CL_NONBLOCKING {
     if (b.windowEnd <= b.windowStart)
         return;
@@ -552,6 +589,7 @@ void Engine::Impl::playBlock(const Block& b) noexcept CL_NONBLOCKING {
         return;
     }
     if (b.padOn && b.program == PadProgram::roll) {
+        playPattern(b); // without the rolled lane
         if (fromStart)
             playRoll(from);
     } else if (b.padOn && b.program == PadProgram::repeat) {
@@ -633,7 +671,8 @@ void Engine::Impl::emitBlockHits(const Block& b, double silenceAt, MidiEventBuff
         releaseEndingBy(b, hit.beat, false, outMidi);
         const int velocity = static_cast<int>(hit.velocity) + evalVelBias(*b.params, hit.beat, hit.padOn, b.padY);
         const double onBeat = std::max(hit.beat, b.rawStart);
-        triggerNote(hit.note, velocity, hit.lane, onBeat + std::max(0.03, hit.durBeats), offset, outMidi, hit.drum);
+        if (triggerNote(hit.note, velocity, hit.lane, onBeat + std::max(0.03, hit.durBeats), offset, outMidi, hit.drum))
+            recordSent(b, hit, offset, velocity);
     }
     if (silencePending)
         silenceNow();
@@ -645,6 +684,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
                            float* right, int numSamples) noexcept CL_NONBLOCKING {
     hba::dsp::ScopedFlushDenormals ftz;
     outMidi.clear();
+    sentCount = 0;
     if (numSamples <= 0)
         return;
 
@@ -668,7 +708,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     wasSlicerLatch = latchNow;
     lastEffectiveHeld = effectiveHeld(params);
 
-    // What the pad surface is asked to do: touch, hold, or C3-D#3 when Pad MIDI is on.
+    // What the pad surface is asked to do: touch, hold, or C3-F3 when Pad MIDI is on.
     const bool midiPadActive = isDrum && params.on(ParamId::padMidi) && (midiPadHeld != 0u);
     const int reqProg = (midiPadActive && lastMidiPadProg >= 0)
                             ? std::clamp(lastMidiPadProg, 0, kPerfPadCount - 1)
@@ -769,25 +809,55 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     if (!isDrum && slicerStyle != SlicerStyle::clipSlice && lastEffectiveHeld.count == 0)
         flushAllActive(outMidi, 0);
 
+    const auto makeBlock = [&](bool padOn, int prog, double from, double to) noexcept CL_NONBLOCKING {
+        Block part;
+        part.params = &params;
+        part.hostStart = rawPpq;
+        part.rawStart = rawStart;
+        part.windowStart = from;
+        part.windowEnd = to;
+        part.beatsPerSample = beatsPerSample;
+        part.numSamples = numSamples;
+        part.program = static_cast<PadProgram>(std::clamp(prog, 0, kPerfPadCount - 1));
+        part.padOn = padOn;
+        part.rate = baseRate * ((padOn && part.program == PadProgram::rate) ? pads::rateMultiplier(padX) : 1.0);
+        part.beatsPerMs = bpm / 60000.0 * part.rate;
+        part.noteMap = static_cast<NoteMap>(std::clamp(params.choice(ParamId::noteMap), 0, kNoteMapCount - 1));
+        // The Fill pad is fillNow; the Density pad replaces Density and Dynamics. Neither applies to MIDI Slicer.
+        const bool drumPad = padOn && isDrum;
+        part.fillNow = params.on(ParamId::fillNow) || (drumPad && part.program == PadProgram::fill);
+        const bool densityPad = drumPad && part.program == PadProgram::density;
+        part.density = densityPad ? padX : std::clamp(params[ParamId::density], 0.0f, 1.0f);
+        part.dynamics = densityPad ? padY : std::clamp(params[ParamId::dynamics], 0.0f, 1.0f);
+        part.isDrum = isDrum;
+        part.padX = padX;
+        part.padY = padY;
+        return part;
+    };
+
     // Position telemetry, on the window clock: the step of the pattern that is sounding. Before beat 0 the playhead
     // waits on bar 0, step 0.
-    const auto updatePosition = [&](double rate, bool fillLive) noexcept CL_NONBLOCKING {
-        const double scaled = std::max(windowStart, kTimelineStart) * rate;
+    const auto updatePosition = [&](const Block& part, bool fillLive) noexcept CL_NONBLOCKING {
+        const double scaled = std::max(windowStart, kTimelineStart) * part.rate;
         const auto absBar = static_cast<std::int64_t>(std::floor(scaled / 4.0));
+        const double inBar = std::clamp(scaled - static_cast<double>(absBar) * 4.0, 0.0, 4.0);
         pos.absBar = absBar;
         pos.barInPattern = floorMod(absBar, patternBars(pattern()));
-        pos.stepInBar = std::clamp(static_cast<int>(std::floor((scaled - static_cast<double>(absBar) * 4.0) * 4.0)), 0,
-                                   kStepsPerBar - 1);
+        pos.stepInBar = std::clamp(static_cast<int>(std::floor(inBar * 4.0)), 0, kStepsPerBar - 1);
         pos.fillLive = fillLive;
         pos.repeatStartStep = -1;
         pos.repeatBeats = 0.0;
+        pos.density = part.density;
+        pos.dynamics = part.dynamics;
+        pos.rate = static_cast<float>(part.rate);
+        pos.beatInBar = static_cast<float>(inBar);
     };
 
     if (!transport.playing) {
         if (wasPlaying)
             flushAllActive(outMidi, 0);
         wasPlaying = false;
-        updatePosition(baseRate, false);
+        updatePosition(makeBlock(engaged, activeProg, windowStart, windowEnd), false);
         lastEventCount = outMidi.count;
         renderAuditionAudio(params, left, right, numSamples);
         return;
@@ -835,27 +905,6 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
             silenceAt = padAt;
     }
 
-    const auto makeBlock = [&](bool padOn, int prog, double from, double to) noexcept CL_NONBLOCKING {
-        Block part;
-        part.params = &params;
-        part.rawStart = rawStart;
-        part.windowStart = from;
-        part.windowEnd = to;
-        part.beatsPerSample = beatsPerSample;
-        part.numSamples = numSamples;
-        part.program = static_cast<PadProgram>(std::clamp(prog, 0, kPerfPadCount - 1));
-        part.padOn = padOn;
-        part.rate = baseRate * ((padOn && part.program == PadProgram::rate) ? pads::rateMultiplier(padX) : 1.0);
-        part.beatsPerMs = bpm / 60000.0 * part.rate;
-        part.noteMap = static_cast<NoteMap>(std::clamp(params.choice(ParamId::noteMap), 0, kNoteMapCount - 1));
-        // Drop's right half is fillNow.
-        part.fillNow =
-            params.on(ParamId::fillNow) || (padOn && part.program == PadProgram::drop && !pads::dropIsSilence(padX));
-        part.isDrum = isDrum;
-        part.padX = padX;
-        part.padY = padY;
-        return part;
-    };
     const Block b = makeBlock(engaged, activeProg, windowStart, windowEnd);
     // The fill latches are keyed by bar in rate-scaled time, so a bar decided at one rate says nothing about the bar
     // with the same number at another.
@@ -865,9 +914,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     }
     {
         const auto absBar = static_cast<std::int64_t>(std::floor(windowStart * b.rate / 4.0));
-        updatePosition(b.rate,
-                       isDrum && windowStart >= kTimelineStart &&
-                           fillActiveFor(pattern(), absBar, b.fillNow, everyBars, windowEnd * b.rate, b.beatsPerMs));
+        updatePosition(b, isDrum && windowStart >= kTimelineStart &&
+                              fillActiveFor(pattern(), absBar, b.fillNow, everyBars, windowEnd * b.rate, b.beatsPerMs));
     }
 
     // This block's notes, then every note-off in time order. When a pad commits inside the block, what played
@@ -921,6 +969,15 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
     activityMask = act;
 
     renderAuditionAudio(params, left, right, numSamples);
+}
+
+void Engine::Impl::releaseAll(MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING {
+    outMidi.clear();
+    sentCount = 0;
+    blockHitCount = 0;
+    flushAllActive(outMidi, 0);
+    wasPlaying = false; // the next block is a fresh start, not the continuation of the bypassed one
+    lastEventCount = outMidi.count;
 }
 
 void Engine::Impl::renderAuditionAudio(const Params& params, float* left, float* right,
@@ -997,6 +1054,12 @@ void Engine::inputAllNotesOff() noexcept CL_NONBLOCKING {
 void Engine::process(const Params& params, const Transport& transport, MidiEventBuffer& outMidi, float* left,
                      float* right, int numSamples) noexcept CL_NONBLOCKING {
     impl_->process(params, transport, outMidi, left, right, numSamples);
+}
+
+void Engine::releaseAll(MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING { impl_->releaseAll(outMidi); }
+
+std::span<const SentNote> Engine::sentNotes() const noexcept CL_NONBLOCKING {
+    return {impl_->sent.data(), static_cast<std::size_t>(impl_->sentCount)};
 }
 
 PlayPosition Engine::position() const noexcept CL_NONBLOCKING { return impl_->pos; }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The four interim pad programs. Each is locked to the grid, and each returns to the pattern in phase on
-// release, because the pattern's position always comes from the transport. Rate and Drop need no code of
-// their own here: Rate is a multiplier and a lane filter in playPattern, Drop is silence or fillNow.
+// The pad programs that play notes of their own: Repeat and Roll. All six programs are locked to the grid, and each
+// returns to the pattern in phase on release, because the pattern's position always comes from the transport. The
+// other four need no code here: Density replaces Density and Dynamics in the block, Rate is a multiplier and a lane
+// filter, Drop is silence or a lane filter, and Fill is fillNow.
 #include "engine_impl.h"
-#include "pad_programs.h"
+#include "cl/pad_programs.h"
 
 #include <algorithm>
 #include <cmath>
@@ -62,8 +63,7 @@ void Engine::Impl::playRepeat(const Block& b) noexcept CL_NONBLOCKING {
                            b.beatsPerMs};
 
     ResolvedBar resolved;
-    resolveBar(pat, densityMap(), floorMod(repeatBar, bars),
-               {params[ParamId::density], params[ParamId::dynamics], repeatFill}, resolved);
+    resolveBar(pat, densityMap(), floorMod(repeatBar, bars), {b.density, b.dynamics, repeatFill}, resolved);
 
     const auto firstCycle =
         std::max<std::int64_t>(0, static_cast<std::int64_t>(std::floor((scaledStart - repeatAnchor) / window)));
@@ -87,17 +87,24 @@ void Engine::Impl::playRepeat(const Block& b) noexcept CL_NONBLOCKING {
     pos.repeatBeats = window;
 }
 
-// Roll: the snare lane's note on a grid. X is the rate, Y the velocity.
+// Roll: one lane's note on a grid, rising from velocity 72 to 120 across each bar. X is the rate, Y the lane (kick,
+// snare, closed hat); the other lanes keep playing the pattern (playBlock). In MIDI Slicer mode it retriggers the
+// held notes.
 void Engine::Impl::playRoll(const Block& b) noexcept CL_NONBLOCKING {
-    const double step = pads::rollStepBeats(b.padX) / b.rate; // host beats
-    const int velocity = pads::rollVelocity(b.padY);
+    const double patternStep = pads::rollStepBeats(b.padX);
+    const double step = patternStep / b.rate; // host beats
+    const int lane = pads::rollLane(b.padY);
     auto index = static_cast<std::int64_t>(std::ceil((b.windowStart - kBeatEps) / step));
     for (int guard = 0; guard < 64; ++guard, ++index) {
         const double beat = static_cast<double>(index) * step;
         if (beat >= b.windowEnd - kBeatEps)
             break;
+        // Where the note falls in its bar on the pattern's clock, from its grid index so it is exact.
+        const double patternBeat = static_cast<double>(index) * patternStep;
+        const double inBar = std::max(0.0, patternBeat - std::floor(patternBeat / 4.0 + 1.0e-9) * 4.0);
+        const int velocity = pads::rollVelocity(inBar, patternStep);
         if (b.isDrum) {
-            pushDrumHit(b, pattern(), 1, beat, step * 0.8, velocity);
+            pushDrumHit(b, pattern(), lane, beat, step * 0.8, velocity);
         } else {
             // MIDI Slicer: retrigger the held notes.
             for (int i = 0; i < lastEffectiveHeld.count; ++i)
