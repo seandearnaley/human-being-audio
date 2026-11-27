@@ -15,7 +15,7 @@ cd human-being-audio/products/livecut-redux
 cmake --workflow --preset check
 ```
 
-The workflow configures, builds and tests the selected product. The first configure fetches its pinned dependencies (`JUCE 9.0.5`, `Visage v1.0.0`, `nlohmann_json 3.12.0`, `Catch2 3.16.1`). To reuse those sources between builds and products, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. Livecut’s tests also support `ctest --preset dev --parallel 4`. For daily edits, `cmake --build --preset dev` reuses the existing build.
+The workflow configures, builds and tests the selected product. The first configure fetches its pinned dependencies (`JUCE 9.0.6`, `Visage v1.0.0`, `nlohmann_json 3.12.0`, `Catch2 3.16.1`). To reuse those sources between builds and products, set `CPM_SOURCE_CACHE` to a writable directory. Set `CMAKE_BUILD_PARALLEL_LEVEL` to suit the memory available on your machine. Livecut’s tests also support `ctest --preset dev --parallel 4`. For daily edits, `cmake --build --preset dev` reuses the existing build.
 
 | Native environment | One-time setup |
 | --- | --- |
