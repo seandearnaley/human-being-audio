@@ -89,6 +89,16 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         : AudioProcessorEditor(owner), model_(owner), view_(model_, [this] { showAbout(); }),
           controls_(view_.rootFrame(), owner), about_(std::forward<AboutArgs>(aboutArgs)...),
           backgroundArgb_(backgroundArgb) {
+#if JUCE_WINDOWS
+        nativeHost_.onNativeResize = [this](int width, int height) {
+            if (width <= 0 || height <= 0)
+                return;
+            if (attachedTo_ != nullptr)
+                view_.setSize(width, height);
+            else
+                attachWhenOnScreen();
+        };
+#endif
         nativeHost_.setComponentID("instrumentSurface");
         addAndMakeVisible(nativeHost_);
         addAndMakeVisible(controls_);
@@ -116,8 +126,10 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         nativeHost_.setBounds(getLocalBounds());
         controls_.setBounds(getLocalBounds());
         about_.setBounds(getLocalBounds());
+#if !JUCE_WINDOWS
         if (attachedTo_ != nullptr)
             view_.setSize(getWidth(), getHeight());
+#endif
     }
 
     void parentHierarchyChanged() override { attachWhenOnScreen(); }
@@ -179,9 +191,17 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
         detachView();
         if (nativeView == nullptr)
             return;
+#if JUCE_WINDOWS
+        // The host can request a different VST3 scale from the desktop DPI.
+        const auto bounds = nativeHost_.clientBounds();
+        if (bounds.isEmpty())
+            return;
+        view_.attach(nativeView, bounds.getWidth(), bounds.getHeight());
+#else
         view_.attach(nativeView, getWidth(), getHeight());
+#endif
         attachedTo_ = nativeView;
-#if JUCE_MAC
+#if JUCE_MAC || JUCE_WINDOWS
         if (dynamic_cast<juce::FileDragAndDropTarget*>(this) != nullptr)
             nativeHost_.useHostFileDropTarget();
 #endif

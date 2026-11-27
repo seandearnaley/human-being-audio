@@ -102,8 +102,13 @@ template <typename ContextT> class StudioEditorWindow final : public visage::Eve
     }
 
     void attach(void* parentView, int width, int height) {
+#if defined(_WIN32)
+        window_.show(visage::Dimension::nativePixels(static_cast<float>(width)),
+                     visage::Dimension::nativePixels(static_cast<float>(height)), parentView);
+#else
         window_.setWindowDimensions(static_cast<float>(width), static_cast<float>(height));
         window_.show(parentView);
+#endif
         startTimer(16);
     }
 
@@ -113,7 +118,13 @@ template <typename ContextT> class StudioEditorWindow final : public visage::Eve
             window_.close();
     }
 
-    void setSize(int width, int height) { window_.setWindowDimensionsFromHost(width, height); }
+    void setSize(int width, int height) {
+#if defined(_WIN32)
+        window_.setNativeWindowDimensionsFromHost(width, height);
+#else
+        window_.setWindowDimensionsFromHost(width, height);
+#endif
+    }
 
 #if defined(__linux__)
     int eventFd() const {
