@@ -503,6 +503,34 @@ TEST_CASE("Bypass sends a note-off for every sounding note, then passes MIDI thr
         midi.addEvent(juce::MidiMessage::noteOff(1, 72), 5);
         proc.processBlock(buf, midi);
         CHECK(noteOffsFor(72) == 0);
+
+        // 100 notes and the sustain pedal go down while bypassed; bypass ends; every release reaches the instrument.
+        midi.clear();
+        for (int i = 0; i < 100; ++i)
+            midi.addEvent(juce::MidiMessage::noteOn(3 + i / 50, 20 + i % 50, static_cast<juce::uint8>(90)), i);
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 64, 127), 100);
+        proc.processBlockBypassed(buf, midi);
+        midi.clear();
+        for (int i = 0; i < 100; ++i)
+            midi.addEvent(juce::MidiMessage::noteOff(3 + i / 50, 20 + i % 50), i);
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 120);
+        proc.processBlock(buf, midi);
+        int offs = 0;
+        int pedalUps = 0;
+        for (const auto metadata : midi) {
+            const auto msg = metadata.getMessage();
+            offs += msg.isNoteOff() && (msg.getChannel() == 3 || msg.getChannel() == 4) ? 1 : 0;
+            pedalUps += msg.isSustainPedalOff() ? 1 : 0;
+        }
+        CHECK(offs == 100);
+        CHECK(pedalUps == 1);
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 0);
+        proc.processBlock(buf, midi);
+        pedalUps = 0;
+        for (const auto metadata : midi)
+            pedalUps += metadata.getMessage().isSustainPedalOff() ? 1 : 0;
+        CHECK(pedalUps == 0); // released once only
         proc.setPlayHead(nullptr);
     }
 }

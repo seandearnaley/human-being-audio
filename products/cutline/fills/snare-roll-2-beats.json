@@ -1,9 +1,9 @@
 {
-  "format": 3,
-  "name": "Snare Roll 2 Beats",
-  "category": "Snare",
-  "beats": 2,
-  "lanes": {
-    "snare": "........o.x.oxxX"
-  }
+    "format": 3,
+    "name": "Snare Roll 2 Beats",
+    "category": "Snare",
+    "beats": 2,
+    "lanes": {
+        "snare": "........o.x.oxxX"
+    }
 }

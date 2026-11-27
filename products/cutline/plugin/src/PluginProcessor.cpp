@@ -17,6 +17,7 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
     monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, samplesPerBlock)), 0.0f);
     bypassMidi_.ensureSize(4096);
+    releaseMidi_.ensureSize(4096);
     engine_.prepare(sampleRate_, samplesPerBlock);
     standalonePpq_ = 0.0;
 }
@@ -78,31 +79,33 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const Transport transport = readTransport(numSamples);
     ingestMidi(midi, transport);
-    // A note that passed through while bypassed ends at the instrument, not in Cutline.
-    struct Release {
-        std::array<juce::uint8, 3> bytes{};
-        int sample = 0;
-    };
-    std::array<Release, 64> releases{};
-    std::size_t releaseCount = 0;
-    for (const auto metadata : midi) {
-        if (releaseCount >= releases.size() || metadata.numBytes != 3)
-            continue;
-        const auto msg = metadata.getMessage();
-        if (!msg.isNoteOff())
-            continue;
-        auto& held = passedThrough_[static_cast<std::size_t>(msg.getChannel() - 1)];
-        const auto note = static_cast<std::size_t>(msg.getNoteNumber());
-        if (!held.test(note))
-            continue;
-        held.reset(note);
-        Release& r = releases[releaseCount++];
-        std::copy_n(metadata.data, 3, r.bytes.begin());
-        r.sample = metadata.samplePosition;
+    // A note or sustain pedal that passed through while bypassed ends at the instrument, not in Cutline.
+    releaseMidi_.clear();
+    if (sustainPassed_.any() || std::any_of(passedThrough_.begin(), passedThrough_.end(),
+                                            [](const std::bitset<128>& notes) { return notes.any(); })) {
+        for (const auto metadata : midi) {
+            if (metadata.numBytes != 3)
+                continue;
+            const auto msg = metadata.getMessage();
+            const auto channel = static_cast<std::size_t>(msg.getChannel() - 1);
+            if (msg.isNoteOff()) {
+                auto& held = passedThrough_[channel];
+                const auto note = static_cast<std::size_t>(msg.getNoteNumber());
+                if (!held.test(note))
+                    continue;
+                held.reset(note);
+            } else if (msg.isSustainPedalOff()) {
+                if (!sustainPassed_.test(channel))
+                    continue;
+                sustainPassed_.reset(channel);
+            } else {
+                continue;
+            }
+            releaseMidi_.addEvent(metadata.data, metadata.numBytes, metadata.samplePosition);
+        }
     }
     midi.clear();
-    for (std::size_t i = 0; i < releaseCount; ++i)
-        midi.addEvent(releases[i].bytes.data(), 3, releases[i].sample);
+    midi.addEvents(releaseMidi_, 0, -1, 0);
 
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_))
@@ -168,6 +171,10 @@ void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juc
                 if (!held.test(note))
                     continue;
                 held.reset(note);
+            } else if (msg.isSustainPedalOn()) {
+                sustainPassed_.set(static_cast<std::size_t>(msg.getChannel() - 1));
+            } else if (msg.isSustainPedalOff()) {
+                sustainPassed_.reset(static_cast<std::size_t>(msg.getChannel() - 1));
             }
         }
         bypassMidi_.addEvent(metadata.data, metadata.numBytes, metadata.samplePosition);

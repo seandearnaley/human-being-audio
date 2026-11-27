@@ -1,38 +1,38 @@
 {
-  "format": 3,
-  "name": "Afro",
-  "category": "Club",
-  "bars": 2,
-  "lanes": {
-    "kick": {
-      "core": "X...x...x...x...|X...x...x...x..."
-    },
-    "snare": {
-      "core": "....x.......x...|....x.......x...",
-      "offsetMs": 2
-    },
-    "ghost": {
-      "core": "x..x..x...x.x...|x..x..x...x.x...",
-      "offsetMs": 1
-    },
-    "hat": {
-      "detail": ".o.o...o.o.o...o|.o.o...o.o.o...o"
-    },
-    "openHat": {
-      "groove": "..x...x...x...x.|..x...x...x...x.",
-      "offsetMs": 1
-    },
-    "percA": {
-      "groove": "..x..x..x..x....|................",
-      "length": 12,
-      "offsetMs": 2
-    }
-  },
-  "fill": {
-    "beats": 2,
+    "format": 3,
+    "name": "Afro",
+    "category": "Club",
+    "bars": 2,
     "lanes": {
-      "kick": "........x.......",
-      "percA": "........oxxxxxxX"
+        "kick": {
+            "core": "X...x...x...x...|X...x...x...x..."
+        },
+        "snare": {
+            "core": "....x.......x...|....x.......x...",
+            "offsetMs": 2
+        },
+        "ghost": {
+            "core": "x..x..x...x.x...|x..x..x...x.x...",
+            "offsetMs": 1
+        },
+        "hat": {
+            "detail": ".o.o...o.o.o...o|.o.o...o.o.o...o"
+        },
+        "openHat": {
+            "groove": "..x...x...x...x.|..x...x...x...x.",
+            "offsetMs": 1
+        },
+        "percA": {
+            "groove": "..x..x..x..x....|................",
+            "length": 12,
+            "offsetMs": 2
+        }
+    },
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "kick": "........x.......",
+            "percA": "........oxxxxxxX"
+        }
     }
-  }
 }

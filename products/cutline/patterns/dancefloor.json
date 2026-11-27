@@ -1,42 +1,42 @@
 {
-  "format": 3,
-  "name": "Dancefloor",
-  "category": "Drum & Bass",
-  "bars": 2,
-  "lanes": {
-    "kick": {
-      "core": "X.........X.....|X.........X.....",
-      "groove": ".......x........|.......x......x."
-    },
-    "snare": {
-      "core": "....X.......X...|....X.......X...",
-      "offsetMs": 1
-    },
-    "ghost": {
-      "groove": "..........o.....|..............o.",
-      "detail": "...............o|..o.............",
-      "offsetMs": 1
-    },
-    "clap": {
-      "core": "....x.......x...|....x.......x...",
-      "offsetMs": 2
-    },
-    "hat": {
-      "core": "..x...x...x.....|..x...x...x.....",
-      "groove": "o...o...o...o...|o...o...o...o...",
-      "detail": ".o.o.o.o.o.o.o..|.o.o.o.o.o.o.o..",
-      "offsetMs": -1
-    },
-    "openHat": {
-      "core": "..............x.|..............x."
-    }
-  },
-  "fill": {
-    "beats": 2,
+    "format": 3,
+    "name": "Dancefloor",
+    "category": "Drum & Bass",
+    "bars": 2,
     "lanes": {
-      "kick": "........x.......",
-      "snare": "..............xX",
-      "hat": "..............o."
+        "kick": {
+            "core": "X.........X.....|X.........X.....",
+            "groove": ".......x........|.......x......x."
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X...",
+            "offsetMs": 1
+        },
+        "ghost": {
+            "groove": "..........o.....|..............o.",
+            "detail": "...............o|..o.............",
+            "offsetMs": 1
+        },
+        "clap": {
+            "core": "....x.......x...|....x.......x...",
+            "offsetMs": 2
+        },
+        "hat": {
+            "core": "..x...x...x.....|..x...x...x.....",
+            "groove": "o...o...o...o...|o...o...o...o...",
+            "detail": ".o.o.o.o.o.o.o..|.o.o.o.o.o.o.o..",
+            "offsetMs": -1
+        },
+        "openHat": {
+            "core": "..............x.|..............x."
+        }
+    },
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "kick": "........x.......",
+            "snare": "..............xX",
+            "hat": "..............o."
+        }
     }
-  }
 }

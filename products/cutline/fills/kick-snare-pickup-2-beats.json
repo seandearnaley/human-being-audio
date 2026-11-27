@@ -1,10 +1,10 @@
 {
-  "format": 3,
-  "name": "Kick Snare Pickup 2 Beats",
-  "category": "Pickups",
-  "beats": 2,
-  "lanes": {
-    "kick": "........X..x..x.",
-    "snare": "..........x..x.X"
-  }
+    "format": 3,
+    "name": "Kick Snare Pickup 2 Beats",
+    "category": "Pickups",
+    "beats": 2,
+    "lanes": {
+        "kick": "........X..x..x.",
+        "snare": "..........x..x.X"
+    }
 }

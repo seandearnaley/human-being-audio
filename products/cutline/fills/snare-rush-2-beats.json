@@ -1,9 +1,9 @@
 {
-  "format": 3,
-  "name": "Snare Rush 2 Beats",
-  "category": "Snare",
-  "beats": 2,
-  "lanes": {
-    "snare": "........oooxxxxX"
-  }
+    "format": 3,
+    "name": "Snare Rush 2 Beats",
+    "category": "Snare",
+    "beats": 2,
+    "lanes": {
+        "snare": "........oooxxxxX"
+    }
 }

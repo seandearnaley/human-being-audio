@@ -1,9 +1,9 @@
 {
-  "format": 3,
-  "name": "Perc Run 1 Beat",
-  "category": "Toms & Perc",
-  "beats": 1,
-  "lanes": {
-    "percA": "............oxxX"
-  }
+    "format": 3,
+    "name": "Perc Run 1 Beat",
+    "category": "Toms & Perc",
+    "beats": 1,
+    "lanes": {
+        "percA": "............oxxX"
+    }
 }

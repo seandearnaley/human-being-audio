@@ -174,7 +174,7 @@ def report(patterns):
 
 
 def write(slug, preset):
-    (PRESETS / f"{slug}.json").write_text(json.dumps(preset, indent=2, ensure_ascii=False) + "\n")
+    (PRESETS / f"{slug}.json").write_text(json.dumps(preset, indent=4, ensure_ascii=False) + "\n")
 
 
 def build(patterns):

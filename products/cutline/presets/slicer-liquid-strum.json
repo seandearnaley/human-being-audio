@@ -1,58 +1,58 @@
 {
-  "format": 3,
-  "name": "Slicer: Liquid Strum",
-  "category": "MIDI Slicer",
-  "engineMode": "MIDI Slicer",
-  "slicerStyle": "Strum / Flam",
-  "swing": 0.24,
-  "gateLen": 0.74,
-  "strumMs": 22.0,
-  "slicerLatch": true,
-  "bank": {
-    "scenes": [
-      {
-        "bars": 2,
-        "lanes": {
-          "kick": {
-            "core": "X.........X.....|X.........X.....",
-            "groove": ".......x........|..x.............",
-            "detail": "..............x.|.......x........"
-          },
-          "snare": {
-            "core": "....X.......X...|....X.......X...",
-            "offsetMs": 3
-          },
-          "ghost": {
-            "groove": ".........o......|.........o....o.",
-            "detail": "..o............o|..o.............",
-            "offsetMs": 2
-          },
-          "hat": {
-            "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
-            "groove": "...o.......o....|...o.......o....",
-            "detail": ".o...o...o...o..|.o...o...o...o..",
-            "offsetMs": -1
-          },
-          "openHat": {
-            "groove": "................|...............x",
-            "offsetMs": 1
-          }
-        },
-        "fill": {
-          "beats": 1,
-          "lanes": {
-            "snare": "............X..X",
-            "ghost": ".............oo."
-          }
+    "format": 3,
+    "name": "Slicer: Liquid Strum",
+    "category": "MIDI Slicer",
+    "engineMode": "MIDI Slicer",
+    "slicerStyle": "Strum / Flam",
+    "swing": 0.24,
+    "gateLen": 0.74,
+    "strumMs": 22.0,
+    "slicerLatch": true,
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X.........X.....|X.........X.....",
+                        "groove": ".......x........|..x.............",
+                        "detail": "..............x.|.......x........"
+                    },
+                    "snare": {
+                        "core": "....X.......X...|....X.......X...",
+                        "offsetMs": 3
+                    },
+                    "ghost": {
+                        "groove": ".........o......|.........o....o.",
+                        "detail": "..o............o|..o.............",
+                        "offsetMs": 2
+                    },
+                    "hat": {
+                        "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
+                        "groove": "...o.......o....|...o.......o....",
+                        "detail": ".o...o...o...o..|.o...o...o...o..",
+                        "offsetMs": -1
+                    },
+                    "openHat": {
+                        "groove": "................|...............x",
+                        "offsetMs": 1
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "snare": "............X..X",
+                        "ghost": ".............oo."
+                    }
+                }
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X.....x...X...x."
         }
-      },
-      {},
-      {},
-      {}
-    ],
-    "slicer": {
-      "length": 16,
-      "steps": "X.....x...X...x."
     }
-  }
 }

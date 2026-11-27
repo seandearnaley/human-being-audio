@@ -1,54 +1,54 @@
 {
-  "format": 3,
-  "name": "Trap",
-  "category": "Bass Music",
-  "bars": 2,
-  "lanes": {
-    "kick": {
-      "core": "X.........x.....|X......x........",
-      "groove": "................|..........x.....",
-      "detail": "...x............|...x..........x."
-    },
-    "snare": {
-      "core": "........X.......|........X.......",
-      "offsetMs": 2
-    },
-    "ghost": {
-      "detail": "...............o|..............o.",
-      "offsetMs": 2
-    },
-    "clap": {
-      "core": "........x.......|........x.......",
-      "offsetMs": 3
-    },
-    "hat": {
-      "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
-      "groove": ".......o........|...........o...o",
-      "detail": "...o.......o...o|...o...o........"
-    }
-  },
-  "fill": {
-    "beats": 2,
+    "format": 3,
+    "name": "Trap",
+    "category": "Bass Music",
+    "bars": 2,
     "lanes": {
-      "hat": "........x.x.oxx.",
-      "openHat": "...............x"
-    }
-  },
-  "edits": [
-    {
-      "lane": "hat",
-      "step": 7,
-      "ratchet": 2
+        "kick": {
+            "core": "X.........x.....|X......x........",
+            "groove": "................|..........x.....",
+            "detail": "...x............|...x..........x."
+        },
+        "snare": {
+            "core": "........X.......|........X.......",
+            "offsetMs": 2
+        },
+        "ghost": {
+            "detail": "...............o|..............o.",
+            "offsetMs": 2
+        },
+        "clap": {
+            "core": "........x.......|........x.......",
+            "offsetMs": 3
+        },
+        "hat": {
+            "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
+            "groove": ".......o........|...........o...o",
+            "detail": "...o.......o...o|...o...o........"
+        }
     },
-    {
-      "lane": "hat",
-      "step": 27,
-      "ratchet": 3
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "hat": "........x.x.oxx.",
+            "openHat": "...............x"
+        }
     },
-    {
-      "lane": "hat",
-      "step": 31,
-      "ratchet": 3
-    }
-  ]
+    "edits": [
+        {
+            "lane": "hat",
+            "step": 7,
+            "ratchet": 2
+        },
+        {
+            "lane": "hat",
+            "step": 27,
+            "ratchet": 3
+        },
+        {
+            "lane": "hat",
+            "step": 31,
+            "ratchet": 3
+        }
+    ]
 }

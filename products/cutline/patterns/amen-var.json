@@ -1,36 +1,36 @@
 {
-  "format": 3,
-  "name": "Amen Var",
-  "category": "Jungle",
-  "bars": 2,
-  "lanes": {
-    "kick": {
-      "core": "X.........X.....|X.........X.....",
-      "groove": "..x.............|..xx............",
-      "detail": "...........x....|................"
-    },
-    "snare": {
-      "core": "....X.......X...|....X.......X...",
-      "groove": ".......o.x....x.|.x.....o.x......",
-      "offsetMs": 3
-    },
-    "ghost": {
-      "detail": "..o..o..........|.....o.......o.o",
-      "offsetMs": 2
-    },
-    "hat": {
-      "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x...x.x.",
-      "detail": "...o.......o....|...o...o........",
-      "offsetMs": -1
-    },
-    "percB": {
-      "groove": "................|..........x....."
-    }
-  },
-  "fill": {
-    "beats": 2,
+    "format": 3,
+    "name": "Amen Var",
+    "category": "Jungle",
+    "bars": 2,
     "lanes": {
-      "snare": "........oooxxxxX"
+        "kick": {
+            "core": "X.........X.....|X.........X.....",
+            "groove": "..x.............|..xx............",
+            "detail": "...........x....|................"
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X...",
+            "groove": ".......o.x....x.|.x.....o.x......",
+            "offsetMs": 3
+        },
+        "ghost": {
+            "detail": "..o..o..........|.....o.......o.o",
+            "offsetMs": 2
+        },
+        "hat": {
+            "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x...x.x.",
+            "detail": "...o.......o....|...o...o........",
+            "offsetMs": -1
+        },
+        "percB": {
+            "groove": "................|..........x....."
+        }
+    },
+    "fill": {
+        "beats": 2,
+        "lanes": {
+            "snare": "........oooxxxxX"
+        }
     }
-  }
 }

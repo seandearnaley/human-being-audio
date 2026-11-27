@@ -1,39 +1,39 @@
 {
-  "format": 3,
-  "name": "Think",
-  "category": "Jungle",
-  "bars": 2,
-  "lanes": {
-    "kick": {
-      "core": "X.........X.....|X.........X.....",
-      "groove": ".......x........|..x.............",
-      "detail": "..............x.|.......x........"
-    },
-    "snare": {
-      "core": "....X.......X...|....X.......X...",
-      "offsetMs": 3
-    },
-    "ghost": {
-      "groove": ".........o......|.........o....o.",
-      "detail": "..o............o|..o.............",
-      "offsetMs": 2
-    },
-    "hat": {
-      "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
-      "groove": "...o.......o....|...o.......o....",
-      "detail": ".o...o...o...o..|.o...o...o...o..",
-      "offsetMs": -1
-    },
-    "openHat": {
-      "groove": "................|...............x",
-      "offsetMs": 1
-    }
-  },
-  "fill": {
-    "beats": 1,
+    "format": 3,
+    "name": "Think",
+    "category": "Jungle",
+    "bars": 2,
     "lanes": {
-      "snare": "............X..X",
-      "ghost": ".............oo."
+        "kick": {
+            "core": "X.........X.....|X.........X.....",
+            "groove": ".......x........|..x.............",
+            "detail": "..............x.|.......x........"
+        },
+        "snare": {
+            "core": "....X.......X...|....X.......X...",
+            "offsetMs": 3
+        },
+        "ghost": {
+            "groove": ".........o......|.........o....o.",
+            "detail": "..o............o|..o.............",
+            "offsetMs": 2
+        },
+        "hat": {
+            "core": "x.x.x.x.x.x.x.x.|x.x.x.x.x.x.x.x.",
+            "groove": "...o.......o....|...o.......o....",
+            "detail": ".o...o...o...o..|.o...o...o...o..",
+            "offsetMs": -1
+        },
+        "openHat": {
+            "groove": "................|...............x",
+            "offsetMs": 1
+        }
+    },
+    "fill": {
+        "beats": 1,
+        "lanes": {
+            "snare": "............X..X",
+            "ghost": ".............oo."
+        }
     }
-  }
 }

@@ -1,10 +1,10 @@
 {
-  "format": 3,
-  "name": "Tom Run 2 Beats",
-  "category": "Toms & Perc",
-  "beats": 2,
-  "lanes": {
-    "kick": "........x.......",
-    "percA": "........oxxxxxxX"
-  }
+    "format": 3,
+    "name": "Tom Run 2 Beats",
+    "category": "Toms & Perc",
+    "beats": 2,
+    "lanes": {
+        "kick": "........x.......",
+        "percA": "........oxxxxxxX"
+    }
 }

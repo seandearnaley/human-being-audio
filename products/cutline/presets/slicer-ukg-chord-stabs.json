@@ -1,61 +1,61 @@
 {
-  "format": 3,
-  "name": "Slicer: UKG Chord Stabs",
-  "category": "MIDI Slicer",
-  "engineMode": "MIDI Slicer",
-  "slicerStyle": "Stab Chop",
-  "swing": 0.41,
-  "gateLen": 0.38,
-  "strumMs": 10.0,
-  "slicerLatch": true,
-  "bank": {
-    "scenes": [
-      {
-        "bars": 2,
-        "lanes": {
-          "kick": {
-            "core": "X.........x.....|X..........x....",
-            "groove": "................|......x.........",
-            "detail": "..............x.|................"
-          },
-          "snare": {
-            "core": "....X.......X...|....X.......X...",
-            "offsetMs": 3
-          },
-          "ghost": {
-            "groove": ".......o........|.......o.......o",
-            "detail": "...o.......o....|...o............",
-            "offsetMs": 3
-          },
-          "clap": {
-            "core": "....x.......x...|....x.......x...",
-            "offsetMs": 4
-          },
-          "hat": {
-            "groove": "...o...o...o...o|...o...o...o...o",
-            "detail": "o...o...o...o...|o...o...o...o...",
-            "offsetMs": 1
-          },
-          "openHat": {
-            "core": "..x...x...x...x.|..x...x...x...x.",
-            "offsetMs": 2
-          }
-        },
-        "fill": {
-          "beats": 1,
-          "lanes": {
-            "hat": "............oxx.",
-            "openHat": "...............x"
-          }
+    "format": 3,
+    "name": "Slicer: UKG Chord Stabs",
+    "category": "MIDI Slicer",
+    "engineMode": "MIDI Slicer",
+    "slicerStyle": "Stab Chop",
+    "swing": 0.41,
+    "gateLen": 0.38,
+    "strumMs": 10.0,
+    "slicerLatch": true,
+    "bank": {
+        "scenes": [
+            {
+                "bars": 2,
+                "lanes": {
+                    "kick": {
+                        "core": "X.........x.....|X..........x....",
+                        "groove": "................|......x.........",
+                        "detail": "..............x.|................"
+                    },
+                    "snare": {
+                        "core": "....X.......X...|....X.......X...",
+                        "offsetMs": 3
+                    },
+                    "ghost": {
+                        "groove": ".......o........|.......o.......o",
+                        "detail": "...o.......o....|...o............",
+                        "offsetMs": 3
+                    },
+                    "clap": {
+                        "core": "....x.......x...|....x.......x...",
+                        "offsetMs": 4
+                    },
+                    "hat": {
+                        "groove": "...o...o...o...o|...o...o...o...o",
+                        "detail": "o...o...o...o...|o...o...o...o...",
+                        "offsetMs": 1
+                    },
+                    "openHat": {
+                        "core": "..x...x...x...x.|..x...x...x...x.",
+                        "offsetMs": 2
+                    }
+                },
+                "fill": {
+                    "beats": 1,
+                    "lanes": {
+                        "hat": "............oxx.",
+                        "openHat": "...............x"
+                    }
+                }
+            },
+            {},
+            {},
+            {}
+        ],
+        "slicer": {
+            "length": 16,
+            "steps": "X..x..X...x...X."
         }
-      },
-      {},
-      {},
-      {}
-    ],
-    "slicer": {
-      "length": 16,
-      "steps": "X..x..X...x...X."
     }
-  }
 }

@@ -1,11 +1,11 @@
 {
-  "format": 3,
-  "name": "Jungle Chop 2 Beats",
-  "category": "Pickups",
-  "beats": 2,
-  "lanes": {
-    "kick": "........x.x.....",
-    "snare": ".........x..x.xX",
-    "ghost": "...........o...."
-  }
+    "format": 3,
+    "name": "Jungle Chop 2 Beats",
+    "category": "Pickups",
+    "beats": 2,
+    "lanes": {
+        "kick": "........x.x.....",
+        "snare": ".........x..x.xX",
+        "ghost": "...........o...."
+    }
 }

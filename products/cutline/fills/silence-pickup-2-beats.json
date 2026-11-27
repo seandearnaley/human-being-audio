@@ -1,11 +1,11 @@
 {
-  "format": 3,
-  "name": "Silence Pickup 2 Beats",
-  "category": "Drops",
-  "beats": 2,
-  "lanes": {
-    "kick": "........x.......",
-    "snare": "..............xX",
-    "hat": "..............o."
-  }
+    "format": 3,
+    "name": "Silence Pickup 2 Beats",
+    "category": "Drops",
+    "beats": 2,
+    "lanes": {
+        "kick": "........x.......",
+        "snare": "..............xX",
+        "hat": "..............o."
+    }
 }

@@ -104,7 +104,8 @@ class GridStagePanel final : public Panel {
     int hoverStep_ = -1;
     int hoverLengthLane_ = -1;
     bool hoverSlicerLen_ = false;
-    int hoverAction_ = -1; // 0 = Clone, 1 = Clear, 2 = Fill, 3 = Vary, 4 = Patterns / Fills, 10..12 = length pills, 20..22 = brush chips
+    // 0 = Clone, 1 = Clear, 2 = Fill, 3 = Vary, 4 = Patterns / Fills, 10..12 = length pills, 20..22 = brush chips
+    int hoverAction_ = -1;
 
     Layer brush_ = Layer::groove; // UI state: not saved with the plugin
     DragMode dragMode_ = DragMode::none;
