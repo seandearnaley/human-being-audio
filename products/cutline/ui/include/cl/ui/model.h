@@ -31,8 +31,17 @@ struct PresetInfo {
     std::string category;
 };
 
+// The most note-ons one UI refresh takes from the engine (7,680 a second at 60 Hz).
+inline constexpr int kMaxSentPerRefresh = 128;
+
 struct Visuals {
-    PlayPosition position{}; // absolute bar, bar in pattern, step in bar, fill live, Repeat window
+    // Absolute bar, bar in pattern, step in bar, fill live, Repeat window, and the Density and Dynamics the drums
+    // resolve with: the grid and ribbon resolve with these, so they show what plays.
+    PlayPosition position{};
+    // The note-ons the engine sent since the last refresh, oldest first. Their sequence numbers only grow, so a
+    // reader that sees the same notes twice can tell.
+    std::array<SentNote, kMaxSentPerRefresh> sent{};
+    int sentCount = 0;
     SlicerPlan slicerPlan{}; // the slicer keeps its plan snapshot
     HeldNotes heldNotes{};
     int activeScene = 0;

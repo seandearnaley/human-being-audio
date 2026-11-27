@@ -15,6 +15,7 @@ PluginModel::PluginModel(PluginProcessor& processor) : processor_(processor) {
         parameters_[i] = processor_.state.getParameter(toJuce(kParams[i].key));
         jassert(parameters_[i] != nullptr);
     }
+    processor_.telemetry.discardSentNotes(); // what was sent while the editor was closed is long gone
     refreshVisuals();
 }
 
@@ -45,6 +46,7 @@ void PluginModel::end(ParamId id) { parameters_[static_cast<std::size_t>(id)]->e
 
 void PluginModel::refreshVisuals() {
     processor_.telemetry.read(visuals_);
+    visuals_.sentCount = processor_.telemetry.drainSentNotes(visuals_.sent.data(), ui::kMaxSentPerRefresh);
     if (visuals_.playing)
         return;
     // Stopped: show what the parameters say will play from the top of the pattern.
@@ -59,6 +61,13 @@ void PluginModel::refreshVisuals() {
     visuals_.pendingPadProgram = -1;
     visuals_.padEngaged = p.on(ParamId::padTouch) || p.on(ParamId::padHold);
     visuals_.position = {};
+    // The Density pad replaces Density and Dynamics while it is held, in drum mode.
+    const bool densityPad = visuals_.padEngaged && visuals_.activePadProgram == static_cast<int>(PadProgram::density) &&
+                            p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::drum);
+    visuals_.position.density = densityPad ? p[ParamId::padX] : p[ParamId::density];
+    visuals_.position.dynamics = densityPad ? p[ParamId::padY] : p[ParamId::dynamics];
+    visuals_.position.rate =
+        static_cast<float>(kSeqRateMultipliers[static_cast<std::size_t>(std::clamp(p.choice(ParamId::seqRate), 0, 2))]);
     visuals_.bpm = bpm;
     if (p.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer)) {
         // The preview phrase: recompiled only when something it depends on changed, not on every UI tick.

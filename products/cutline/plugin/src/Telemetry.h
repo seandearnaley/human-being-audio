@@ -3,6 +3,7 @@
 #pragma once
 
 #include "cl/engine.h"
+#include "cl/sent_notes.h"
 #include "cl/ui/model.h"
 
 #include <juce_core/juce_core.h>
@@ -13,8 +14,11 @@ namespace cl {
 
 class Telemetry {
   public:
-    // Audio thread: never blocks; skips the update if the UI is mid-copy.
+    // Audio thread: never blocks; skips the update if the UI is mid-copy. The notes the engine sent go through a
+    // lock-free ring, so none is lost to a skipped update.
     void publish(const Engine& engine, double bpm, bool slicerMode) noexcept {
+        for (const SentNote& note : engine.sentNotes())
+            sent_.push(note);
         lastBpm_.store(bpm, std::memory_order_relaxed);
         const juce::SpinLock::ScopedTryLockType scoped(lock_);
         if (!scoped.isLocked())
@@ -55,11 +59,17 @@ class Telemetry {
         out = snapshot_;
     }
 
+    // Message thread: the notes sent since the last drain, oldest first, up to `max`.
+    int drainSentNotes(SentNote* out, int max) noexcept { return sent_.drain(out, max); }
+    // Message thread: forgets what was sent while nobody was watching (the editor was closed).
+    void discardSentNotes() noexcept { sent_.discard(); }
+
     double lastBpm() const noexcept { return lastBpm_.load(std::memory_order_relaxed); }
 
   private:
     mutable juce::SpinLock lock_;
     mutable ui::Visuals snapshot_{};
+    SentNoteRing sent_;
     std::atomic<double> lastBpm_{172.0};
 };
 

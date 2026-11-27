@@ -28,6 +28,9 @@ class PluginProcessor final : public juce::AudioProcessor {
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
+    // Sends a note-off for every note Cutline has sounding, then passes the incoming MIDI through.
+    void processBlockBypassed(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    using AudioProcessor::processBlockBypassed;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -67,12 +70,14 @@ class PluginProcessor final : public juce::AudioProcessor {
 
   private:
     Transport readTransport(int numSamples);
+    void ingestMidi(const juce::MidiBuffer& midi, const Transport& transport);
 
     ParameterValues values_;
     Engine engine_;
     LaneCurves audioCurves_ = defaultLaneCurves();
     GrooveState audioGroove_{};
     MidiEventBuffer outEvents_{};
+    juce::MidiBuffer bypassMidi_; // note-offs then the pass-through input, while bypassed
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;
     double standalonePpq_ = 0.0;

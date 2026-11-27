@@ -12,6 +12,7 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace cl;
 using Catch::Approx;
@@ -419,6 +420,121 @@ TEST_CASE("The model serves a sanitised bank with the engine's density maps", "[
     CHECK(groove.maps[0].onAt[0][0] == Approx(0.0f)); // Core
     CHECK(groove.maps[0].onAt[4][3] == Approx(1.0f)); // the only Detail step arrives at 100%
     CHECK(groove.bank == proc.patterns.bank());
+}
+
+TEST_CASE("Bypass sends a note-off for every sounding note, then passes MIDI through", "[plugin]") {
+    ScopedJuceGui gui;
+    for (const bool slicer : {false, true}) {
+        INFO((slicer ? "MIDI Slicer with a held chord" : "drums"));
+        PluginProcessor proc;
+        FakePlayHead head;
+        proc.setPlayHead(&head);
+        proc.prepareToPlay(48000.0, 256);
+        if (slicer) {
+            PluginModel model(proc);
+            model.set(ParamId::engineMode, static_cast<float>(EngineMode::slicer));
+        }
+
+        // One block from beat 0: the drums' kick and hat, or the slicer's first stab of the held chord, start ringing.
+        juce::AudioBuffer<float> buf(2, 256);
+        juce::MidiBuffer midi;
+        if (slicer)
+            for (const int note : {48, 55, 63})
+                midi.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(100)), 0);
+        proc.processBlock(buf, midi);
+        std::multiset<int> sounding;
+        for (const auto metadata : midi) {
+            const auto msg = metadata.getMessage();
+            if (msg.isNoteOn())
+                sounding.insert(msg.getNoteNumber());
+            else if (msg.isNoteOff())
+                sounding.erase(msg.getNoteNumber());
+        }
+        REQUIRE_FALSE(sounding.empty());
+
+        // Bypassed, with a control change and a new note arriving: the note-offs come first, then the input as it was.
+        head.ppq += 120.0 / 60.0 / 48000.0 * 256;
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 7, 90), 0);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 72, static_cast<juce::uint8>(80)), 17);
+        proc.processBlockBypassed(buf, midi);
+        std::multiset<int> released;
+        std::vector<juce::MidiMessage> rest;
+        for (const auto metadata : midi) {
+            const auto msg = metadata.getMessage();
+            if (msg.isNoteOff()) {
+                CHECK(rest.empty()); // before the pass-through input
+                CHECK(metadata.samplePosition == 0);
+                released.insert(msg.getNoteNumber());
+            } else {
+                rest.push_back(msg);
+            }
+        }
+        CHECK(released == sounding);
+        REQUIRE(rest.size() == 2);
+        CHECK(rest[0].isControllerOfType(7));
+        CHECK(rest[1].isNoteOn());
+        CHECK(rest[1].getNoteNumber() == 72);
+
+        // Still bypassed: nothing more to release.
+        midi.clear();
+        proc.processBlockBypassed(buf, midi);
+        CHECK(midi.getNumEvents() == 0);
+        proc.setPlayHead(nullptr);
+    }
+}
+
+TEST_CASE("The model hands the UI every note the engine sent, once", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    FakePlayHead head;
+    proc.setPlayHead(&head);
+    proc.prepareToPlay(48000.0, 256);
+    PluginModel model(proc);
+    const std::multiset<int> played = playBar(proc, head);
+    REQUIRE(played.size() == 12);
+
+    model.refreshVisuals();
+    const ui::Visuals& v = model.visuals();
+    REQUIRE(v.sentCount == 12);
+    std::multiset<int> sent;
+    for (int i = 0; i < v.sentCount; ++i) {
+        const SentNote& note = v.sent[static_cast<std::size_t>(i)];
+        sent.insert(note.note);
+        CHECK((note.lane == 0 || note.lane == 1 || note.lane == 4));
+        if (i > 0)
+            CHECK(note.seq == v.sent[static_cast<std::size_t>(i - 1)].seq + 1);
+    }
+    CHECK(sent == played);
+    model.refreshVisuals();
+    CHECK(model.visuals().sentCount == 0); // drained
+    proc.setPlayHead(nullptr);
+}
+
+TEST_CASE("While the Density pad is held, the UI resolves with its Density and Dynamics", "[plugin]") {
+    ScopedJuceGui gui;
+    PluginProcessor proc;
+    PluginModel model(proc);
+    model.set(ParamId::padProgram, static_cast<float>(PadProgram::density));
+    model.set(ParamId::padX, 0.15f);
+    model.set(ParamId::padY, 0.85f);
+    model.refreshVisuals();
+    CHECK(model.visuals().position.density == Approx(spec(ParamId::density).def));
+
+    model.set(ParamId::padHold, 1.0f);
+    model.refreshVisuals(); // stopped: from the parameters
+    CHECK(model.visuals().position.density == Approx(0.15f).margin(1e-3f));
+    CHECK(model.visuals().position.dynamics == Approx(0.85f).margin(1e-3f));
+
+    FakePlayHead head;
+    proc.setPlayHead(&head);
+    proc.prepareToPlay(48000.0, 256);
+    playBar(proc, head);
+    model.refreshVisuals(); // playing: from the engine's telemetry
+    REQUIRE(model.visuals().playing);
+    CHECK(model.visuals().position.density == Approx(0.15f).margin(1e-3f));
+    CHECK(model.visuals().position.dynamics == Approx(0.85f).margin(1e-3f));
+    proc.setPlayHead(nullptr);
 }
 
 TEST_CASE("processBlock renders finite audition audio", "[plugin]") {

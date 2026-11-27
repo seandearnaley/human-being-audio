@@ -16,6 +16,7 @@ PluginProcessor::PluginProcessor()
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
     monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, samplesPerBlock)), 0.0f);
+    bypassMidi_.ensureSize(4096);
     engine_.prepare(sampleRate_, samplesPerBlock);
     standalonePpq_ = 0.0;
 }
@@ -46,17 +47,9 @@ Transport PluginProcessor::readTransport(int numSamples) {
     return transport;
 }
 
-void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
-    juce::ScopedNoDenormals noDenormals;
-
-    const int numSamples = buffer.getNumSamples();
-    if (numSamples <= 0)
-        return;
-
-    const Transport transport = readTransport(numSamples);
+// Ingests live incoming MIDI notes with a sample-accurate PPQ timestamp, for Pad MIDI and the MIDI Slicer.
+void PluginProcessor::ingestMidi(const juce::MidiBuffer& midi, const Transport& transport) {
     const double beatsPerSample = std::clamp(transport.bpm, 20.0, 400.0) / 60.0 / sampleRate_;
-
-    // Ingest live incoming MIDI notes with sample-accurate PPQ timestamp for Performance Pads & Clip Slicer.
     for (const auto metadata : midi) {
         if (metadata.numBytes > 3)
             continue;
@@ -74,6 +67,17 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             engine_.inputAllNotesOff();
     }
+}
+
+void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    juce::ScopedNoDenormals noDenormals;
+
+    const int numSamples = buffer.getNumSamples();
+    if (numSamples <= 0)
+        return;
+
+    const Transport transport = readTransport(numSamples);
+    ingestMidi(midi, transport);
     midi.clear();
 
     const Params params = values_.snapshot();
@@ -115,6 +119,28 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     telemetry.publish(engine_, transport.bpm,
                       params.choice(ParamId::engineMode) == static_cast<int>(EngineMode::slicer));
+}
+
+// Bypassed: every note Cutline has sounding gets its note-off first, at the block's first sample, so a slicer or drum
+// note never hangs; then the incoming MIDI passes through unchanged. The input still reaches the engine, so a chord
+// released while bypassed is not held when Cutline comes back.
+void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+    juce::ScopedNoDenormals noDenormals;
+    buffer.clear();
+    const int numSamples = buffer.getNumSamples();
+    ingestMidi(midi, readTransport(std::max(0, numSamples)));
+    engine_.releaseAll(outEvents_);
+    if (outEvents_.count == 0)
+        return;
+    bypassMidi_.clear();
+    bypassMidi_.addEvents(midi, 0, -1, 0); // the input, set aside so the note-offs go first
+    midi.clear();
+    for (int i = 0; i < outEvents_.count; ++i) {
+        const auto& ev = outEvents_.events[static_cast<std::size_t>(i)];
+        if (ev.size > 0 && ev.size <= 3)
+            midi.addEvent(ev.data, ev.size, 0);
+    }
+    midi.addEvents(bypassMidi_, 0, -1, 0);
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginEditor(*this); }
