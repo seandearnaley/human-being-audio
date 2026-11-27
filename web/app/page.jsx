@@ -116,13 +116,14 @@ function Product({ product, release, unavailable }) {
 }
 
 export default async function Page() {
-  let releases,
-    unavailable = false;
+  let releases = [];
+  let errors = new Map();
+  let unavailable = false;
   try {
-    releases = await readCatalog();
+    ({ releases, errors } = await readCatalog());
+    for (const error of errors.values()) console.error(error);
   } catch (error) {
     console.error(error);
-    releases = [];
     unavailable = true;
   }
   return (
@@ -159,7 +160,7 @@ export default async function Page() {
                       key={product.slug}
                       product={product}
                       release={releases.find((r) => r.product === product.slug)}
-                      unavailable={unavailable}
+                      unavailable={unavailable || errors.has(product.slug)}
                     />
                   ))}
                 </div>
@@ -202,7 +203,7 @@ export default async function Page() {
                   </ul>
                 ) : (
                   <p>
-                    {unavailable
+                    {unavailable || errors.size > 0
                       ? "Check GitHub for release notes."
                       : "The first studio releases will appear here when published."}
                   </p>
