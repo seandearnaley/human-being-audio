@@ -20,15 +20,19 @@ class FakeModel final : public Model {
     void setLaneCurve(int lane, const Curve& curve) override { curves_[static_cast<std::size_t>(lane)] = curve; }
 
     const GrooveState& groove() const override { return groove_; }
-    void setGrooveBank(const GrooveBank& bank) override {
-        groove_ = GrooveState(bank);
-        refresh();
-    }
+    void setGrooveBank(const GrooveBank& bank) override;
+    void beginGrooveEdit() override;
+    void endGrooveEdit() override;
+
+    // What a gesture-aware host would record: undo snapshots taken and plugin-state writes made.
+    int undoSnapshots() const { return undoSnapshots_; }
+    int stateWrites() const { return stateWrites_; }
 
     // For screenshots: what the snapshot tool can ask the fake model to show.
     void showBars(int bars); // resize scene A to 1, 2 or 4 bars
     void showLive();         // the last bar with its fill live, and a one-beat Repeat window held
     void showSlicer();       // MIDI Slicer mode
+    void showPending();      // a 1 Bar scene switch to scene B waiting for the next bar
 
     void cloneActiveSceneToNext() override;
     void clearActiveScene() override;
@@ -52,6 +56,12 @@ class FakeModel final : public Model {
     GrooveState groove_{};
     Visuals visuals_;
     bool live_ = false;
+    bool pending_ = false;
+    bool inGesture_ = false;
+    bool gestureSnapshot_ = false; // this gesture has taken its undo snapshot
+    bool gestureDirty_ = false;    // this gesture changed the bank, so its end writes the state
+    int undoSnapshots_ = 0;
+    int stateWrites_ = 0;
     std::string presetName_ = "Amen";
 };
 

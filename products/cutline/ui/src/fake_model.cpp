@@ -17,7 +17,7 @@ void put(Pattern& p, int lane, int step, int velocity, Layer layer) {
     s.layer = layer;
 }
 
-// A two-bar break for screenshots: every layer, a ratchet, a flam, a short lane and a drawn fill.
+// A two-bar break for screenshots: every layer, ratchets, flams, nudges, a lane pocket, a short lane and a drawn fill.
 Pattern showcasePattern() {
     Pattern p{};
     p.bars = 2;
@@ -43,6 +43,12 @@ Pattern showcasePattern() {
     p.lanes[6].length = 7;
     put(p, 7, 0, 96, Layer::core);
     p.lanes[1].steps[12].flam = true;
+    p.lanes[1].steps[27].flam = true;
+    p.lanes[1].steps[27].nudge = -6; // a pushed, flammed snare: the grace hit lands in the step before
+    p.lanes[0].steps[10].nudge = 8;  // a laid-back kick
+    p.lanes[4].steps[30].ratchet = 3;
+    p.lanes[4].steps[22].nudge = 24; // a full late nudge: on the next step's start
+    p.lanes[6].offsetMs = 10;        // perc A sits 10 ms late
     p.fill.beats = 2;
     for (const int step : {8, 10, 12, 14})
         p.fill.steps[1][static_cast<std::size_t>(step)].velocity = 96;
@@ -55,11 +61,43 @@ Pattern showcasePattern() {
 
 FakeModel::FakeModel() {
     params_[ParamId::density] = 0.6f;
-    params_[ParamId::swing] = 0.18f;
-    params_[ParamId::fillEvery] = 2.0f;
+    params_[ParamId::swing] = 0.6f;
+    params_[ParamId::fillEvery] = 2.0f; // every 4 bars
     GrooveBank bank;
     bank.scenes[0] = showcasePattern();
     groove_ = GrooveState(bank);
+    pending_ = true;
+    refresh();
+}
+
+void FakeModel::setGrooveBank(const GrooveBank& bank) {
+    if (!inGesture_ || !gestureSnapshot_)
+        ++undoSnapshots_;
+    gestureSnapshot_ = inGesture_;
+    if (inGesture_)
+        gestureDirty_ = true;
+    else
+        ++stateWrites_;
+    groove_ = GrooveState(bank);
+    refresh();
+}
+
+void FakeModel::beginGrooveEdit() {
+    inGesture_ = true;
+    gestureSnapshot_ = false;
+    gestureDirty_ = false;
+}
+
+void FakeModel::endGrooveEdit() {
+    if (inGesture_ && gestureDirty_)
+        ++stateWrites_;
+    inGesture_ = false;
+    gestureSnapshot_ = false;
+    gestureDirty_ = false;
+}
+
+void FakeModel::showPending() {
+    pending_ = true;
     refresh();
 }
 
@@ -117,16 +155,19 @@ void FakeModel::refresh() {
     visuals_.pendingPadProgram = -1;
     visuals_.padEngaged = params_.on(ParamId::padTouch) || params_.on(ParamId::padHold);
     visuals_.midiPadMask = 0;
-    // Bar 1 of the pattern, just after the flammed snare backbeat, so the flam mark is not under the playhead.
+    // Host bar 13 (the fifth of the phrase 9-16), bar 1 of the pattern, just after the flammed snare backbeat, so the
+    // flam is not under the playhead. A switch to scene B waits for the next bar.
+    const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);
     visuals_.position = {};
-    visuals_.position.absBar = 0;
-    visuals_.position.barInPattern = 0;
+    visuals_.position.absBar = 12;
+    visuals_.position.barInPattern = 12 % bars;
     visuals_.position.stepInBar = 13;
+    if (pending_)
+        visuals_.pendingScene = (scene + 1) % kSceneCount;
     if (live_) {
-        // The last bar, inside its fill window, with Repeat holding beat 2 of that bar.
-        const int bars = patternBars(groove_.bank.scenes[static_cast<std::size_t>(scene)]);
-        visuals_.position.absBar = bars - 1;
-        visuals_.position.barInPattern = bars - 1;
+        // Host bar 4, the last bar of the pattern, inside its fill window, with Repeat holding beat 2 of that bar.
+        visuals_.position.absBar = 3;
+        visuals_.position.barInPattern = 3 % bars;
         visuals_.position.stepInBar = 13;
         visuals_.position.fillLive = true;
         visuals_.position.repeatStartStep = (bars - 1) * kStepsPerBar + 4;

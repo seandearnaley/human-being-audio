@@ -2,6 +2,7 @@
 #include "grid_edit.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 
 namespace cl::ui::grid {
@@ -88,17 +89,30 @@ Step* stepAt(Pattern& pattern, bool fillView, int lane, int step) noexcept {
     return const_cast<Step*>(stepAt(static_cast<const Pattern&>(pattern), fillView, lane, step));
 }
 
-bool toggleStep(Pattern& pattern, bool fillView, int lane, int step) noexcept {
-    Step* s = stepAt(pattern, fillView, lane, step);
+int brushVelocity(Layer layer) noexcept { return layer == Layer::core ? 112 : (layer == Layer::detail ? 64 : 96); }
+
+bool toggleStep(Pattern& pattern, bool fillView, int lane, int step, Layer brush) noexcept {
+    const Step* s = stepAt(pattern, fillView, lane, step);
     if (s == nullptr)
         return false;
-    if (s->on()) {
-        *s = {};
-    } else {
-        *s = {};
-        s->velocity = 96;
-        s->layer = Layer::groove;
-    }
+    return s->on() ? eraseStep(pattern, fillView, lane, step) : paintStep(pattern, fillView, lane, step, brush);
+}
+
+bool paintStep(Pattern& pattern, bool fillView, int lane, int step, Layer brush) noexcept {
+    Step* s = stepAt(pattern, fillView, lane, step);
+    if (s == nullptr || s->on())
+        return false;
+    *s = {};
+    s->velocity = static_cast<std::uint8_t>(fillView ? kFillStepVelocity : brushVelocity(brush));
+    s->layer = fillView ? Layer::groove : brush; // a fill step has no layer: sanitise keeps it Groove
+    return true;
+}
+
+bool eraseStep(Pattern& pattern, bool fillView, int lane, int step) noexcept {
+    Step* s = stepAt(pattern, fillView, lane, step);
+    if (s == nullptr || !s->on())
+        return false;
+    *s = {};
     return true;
 }
 
@@ -124,6 +138,128 @@ bool setStepLayer(Step& step, Layer layer) noexcept {
         return false;
     step.layer = layer;
     return true;
+}
+
+bool setStepNudge(Step& step, int nudge) noexcept {
+    if (!step.on())
+        return false;
+    const auto next = static_cast<std::int8_t>(std::clamp(nudge, -kMaxNudge, kMaxNudge));
+    if (next == step.nudge)
+        return false;
+    step.nudge = next;
+    return true;
+}
+
+bool toggleFlam(Step& step) noexcept {
+    if (!step.on())
+        return false;
+    step.flam = !step.flam;
+    return true;
+}
+
+int nudgeFromDrag(int startNudge, float dx, float pxPerUnit) noexcept {
+    if (pxPerUnit <= 0.0f)
+        return std::clamp(startNudge, -kMaxNudge, kMaxNudge);
+    return std::clamp(startNudge + static_cast<int>(std::lround(dx / pxPerUnit)), -kMaxNudge, kMaxNudge);
+}
+
+bool setLanePocket(Pattern& pattern, int lane, int ms) noexcept {
+    if (lane < 0 || lane >= kDrumLaneCount)
+        return false;
+    const auto next = static_cast<std::int8_t>(std::clamp(ms, -kMaxOffsetMs, kMaxOffsetMs));
+    std::int8_t& offset = pattern.lanes[static_cast<std::size_t>(lane)].offsetMs;
+    if (offset == next)
+        return false;
+    offset = next;
+    return true;
+}
+
+std::string pocketLabel(int ms) {
+    if (ms == 0)
+        return {};
+    return (ms > 0 ? "+" : "") + std::to_string(ms) + "ms";
+}
+
+HitTiming tickTiming(float swing, double bpm, int rateIdx) noexcept {
+    HitTiming timing;
+    timing.swing = static_cast<double>(std::clamp(swing, 0.0f, 1.0f));
+    timing.beatsPerMs = std::clamp(bpm, 20.0, 400.0) / 60000.0 *
+                        kSeqRateMultipliers[static_cast<std::size_t>(std::clamp(rateIdx, 0, 2))];
+    return timing;
+}
+
+Tick tickAt(double beatsFromCellStart, bool grace) noexcept {
+    constexpr double kCellBeats = 0.25;
+    constexpr double kEps = 1e-9;
+    const double at = beatsFromCellStart / kCellBeats;
+    Tick tick;
+    tick.grace = grace;
+    if (at < -kEps) {
+        tick.outside = -1;
+        tick.at = 0.0f;
+    } else if (at >= 1.0 - kEps) {
+        tick.outside = 1;
+        tick.at = 1.0f;
+    } else {
+        tick.at = static_cast<float>(std::max(0.0, at));
+    }
+    return tick;
+}
+
+void barTicks(const Pattern& pattern, const ResolvedBar& bar, const HitTiming& timing, BarTicks& out) noexcept {
+    out = {};
+    forEachHit(pattern, bar, 0.0, timing, [&out](const Hit& hit) {
+        if (hit.lane < 0 || hit.lane >= kDrumLaneCount || hit.step < 0 || hit.step >= kStepsPerBar)
+            return;
+        CellTicks& cell = out[static_cast<std::size_t>(hit.lane)][static_cast<std::size_t>(hit.step)];
+        if (cell.count >= static_cast<int>(cell.ticks.size()))
+            return;
+        const double cellStart = static_cast<double>(hit.step) * 0.25;
+        cell.ticks[static_cast<std::size_t>(cell.count++)] = tickAt(hit.beat - cellStart, hit.grace);
+    });
+}
+
+CellTicks slicerTicks(const Step& step, int gateStep, const HitTiming& timing) noexcept {
+    if (!step.on() || gateStep < 0 || gateStep >= kMaxSlicerSteps)
+        return {};
+    // The gate step as one lit step of a bar: swing repeats every half beat, so its place in its bar is enough.
+    ResolvedBar bar;
+    ResolvedStep& r = bar.lanes[0][static_cast<std::size_t>(gateStep % kStepsPerBar)];
+    r.velocity = step.velocity;
+    r.ratchet = step.ratchet;
+    r.nudge = step.nudge;
+    r.written = true;
+    BarTicks ticks;
+    barTicks(Pattern{}, bar, timing, ticks);
+    CellTicks cell = ticks[0][static_cast<std::size_t>(gateStep % kStepsPerBar)];
+    if (gateStep == 0) // the phrase starts no note before its first step
+        for (int i = 0; i < cell.count; ++i)
+            if (cell.ticks[static_cast<std::size_t>(i)].outside < 0)
+                cell.ticks[static_cast<std::size_t>(i)] = Tick{};
+    return cell;
+}
+
+Phrase phraseOf(const PhraseInput& in) noexcept {
+    Phrase phrase;
+    phrase.length = in.fillEvery == 16 ? 16 : 8;
+    const std::int64_t length = phrase.length;
+    const std::int64_t now = in.playing ? std::max<std::int64_t>(0, in.absBar) : 0;
+    phrase.start = (now / length) * length;
+    const int bars = std::max(1, in.patternBars);
+    for (int i = 0; i < phrase.length; ++i) {
+        PhraseBar& cell = phrase.bars[static_cast<std::size_t>(i)];
+        cell.absBar = phrase.start + i;
+        cell.patternBar = static_cast<int>(cell.absBar % bars);
+        cell.playing = in.playing && cell.absBar == now;
+        cell.fill = fillScheduled(cell.absBar, in.fillEvery) || (in.fillNow && cell.absBar >= now);
+        if (in.playing && in.pendingScene >= 0 && in.pendingOnBar && cell.absBar == now + 1)
+            cell.pendingScene = in.pendingScene;
+    }
+    return phrase;
+}
+
+std::int64_t phraseBarAt(double ppq, double rate) noexcept {
+    return static_cast<std::int64_t>(std::floor(ppq * rate / 4.0));
 }
 
 bool setFillBeats(Pattern& pattern, int beats) noexcept {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "grid_stage.h"
 
+#include "cl/vary.h"
+
 #include <visage/ui.h>
 
 #include <algorithm>
@@ -36,10 +38,63 @@ void GridStagePanel::edit(const std::function<bool(GrooveBank&)>& change) {
         context_.model.setGrooveBank(bank);
 }
 
+void GridStagePanel::openGesture() {
+    closeGesture(); // a press whose release never arrived
+    context_.model.beginGrooveEdit();
+    gestureOpen_ = true;
+}
+
+void GridStagePanel::closeGesture() {
+    if (!gestureOpen_)
+        return;
+    gestureOpen_ = false;
+    context_.model.endGrooveEdit();
+}
+
+GridStagePanel::Layout GridStagePanel::layout() const {
+    return computeLayout(width(), height(), gridSteps(), engineMode(context_.model) == EngineMode::drum);
+}
+
+int GridStagePanel::dragColumn(float mx, const Layout& lay) const {
+    const bool slicer = dragLane_ == kSlicerRow;
+    const float x0 = slicer ? lay.slicerGateRect.x : lay.gridX;
+    const float stepW = slicer ? lay.slicerStepW : lay.stepW;
+    const int columns = slicer ? kMaxSlicerSteps : lay.steps;
+    if (stepW <= 0.0f || columns <= 0)
+        return -1;
+    return std::clamp(static_cast<int>(std::floor((mx - x0) / stepW)), 0, columns - 1);
+}
+
+Step* GridStagePanel::editableStep(GrooveBank& bank, int lane, int step) const {
+    if (lane == kSlicerRow)
+        return (step >= 0 && step < static_cast<int>(bank.slicerLength))
+                   ? &bank.slicerSteps[static_cast<std::size_t>(step)]
+                   : nullptr;
+    return grid::stepAt(bank.scenes[static_cast<std::size_t>(editScene())], fillView(), lane, step);
+}
+
+bool GridStagePanel::paintAt(GrooveBank& bank, int lane, int step) const {
+    if (lane != kSlicerRow)
+        return grid::paintStep(bank.scenes[static_cast<std::size_t>(editScene())], fillView(), lane, step, brush_);
+    Step* s = editableStep(bank, lane, step);
+    if (s == nullptr || s->on())
+        return false;
+    *s = slicerHit();
+    return true;
+}
+
+bool GridStagePanel::eraseAt(GrooveBank& bank, int lane, int step) const {
+    Step* s = editableStep(bank, lane, step);
+    if (s == nullptr || !s->on())
+        return false;
+    *s = {};
+    return true;
+}
+
 void GridStagePanel::mouseMove(const visage::MouseEvent& e) {
     const float mx = e.position.x;
     const float my = e.position.y;
-    const Layout lay = computeLayout(width(), height(), gridSteps());
+    const Layout lay = layout();
     const bool drum = engineMode(context_.model) == EngineMode::drum;
 
     hoverLane_ = -1;
@@ -54,9 +109,14 @@ void GridStagePanel::mouseMove(const visage::MouseEvent& e) {
         hoverAction_ = 1;
     else if (drum && lay.btnFill.contains(mx, my))
         hoverAction_ = 2;
+    else if (drum && !fillView() && lay.btnVary.contains(mx, my))
+        hoverAction_ = 3;
     for (std::size_t i = 0; drum && i < lay.lengthPills.size(); ++i)
         if (lay.lengthPills[i].contains(mx, my))
             hoverAction_ = 10 + static_cast<int>(i);
+    for (std::size_t i = 0; drum && !fillView() && i < lay.brushChips.size(); ++i)
+        if (lay.brushChips[i].contains(mx, my))
+            hoverAction_ = 20 + static_cast<int>(i);
 
     if (drum) {
         const grid::Geometry geometry = drumGeometry(lay.gridX, lay.gridY, lay.stepW, lay.rowH, lay.steps);
@@ -85,7 +145,7 @@ void GridStagePanel::mouseMove(const visage::MouseEvent& e) {
             if (std::abs(mx - slicerEndHandleX(slLen, lay)) <= handleZone(lay.slicerStepW)) {
                 hoverSlicerLen_ = true;
             } else if (grid::cellAt({gr.x, gr.y, lay.slicerStepW, gr.h, kMaxSlicerSteps, 1}, mx, my, row, step)) {
-                hoverLane_ = 99;
+                hoverLane_ = kSlicerRow;
                 hoverStep_ = step;
             }
         }
@@ -102,18 +162,19 @@ void GridStagePanel::mouseExit(const visage::MouseEvent&) {
 void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
     const float mx = e.position.x;
     const float my = e.position.y;
-    const Layout lay = computeLayout(width(), height(), gridSteps());
+    const Layout lay = layout();
     const bool drum = engineMode(context_.model) == EngineMode::drum;
     const int scene = editScene();
     const auto si = static_cast<std::size_t>(scene);
 
     // A new press starts from a clean drag state, even if the last release never arrived.
+    closeGesture();
     dragMode_ = DragMode::none;
     dragLane_ = -1;
     dragStep_ = -1;
-    gesture_.begin(my);
+    gesture_.begin(mx, my);
 
-    // 1. Header actions.
+    // 1. Header actions. Each is its own undo step.
     if (lay.btnClone.contains(mx, my)) {
         context_.model.cloneActiveSceneToNext();
         return;
@@ -131,6 +192,7 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
         const GrooveBank& bank = context_.model.groove().bank;
         const int slLen = std::clamp(static_cast<int>(bank.slicerLength), 1, kMaxSlicerSteps);
         if (std::abs(mx - slicerEndHandleX(slLen, lay)) <= handleZone(lay.slicerStepW)) {
+            openGesture();
             dragMode_ = DragMode::slicerLength;
             return;
         }
@@ -143,6 +205,17 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
             showSlicerStepMenu(step);
             return;
         }
+        const Step& pressed = bank.slicerSteps[st];
+        if (e.isAltDown()) { // Option: drag to nudge, click to toggle the chord strum
+            if (!pressed.on())
+                return;
+            openGesture();
+            dragMode_ = DragMode::nudge;
+            dragLane_ = kSlicerRow;
+            dragStep_ = step;
+            dragBaseNudge_ = static_cast<int>(pressed.nudge);
+            return;
+        }
         if (e.isShiftDown()) {
             edit([&](GrooveBank& b) {
                 Step& s = b.slicerSteps[st];
@@ -152,17 +225,15 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
             });
             return;
         }
-        dragLane_ = 99;
+        openGesture();
+        dragLane_ = kSlicerRow;
         dragStep_ = step;
-        if (bank.slicerSteps[st].on()) {
-            dragMode_ = DragMode::velocity;
-            dragBaseVel_ = static_cast<int>(bank.slicerSteps[st].velocity);
+        if (pressed.on()) {
+            dragMode_ = DragMode::litPress;
+            dragBaseVel_ = static_cast<int>(pressed.velocity);
         } else {
             dragMode_ = DragMode::paintOn;
-            edit([&](GrooveBank& b) {
-                b.slicerSteps[st] = slicerHit();
-                return true;
-            });
+            edit([&](GrooveBank& b) { return paintAt(b, kSlicerRow, step); });
         }
         return;
     }
@@ -171,6 +242,28 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
         context_.fillView = !context_.fillView;
         redraw();
         return;
+    }
+
+    if (!fillView()) {
+        // Vary: a variation of the edited scene's pattern, as one undo step.
+        if (lay.btnVary.contains(mx, my)) {
+            edit([&](GrooveBank& b) {
+                Pattern varied;
+                if (!vary(b.scenes[si], varied))
+                    return false;
+                b.scenes[si] = varied;
+                return true;
+            });
+            return;
+        }
+        // The layer brush: UI state only.
+        for (std::size_t i = 0; i < lay.brushChips.size(); ++i) {
+            if (lay.brushChips[i].contains(mx, my)) {
+                brush_ = static_cast<Layer>(i);
+                redraw();
+                return;
+            }
+        }
     }
 
     // 2. Length pills: bars in the pattern view, fill beats in the fill view.
@@ -228,6 +321,7 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
         }
         const auto noteMap = static_cast<NoteMap>(
             std::clamp(static_cast<int>(context_.model.get(ParamId::noteMap) + 0.5f), 0, kNoteMapCount - 1));
+        openGesture();
         dragMode_ = DragMode::laneNote;
         dragLane_ = lane;
         dragBaseNote_ = effectiveLaneMidiNote(noteMap, lane, pattern.lanes[li].midiNote);
@@ -243,6 +337,7 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
 
     // 6. The loop-length handle, in the pattern view.
     if (!fillView() && std::abs(mx - laneEndHandleX(laneLoopSteps(pattern, lane), lay)) <= handleZone(lay.stepW)) {
+        openGesture();
         dragMode_ = DragMode::laneLength;
         dragLane_ = lane;
         return;
@@ -259,26 +354,38 @@ void GridStagePanel::mouseDown(const visage::MouseEvent& e) {
         return;
     }
     const bool fill = fillView();
+    if (e.isAltDown()) { // Option: drag a lit step to nudge it, click it to toggle its flam
+        if (!target->on())
+            return;
+        openGesture();
+        dragMode_ = DragMode::nudge;
+        dragLane_ = lane;
+        dragStep_ = step;
+        dragBaseNudge_ = static_cast<int>(target->nudge);
+        return;
+    }
     if (e.isShiftDown()) {
+        const Layer brush = brush_;
         edit([&](GrooveBank& b) {
             Pattern& p = b.scenes[si];
             Step* s = grid::stepAt(p, fill, lane, step);
             if (s == nullptr)
                 return false;
             if (!s->on())
-                grid::toggleStep(p, fill, lane, step);
+                grid::paintStep(p, fill, lane, step, brush);
             return grid::cycleRatchet(*s);
         });
         return;
     }
+    openGesture();
     dragLane_ = lane;
     dragStep_ = step;
     if (target->on()) {
-        dragMode_ = DragMode::velocity;
+        dragMode_ = DragMode::litPress; // erase or velocity, decided by the first axis it moves along
         dragBaseVel_ = static_cast<int>(target->velocity);
     } else {
         dragMode_ = DragMode::paintOn;
-        edit([&](GrooveBank& b) { return grid::toggleStep(b.scenes[si], fill, lane, step); });
+        edit([&](GrooveBank& b) { return paintAt(b, lane, step); });
     }
 }
 
@@ -288,9 +395,8 @@ void GridStagePanel::mouseDrag(const visage::MouseEvent& e) {
 
     const float mx = e.position.x;
     const float my = e.position.y;
-    const Layout lay = computeLayout(width(), height(), gridSteps());
+    const Layout lay = layout();
     const auto si = static_cast<std::size_t>(editScene());
-    const bool fill = fillView();
 
     if (dragMode_ == DragMode::laneLength && dragLane_ >= 0 && dragLane_ < kDrumLaneCount) {
         const int steps = static_cast<int>(std::lround((mx - lay.gridX) / lay.stepW));
@@ -323,62 +429,75 @@ void GridStagePanel::mouseDrag(const visage::MouseEvent& e) {
         return;
     }
 
-    if (dragMode_ == DragMode::velocity) {
-        if (!gesture_.move(my, px(4.0f)))
+    if (dragMode_ == DragMode::nudge) {
+        if (!gesture_.move(mx, my, px(4.0f)))
+            return; // still a click: its release toggles the flam
+        const int nudge = grid::nudgeFromDrag(dragBaseNudge_, mx - gesture_.startX(), px(grid::kNudgeDragPx));
+        edit([&](GrooveBank& b) {
+            Step* s = editableStep(b, dragLane_, dragStep_);
+            return s != nullptr && grid::setStepNudge(*s, nudge);
+        });
+        return;
+    }
+
+    if (dragMode_ == DragMode::litPress) {
+        if (!gesture_.move(mx, my, px(4.0f)))
             return;
+        if (gesture_.axis() == grid::Axis::horizontal) {
+            // Erase: the pressed step goes off now, and every lit step the pointer passes on this lane after it.
+            dragMode_ = DragMode::erase;
+            edit([&](GrooveBank& b) { return eraseAt(b, dragLane_, dragStep_); });
+        } else {
+            dragMode_ = DragMode::velocity;
+        }
+    }
+
+    if (dragMode_ == DragMode::velocity) {
         const float dy = gesture_.startY() - my;
         const int velocity = dragBaseVel_ + static_cast<int>(std::lround(dy * 1.4f));
         edit([&](GrooveBank& b) {
-            if (dragLane_ == 99)
-                return grid::setStepVelocity(b.slicerSteps[static_cast<std::size_t>(dragStep_)], velocity);
-            Step* s = grid::stepAt(b.scenes[si], fill, dragLane_, dragStep_);
+            Step* s = editableStep(b, dragLane_, dragStep_);
             return s != nullptr && grid::setStepVelocity(*s, velocity);
         });
         return;
     }
 
-    if (dragMode_ == DragMode::paintOn) {
-        int lane = -1;
-        int step = -1;
-        if (dragLane_ == 99) {
-            const auto& gr = lay.slicerGateRect;
-            if (!grid::cellAt({gr.x, gr.y, lay.slicerStepW, gr.h, kMaxSlicerSteps, 1}, mx, gr.y, lane, step))
-                return;
-        } else if (!grid::cellAt(drumGeometry(lay.gridX, lay.gridY, lay.stepW, lay.rowH, lay.steps), mx, my, lane,
-                                 step)) {
+    if (dragMode_ == DragMode::paintOn || dragMode_ == DragMode::erase) {
+        // Paint and erase stay on the pressed lane, and touch every step between the last position and this one, so
+        // a fast drag misses none.
+        const int step = dragColumn(mx, lay);
+        if (step < 0 || step == dragStep_ || dragStep_ < 0)
             return;
-        }
-        if (step == dragStep_)
-            return;
+        const int from = dragStep_;
         dragStep_ = step;
+        const bool paint = dragMode_ == DragMode::paintOn;
+        const int dir = step > from ? 1 : -1;
         edit([&](GrooveBank& b) {
-            if (dragLane_ == 99) {
-                if (step >= static_cast<int>(b.slicerLength))
-                    return false;
-                Step& s = b.slicerSteps[static_cast<std::size_t>(step)];
-                if (s.on())
-                    return false;
-                s = slicerHit();
-                return true;
+            bool changed = false;
+            for (int st = from + dir;; st += dir) {
+                changed = (paint ? paintAt(b, dragLane_, st) : eraseAt(b, dragLane_, st)) || changed;
+                if (st == step)
+                    break;
             }
-            const Step* s = grid::stepAt(b.scenes[si], fill, dragLane_, step);
-            return s != nullptr && !s->on() && grid::toggleStep(b.scenes[si], fill, dragLane_, step);
+            return changed;
         });
     }
 }
 
 void GridStagePanel::mouseUp(const visage::MouseEvent& e) {
-    // A click on a lit step switches it off. A drag never does, even one that returns to where it started.
-    if (dragMode_ == DragMode::velocity && !gesture_.move(e.position.y, px(4.0f))) {
-        const auto si = static_cast<std::size_t>(editScene());
-        const bool fill = fillView();
+    // A press released in place: on a lit step it switches the step off; with Option it toggles the flam. A drag never
+    // does either, even one that returns to where it started.
+    const bool click = !gesture_.move(e.position.x, e.position.y, px(4.0f));
+    if (click && (dragMode_ == DragMode::litPress || dragMode_ == DragMode::nudge)) {
+        const bool flam = dragMode_ == DragMode::nudge;
         const int lane = dragLane_;
         const int step = dragStep_;
         edit([&](GrooveBank& b) {
-            Step* s = lane == 99 ? &b.slicerSteps[static_cast<std::size_t>(step)]
-                                 : grid::stepAt(b.scenes[si], fill, lane, step);
+            Step* s = editableStep(b, lane, step);
             if (s == nullptr || !s->on())
                 return false; // already off, perhaps cleared by the host: never light it
+            if (flam)
+                return grid::toggleFlam(*s);
             *s = {};
             return true;
         });
@@ -386,6 +505,7 @@ void GridStagePanel::mouseUp(const visage::MouseEvent& e) {
     dragMode_ = DragMode::none;
     dragLane_ = -1;
     dragStep_ = -1;
+    closeGesture();
 }
 
 void GridStagePanel::showDrumStepMenu(int lane, int step) {
@@ -406,7 +526,8 @@ void GridStagePanel::showDrumStepMenu(int lane, int step) {
     menu.addOption(11, "Nudge Early");
     menu.addOption(12, "Nudge Late");
     menu.addOption(13, "Clear Step");
-    menu.onSelection() += [this, lane, step, fill](int choice) {
+    const Layer brush = brush_;
+    menu.onSelection() += [this, lane, step, fill, brush](int choice) {
         const int scene = editScene();
         edit([&](GrooveBank& bank) {
             Pattern& p = bank.scenes[static_cast<std::size_t>(scene)];
@@ -417,8 +538,8 @@ void GridStagePanel::showDrumStepMenu(int lane, int step) {
                 *s = {};
                 return true;
             }
-            if (!s->on()) // every other choice needs a lit step: light it as a new step
-                grid::toggleStep(p, fill, lane, step);
+            if (!s->on()) // every other choice needs a lit step: light it as a new step, with the brush
+                grid::paintStep(p, fill, lane, step, brush);
             if (choice >= 1 && choice <= 4)
                 s->ratchet = static_cast<std::uint8_t>(choice);
             else if (choice == 10)
@@ -466,11 +587,20 @@ void GridStagePanel::showSlicerStepMenu(int step) {
 }
 
 void GridStagePanel::showLaneMenu(int lane) {
+    constexpr std::array<const char*, grid::kPocketChoicesMs.size()> kPocketNames{
+        "Pocket: Early 10 ms", "Pocket: Early 5 ms", "Pocket: On Grid", "Pocket: Late 5 ms", "Pocket: Late 10 ms"};
+    const int pocket = static_cast<int>(context_.model.groove()
+                                            .bank.scenes[static_cast<std::size_t>(editScene())]
+                                            .lanes[static_cast<std::size_t>(lane)]
+                                            .offsetMs);
     visage::PopupMenu menu;
     menu.addOption(1, "Length: Follow Pattern");
     menu.addOption(2, "Length: 5 steps");
     menu.addOption(3, "Length: 7 steps");
     menu.addOption(4, "Length: 12 steps");
+    menu.addBreak();
+    for (std::size_t i = 0; i < kPocketNames.size(); ++i)
+        menu.addOption(30 + static_cast<int>(i), kPocketNames[i]).select(pocket == grid::kPocketChoicesMs[i]);
     menu.addBreak();
     menu.addOption(20, "Reset Lane");
     menu.addOption(21, "Reset All Notes to Kit Map");
@@ -499,6 +629,8 @@ void GridStagePanel::showLaneMenu(int lane) {
                     each.midiNote = 0;
                 return true;
             default:
+                if (choice >= 30 && choice < 30 + static_cast<int>(grid::kPocketChoicesMs.size()))
+                    return grid::setLanePocket(p, lane, grid::kPocketChoicesMs[static_cast<std::size_t>(choice - 30)]);
                 return false;
             }
         });
