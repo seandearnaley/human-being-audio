@@ -104,6 +104,8 @@ Editor::Editor(Model& model, std::function<void()> showAbout)
 Editor::~Editor() { detach(); }
 void Editor::attach(void* parentView, int width, int height) { impl_->host.attach(parentView, width, height); }
 void Editor::detach() { impl_->host.detach(); }
+visage::Frame& Editor::rootFrame() { return impl_->host.window(); }
+
 void Editor::setSize(int width, int height) { impl_->host.setSize(width, height); }
 void Editor::setView(View view) { impl_->topBar.setStudioView(view == View::studio); }
 

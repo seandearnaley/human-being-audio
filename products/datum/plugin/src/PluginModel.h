@@ -24,7 +24,7 @@ class PluginModel final : public ui::Model {
 
     void refreshVisuals() override;
     const TelemetrySnapshot& visuals() override { return visuals_; }
-    const PreviewSnapshot& preview() override;
+    const PreviewSnapshot& preview() override { return preview_; }
 
     hba::dsp::EnvelopeCurve pitchCurve() const override { return processor_.stateStore.pitchCurve(); }
     hba::dsp::EnvelopeCurve ampCurve() const override { return processor_.stateStore.ampCurve(); }
@@ -83,6 +83,7 @@ class PluginModel final : public ui::Model {
     Params cachedParams_{};
     AudioStateBundle cachedBundle_{};
     std::uint64_t cachedClickVer_ = ~0ull;
+    double cachedSampleRate_ = 0.0;
     bool previewValid_ = false;
     bool applyingSnapshot_ = false;
     std::uint32_t rng_ = 0x73c91a4bu;

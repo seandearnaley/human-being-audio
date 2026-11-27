@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
+#include "../../ui/src/controls.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <hba/core/wav.h>
 
 #include <cmath>
 #include <vector>
@@ -149,4 +152,103 @@ TEST_CASE("Lineage state round-trip, Undo/Redo and A/B history persist", "[plugi
     restored.prepareToPlay(48000.0, 256);
     restored.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
     CHECK(restored.currentParams()[ln::ParamId::filt1Hz] == Catch::Approx(2400.0f).margin(5.0f));
+}
+
+TEST_CASE("Lineage host session retains exact stacked PCM and clears former step-back history", "[plugin][recall]") {
+    ensureJuce();
+    ln::PluginProcessor proc;
+    proc.prepareToPlay(48000, 64);
+    proc.triggerPrintSync(false);
+    proc.triggerPrintSync(true);
+    const auto expected = proc.printStore.copyBuffer();
+    REQUIRE(expected.generation == 3);
+    juce::MemoryBlock saved;
+    proc.getStateInformation(saved);
+    ln::PluginProcessor restored;
+    restored.prepareToPlay(44100, 256);
+    restored.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+    REQUIRE(restored.printStore.waitForIdle());
+    const auto actual = restored.printStore.copyBuffer();
+    CHECK(actual.generation == expected.generation);
+    CHECK(actual.length == expected.length);
+    CHECK(actual.sampleRate == expected.sampleRate);
+    CHECK(actual.rootMidiNote == expected.rootMidiNote);
+    CHECK(actual.label == expected.label);
+    CHECK(bool(actual.left == expected.left));
+    CHECK(bool(actual.right == expected.right));
+    CHECK_FALSE(restored.printStore.canStepBack());
+    ln::PluginModel model(proc);
+    model.toggleAB();
+    proc.printStore.clear();
+    model.toggleAB();
+    CHECK(proc.printStore.generation() == 3);
+    model.toggleAB();
+    CHECK_FALSE(proc.printStore.hasPrint());
+}
+
+TEST_CASE("Lineage recalls imported stereo audio without the file and prints four full bars", "[plugin][recall]") {
+    ensureJuce();
+    ln::PluginProcessor source;
+    juce::TemporaryFile wav(".wav");
+    std::array<float, 512> samples{};
+    samples[96] = -0.5f;
+    samples[145] = 0.25f;
+    REQUIRE(hba::core::writeWavFloat(wav.getFile().getFullPathName().toStdString(), samples, 2, 44100));
+    REQUIRE(source.printStore.loadAudioFile(wav.getFile(), 48000));
+    juce::MemoryBlock state;
+    source.getStateInformation(state);
+    REQUIRE(wav.getFile().deleteFile());
+    ln::PluginProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    const auto actual = restored.printStore.copyBuffer();
+    const auto expected = source.printStore.copyBuffer();
+    CHECK(bool(actual.left == expected.left));
+    CHECK(bool(actual.right == expected.right));
+    CHECK(actual.label == expected.label);
+
+    auto params = source.currentParams();
+    params[ln::ParamId::printBars] = 2;
+    source.printStore.renderSync(params, source.curves.all(), 48000, 120, 29, false);
+    CHECK(source.printStore.copyBuffer().length == 384000);
+}
+
+TEST_CASE("lineage renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    ln::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 4096);
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
+    proc.processBlock(audio, midi);
+    CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}
+
+TEST_CASE("Lineage bounce keeps small pointer movements as clicks", "[plugin][gesture]") {
+    ensureJuce();
+    ln::PluginProcessor processor;
+    ln::PluginModel model(processor);
+    ln::ui::Context context(model);
+    int clicks = 0, drags = 0;
+    ln::ui::PillButton button(context, "Bounce WAV", [&] { ++clicks; });
+    button.setBounds(0, 0, 100, 28);
+    button.setOnDragOut([&] { ++drags; });
+    visage::MouseEvent event{};
+    event.position = {10, 10};
+    button.mouseDown(event);
+    event.position.x += 1;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 0);
+    button.mouseDown(event);
+    event.position.x += 12;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 1);
 }

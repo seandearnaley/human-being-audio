@@ -89,7 +89,7 @@ PlayPanel::PlayPanel(Context& context)
          std::initializer_list<visage::Frame*>{&holdBtn_, &padMidiBtn_, &ccChip_, &auditionBtn_, &dragMidBtn_})
         addChild(child);
 
-    dragMidBtn_.setOnDrag([this] { context_.model.dragMidiPhrase(); });
+    dragMidBtn_.setOnDragOut([this] { context_.model.dragMidiPhrase(); });
 
     program_ = playingProgram();
     programBefore_ = program_;

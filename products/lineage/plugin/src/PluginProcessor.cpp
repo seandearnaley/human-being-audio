@@ -3,6 +3,8 @@
 
 #include "PluginEditor.h"
 
+#include <hba/host/render_midi_block.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -16,8 +18,7 @@ const juce::String kDroneNoteId{"droneNote"};
 PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       state(*this, nullptr, "Lineage", makeParameterLayout()), values_(state), curves(state),
-      printStore(
-          state, [this](const PrintBuffer& buf) { engine_.publishPrint(buf); }, [this] { engine_.clearPrint(); }),
+      printStore([this](PrintHandle print) { engine_.publishPrint(std::move(print)); }),
       presets(state, curves, [this](const Params& p, const LaneCurves& c, bool autoPrint) {
           if (autoPrint) {
               const auto perf = lastPerformance();
@@ -37,7 +38,6 @@ PluginProcessor::~PluginProcessor() {
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
     standalonePpq_ = 0.0;
     prepareEngine();
 }
@@ -48,9 +48,6 @@ void PluginProcessor::prepareEngine() {
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[qualityIdx]);
     engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
     engine_.setLaneCurves(curves.all());
-    const auto existingPrint = printStore.copyBuffer();
-    if (existingPrint.valid())
-        engine_.publishPrint(existingPrint);
     setLatencySamples(engine_.latencySamples());
 }
 
@@ -157,47 +154,19 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
 
-    const bool isMono = (numChannels == 1);
-    float* left = buffer.getWritePointer(0);
-    float* right = isMono ? monoScratchR_.data() : buffer.getWritePointer(1);
-    if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-        buffer.clear();
-        midi.clear();
-        return;
-    }
-
     const Transport transportStart = readTransport(numSamples);
     lastBpm_.store(transportStart.bpm, std::memory_order_relaxed);
     const double beatsPerSample = (transportStart.bpm / 60.0) / sampleRate_;
 
-    int cursor = 0;
-    for (const auto metadata : midi) {
-        if (metadata.numBytes > 3)
-            continue;
-        const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
-        if (eventSample > cursor) {
-            const int chunk = eventSample - cursor;
+    hba::host::renderMidiBlock(
+        buffer, midi, monoScratchR_, numSamples,
+        [&](int offset, int count, float* left, float* right) {
             Transport seg = transportStart;
             if (seg.playing)
-                seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-            engine_.process(params, seg, left + cursor, right + cursor, chunk);
-            cursor = eventSample;
-        }
-        handleMidi(metadata.getMessage());
-    }
-
-    if (cursor < numSamples) {
-        const int chunk = numSamples - cursor;
-        Transport seg = transportStart;
-        if (seg.playing)
-            seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-        engine_.process(params, seg, left + cursor, right + cursor, chunk);
-    }
-
-    if (isMono) {
-        for (int i = 0; i < numSamples; ++i)
-            left[i] = 0.5f * (left[i] + right[i]);
-    }
+                seg.ppq += static_cast<double>(offset) * beatsPerSample;
+            engine_.process(params, seg, left, right, count);
+        },
+        [&](const juce::MidiMessage& message) { handleMidi(message); });
 
     midi.clear();
     telemetry.publish(engine_.telemetry());
@@ -220,7 +189,9 @@ void PluginProcessor::triggerPrintSync(bool stackGeneration) {
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PluginEditor(*this); }
 
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
-    if (const auto xml = state.copyState().createXml())
+    auto session = state.copyState();
+    printStore.appendState(session);
+    if (const auto xml = session.createXml())
         copyXmlToBinary(*xml, destination);
 }
 
@@ -228,10 +199,15 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
     const auto xml = getXmlFromBinary(data, size);
     if (xml == nullptr || !xml->hasTagName(state.state.getType()))
         return;
-    state.replaceState(juce::ValueTree::fromXml(*xml));
+    auto session = juce::ValueTree::fromXml(*xml);
+    PrintHandle print;
+    if (!PrintStore::decodeState(session, print))
+        return;
+    state.replaceState(session);
     curves.reloadFromState();
     presets.reloadFromState();
-    printStore.reloadFromState(currentParams(), curves.all(), sampleRate_);
+    printStore.restore(std::move(print));
+    history = {};
 }
 
 } // namespace ln

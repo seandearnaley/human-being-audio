@@ -12,6 +12,8 @@
 namespace tg {
 
 namespace {
+constexpr double kFdnModulationMs = 0.42;
+
 inline hba::dsp::ShaperModel shaperFromChoice(int idx) noexcept HBA_NONBLOCKING {
     switch (std::clamp(idx, 0, 4)) {
     case 0:
@@ -53,11 +55,14 @@ void Engine::prepare(double sampleRate, int maxBlockSize, int oversamplingFactor
 
     // Mutually prime FDN diffusion lengths scaled smoothly with sample rate (zero allocation in process!).
     constexpr std::array<double, kFdnLines> kFdnMs{29.73, 37.15, 43.98, 53.27};
+    const int modulationHeadroom =
+        std::max(24, static_cast<int>(std::ceil(kFdnModulationMs * 0.001 * sampleRate_)) + 2);
     for (int j = 0; j < kFdnLines; ++j) {
         const auto ji = static_cast<std::size_t>(j);
-        const int len = std::max(64, static_cast<int>(std::lround(kFdnMs[ji] * 0.001 * sampleRate_)) + 64);
-        fdnLen_[ji] = len;
-        fdnBuf_[ji].assign(static_cast<std::size_t>(len), 0.0);
+        // Keep the nominal tap used by the original reverb and reserve its full excursion at this rate.
+        const int delay = static_cast<int>(std::lround(kFdnMs[ji] * 0.001 * sampleRate_)) + 40;
+        fdnDelaySamples_[ji] = delay;
+        fdnBuf_[ji].assign(static_cast<std::size_t>(delay + modulationHeadroom), 0.0);
     }
 
     reset();
@@ -559,8 +564,8 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
         const double detuneRatio = std::pow(2.0, (effDetuneCt * 0.5) / 1200.0);
 
         // Drain FDN reverb + chorus + oversampler + limiter lookahead buffers before sleeping
-        const int tailDrainLimit = latencySamples() + static_cast<int>((0.04 + curSpace * 1.45) * sr);
-        if (envLevel_ < 1e-6 && !anyGate) {
+        const int tailDrainLimit = latencySamples() + static_cast<int>(spaceDrainSeconds(curSpace) * sr);
+        if (envLevel_ < kSilentEnvelope && !anyGate) {
             if (silentTailSamples_ >= tailDrainLimit) {
                 outL[i] = 0.0f;
                 outR[i] = 0.0f;
@@ -724,12 +729,12 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
                 for (int j = 0; j < kFdnLines; ++j) {
                     const auto ji = static_cast<std::size_t>(j);
                     const auto& buf = fdnBuf_[ji];
-                    const int len = fdnLen_[ji];
-                    if (len <= 8 || buf.empty())
+                    const int len = static_cast<int>(buf.size());
+                    if (len == 0)
                         continue;
                     fdnLfo_[ji] = hba::dsp::frac(fdnLfo_[ji] + kLfoHz[ji] * invSr);
-                    const double modSamp = 0.42 * ms * std::sin(hba::dsp::kTwoPi * fdnLfo_[ji]);
-                    const double baseD = static_cast<double>(len - 24) + modSamp;
+                    const double modSamp = kFdnModulationMs * ms * std::sin(hba::dsp::kTwoPi * fdnLfo_[ji]);
+                    const double baseD = static_cast<double>(fdnDelaySamples_[ji]) + modSamp;
                     double rpos = static_cast<double>(fdnPos_[ji]) - baseD;
                     if (rpos < 0.0)
                         rpos += static_cast<double>(len);
@@ -760,8 +765,8 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
                 const std::array<double, kFdnLines> fbVec{h0, h1, h2, h3};
                 for (int j = 0; j < kFdnLines; ++j) {
                     const auto ji = static_cast<std::size_t>(j);
-                    const int len = fdnLen_[ji];
-                    if (len <= 8 || fdnBuf_[ji].empty())
+                    const int len = static_cast<int>(fdnBuf_[ji].size());
+                    if (len == 0)
                         continue;
                     fdnBuf_[ji][static_cast<std::size_t>(fdnPos_[ji])] = inject[ji] + fb * fbVec[ji];
                     fdnPos_[ji] = (fdnPos_[ji] + 1 == len) ? 0 : fdnPos_[ji] + 1;

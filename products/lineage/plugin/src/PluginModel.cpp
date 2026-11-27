@@ -112,6 +112,7 @@ PluginModel::Snapshot PluginModel::captureSnapshot() const {
             continue;
         s.params[i] = params_[i] != nullptr ? params_[i]->convertFrom0to1(params_[i]->getValue()) : kParams[i].def;
     }
+    s.print = processor_.printStore.snapshot();
     s.curves = processor_.curves.all();
     s.presetName = processor_.presets.currentName();
     return s;
@@ -125,6 +126,8 @@ void PluginModel::applySnapshot(const Snapshot& snapshot) {
             continue;
         params_[i]->setValueNotifyingHost(params_[i]->convertTo0to1(snapshot.params[i]));
     }
+    if (snapshot.print != processor_.printStore.snapshot() || processor_.printStore.state() == ui::PrintState::printing)
+        processor_.printStore.restore(snapshot.print);
     processor_.curves.setAll(snapshot.curves);
     processor_.resampler.invalidate();
     if (!snapshot.presetName.empty())

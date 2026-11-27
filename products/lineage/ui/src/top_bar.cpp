@@ -32,6 +32,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
       bounceWav_(ctx, "Bounce .wav", [this] { context_.model.startWavExport(); }),
       viewPlay_(ctx, "PLAY", [this] { setStudioView(false); }),
       viewStudio_(ctx, "STUDIO", [this] { setStudioView(true); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });
@@ -52,6 +56,7 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
             context_.model.dragExportedWav();
     });
 
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick([this] {
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
@@ -130,16 +135,7 @@ void TopBar::tick() {
     drone_.setLabel(droneOn ? ("ON \xc2\xb7 " + keyName) : ("DRONE \xc2\xb7 " + keyName));
 
     const auto estate = context_.model.exportState();
-    if (estate == ExportState::rendering) {
-        bounceWav_.setLabel("Bouncing...");
-        bounceWav_.setActive(false);
-    } else if (estate == ExportState::ready) {
-        bounceWav_.setLabel("Drag .wav \xe2\x86\x97");
-        bounceWav_.setActive(true);
-    } else {
-        bounceWav_.setLabel("Bounce .wav");
-        bounceWav_.setActive(false);
-    }
+    hba::ui::syncWavExport(bounceWav_, estate);
 
     const auto& tel = context_.model.visuals();
     const float nextL = linearToDb(tel.peakL);
@@ -151,11 +147,7 @@ void TopBar::tick() {
     redraw();
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(
-        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
-        [this] { context_.model.savePreset(); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     hba::ui::drawBrandWordmark(canvas, wordmark_, brand::lineage_logotype_on_dark_svg, 1520.0f / 334.0f, 24.0f, 8.0f,

@@ -463,8 +463,10 @@ Played playRush (const CutParameters& params, double rate, double bpm, double me
         rush.process (&left, &right, 1);
 
         const auto& cutter = rush.cutter;
-        REQUIRE (cutter.error() == Cutter::Error::none);
-        REQUIRE (cutter.isCutting());
+        if (cutter.error() != Cutter::Error::none || !cutter.isCutting()) {
+            CAPTURE(rush.frame - 1, rate, bpm, meter, cutter.error(), cutter.isCutting());
+            FAIL("Rush stopped cutting or reported a render error");
+        }
         if (cutter.phraseStartBar() != phrase)
         {
             // A new bar: the roll before it landed if it played every cut, and it
@@ -506,8 +508,10 @@ Played playRush (const CutParameters& params, double rate, double bpm, double me
         if ((runningOn || rendered == 0) && rush.frame > joinEnds)
         {
             ++played.compared;
-            REQUIRE (left == in.left);
-            REQUIRE (right == in.right);
+            if (left != in.left || right != in.right) {
+                CAPTURE(rush.frame - 1, rate, bpm, meter, left, in.left, right, in.right);
+                FAIL("Track pass differs from the input");
+            }
         }
         else
             ++played.repeats;

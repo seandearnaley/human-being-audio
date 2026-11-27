@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "cl/engine.h"
 #include "cl/lanes.h"
 #include "cl/params.h"
@@ -63,7 +65,7 @@ struct Visuals {
     bool playing = false;
 };
 
-struct Model {
+struct Model : public hba::ui::PresetMenuHost {
     virtual ~Model() = default;
 
     virtual float get(ParamId id) const = 0;

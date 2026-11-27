@@ -2,6 +2,8 @@
 // Shared Visage parameter control bases, buttons, toggle pills, and stereo output meter primitives.
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include <hba/ui/theme.h>
 #include <visage/ui.h>
 
@@ -130,6 +132,13 @@ template <typename SpecT> float clampParamValue(const SpecT& s, float value) {
 }
 } // namespace detail
 
+inline void drawKeyboardFocus(visage::Canvas& canvas, const visage::Frame& control, float scale) {
+    if (!control.hasKeyboardFocus())
+        return;
+    canvas.setColor(colour::text);
+    canvas.roundedRectangleBorder(0, 0, control.width(), control.height(), 4 * scale, 1.5f * scale);
+}
+
 struct ParamControlMetrics {
     float dragRange = 180.0f;
     float fineScale = 0.1f;
@@ -138,10 +147,12 @@ struct ParamControlMetrics {
 
 template <typename ContextT, typename ParamIdT, typename ParamSpecT, typename ParamKindT,
           ParamControlMetrics Metrics = ParamControlMetrics{}>
-class ParamFrameBase : public visage::Frame, public Live {
+class ParamFrameBase : public visage::Frame, public Live, public ParameterControl {
   public:
     ParamFrameBase(ContextT& context, ParamIdT id, unsigned accent)
         : context_(context), accent_(accent), id_(id), spec_(detail::lookupParamSpec(id)) {
+        setName(std::string(spec_.name));
+        setAcceptsKeystrokes(true);
         context_.live.push_back(this);
     }
 
@@ -152,6 +163,10 @@ class ParamFrameBase : public visage::Frame, public Live {
     float value() const { return context_.model.get(id_); }
     float normalised() const { return toNormalised(spec_, value()); }
     std::string text() const { return formatValue(spec_, value()); }
+
+    std::string_view parameterKey() const override { return spec_.key; }
+    std::string valueText() const override { return text(); }
+    void setFromNormalised(float v) override { commit(fromNormalised(spec_, v)); }
 
     void setAccent(unsigned accent) {
         if (accent == accent_)
@@ -168,6 +183,21 @@ class ParamFrameBase : public visage::Frame, public Live {
     void draw(visage::Canvas& canvas) final {
         drawn_ = value();
         paint(canvas);
+        drawKeyboardFocus(canvas, *this, context_.scale);
+    }
+
+    void focusChanged(bool, bool) override { redraw(); }
+
+    bool keyPress(const visage::KeyEvent& key) override {
+        if (key.isMainModifier())
+            return false;
+        using Key = visage::KeyCode;
+        const auto code = key.keyCode();
+        if (code != Key::Left && code != Key::Right && code != Key::Up && code != Key::Down)
+            return false;
+        const float direction = code == Key::Left || code == Key::Down ? -1.0f : 1.0f;
+        nudge(direction * Metrics.wheelStep * (key.isShiftDown() ? Metrics.fineScale : 1.0f));
+        return true;
     }
 
     void mouseEnter(const visage::MouseEvent&) override {
@@ -455,97 +485,60 @@ template <typename ParamFrameT> class StandardChip final : public ParamFrameT {
     std::string textOverride_;
 };
 
-template <typename ContextT> class StudioButton final : public visage::Frame {
-  public:
-    StudioButton(ContextT& context, std::string label, std::function<void()> onClick)
-        : context_(context), label_(std::move(label)), onClick_(std::move(onClick)) {}
-
-    void setLabel(std::string label) {
-        if (label == label_)
-            return;
-        label_ = std::move(label);
-        redraw();
-    }
-
-    void setAccent(unsigned accent) {
-        if (accent == accent_)
-            return;
-        accent_ = accent;
-        redraw();
-    }
-
-    void setOnDrag(std::function<void()> onDrag) { onDrag_ = std::move(onDrag); }
-    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
-
-    void draw(visage::Canvas& canvas) override {
-        drawPanel(canvas, context_.scale, 0.0f, 0.0f, width(), height(), pressed_ ? colour::track : colour::raised,
-                  metric::radiusSmall);
-        drawLabel(canvas, context_.scale, label_, 0.0f, 0.0f, width(), height(), hovered_ ? colour::text : accent_,
-                  visage::Font::kCenter);
-    }
-
-    void mouseEnter(const visage::MouseEvent&) override {
-        hovered_ = true;
-        redraw();
-    }
-
-    void mouseExit(const visage::MouseEvent&) override {
-        hovered_ = false;
-        redraw();
-    }
-
-    void mouseDown(const visage::MouseEvent& e) override {
-        if (e.shouldTriggerPopup()) {
-            if (onRightClick_)
-                onRightClick_();
-            return;
-        }
-        pressed_ = true;
-        dragged_ = false;
-        redraw();
-    }
-
-    void mouseDrag(const visage::MouseEvent&) override {
-        if (pressed_ && !dragged_ && onDrag_) {
-            dragged_ = true;
-            pressed_ = false;
-            redraw();
-            onDrag_();
-        }
-    }
-
-    void mouseUp(const visage::MouseEvent& e) override {
-        if (!pressed_)
-            return;
-        const bool inside = localBounds().contains(e.position);
-        const bool wasDragged = dragged_;
-        pressed_ = false;
-        dragged_ = false;
-        redraw();
-        if (inside && !wasDragged && onClick_)
-            onClick_();
-    }
-
-  private:
-    ContextT& context_;
-    std::string label_;
-    std::function<void()> onClick_;
-    std::function<void()> onDrag_;
-    std::function<void()> onRightClick_;
-    unsigned accent_ = colour::text;
-    bool hovered_ = false;
-    bool pressed_ = false;
-    bool dragged_ = false;
-};
-
-template <typename ContextT> class ActionButtonBase : public visage::Frame {
+template <typename ContextT> class ActionButtonBase : public visage::Frame, public ActionControl {
   public:
     ActionButtonBase(ContextT& ctx, std::string label, std::function<void()> onClick = {})
-        : context_(ctx), label_(std::move(label)), onClick_(std::move(onClick)) {}
+        : context_(ctx), label_(std::move(label)), onClick_(std::move(onClick)) {
+        setName(label_);
+        setAcceptsKeystrokes(true);
+        onDraw() += [this](visage::Canvas& canvas) { drawKeyboardFocus(canvas, *this, context_.scale); };
+    }
+
+    void focusChanged(bool, bool) override { redraw(); }
+
+    void setEnabledState(bool enabled) {
+        if (enabled_ == enabled)
+            return;
+        enabled_ = enabled;
+        if (!enabled)
+            pressed_ = hovered_ = false;
+        setAcceptsKeystrokes(enabled);
+        redraw();
+    }
+
+    void activate() override {
+        if (enabled_ && onClick_)
+            onClick_();
+    }
+    void setAccessibilityPrefix(std::string prefix) {
+        accessibilityPrefix_ = std::move(prefix);
+        updateAccessibleName();
+    }
+    void updateAccessibleName() {
+        setName(accessibilityPrefix_.empty() ? label_ : accessibilityPrefix_ + " " + label_);
+    }
+
+    void setDragReady(bool ready) { dragReady_ = ready; }
+    void setAlternateAction(std::function<void()> fn) { alternate_ = std::move(fn); }
+
+    bool keyPress(const visage::KeyEvent& key) override {
+        if (!enabled_ || key.isMainModifier())
+            return false;
+        if (key.keyCode() != visage::KeyCode::Return && key.keyCode() != visage::KeyCode::Space)
+            return false;
+        if (!key.isRepeat()) {
+            if (key.isShiftDown() && alternate_)
+                alternate_();
+            else
+                activate();
+        }
+        return true;
+    }
 
     void setLabel(std::string next) {
         if (label_ != next) {
             label_ = std::move(next);
+            updateAccessibleName();
             redraw();
         }
     }
@@ -568,7 +561,7 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     void setOnDragOut(std::function<void()> cb) { onDragOut_ = std::move(cb); }
 
     void mouseEnter(const visage::MouseEvent&) override {
-        hovered_ = true;
+        hovered_ = enabled_;
         redraw();
     }
 
@@ -578,6 +571,9 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     }
 
     void mouseDown(const visage::MouseEvent& e) override {
+        if (!enabled_)
+            return;
+        requestKeyboardFocus();
         if (e.shouldTriggerPopup()) {
             if (onRightClick_)
                 onRightClick_();
@@ -590,12 +586,12 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     }
 
     void mouseDrag(const visage::MouseEvent& e) override {
-        if (!pressed_ || draggedOut_ || !onDragOut_)
+        if (!pressed_ || !dragReady_ || draggedOut_ || !onDragOut_)
             return;
         const float dx = e.position.x - pressPos_.x;
         const float dy = e.position.y - pressPos_.y;
-        const float thresh = context_.px(6.0f);
-        if (dx * dx + dy * dy > thresh * thresh) {
+        const float thresh = context_.px(5.0f);
+        if (dx * dx + dy * dy >= thresh * thresh) {
             draggedOut_ = true;
             pressed_ = false;
             redraw();
@@ -604,7 +600,7 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     }
 
     void mouseUp(const visage::MouseEvent& e) override {
-        const bool fire = pressed_ && !draggedOut_ && localBounds().contains(e.position);
+        const bool fire = enabled_ && pressed_ && !draggedOut_ && localBounds().contains(e.position);
         pressed_ = false;
         draggedOut_ = false;
         redraw();
@@ -616,14 +612,51 @@ template <typename ContextT> class ActionButtonBase : public visage::Frame {
     ContextT& context_;
     std::string label_;
     unsigned accent_ = colour::text;
+    bool enabled_ = true;
+    std::string accessibilityPrefix_;
+    bool dragReady_ = true;
     bool active_ = false;
     bool hovered_ = false;
     bool pressed_ = false;
     bool draggedOut_ = false;
     visage::Point pressPos_{};
+    std::function<void()> alternate_;
     std::function<void()> onClick_;
     std::function<void()> onRightClick_;
     std::function<void()> onDragOut_;
+};
+
+template <typename Button, typename State> void syncWavExport(Button& button, State state) {
+    const bool ready = state == State::ready;
+    button.setDragReady(ready);
+    button.setEnabledState(state != State::rendering);
+    button.setActive(ready);
+    switch (state) {
+    case State::ready:
+        button.setLabel("Drag WAV");
+        break;
+    case State::rendering:
+        button.setLabel("Rendering");
+        break;
+    case State::failed:
+        button.setLabel("Retry WAV");
+        break;
+    case State::idle:
+        button.setLabel("Bounce WAV");
+        break;
+    }
+}
+
+template <typename ContextT> class StudioButton : public ActionButtonBase<ContextT> {
+  public:
+    using Base = ActionButtonBase<ContextT>;
+    using Base::Base;
+    void draw(visage::Canvas& canvas) override {
+        drawPanel(canvas, this->context_.scale, 0.0f, 0.0f, this->width(), this->height(),
+                  this->pressed_ ? colour::track : colour::raised, metric::radiusSmall);
+        drawLabel(canvas, this->context_.scale, this->label_, 0.0f, 0.0f, this->width(), this->height(),
+                  this->hovered_ ? colour::text : this->accent_, visage::Font::kCenter);
+    }
 };
 
 } // namespace hba::ui

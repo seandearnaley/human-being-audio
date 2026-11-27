@@ -108,6 +108,14 @@ class Engine {
     const TelemetrySnapshot& telemetry() const noexcept DT_NONBLOCKING;
 
     // Deterministic single-shot preview renderer for instant 60 FPS UI metrology.
+    // The single-hit preview excludes the running sequencer, reference bass and velocity humanisation.
+    static Params previewParameters(Params p) {
+        p[ParamId::seqRun] = 0.0f;
+        p[ParamId::refBassMode] = 0.0f;
+        p[ParamId::humanize] = 0.0f;
+        return p;
+    }
+
     static PreviewSnapshot renderPreview(const Params& params, const hba::dsp::EnvelopeCurve& pitchCurve,
                                          const hba::dsp::EnvelopeCurve& ampCurve, const ComposePattern& pattern,
                                          const ClickSample* click = nullptr, int slotIndex = 0,

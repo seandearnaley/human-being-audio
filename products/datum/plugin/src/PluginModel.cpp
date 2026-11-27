@@ -43,33 +43,21 @@ void PluginModel::refreshVisuals() {
     updatePreviewIfNeeded();
 }
 
-const PreviewSnapshot& PluginModel::preview() {
-    updatePreviewIfNeeded();
-    return preview_;
-}
-
 void PluginModel::updatePreviewIfNeeded() {
-    const Params curP = processor_.currentParams();
+    const Params curP = Engine::previewParameters(processor_.currentParams());
     const AudioStateBundle curB = processor_.stateStore.all();
     const std::uint64_t clickVer = processor_.clickStore.version();
 
-    bool sameParams = previewValid_;
-    if (sameParams) {
-        for (std::size_t i = 0; i < kParamCount; ++i) {
-            if (std::abs(curP.values[i] - cachedParams_.values[i]) > 1e-5f) {
-                sameParams = false;
-                break;
-            }
-        }
-    }
-    if (sameParams && curB == cachedBundle_ && clickVer == cachedClickVer_)
+    const double sr = processor_.getSampleRate() > 8000.0 ? processor_.getSampleRate() : 48000.0;
+    if (previewValid_ && sr == cachedSampleRate_ && curP.values == cachedParams_.values && curB == cachedBundle_ &&
+        clickVer == cachedClickVer_)
         return;
 
     cachedParams_ = curP;
     cachedBundle_ = curB;
     cachedClickVer_ = clickVer;
+    cachedSampleRate_ = sr;
     const auto click = processor_.clickStore.copySample();
-    const double sr = processor_.getSampleRate() > 8000.0 ? processor_.getSampleRate() : 48000.0;
     preview_ = Engine::renderPreview(curP, curB.pitchCurve, curB.ampCurve, curB.pattern,
                                      click.valid() ? &click : nullptr, curP.choice(ParamId::activeSlot), sr);
     previewValid_ = true;
@@ -311,8 +299,13 @@ void PluginModel::dragPatternMidi() {
     const auto filename = safe + "_" + juce::String(juce::roundToInt(bpm)) + "bpm_" +
                           juce::Time::getCurrentTime().formatted("%H%M%S") + ".mid";
     const auto file = hba::host::writeTempMidiFile("Datum", filename, bytes);
-    if (file.existsAsFile())
-        juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    if (!file.existsAsFile()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "MIDI export failed",
+            "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
+        return;
+    }
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
 }
 
 void PluginModel::loadPreset(int index) {

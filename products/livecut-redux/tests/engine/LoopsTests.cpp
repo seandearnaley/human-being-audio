@@ -422,8 +422,10 @@ struct LoopsHost {
                 recordBlock(frame + i);
             }
             cutter.endRenderContext(n, nullptr);
-            REQUIRE (cutter.error() == Cutter::Error::none);
-            REQUIRE_FALSE (cutter.player().hasSourceError());
+            if (cutter.error() != Cutter::Error::none || cutter.player().hasSourceError()) {
+                CAPTURE(frame, n, cutter.error(), cutter.player().hasSourceError());
+                FAIL("Render failed in this host block");
+            }
             for (int i = 0; i < n; ++i)
             {
                 const auto l = left[static_cast<std::size_t> (i)], r = right[static_cast<std::size_t> (i)];
@@ -610,9 +612,9 @@ void checkTies (double meter)
                     continue;
                 LoopsHost host (loops (bars, 3), 44100.0, bpm, meter);
                 host.run (frames, size);
-                CAPTURE (size (0), firstDifference (host.outLeft, reference.outLeft), firstDifference (host.outRight, reference.outRight));
-                REQUIRE (host.outLeft == reference.outLeft);
-                REQUIRE (host.outRight == reference.outRight);
+                CAPTURE(size(0));
+                REQUIRE(firstDifference(host.outLeft, reference.outLeft) == -1);
+                REQUIRE(firstDifference(host.outRight, reference.outRight) == -1);
             }
         }
     }
@@ -1514,8 +1516,10 @@ Scenario playScenario (std::uint64_t seed, int (*size) (std::int64_t))
         }
         const auto bar = static_cast<std::int64_t> (std::floor (beats / meter));
         cutter.process (left.data(), right.data(), n, { bpm, meter }, { bar, beats - meter * static_cast<double> (bar) });
-        REQUIRE (cutter.error() == Cutter::Error::none);
-        REQUIRE_FALSE (cutter.player().hasSourceError());
+        if (cutter.error() != Cutter::Error::none || cutter.player().hasSourceError()) {
+            CAPTURE(frame, n, cutter.error(), cutter.player().hasSourceError());
+            FAIL("Render failed in this host block");
+        }
         if (cutter.isCutting() && ! cutter.currentCuts().empty() && cutter.currentCuts().front().loopLevel > 0)
             scenario.replayed += n;
         for (int i = 0; i < n; ++i)
@@ -1545,8 +1549,7 @@ TEST_CASE ("Random Loops scenarios are partition-independent, finite and never l
         for (int (*size) (std::int64_t) : { randomSize, +[] (std::int64_t) { return 1024; } })
         {
             const auto other = playScenario (seed, size);
-            CAPTURE (firstDifference (other.output, reference.output));
-            CHECK (other.output == reference.output);
+            CHECK(firstDifference(other.output, reference.output) == -1);
         }
     }
     CHECK (replayed > 0);

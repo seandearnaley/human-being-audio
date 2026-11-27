@@ -64,6 +64,7 @@ inline bool writeWavFloat(std::string_view utf8Path, std::span<const float> inte
     detail::writeLe32(out, dataBytes);
     if (dataBytes > 0u)
         out.write(reinterpret_cast<const char*>(interleaved.data()), static_cast<std::streamsize>(dataBytes));
+    out.close();
     return out.good();
 }
 

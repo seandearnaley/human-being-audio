@@ -21,8 +21,7 @@ namespace ln {
 
 class PrintStore final : private juce::Thread {
   public:
-    PrintStore(juce::AudioProcessorValueTreeState& state, std::function<void(const PrintBuffer&)> onPublish,
-               std::function<void()> onClear);
+    explicit PrintStore(std::function<void(PrintHandle)> onPublish);
     ~PrintStore() override;
 
     ui::PrintState state() const noexcept { return printState_.load(std::memory_order_acquire); }
@@ -43,7 +42,10 @@ class PrintStore final : private juce::Thread {
     bool stepBack();
     void clear();
 
-    void reloadFromState(const Params& params, const LaneCurves& curves, double sampleRate);
+    PrintHandle snapshot() const;
+    void restore(PrintHandle print);
+    void appendState(juce::ValueTree& session) const;
+    static bool decodeState(juce::ValueTree& session, PrintHandle& print);
     bool waitForIdle(int timeoutMs = 5000);
 
   private:
@@ -58,15 +60,12 @@ class PrintStore final : private juce::Thread {
     };
 
     void run() override;
-    void commitBuffer(PrintBuffer buf, const juce::String& externalFilePath = {}, bool recordHistory = true);
-
-    juce::AudioProcessorValueTreeState& state_;
-    std::function<void(const PrintBuffer&)> onPublish_;
-    std::function<void()> onClear_;
-
+    void commitBuffer(PrintBuffer buf, std::uint64_t ticket);
+    void setCurrent(PrintHandle print);
+    std::function<void(PrintHandle)> onPublish_;
     mutable juce::CriticalSection lock_;
-    PrintBuffer current_;
-    std::vector<PrintBuffer> history_;
+    PrintHandle current_;
+    std::vector<PrintHandle> history_;
     Job pendingJob_;
     bool hasPendingJob_ = false;
     juce::WaitableEvent wakeEvent_;

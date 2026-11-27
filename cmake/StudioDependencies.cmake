@@ -19,9 +19,14 @@ function(hba_add_nlohmann_json)
 endfunction()
 
 function(hba_add_visage)
+    if(WIN32)
+        # DXGI can return NOT_CURRENTLY_AVAILABLE in a headless host. Only S_OK owns an output.
+        set(visage_platform_patch PATCHES "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch")
+    endif()
     CPMAddPackage(
         NAME visage
         VERSION 1.0.0
+        ${visage_platform_patch}
         URL "https://github.com/VitalAudio/visage/archive/refs/tags/v1.0.0.tar.gz"
         URL_HASH SHA256=4ad2deb0ac069c1ac070652691d7eef8ee47961748bc3859d14f49d3bd0a7335
         SYSTEM YES
@@ -32,9 +37,9 @@ endfunction()
 function(hba_add_juce)
     CPMAddPackage(
         NAME JUCE
-        VERSION 9.0.5
-        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/9.0.5.tar.gz"
-        URL_HASH SHA256=d92207f51ba728d3d195b6d5e93ecd049717a915fc250ff6844c32ea7272315a
+        VERSION 9.0.6
+        URL "https://github.com/juce-framework/JUCE/archive/refs/tags/9.0.6.tar.gz"
+        URL_HASH SHA256=103e6c9d5f17f19bc7b5485a890573609d326513aad4db6b045181f4936ef424
         SYSTEM YES
     )
     set(JUCE_SOURCE_DIR "${JUCE_SOURCE_DIR}" PARENT_SCOPE)

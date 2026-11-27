@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
+#include "../../ui/src/controls.h"
 #include "PluginProcessor.h"
 
 #include "cl/groove_json.h"
@@ -605,4 +606,42 @@ TEST_CASE("processBlock renders finite audition audio", "[plugin]") {
                 REQUIRE(std::isfinite(data[s]));
         }
     }
+}
+
+TEST_CASE("cutline renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    cl::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    FakePlayHead head;
+    proc.setPlayHead(&head);
+    proc.state.getParameter("audition")->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    proc.processBlock(audio, midi);
+    CHECK_FALSE(midi.isEmpty());
+    CHECK(audio.getMagnitude(0, 8192) > 0.001f);
+    proc.setPlayHead(nullptr);
+}
+
+TEST_CASE("Shared studio button supports keyboard activation and disabled history", "[plugin][gesture]") {
+    ScopedJuceGui gui;
+    PluginProcessor processor;
+    PluginModel model(processor);
+    cl::ui::Context context(model);
+    int clicks = 0, copies = 0;
+    cl::ui::Button button(context, "A", [&] { ++clicks; });
+    button.setAlternateAction([&] { ++copies; });
+    const visage::KeyEvent enter(visage::KeyCode::Return, 0, true);
+    REQUIRE(button.keyPress(enter));
+    REQUIRE(button.keyPress(enter.withShift()));
+    CHECK(clicks == 1);
+    CHECK(copies == 1);
+    button.setEnabledState(false);
+    CHECK_FALSE(button.keyPress(enter));
+    CHECK_FALSE(button.acceptsKeystrokes());
+    CHECK(clicks == 1);
 }

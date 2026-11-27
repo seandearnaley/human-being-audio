@@ -140,8 +140,8 @@ public:
     std::span<const float> coefficientsFor(double rate, int phase) const noexcept HBA_NONBLOCKING;
 
   private:
-    std::array<std::size_t,bucketCount> offsets {};
-    std::vector<float> coefficients;
+    struct KernelBank;
+    const KernelBank* bank = nullptr;
 };
 
 struct FractureCutContext

@@ -147,8 +147,13 @@ void PluginModel::dragExportedMidi() {
     const auto file =
         MidiExporter::writeTempFile(processor_.currentParams(), processor_.curves.all(), processor_.matrix.get(),
                                     perf.note, perf.bpm, juce::String(processor_.presets.currentName()));
-    if (file.existsAsFile())
-        juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    if (!file.existsAsFile()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "MIDI export failed",
+            "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
+        return;
+    }
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
 }
 
 PluginModel::Snapshot PluginModel::captureSnapshot() const {

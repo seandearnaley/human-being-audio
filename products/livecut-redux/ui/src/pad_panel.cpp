@@ -49,7 +49,7 @@ PadPanel::PadPanel(Context& context)
         addChild(child);
 
     dragWav_.setAccent(colour::cyan);
-    dragWav_.setOnDrag([this] { context_.model.beginDragCaptureWav(); });
+    dragWav_.setOnDragOut([this] { context_.model.beginDragCaptureWav(); });
     rollSeed_.setAccent(colour::textDim);
 
     program_ = playingProgram();
@@ -122,6 +122,7 @@ void PadPanel::tick() {
     mix_.setAccent(col);
     dragWav_.setLabel(v.hasCapture ? "Drag .wav \u2197" : "Capture .wav");
     dragWav_.setActive(v.hasCapture);
+    dragWav_.setDragReady(v.hasCapture);
 
     char seedLabel[24];
     std::snprintf(seedLabel, sizeof(seedLabel), "Seed #%d",

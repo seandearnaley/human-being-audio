@@ -2,6 +2,8 @@
 // it over JUCE; tests implement it with canned data.
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "tf/lanes.h"
 #include "tf/params.h"
 
@@ -60,15 +62,15 @@ struct Visuals {
     bool effActive = false;
 };
 
-enum class ResampleState { idle, rendering, ready };
+enum class ResampleState { idle, rendering, ready, failed };
 
 struct PresetInfo {
     std::string name;
     std::string category;
 };
 
-class Model {
-public:
+class Model : public hba::ui::PresetMenuHost {
+  public:
     virtual ~Model() = default;
 
     // Real parameter values, as in tf::Params.
@@ -108,5 +110,4 @@ public:
     // Press-and-hold audition note (F1) from the interface.
     virtual void setAudition(bool down) { (void)down; }
 };
-
 }

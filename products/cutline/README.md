@@ -42,7 +42,7 @@ Plays the notes you hold through a literal gate strip of up to 32 steps: Stab Ch
 
 ## Factory content
 
-11 patterns in `patterns/` and 16 presets in `presets/`, built by `tools/build_presets.py`.
+The library contains 46 patterns, 13 fills and 22 factory presets. The preset builder in `tools/build_presets.py` maps patterns to scenes.
 
 ## Files
 

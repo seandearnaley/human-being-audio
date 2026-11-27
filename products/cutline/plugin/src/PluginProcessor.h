@@ -84,7 +84,6 @@ class PluginProcessor final : public juce::AudioProcessor {
     std::array<std::bitset<128>, 16> passedThrough_{};
     std::bitset<16> sustainPassed_{}; // channels whose sustain pedal went down while bypassed
     juce::MidiBuffer releaseMidi_;    // after bypass: the releases of what passed through while bypassed
-    std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;
     double standalonePpq_ = 0.0;
 

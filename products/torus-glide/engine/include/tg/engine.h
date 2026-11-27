@@ -105,6 +105,9 @@ class Engine {
     void allNotesOff() noexcept HBA_NONBLOCKING;
 
     int activeNote() const noexcept HBA_NONBLOCKING { return currentNote_; }
+    static constexpr double kSilentEnvelope = 1e-6;
+    static constexpr double spaceDrainSeconds(double amount) noexcept { return 0.04 + amount * 1.45; }
+
     int latencySamples() const noexcept HBA_NONBLOCKING;
 
     // Main zero-allocation real-time audio + optional MPE MIDI output block.
@@ -237,7 +240,7 @@ class Engine {
     static constexpr int kFdnLines = 4;
     std::array<std::vector<double>, kFdnLines> fdnBuf_{};
     std::array<int, kFdnLines> fdnPos_{};
-    std::array<int, kFdnLines> fdnLen_{1427, 1783, 2111, 2557};
+    std::array<int, kFdnLines> fdnDelaySamples_{};
     std::array<double, kFdnLines> fdnLp_{};
     std::array<double, kFdnLines> fdnHp_{};
     std::array<double, kFdnLines> fdnLfo_{0.0, 0.25, 0.50, 0.75};
