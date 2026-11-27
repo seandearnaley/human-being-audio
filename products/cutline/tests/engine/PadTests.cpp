@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -284,4 +285,34 @@ TEST_CASE("Releasing a pad returns to the pattern in phase", "[engine][pads]") {
         REQUIRE(b.size() > 10);
         CHECK(a == b);
     }
+}
+
+TEST_CASE("A pad touched mid-beat engages on the next 1/16 at default parameters", "[engine][pads]") {
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    const Run run = play(eng, 2.0, [](double ppq) {
+        Params p; // sceneQuantize left at its default
+        p[ParamId::padProgram] = static_cast<float>(PadProgram::roll);
+        p[ParamId::padX] = 0.3f; // 1/16 roll
+        p[ParamId::padY] = 1.0f; // velocity 127
+        p[ParamId::padTouch] = ppq >= 1.1 ? 1.0f : 0.0f;
+        return p;
+    });
+    const double bps = kBpm / 60.0 / kSr;
+
+    const NoteOn* firstRoll = nullptr;
+    for (const auto& on : run.noteOns) {
+        if (on.note == 38 && on.velocity == 127) {
+            firstRoll = &on;
+            break;
+        }
+    }
+    REQUIRE(firstRoll != nullptr);
+    CHECK(std::llabs(firstRoll->sample - static_cast<std::int64_t>(std::floor(1.25 / bps + 1.0e-7))) <= 1);
+
+    // The pattern's closed hat on beat 1 still sounds: the pad had not engaged yet.
+    bool hatOnBeat1 = false;
+    for (const auto& on : run.noteOns)
+        hatOnBeat1 = hatOnBeat1 || (on.note == 42 && std::llabs(on.sample - static_cast<std::int64_t>(1.0 / bps)) <= 1);
+    CHECK(hatOnBeat1);
 }

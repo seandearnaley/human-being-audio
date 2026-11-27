@@ -4,6 +4,7 @@
 
 #include "cl/engine.h"
 #include "cl/hits.h"
+#include "cl/midi_event.h"
 
 #include "audition.h"
 
@@ -15,7 +16,10 @@ namespace cl {
 
 inline constexpr int kMaxActiveNotes = 32;
 inline constexpr int kMaxCapturedEvents = 128;
-inline constexpr int kMaxBlockHits = 192;
+// A block cannot emit more note-ons than the MIDI buffer holds anyway, so this is the real cap.
+inline constexpr int kMaxBlockHits = kMaxMidiEventsPerBlock;
+// Bars one block can reach into (the bars resolved per block, and the fillNow latches kept).
+inline constexpr int kMaxBarsPerBlock = 4;
 inline constexpr double kBeatEps = 1.0e-9;
 
 struct Engine::Impl {
@@ -108,7 +112,7 @@ struct Engine::Impl {
     std::int64_t repeatBar = 0;
     bool repeatFill = false;
 
-    std::array<FillLatch, 2> fillLatch{};
+    std::array<FillLatch, kMaxBarsPerBlock> fillLatch{};
 
     // Transport tracking
     bool wasPlaying = false;

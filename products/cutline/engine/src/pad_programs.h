@@ -9,6 +9,8 @@
 
 namespace cl::pads {
 
+inline constexpr double kPadQuantizeBeats = 0.25; // pads engage on the next 1/16, whatever the scene quantize is
+
 // Repeat X: a window of 1, 1/2, 1/4 or 1/8 beat.
 constexpr double repeatWindowBeats(float x) noexcept CL_NONBLOCKING {
     return x < 0.25f ? 1.0 : (x < 0.5f ? 0.5 : (x < 0.75f ? 0.25 : 0.125));

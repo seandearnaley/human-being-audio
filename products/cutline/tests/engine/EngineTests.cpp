@@ -33,23 +33,25 @@ struct Run {
     double endBeat = 0.0;
 };
 
-int blocksFor(double hostBars, double bpm) {
-    return static_cast<int>(std::ceil(hostBars * 4.0 / (bpm / 60.0 / kSr) / static_cast<double>(kBlock)));
+int blocksFor(double hostBars, double bpm, int blockSize = kBlock) {
+    return static_cast<int>(std::ceil(hostBars * 4.0 / (bpm / 60.0 / kSr) / static_cast<double>(blockSize)));
 }
 
-// Plays `blocks` blocks from ppq 0. `paramsAt(ppq)` supplies the parameters for the block starting at ppq.
-template <typename ParamsAt> Run play(Engine& eng, double bpm, int blocks, ParamsAt&& paramsAt) {
+// Plays `blocks` blocks of `blockSize` samples from ppq 0. `paramsAt(ppq)` supplies the parameters for the block
+// starting at ppq.
+template <typename ParamsAt>
+Run play(Engine& eng, double bpm, int blocks, ParamsAt&& paramsAt, int blockSize = kBlock) {
     Run out;
-    std::vector<float> l(kBlock), r(kBlock);
+    std::vector<float> l(static_cast<std::size_t>(blockSize)), r(static_cast<std::size_t>(blockSize));
     MidiEventBuffer midi;
     const double bps = bpm / 60.0 / kSr;
     double ppq = 0.0;
     for (int blk = 0; blk < blocks; ++blk) {
         const Params p = paramsAt(ppq);
-        eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+        eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), blockSize);
         for (int i = 0; i < midi.count; ++i) {
             const auto& ev = midi.events[static_cast<std::size_t>(i)];
-            const std::int64_t at = static_cast<std::int64_t>(blk) * kBlock + ev.sampleOffset;
+            const std::int64_t at = static_cast<std::int64_t>(blk) * blockSize + ev.sampleOffset;
             if (ev.isNoteOn())
                 out.noteOns.push_back({ev.noteNumber(), at, static_cast<int>(ev.data[2])});
             else if (ev.isNoteOff())
@@ -58,7 +60,7 @@ template <typename ParamsAt> Run play(Engine& eng, double bpm, int blocks, Param
             out.bytes.push_back(ev.size);
             out.bytes.insert(out.bytes.end(), ev.data, ev.data + 3);
         }
-        ppq += bps * static_cast<double>(kBlock);
+        ppq += bps * static_cast<double>(blockSize);
     }
     out.endBeat = ppq;
     return out;
@@ -394,4 +396,52 @@ TEST_CASE("The engine reports where it is in the pattern", "[engine]") {
     CHECK(pos.barInPattern == 0);
     CHECK(pos.stepInBar == 0);
     CHECK_FALSE(pos.fillLive);
+}
+
+TEST_CASE("Truth holds with large host blocks", "[engine][truth]") {
+    constexpr int kLargeBlock = 2048;
+    for (std::uint32_t seed = 1; seed <= 6; ++seed) {
+        TestRng rng{seed * 2654435761u};
+        GrooveBank bank;
+        bank.scenes[0] = randomPattern(rng);
+        const GrooveState groove(bank);
+
+        Params p = truthParams();
+        p[ParamId::seqRate] = static_cast<float>(SeqRate::doubleTime);
+        const double bpm = 172.0;
+
+        Engine eng;
+        eng.prepare(kSr, kLargeBlock);
+        eng.setGroove(groove);
+        const Run run = play(eng, bpm, blocksFor(8.0, bpm, kLargeBlock), [&](double) { return p; }, kLargeBlock);
+
+        INFO("seed " << seed << " bars " << patternBars(groove.bank.scenes[0]));
+        requireSameNoteOns(expectedNoteOns(groove.bank.scenes[0], p, bpm, run.endBeat), run.noteOns, 36);
+    }
+}
+
+TEST_CASE("Scene quantize applies to scene switches, at its 1 Bar default", "[engine]") {
+    Engine eng;
+    eng.prepare(kSr, kBlock);
+    std::vector<float> l(kBlock), r(kBlock);
+    MidiEventBuffer midi;
+    const double bpm = 120.0;
+    const double bps = bpm / 60.0 / kSr;
+    double ppq = 0.0;
+    const auto advanceTo = [&](double until) {
+        while (ppq + bps * static_cast<double>(kBlock) < until) {
+            Params p;
+            p[ParamId::scene] = ppq >= 1.1 ? 1.0f : 0.0f;
+            eng.process(p, {bpm, ppq, true}, midi, l.data(), r.data(), kBlock);
+            ppq += bps * static_cast<double>(kBlock);
+        }
+    };
+
+    advanceTo(3.9); // every block so far ends before beat 4
+    REQUIRE(ppq > 1.2);
+    CHECK(eng.activeScene() == 0);
+    CHECK(eng.pendingScene() == 1);
+
+    advanceTo(4.2); // blocks now pass beat 4
+    CHECK(eng.activeScene() == 1);
 }

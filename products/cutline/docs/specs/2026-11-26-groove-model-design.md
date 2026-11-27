@@ -245,7 +245,7 @@ current Density, Dynamics, Swing and Rate. The last bar includes the fill when F
 ## Unchanged
 
 Kit maps and per-lane note overrides, the audition synth, expression-lane mechanics, the
-XY-to-CC modes, Rate, scene quantize, Undo/Redo and A/B.
+XY-to-CC modes, Rate, scene quantize (it applies to scene switches only), Undo/Redo and A/B.
 
 ## Parameters
 
@@ -290,6 +290,9 @@ all locked to the grid, all returning to the pattern in phase on release:
 Repeat loops the resolved steps inside its window. Roll plays the snare lane's note only.
 Default program is Repeat. Slice, Bounce, Swing and Poly are removed: they drove parameters
 that no longer exist.
+
+Pads engage, and switch program, on the next 1/16 note and release at once, whatever the scene
+quantize is.
 
 Telemetry reports the engaged program and, for Repeat, the window's start step and length,
 so the grid can show it.

@@ -325,7 +325,7 @@ const DensityMap& Engine::Impl::densityMap() const noexcept CL_NONBLOCKING {
 bool Engine::Impl::fillActiveFor(std::int64_t absBar, bool fillNow, int everyBars, double scaledEnd,
                                  double beatsPerMs) noexcept CL_NONBLOCKING {
     const bool scheduled = fillScheduled(absBar, everyBars);
-    FillLatch& latch = fillLatch[static_cast<std::size_t>(absBar & 1)];
+    FillLatch& latch = fillLatch[static_cast<std::size_t>(floorMod(absBar, kMaxBarsPerBlock))];
     if (latch.bar != absBar) {
         const double samplePoint = static_cast<double>(absBar) * 4.0 +
                                    static_cast<double>(fillWindowStart(pattern().fill)) * 0.25 -
@@ -364,7 +364,7 @@ void Engine::Impl::playPattern(const Block& b, bool fillNow) noexcept CL_NONBLOC
     const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd + maxEarlyBeats(b.beatsPerMs)) / 4.0));
     const bool filterKit = engaged && b.program == PadProgram::rate;
 
-    for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + 4; ++bar) {
+    for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + kMaxBarsPerBlock; ++bar) {
         const bool fill = fillActiveFor(bar, fillNow, everyBars, scaledEnd, b.beatsPerMs);
         ResolvedBar resolved;
         resolveBar(pat, densityMap(), floorMod(bar, bars), {params[ParamId::density], params[ParamId::dynamics], fill},
@@ -450,11 +450,20 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
             flushAllActive(outMidi, offset);
     };
 
-    // Quantized scene and pad switching.
+    // Scene switching: at once when stopped or when Scene Quantize is Instant, otherwise on its next step.
     const double qStep = quantizeStepBeats(quant);
     if (!transport.playing || qStep <= 0.0) {
         currentScene = reqScene;
         pendingSceneIdx = -1;
+    } else if (reqScene != currentScene && reqScene != pendingSceneIdx) {
+        pendingSceneIdx = reqScene;
+        sceneSwitchBeat = std::ceil((rawPpq - 1e-6) / qStep) * qStep;
+    } else if (reqScene == currentScene) {
+        pendingSceneIdx = -1;
+    }
+
+    // Pad switching: at once when stopped; while playing, release at once and engage on the next 1/16.
+    if (!transport.playing) {
         const bool newlyEngaged = reqEngaged && (!engaged || reqProg != activeProg);
         activeProg = reqProg;
         engaged = reqEngaged;
@@ -463,12 +472,6 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
         if (newlyEngaged)
             beginPad(activeProg, rawPpq, 0);
     } else {
-        if (reqScene != currentScene && reqScene != pendingSceneIdx) {
-            pendingSceneIdx = reqScene;
-            sceneSwitchBeat = std::ceil((rawPpq - 1e-6) / qStep) * qStep;
-        } else if (reqScene == currentScene) {
-            pendingSceneIdx = -1;
-        }
         if (!reqEngaged) {
             engaged = false; // release at once, so letting go on beat 1 is tight
             pendingEngage = false;
@@ -478,7 +481,7 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
             if (!pendingEngage || pendingProg != reqProg) {
                 pendingEngage = true;
                 pendingProg = reqProg;
-                padSwitchBeat = std::ceil((rawPpq - 1e-6) / qStep) * qStep;
+                padSwitchBeat = std::ceil((rawPpq - 1e-6) / pads::kPadQuantizeBeats) * pads::kPadQuantizeBeats;
             }
         } else {
             pendingEngage = false;
