@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { FIELD_GUIDE_CHAPTERS, PRODUCTS, PRODUCT_SLUGS, SCULPTURE_FORMS, STUDIO } from "../lib/catalog.mjs";
 import { readCatalog } from "../lib/releases.mjs";
@@ -65,7 +67,7 @@ test("empty studio, drafts, previews and archive tags supply no download", async
       { ...row, prerelease: true },
       { ...row, tag_name: "archive/livecut-redux/tags/v1.0.0" },
     ]),
-    [],
+    { releases: [], errors: new Map() },
   );
 });
 test("each product resolves to its highest public numeric version across pages", async () => {
@@ -73,7 +75,7 @@ test("each product resolves to its highest public numeric version across pages",
     b = fixture("livecut-redux", "1.0.10"),
     other = fixture("tract-form", "0.2.0");
   const rows = Array.from({ length: 100 }, () => a.row);
-  const result = await readCatalog(async (url) =>
+  const { releases: result } = await readCatalog(async (url) =>
     url.endsWith("page=1")
       ? rows
       : url.endsWith("page=2")
@@ -112,12 +114,48 @@ test("invalid asset digest, source, size or old repository URL fails explicitly"
   ]) {
     const f = fixture();
     mutate(f);
-    await assert.rejects(() =>
-      readCatalog(async (url) =>
-        url.includes("api.github.com") ? [f.row] : f.record,
-      ),
+    const { releases, errors } = await readCatalog(async (url) =>
+      url.includes("api.github.com") ? [f.row] : f.record,
     );
+    assert.deepEqual(releases, []);
+    assert.deepEqual([...errors.keys()], ["livecut-redux"]);
   }
+});
+
+test("release-list failures are reported for the whole catalogue", async () => {
+  await assert.rejects(readCatalog(async () => { throw new Error("list fetch failed"); }), /list fetch failed/);
+  await assert.rejects(readCatalog(async () => ({})), /Expected a GitHub release list/);
+});
+
+test("one invalid factory manifest withholds only that product’s three download links", async () => {
+  const script = fileURLToPath(new URL("./release_manifests.py", import.meta.url));
+  const records = JSON.parse(execFileSync("python3", [script], { encoding: "utf8" }));
+  const manifests = new Map();
+  const rows = records.map((record) => {
+    const tag = record.product + "/v" + record.version;
+    const base = repo + "/releases/download/" + encodeURIComponent(tag) + "/";
+    manifests.set(base + "release.json", record);
+    const assets = Object.values(record.downloads).map(({ file, bytes, sha256 }) => ({
+      name: file, size: bytes, digest: "sha256:" + sha256, browser_download_url: base + file,
+    }));
+    assets.push({ name: "release.json", browser_download_url: base + "release.json" });
+    return { tag_name: tag, target_commitish: record.source, assets };
+  });
+  const broken = records.find((record) => record.product === "cutline");
+  broken.downloads.macos.sha256 = "0".repeat(64);
+  const { releases, errors } = await readCatalog(async (url) =>
+    url.startsWith("https://api.github.com/") ? rows : manifests.get(url),
+  );
+
+  assert.deepEqual([...errors.keys()], ["cutline"]);
+  assert.match(errors.get("cutline").message, /cutline\/v/);
+  assert.deepEqual(releases.map((r) => r.product), PRODUCT_SLUGS.filter((slug) => slug !== "cutline"));
+  for (const release of releases) {
+    const row = rows.find((entry) => entry.tag_name === release.product + "/v" + release.version);
+    assert.deepEqual(release.downloads.map((d) => d.url), row.assets.slice(0, 3).map((a) => a.browser_download_url));
+    assert.deepEqual(release.downloads.map((d) => d.os), ["macos", "windows", "linux"]);
+  }
+  assert.equal(releases.flatMap((r) => r.downloads).length, (PRODUCT_SLUGS.length - 1) * 3);
 });
 
 test("the CI credential only accompanies release API requests", async (t) => {
@@ -133,7 +171,7 @@ test("the CI credential only accompanies release API requests", async (t) => {
     if (previous === undefined) delete process.env.STUDIO_RELEASES_TOKEN;
     else process.env.STUDIO_RELEASES_TOKEN = previous;
   });
-  const [release] = await readCatalog();
+  const { releases: [release] } = await readCatalog();
   assert.equal(release.downloads.length, 3);
 });
 

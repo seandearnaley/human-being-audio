@@ -2,7 +2,9 @@ import { readCatalog } from "../../../lib/releases.mjs";
 export const revalidate = 60;
 export async function GET() {
   try {
-    return Response.json(await readCatalog());
+    const { releases, errors } = await readCatalog();
+    if (errors.size) throw new AggregateError(errors.values(), "Invalid studio releases");
+    return Response.json(releases);
   } catch (error) {
     console.error(error);
     return Response.json(
