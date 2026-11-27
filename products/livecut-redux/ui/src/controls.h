@@ -3,6 +3,7 @@
 
 #include "theme.h"
 
+#include <hba/ui/controls.h>
 #include <visage/ui.h>
 
 #include <functional>
@@ -11,38 +12,10 @@
 
 namespace lc::ui {
 
-class ActionButton final : public visage::Frame {
+class ActionButton final : public hba::ui::ActionButtonBase<Context> {
   public:
-    ActionButton(Context& context, std::string label, std::function<void()> onClick);
-
-    void setLabel(std::string label);
-    void setAccent(unsigned accent);
-    void setActive(bool active);
-    void setEnabledState(bool enabled);
-    void setOnDrag(std::function<void()> onDrag) { onDrag_ = std::move(onDrag); }
-    void setOnRightClick(std::function<void()> onRightClick) { onRightClick_ = std::move(onRightClick); }
-
+    using ActionButtonBase::ActionButtonBase;
     void draw(visage::Canvas& canvas) override;
-    void mouseEnter(const visage::MouseEvent& e) override;
-    void mouseExit(const visage::MouseEvent& e) override;
-    void mouseDown(const visage::MouseEvent& e) override;
-    void mouseDrag(const visage::MouseEvent& e) override;
-    void mouseUp(const visage::MouseEvent& e) override;
-
-  private:
-    Context& context_;
-    std::string label_;
-    std::function<void()> onClick_;
-    std::function<void()> onDrag_;
-    std::function<void()> onRightClick_;
-    unsigned accent_ = colour::text;
-    bool active_ = false;
-    bool enabled_ = true;
-    bool hovered_ = false;
-    bool pressed_ = false;
-    bool dragged_ = false;
-    float downX_ = 0.0f;
-    float downY_ = 0.0f;
 };
 
 class TogglePill final : public visage::Frame, public Live {

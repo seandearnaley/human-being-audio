@@ -8,37 +8,6 @@ namespace lc::ui {
 
 // --- ActionButton -----------------------------------------------------------
 
-ActionButton::ActionButton(Context& context, std::string label, std::function<void()> onClick)
-    : context_(context), label_(std::move(label)), onClick_(std::move(onClick)) {}
-
-void ActionButton::setLabel(std::string label) {
-    if (label_ == label)
-        return;
-    label_ = std::move(label);
-    redraw();
-}
-
-void ActionButton::setAccent(unsigned accent) {
-    if (accent_ == accent)
-        return;
-    accent_ = accent;
-    redraw();
-}
-
-void ActionButton::setActive(bool active) {
-    if (active_ == active)
-        return;
-    active_ = active;
-    redraw();
-}
-
-void ActionButton::setEnabledState(bool enabled) {
-    if (enabled_ == enabled)
-        return;
-    enabled_ = enabled;
-    redraw();
-}
-
 void ActionButton::draw(visage::Canvas& canvas) {
     const float w = width();
     const float h = height();
@@ -58,52 +27,6 @@ void ActionButton::draw(visage::Canvas& canvas) {
     canvas.roundedRectangleBorder(0.0f, 0.0f, w, h, r, context_.px(metric::hairline));
     drawLabel(canvas, context_, label_, context_.px(4.0f), 0.0f, w - context_.px(8.0f), h, textCol,
               visage::Font::kCenter, type::label, active_ ? Weight::semibold : Weight::medium);
-}
-
-void ActionButton::mouseEnter(const visage::MouseEvent&) {
-    hovered_ = true;
-    redraw();
-}
-
-void ActionButton::mouseExit(const visage::MouseEvent&) {
-    hovered_ = false;
-    pressed_ = false;
-    redraw();
-}
-
-void ActionButton::mouseDown(const visage::MouseEvent& e) {
-    if (!enabled_)
-        return;
-    if (e.shouldTriggerPopup() && onRightClick_) {
-        onRightClick_();
-        return;
-    }
-    pressed_ = true;
-    dragged_ = false;
-    downX_ = e.position.x;
-    downY_ = e.position.y;
-    redraw();
-}
-
-void ActionButton::mouseDrag(const visage::MouseEvent& e) {
-    if (!enabled_ || !pressed_ || dragged_ || !onDrag_)
-        return;
-    if (std::hypot(e.position.x - downX_, e.position.y - downY_) >= context_.px(4.0f)) {
-        dragged_ = true;
-        pressed_ = false;
-        redraw();
-        onDrag_();
-    }
-}
-
-void ActionButton::mouseUp(const visage::MouseEvent& e) {
-    if (!pressed_)
-        return;
-    pressed_ = false;
-    redraw();
-    if (!dragged_ && enabled_ && e.position.x >= 0.0f && e.position.x <= width() && e.position.y >= 0.0f &&
-        e.position.y <= height() && onClick_)
-        onClick_();
 }
 
 // --- TogglePill -------------------------------------------------------------

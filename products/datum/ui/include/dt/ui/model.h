@@ -18,7 +18,7 @@ struct PresetInfo {
     std::string category;
 };
 
-enum class ExportState : std::uint8_t { idle, rendering, ready };
+enum class ExportState : std::uint8_t { idle, rendering, ready, failed };
 
 class Model {
   public:

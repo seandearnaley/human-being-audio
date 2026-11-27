@@ -34,6 +34,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
         addChild(child);
 
     save_.setAccent(colour::textDim);
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick(
         [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
 
@@ -43,10 +44,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
 
 TopBar::~TopBar() { std::erase(context_.live, static_cast<Live*>(this)); }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &presetName_,
-                                       [this](int i) { context_.model.loadPreset(i); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::tick() {
     auto current = context_.model.presetName();

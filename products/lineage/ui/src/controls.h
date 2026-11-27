@@ -15,35 +15,9 @@ using Knob = hba::ui::StandardKnob<ParamFrame>;
 using Row = hba::ui::StandardRow<ParamFrame, ParamKind>;
 using Chip = hba::ui::StandardChip<ParamFrame>;
 
-class PillButton final : public visage::Frame {
+class PillButton final : public hba::ui::ActionButtonBase<Context> {
   public:
-    PillButton(Context& context, std::string label, std::function<void()> onClick)
-        : context_(context), label_(std::move(label)), onClick_(std::move(onClick)) {}
-
-    void setLabel(std::string label) {
-        if (label == label_)
-            return;
-        label_ = std::move(label);
-        redraw();
-    }
-
-    void setAccent(unsigned accent) {
-        if (accent == accent_)
-            return;
-        accent_ = accent;
-        redraw();
-    }
-
-    void setActive(bool active) {
-        if (active == active_)
-            return;
-        active_ = active;
-        redraw();
-    }
-
-    void setOnDragOut(std::function<void()> fn) { onDragOut_ = std::move(fn); }
-    void setOnRightClick(std::function<void()> fn) { onRightClick_ = std::move(fn); }
-
+    using ActionButtonBase::ActionButtonBase;
     void draw(visage::Canvas& canvas) override {
         const float px = context_.scale;
         const unsigned fill =
@@ -58,56 +32,6 @@ class PillButton final : public visage::Frame {
         hba::ui::drawLabel(canvas, px, label_, 4.0f * px, 0.0f, width() - 8.0f * px, height(), ink,
                            visage::Font::kCenter, type::label, active_ ? Weight::semibold : Weight::medium);
     }
-
-    void mouseEnter(const visage::MouseEvent&) override {
-        hovered_ = true;
-        redraw();
-    }
-    void mouseExit(const visage::MouseEvent&) override {
-        hovered_ = false;
-        redraw();
-    }
-    void mouseDown(const visage::MouseEvent& e) override {
-        if (e.shouldTriggerPopup()) {
-            if (onRightClick_)
-                onRightClick_();
-            return;
-        }
-        pressed_ = true;
-        dragged_ = false;
-        redraw();
-    }
-    void mouseDrag(const visage::MouseEvent&) override {
-        if (pressed_ && !dragged_ && onDragOut_) {
-            dragged_ = true;
-            pressed_ = false;
-            redraw();
-            onDragOut_();
-        }
-    }
-    void mouseUp(const visage::MouseEvent& e) override {
-        if (!pressed_)
-            return;
-        const bool inside = localBounds().contains(e.position);
-        const bool wasDragged = dragged_;
-        pressed_ = false;
-        dragged_ = false;
-        redraw();
-        if (inside && !wasDragged && onClick_)
-            onClick_();
-    }
-
-  private:
-    Context& context_;
-    std::string label_;
-    std::function<void()> onClick_;
-    std::function<void()> onDragOut_;
-    std::function<void()> onRightClick_;
-    unsigned accent_ = colour::textDim;
-    bool active_ = false;
-    bool hovered_ = false;
-    bool pressed_ = false;
-    bool dragged_ = false;
 };
 
 inline void drawLabel(visage::Canvas& canvas, const Context& context, const std::string& text, float x, float y,

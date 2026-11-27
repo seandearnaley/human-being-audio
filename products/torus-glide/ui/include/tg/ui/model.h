@@ -10,7 +10,7 @@
 
 namespace tg::ui {
 
-enum class ResampleState { idle, rendering, ready };
+enum class ResampleState { idle, rendering, ready, failed };
 
 struct PresetEntry {
     std::string name;

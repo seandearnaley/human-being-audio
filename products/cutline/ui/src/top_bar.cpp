@@ -36,6 +36,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout, std::function<
     for (auto* button : {&previous_, &name_, &next_, &save_, &undo_, &redo_, &ab_})
         addChild(button);
     save_.setAccent(colour::textDim);
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick(
         [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
     context_.live.push_back(this);
@@ -62,10 +63,7 @@ void TopBar::tick() {
     redraw();
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &name_,
-                                       [this](int i) { context_.model.loadPreset(i); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &name_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     const int prog = std::clamp(static_cast<int>(context_.model.get(ParamId::padProgram) + 0.5f), 0, kPerfPadCount - 1);

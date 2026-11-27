@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
+#include "../../ui/src/controls.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_approx.hpp>
@@ -149,4 +150,29 @@ TEST_CASE("Lineage state round-trip, Undo/Redo and A/B history persist", "[plugi
     restored.prepareToPlay(48000.0, 256);
     restored.setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
     CHECK(restored.currentParams()[ln::ParamId::filt1Hz] == Catch::Approx(2400.0f).margin(5.0f));
+}
+
+TEST_CASE("Lineage bounce keeps small pointer movements as clicks", "[plugin][gesture]") {
+    ensureJuce();
+    ln::PluginProcessor processor;
+    ln::PluginModel model(processor);
+    ln::ui::Context context(model);
+    int clicks = 0, drags = 0;
+    ln::ui::PillButton button(context, "Bounce WAV", [&] { ++clicks; });
+    button.setBounds(0, 0, 100, 28);
+    button.setOnDragOut([&] { ++drags; });
+    visage::MouseEvent event{};
+    event.position = {10, 10};
+    button.mouseDown(event);
+    event.position.x += 1;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 0);
+    button.mouseDown(event);
+    event.position.x += 12;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 1);
 }

@@ -54,6 +54,7 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
     });
     dragMid_.setOnDragOut([this] { context_.model.dragExportedMidi(); });
 
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick([this] {
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
@@ -105,16 +106,7 @@ void TopBar::tick() {
     drone_.setLabel(droneOn ? "DRONE ON" : "DRONE");
 
     const auto rstate = context_.model.resampleState();
-    if (rstate == ResampleState::rendering) {
-        dragWav_.setLabel("Bouncing...");
-        dragWav_.setActive(false);
-    } else if (rstate == ResampleState::ready) {
-        dragWav_.setLabel("Drag .wav \xe2\x86\x97");
-        dragWav_.setActive(true);
-    } else {
-        dragWav_.setLabel("Bounce .wav");
-        dragWav_.setActive(false);
-    }
+    hba::ui::syncWavExport(dragWav_, rstate);
 
     const auto& tel = context_.model.visuals();
     const float nextL = linearToDb(tel.peakL);
@@ -126,11 +118,7 @@ void TopBar::tick() {
     redraw();
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(
-        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
-        [this] { context_.model.savePreset(); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     hba::ui::drawBrandWordmark(canvas, wordmark_, brand::torus_glide_logotype_on_dark_svg, 2100.0f / 334.0f, 23.0f,

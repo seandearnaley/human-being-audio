@@ -311,8 +311,13 @@ void PluginModel::dragPatternMidi() {
     const auto filename = safe + "_" + juce::String(juce::roundToInt(bpm)) + "bpm_" +
                           juce::Time::getCurrentTime().formatted("%H%M%S") + ".mid";
     const auto file = hba::host::writeTempMidiFile("Datum", filename, bytes);
-    if (file.existsAsFile())
-        juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
+    if (!file.existsAsFile()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, "MIDI export failed",
+            "Could not write the MIDI file. Check that the temporary folder is writable, then try the export again.");
+        return;
+    }
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()}, false, dragSource_);
 }
 
 void PluginModel::loadPreset(int index) {

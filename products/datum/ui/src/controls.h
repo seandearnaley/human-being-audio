@@ -19,40 +19,13 @@ using Knob = hba::ui::StandardKnob<ParamFrame>;
 using Row = hba::ui::StandardRow<ParamFrame, ParamKind>;
 using Chip = hba::ui::StandardChip<ParamFrame>;
 
-class PillButton final : public visage::Frame {
+class PillButton final : public hba::ui::ActionButtonBase<Context> {
   public:
-    PillButton(Context& context, std::string label, std::function<void()> onClick)
-        : context_(context), label_(std::move(label)), onClick_(std::move(onClick)) {}
-
-    void setLabel(std::string label) {
-        if (label == label_)
-            return;
-        label_ = std::move(label);
+    using ActionButtonBase::ActionButtonBase;
+    void setFontSize(float size) {
+        fontSize_ = size;
         redraw();
     }
-
-    void setAccent(unsigned accent) {
-        if (accent == accent_)
-            return;
-        accent_ = accent;
-        redraw();
-    }
-
-    void setActive(bool active) {
-        if (active == active_)
-            return;
-        active_ = active;
-        redraw();
-    }
-
-    void setFontSize(float designSize) {
-        fontSize_ = designSize;
-        redraw();
-    }
-
-    void setOnDragOut(std::function<void()> fn) { onDragOut_ = std::move(fn); }
-    void setOnRightClick(std::function<void()> fn) { onRightClick_ = std::move(fn); }
-
     void draw(visage::Canvas& canvas) override {
         const float px = context_.scale;
         const unsigned fill =
@@ -68,63 +41,8 @@ class PillButton final : public visage::Frame {
                            visage::Font::kCenter, fontSize_, active_ ? Weight::semibold : Weight::medium);
     }
 
-    void mouseEnter(const visage::MouseEvent&) override {
-        hovered_ = true;
-        redraw();
-    }
-    void mouseExit(const visage::MouseEvent&) override {
-        hovered_ = false;
-        redraw();
-    }
-    void mouseDown(const visage::MouseEvent& e) override {
-        if (e.shouldTriggerPopup()) {
-            if (onRightClick_)
-                onRightClick_();
-            return;
-        }
-        pressed_ = true;
-        dragged_ = false;
-        pressPos_ = e.position;
-        redraw();
-    }
-    void mouseDrag(const visage::MouseEvent& e) override {
-        if (!pressed_ || dragged_ || !onDragOut_)
-            return;
-        const float dx = e.position.x - pressPos_.x;
-        const float dy = e.position.y - pressPos_.y;
-        const float thresh = context_.px(5.0f);
-        if (dx * dx + dy * dy > thresh * thresh) {
-            dragged_ = true;
-            pressed_ = false;
-            redraw();
-            onDragOut_();
-        }
-    }
-    void mouseUp(const visage::MouseEvent& e) override {
-        if (!pressed_)
-            return;
-        const bool inside = localBounds().contains(e.position);
-        const bool wasDragged = dragged_;
-        pressed_ = false;
-        dragged_ = false;
-        redraw();
-        if (inside && !wasDragged && onClick_)
-            onClick_();
-    }
-
   private:
-    Context& context_;
-    std::string label_;
-    std::function<void()> onClick_;
-    std::function<void()> onDragOut_;
-    std::function<void()> onRightClick_;
-    unsigned accent_ = colour::textDim;
     float fontSize_ = type::label;
-    bool active_ = false;
-    bool hovered_ = false;
-    bool pressed_ = false;
-    bool dragged_ = false;
-    visage::Point pressPos_{};
 };
 
 // Large sculptural luminous dial for the 6 hero macros in SCULPT.

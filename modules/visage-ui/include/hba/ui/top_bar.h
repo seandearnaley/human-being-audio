@@ -42,9 +42,8 @@ inline void drawBrandWordmark(visage::Canvas& canvas, const visage::Button& word
     }
 }
 
-template <typename PresetListT, typename LoadFn>
-inline void showCategorizedPresetMenu(const PresetListT& presets, visage::Frame* anchor, LoadFn&& onLoad,
-                                      std::function<void()> onSave = {}) {
+template <typename Model> inline void showStudioPresetMenu(Model& model, visage::Frame* anchor) {
+    const auto presets = model.presets();
     constexpr int kSaveId = 10000;
     visage::PopupMenu menu;
     std::size_t i = 0;
@@ -55,17 +54,17 @@ inline void showCategorizedPresetMenu(const PresetListT& presets, visage::Frame*
             group.addOption(static_cast<int>(i), presets[i].name);
         menu.addSubMenu(std::move(group));
     }
-    if (onSave) {
-        menu.addBreak();
-        menu.addOption(kSaveId, "Save User Preset...");
-    }
-    menu.onSelection() = [load = std::forward<LoadFn>(onLoad), save = std::move(onSave)](int index) {
-        if (index == kSaveId) {
-            if (save)
-                save();
-        } else if (index >= 0) {
-            load(index);
-        }
+    menu.addBreak();
+    menu.addOption(kSaveId, "Save User Preset...");
+    menu.addOption(kSaveId + 1,
+                   model.isSlotB() ? "Copy B to A (Shift+Enter on A/B)" : "Copy A to B (Shift+Enter on A/B)");
+    menu.onSelection() = [&model](int index) {
+        if (index == kSaveId)
+            model.savePreset();
+        else if (index == kSaveId + 1)
+            model.copyAB();
+        else if (index >= 0)
+            model.loadPreset(index);
     };
     menu.show(anchor);
 }
@@ -87,6 +86,8 @@ template <typename ButtonT>
 inline void syncHistoryButtons(ButtonT& undo, ButtonT& redo, ButtonT& ab, bool canUndo, bool canRedo, bool isSlotB,
                                unsigned slotAAccent, unsigned slotBAccent, unsigned enabledAccent = colour::textDim,
                                unsigned disabledAccent = colour::textFaint) {
+    undo.setEnabledState(canUndo);
+    redo.setEnabledState(canRedo);
     undo.setAccent(canUndo ? enabledAccent : disabledAccent);
     redo.setAccent(canRedo ? enabledAccent : disabledAccent);
     ab.setLabel(isSlotB ? "B" : "A");

@@ -36,6 +36,29 @@ template <typename ContextT> class StudioEditorWindow final : public visage::Eve
         window_.onKeyPress() = [this](const visage::KeyEvent& key) {
             if (onKeyPress && onKeyPress(key))
                 return true;
+            if (key.keyCode() == visage::KeyCode::Tab && !key.isMainModifier()) {
+                std::vector<visage::Frame*> controls;
+                const auto visit = [&](auto& self, visage::Frame& frame) -> void {
+                    for (auto* child : frame.children()) {
+                        if (!child->isVisible())
+                            continue;
+                        if (child->acceptsKeystrokes())
+                            controls.push_back(child);
+                        self(self, *child);
+                    }
+                };
+                visit(visit, window_);
+                if (controls.empty())
+                    return false;
+                auto focus =
+                    std::find_if(controls.begin(), controls.end(), [](auto* f) { return f->hasKeyboardFocus(); });
+                if (key.isShiftDown())
+                    focus = focus == controls.begin() || focus == controls.end() ? controls.end() - 1 : focus - 1;
+                else if (focus == controls.end() || ++focus == controls.end())
+                    focus = controls.begin();
+                (*focus)->requestKeyboardFocus();
+                return true;
+            }
             if (!key.isMainModifier())
                 return false;
             if (key.keyCode() == visage::KeyCode::Z) {

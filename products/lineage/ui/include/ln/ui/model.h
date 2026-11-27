@@ -17,7 +17,7 @@ struct PresetInfo {
 };
 
 enum class PrintState : std::uint8_t { idle, printing, ready };
-enum class ExportState : std::uint8_t { idle, rendering, ready };
+enum class ExportState : std::uint8_t { idle, rendering, ready, failed };
 
 class Model {
   public:

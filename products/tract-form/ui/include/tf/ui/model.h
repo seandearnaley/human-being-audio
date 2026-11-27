@@ -60,7 +60,7 @@ struct Visuals {
     bool effActive = false;
 };
 
-enum class ResampleState { idle, rendering, ready };
+enum class ResampleState { idle, rendering, ready, failed };
 
 struct PresetInfo {
     std::string name;

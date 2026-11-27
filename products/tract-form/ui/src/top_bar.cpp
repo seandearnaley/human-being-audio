@@ -43,6 +43,7 @@ TopBar::TopBar(Context& context, std::function<void()> showAbout)
     for (auto* button : {&previous_, &name_, &next_, &save_, &undo_, &redo_, &ab_})
         addChild(button);
     save_.setAccent(colour::textDim);
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick(
         [this] { hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }); });
     for (std::size_t i = 0; i < kMacros.size(); ++i) {
@@ -101,10 +102,7 @@ void TopBar::tick() {
 }
 
 // One submenu per category, in the order the model lists them.
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(context_.model.presets(), &name_,
-                                       [this](int i) { context_.model.loadPreset(i); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &name_); }
 
 // The logotype is the brand asset itself, drawn as a vector at any size.
 void TopBar::drawWordmark(visage::Canvas& canvas) {

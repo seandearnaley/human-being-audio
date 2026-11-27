@@ -11,7 +11,7 @@
 
 namespace sb::ui {
 
-enum class BounceState { idle, rendering, ready };
+enum class BounceState { idle, rendering, ready, failed };
 using Archetype = sb::Archetype;
 
 struct PresetEntry {
