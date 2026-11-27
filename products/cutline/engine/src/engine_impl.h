@@ -5,6 +5,7 @@
 #include "cl/engine.h"
 #include "cl/hits.h"
 #include "cl/midi_event.h"
+#include "cl/phrase.h"
 
 #include "audition.h"
 
@@ -121,6 +122,10 @@ struct Engine::Impl {
 
     std::array<FillLatch, kMaxBarsPerBlock> fillLatch{};
 
+    // MIDI Slicer: the compiled phrase, and what it was last compiled from
+    SlicerPlan slicerPlanData{};
+    SlicerInputs slicerKey{};
+
     // Transport tracking
     bool wasPlaying = false;
     double expectedNextPpq = 0.0;
@@ -169,6 +174,11 @@ struct Engine::Impl {
     void pushDrumHit(const Block& b, const Pattern& pat, int lane, double hostBeat, double hostDur,
                      int velocity) noexcept CL_NONBLOCKING;
     void playPattern(const Block& b) noexcept CL_NONBLOCKING;
+    void pushNoteHit(const Block& b, int note, int voice, double hostBeat, double hostDur,
+                     int velocity) noexcept CL_NONBLOCKING;
+    void ensureSlicerPlan(const Params& params, double bpm) noexcept CL_NONBLOCKING;
+    void playSlicer(const Block& b) noexcept CL_NONBLOCKING;
+    void playClip(const Block& b) noexcept CL_NONBLOCKING;
     void playBlock(const Block& b) noexcept CL_NONBLOCKING;
     void releaseEndingBy(const Block& b, double beat, bool strict, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;
     void emitBlockHits(const Block& b, double silenceAt, MidiEventBuffer& outMidi) noexcept CL_NONBLOCKING;

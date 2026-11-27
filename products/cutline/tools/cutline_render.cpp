@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Headless Cutline 2.0 renderer: exports a preset's 960-PPQ .mid groove/slice and/or
+// Headless Cutline 3 renderer: exports a preset's 960-PPQ .mid groove/slice and/or
 // stereo 48 kHz float32 audition audio (supports optional --chord "48,55,58,62" for MIDI Slicer).
 #include "cl/engine.h"
+#include "cl/groove_state.h"
 #include "cl/preset.h"
 #include "cl/smf.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -65,8 +67,8 @@ int main(int argc, char** argv) {
     }
 
     if (!midiOut.empty()) {
-        const auto bytes = cl::exportPhraseSmf(preset.params, preset.curves, held, bpm,
-                                               preset.params.choice(cl::ParamId::scene), preset.bank);
+        const auto bytes = cl::exportSmf(preset.params, preset.curves, held, bpm,
+                                         preset.params.choice(cl::ParamId::scene), preset.bank);
         std::ofstream out(midiOut, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!out) {
@@ -84,7 +86,7 @@ int main(int argc, char** argv) {
         cl::Engine engine;
         engine.prepare(kSr, kBlock);
         engine.setLaneCurves(preset.curves);
-        engine.setPatternBank(preset.bank);
+        engine.setGroove(cl::GrooveState(preset.bank));
         for (int i = 0; i < held.count; ++i)
             engine.inputNoteOn(held.notes[static_cast<std::size_t>(i)], held.velocities[static_cast<std::size_t>(i)]);
 

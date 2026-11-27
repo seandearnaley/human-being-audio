@@ -6,6 +6,8 @@ catch_discover_tests(cl-core-tests DISCOVERY_MODE PRE_TEST)
 add_executable(cl-engine-tests
     engine/EngineTests.cpp
     engine/PadTests.cpp
+    engine/SlicerTests.cpp
+    engine/SmfTests.cpp
     engine/ResolveTests.cpp
     engine/HitsTests.cpp
     engine/PatternLintTests.cpp

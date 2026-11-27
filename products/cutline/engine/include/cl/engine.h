@@ -10,6 +10,7 @@
 #include "cl/nonblocking.h"
 #include "cl/params.h"
 #include "cl/pattern.h"
+#include "cl/phrase.h"
 
 #include <array>
 #include <cstdint>
@@ -67,6 +68,7 @@ class Engine {
 
     // Telemetry for the 60 Hz UI.
     PlayPosition position() const noexcept CL_NONBLOCKING;
+    const SlicerPlan& slicerPlan() const noexcept CL_NONBLOCKING;
     HeldNotes activeHeldNotes() const noexcept CL_NONBLOCKING;
     int activeScene() const noexcept CL_NONBLOCKING;
     int pendingScene() const noexcept CL_NONBLOCKING;

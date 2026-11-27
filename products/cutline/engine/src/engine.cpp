@@ -91,6 +91,8 @@ void Engine::Impl::reset() noexcept CL_NONBLOCKING {
     repeatBar = 0;
     repeatFill = false;
     fillLatch = {};
+    slicerKey = {};
+    slicerPlanData.noteCount = 0;
     wasPlaying = false;
     expectedNextPpq = 0.0;
     lastTransportPpq = 0.0;
@@ -423,15 +425,118 @@ void Engine::Impl::playPattern(const Block& b) noexcept CL_NONBLOCKING {
     }
 }
 
-// One part of a block: a pad program, or the pattern.
+void Engine::Impl::pushNoteHit(const Block& b, int note, int voice, double hostBeat, double hostDur,
+                               int velocity) noexcept CL_NONBLOCKING {
+    if (blockHitCount >= kMaxBlockHits)
+        return;
+    BlockHit& hit = blockHits[static_cast<std::size_t>(blockHitCount++)];
+    hit.beat = hostBeat;
+    hit.durBeats = hostDur;
+    hit.note = static_cast<std::int8_t>(std::clamp(note, 0, 127));
+    hit.lane = static_cast<std::int8_t>(std::clamp(voice, 0, 7));
+    hit.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
+    hit.drum = false;
+    hit.padOn = b.padOn;
+}
+
+// Recompiles the slicer phrase only when something it depends on changed.
+void Engine::Impl::ensureSlicerPlan(const Params& params, double bpm) noexcept CL_NONBLOCKING {
+    const SlicerInputs now = slicerInputs(params, currentScene, lastEffectiveHeld, bpm, grooveRevision);
+    if (now.sameAs(slicerKey))
+        return;
+    compileSlicer(params, groove, currentScene, lastEffectiveHeld, bpm, slicerPlanData);
+    slicerKey = now;
+}
+
+// The compiled phrase, looping at the pattern's length.
+void Engine::Impl::playSlicer(const Block& b) noexcept CL_NONBLOCKING {
+    const double phraseBeats = std::max(1.0, slicerPlanData.phraseBeats);
+    const double scaledEnd = b.windowEnd * b.rate;
+    double scan = b.windowStart * b.rate;
+    for (int pass = 0; pass < 3 && scan < scaledEnd - kBeatEps; ++pass) {
+        const double origin = std::floor(scan / phraseBeats) * phraseBeats;
+        const double phraseEnd = origin + phraseBeats;
+        const double subEnd = std::min(scaledEnd, phraseEnd);
+        for (int i = 0; i < slicerPlanData.noteCount; ++i) {
+            const SlicerNote& n = slicerPlanData.notes[static_cast<std::size_t>(i)];
+            const double at = origin + n.beat;
+            if (at < scan - kBeatEps || at >= subEnd - kBeatEps)
+                continue;
+            pushNoteHit(b, n.note, n.voice, at / b.rate, std::min(n.durBeats, phraseEnd - at) / b.rate, n.velocity);
+        }
+        scan = subEnd;
+    }
+}
+
+// Clip Slice: replays the notes captured from the MIDI input, bar by bar, with Swing.
+// While Repeat is engaged it loops the captured notes inside the Repeat window instead.
+// A block can straddle a bar line (or a Repeat cell), so every bar and cell the block touches is visited:
+// working from the block's start alone would skip a captured note that sits exactly on the downbeat.
+void Engine::Impl::playClip(const Block& b) noexcept CL_NONBLOCKING {
+    const double swing = static_cast<double>((*b.params)[ParamId::swing]);
+    const double scaledStart = b.windowStart * b.rate;
+    const double scaledEnd = b.windowEnd * b.rate;
+    const bool repeating = b.padOn && b.program == PadProgram::repeat;
+    const double window = pads::repeatWindowBeats(b.padX);
+    const double anchorInBar = repeatAnchor - std::floor(repeatAnchor / 4.0) * 4.0;
+    const double sliceStart = std::min(anchorInBar, 4.0 - window);
+    const int cellsPerBar = static_cast<int>(std::lround(4.0 / window));
+
+    const auto firstBar = static_cast<std::int64_t>(std::floor(scaledStart / 4.0));
+    const auto lastBar = static_cast<std::int64_t>(std::floor((scaledEnd - kBeatEps) / 4.0));
+    for (std::int64_t bar = firstBar; bar <= lastBar && bar < firstBar + kMaxBarsPerBlock; ++bar) {
+        const double barOrigin = static_cast<double>(bar) * 4.0;
+        const auto emitAt = [&](const CapturedEvent& ev, double barBeat) noexcept CL_NONBLOCKING {
+            const double at = barOrigin + swingBeat(barBeat, swing);
+            if (at < scaledStart - kBeatEps || at >= scaledEnd - kBeatEps)
+                return;
+            pushNoteHit(b, ev.note, 0, at / b.rate, std::max(0.04, ev.durBeats / b.rate), static_cast<int>(ev.vel));
+        };
+        for (const auto& ev : captured) {
+            if (!ev.active)
+                continue;
+            if (!repeating) {
+                emitAt(ev, ev.barBeat);
+                continue;
+            }
+            if (ev.barBeat < sliceStart || ev.barBeat >= sliceStart + window)
+                continue;
+            // Every cell of the bar replays the slice. Visit the cells this block can reach, with one
+            // cell of margin on each side because Swing moves a note by up to an eighth of a beat.
+            const double offset = ev.barBeat - sliceStart;
+            const int firstCell =
+                std::max(0, static_cast<int>(std::floor((scaledStart - barOrigin - offset) / window)) - 1);
+            const int lastCell =
+                std::min(cellsPerBar - 1, static_cast<int>(std::floor((scaledEnd - barOrigin - offset) / window)) + 1);
+            for (int cell = firstCell; cell <= lastCell; ++cell)
+                emitAt(ev, static_cast<double>(cell) * window + offset);
+        }
+    }
+}
+
+// One part of a block: a pad program, the pattern, or in MIDI Slicer mode the phrase or the captured clip.
 void Engine::Impl::playBlock(const Block& b) noexcept CL_NONBLOCKING {
-    if (!b.isDrum || b.windowEnd <= b.windowStart)
-        return; // MIDI Slicer playback is added in Task 4.
+    if (b.windowEnd <= b.windowStart)
+        return;
+    const bool silent = b.padOn && b.program == PadProgram::drop && pads::dropIsSilence(b.padX);
+    if (!b.isDrum) {
+        const auto style = static_cast<SlicerStyle>(std::clamp(b.params->choice(ParamId::slicerStyle), 0, 4));
+        if (b.padOn && b.program == PadProgram::roll)
+            playRoll(b);
+        else if (style == SlicerStyle::clipSlice) {
+            if (!silent)
+                playClip(b); // loops inside the Repeat window itself while Repeat is engaged
+        } else if (b.padOn && b.program == PadProgram::repeat)
+            playRepeat(b);
+        else if (!silent)
+            playSlicer(b);
+        return;
+    }
     if (b.padOn && b.program == PadProgram::roll)
         playRoll(b);
     else if (b.padOn && b.program == PadProgram::repeat)
         playRepeat(b);
-    else if (!(b.padOn && b.program == PadProgram::drop && pads::dropIsSilence(b.padX)))
+    else if (!silent)
         playPattern(b);
 }
 
@@ -720,6 +825,8 @@ void Engine::Impl::process(const Params& params, const Transport& transport, Mid
 
     // This block's notes, then every note-off in time order. When a pad commits inside the block, what played
     // before it (the pattern, or the previous program) keeps the part of the block before the switch point.
+    if (!isDrum && slicerStyle != SlicerStyle::clipSlice)
+        ensureSlicerPlan(params, bpm);
     blockHitCount = 0;
     if (padCommitted && padAt > windowStart) {
         playBlock(makeBlock(engagedBefore, progBefore, windowStart, padAt));
@@ -845,6 +952,7 @@ void Engine::process(const Params& params, const Transport& transport, MidiEvent
 }
 
 PlayPosition Engine::position() const noexcept CL_NONBLOCKING { return impl_->pos; }
+const SlicerPlan& Engine::slicerPlan() const noexcept CL_NONBLOCKING { return impl_->slicerPlanData; }
 HeldNotes Engine::activeHeldNotes() const noexcept CL_NONBLOCKING { return impl_->lastEffectiveHeld; }
 int Engine::activeScene() const noexcept CL_NONBLOCKING { return impl_->currentScene; }
 int Engine::pendingScene() const noexcept CL_NONBLOCKING { return impl_->pendingSceneIdx; }
