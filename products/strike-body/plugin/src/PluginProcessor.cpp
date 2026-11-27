@@ -3,6 +3,8 @@
 
 #include "PluginEditor.h"
 
+#include <hba/host/render_midi_block.h>
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -47,7 +49,6 @@ void PluginProcessor::seedPreviewTelemetry() {
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_.store(sampleRate > 8000.0 ? sampleRate : 48000.0, std::memory_order_relaxed);
     blockSize_ = std::max(1, samplesPerBlock);
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
     prepareEngine();
 }
 
@@ -115,20 +116,12 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     const Params params = values_.snapshot();
-    const bool isMono = (numChannels == 1);
-    float* left = buffer.getWritePointer(0);
-    float* right = isMono ? monoScratchR_.data() : buffer.getWritePointer(1);
-    if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-        buffer.clear();
-        midi.clear();
-        return;
-    }
 
     // Drain UI audition pad / Chladni tap triggers lock-free with up-to-date cached params.
     std::uint32_t r = audRead_.load(std::memory_order_relaxed);
     const std::uint32_t w = audWrite_.load(std::memory_order_acquire);
     if (r != w) {
-        engine_.process(params, left, right, 0);
+        engine_.process(params, buffer.getWritePointer(0), monoScratchR_.data(), 0);
         while (r != w) {
             const std::uint32_t packed = audQueue_[r & kAuditionQueueMask];
             const auto art = static_cast<Articulation>(packed & 0x3u);
@@ -140,25 +133,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // Sample-accurate incoming MIDI processing (skip SysEx to prevent audio-thread heap allocations).
-    int cursor = 0;
-    for (const auto metadata : midi) {
-        if (metadata.numBytes > 3)
-            continue;
-        const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
-        if (eventSample > cursor) {
-            engine_.process(params, left + cursor, right + cursor, eventSample - cursor);
-            cursor = eventSample;
-        }
-        handleMidi(metadata.getMessage(), params);
-    }
-
-    if (cursor < numSamples)
-        engine_.process(params, left + cursor, right + cursor, numSamples - cursor);
-
-    if (isMono) {
-        for (int i = 0; i < numSamples; ++i)
-            left[i] = 0.5f * (left[i] + right[i]);
-    }
+    hba::host::renderMidiBlock(
+        buffer, midi, monoScratchR_, numSamples,
+        [&](int, int count, float* left, float* right) { engine_.process(params, left, right, count); },
+        [&](const juce::MidiMessage& message) { handleMidi(message, params); });
 
     midi.clear();
     if (engine_.telemetry().triggerCount > 0u)

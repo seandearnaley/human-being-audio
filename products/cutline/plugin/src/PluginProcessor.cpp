@@ -15,7 +15,6 @@ PluginProcessor::PluginProcessor()
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, samplesPerBlock)), 0.0f);
     bypassMidi_.ensureSize(4096);
     releaseMidi_.ensureSize(4096);
     engine_.prepare(sampleRate_, samplesPerBlock);
@@ -116,27 +115,11 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const int numChannels = buffer.getNumChannels();
     const bool pureMidiHost = (numChannels < 1) || (wrapperType == wrapperType_AudioUnit);
 
-    float* left = nullptr;
-    float* right = nullptr;
-    const bool isMono = !pureMidiHost && (numChannels == 1);
-
-    if (!pureMidiHost) {
-        if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-            buffer.clear();
-        } else {
-            left = buffer.getWritePointer(0);
-            right = isMono ? monoScratchR_.data() : buffer.getWritePointer(1);
-        }
-    } else if (numChannels > 0) {
+    if (pureMidiHost)
         buffer.clear();
-    }
-
+    float* left = pureMidiHost ? nullptr : buffer.getWritePointer(0);
+    float* right = pureMidiHost || numChannels == 1 ? nullptr : buffer.getWritePointer(1);
     engine_.process(params, transport, outEvents_, left, right, numSamples);
-
-    if (isMono && left != nullptr && right != nullptr) {
-        for (int i = 0; i < numSamples; ++i)
-            left[i] = 0.5f * (left[i] + right[i]);
-    }
 
     for (int i = 0; i < outEvents_.count; ++i) {
         const auto& ev = outEvents_.events[static_cast<std::size_t>(i)];

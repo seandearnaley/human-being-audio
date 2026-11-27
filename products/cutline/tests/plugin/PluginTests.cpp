@@ -606,3 +606,22 @@ TEST_CASE("processBlock renders finite audition audio", "[plugin]") {
         }
     }
 }
+
+TEST_CASE("cutline renders a mono host block beyond the prepared size", "[plugin][oversized]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    cl::PluginProcessor proc;
+    auto layout = proc.getBusesLayout();
+    layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+    REQUIRE(proc.setBusesLayout(layout));
+    proc.prepareToPlay(48000, 64);
+    FakePlayHead head;
+    proc.setPlayHead(&head);
+    proc.state.getParameter("audition")->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> audio(1, 8192);
+    audio.clear();
+    juce::MidiBuffer midi;
+    proc.processBlock(audio, midi);
+    CHECK_FALSE(midi.isEmpty());
+    CHECK(audio.getMagnitude(0, 8192) > 0.001f);
+    proc.setPlayHead(nullptr);
+}

@@ -3,6 +3,8 @@
 
 #include "PluginEditor.h"
 
+#include <hba/host/render_midi_block.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -34,10 +36,6 @@ PluginProcessor::~PluginProcessor() {
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
-    const std::size_t scratchN = static_cast<std::size_t>(std::max(4096, blockSize_));
-    monoScratchR_.assign(scratchN, 0.0f);
-    scScratchL_.assign(scratchN, 0.0f);
-    scScratchR_.assign(scratchN, 0.0f);
     standalonePpq_ = 0.0;
     prepareEngine();
 }
@@ -134,12 +132,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // (JUCE may alias input & output bus channel pointers in-place).
     const float* scInL = nullptr;
     const float* scInR = nullptr;
-    const bool hasSc = hba::host::getSidechainPointers(*this, buffer, scInL, scInR) &&
-                       numSamples <= static_cast<int>(scScratchL_.size());
-    if (hasSc) {
-        std::memcpy(scScratchL_.data(), scInL, static_cast<std::size_t>(numSamples) * sizeof(float));
-        std::memcpy(scScratchR_.data(), scInR, static_cast<std::size_t>(numSamples) * sizeof(float));
-    }
+    const bool hasSc = hba::host::getSidechainPointers(*this, buffer, scInL, scInR);
 
     const Params params = values_.snapshot();
     if (stateStore.pull(audioBundle_)) {
@@ -153,14 +146,6 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         engine_.triggerSlot(target, pendingAuditionVel_.load(std::memory_order_relaxed));
     }
 
-    const bool isMono = (outChannels == 1);
-    float* left = outBus.getWritePointer(0);
-    float* right = isMono ? monoScratchR_.data() : outBus.getWritePointer(1);
-    if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-        buffer.clear();
-        midi.clear();
-        return;
-    }
     for (int ch = 2; ch < outChannels; ++ch)
         outBus.clear(ch, 0, numSamples);
 
@@ -168,39 +153,20 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     lastBpm_.store(transportStart.bpm, std::memory_order_relaxed);
     const double beatsPerSample = (transportStart.bpm / 60.0) / sampleRate_;
 
-    const float* scL = hasSc ? scScratchL_.data() : nullptr;
-    const float* scR = hasSc ? scScratchR_.data() : nullptr;
-
-    int cursor = 0;
-    for (const auto metadata : midi) {
-        if (metadata.numBytes > 3)
-            continue;
-        const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
-        if (eventSample > cursor) {
-            const int chunk = eventSample - cursor;
+    hba::host::renderMidiBlock(
+        outBus, midi, monoScratchR_, hasSc ? static_cast<int>(scScratchL_.size()) : numSamples,
+        [&](int offset, int count, float* left, float* right) {
             Transport seg = transportStart;
             if (seg.playing)
-                seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-            engine_.process(params, seg, left + cursor, right + cursor, chunk, scL ? scL + cursor : nullptr,
-                            scR ? scR + cursor : nullptr);
-            cursor = eventSample;
-        }
-        handleMidi(metadata.getMessage());
-    }
-
-    if (cursor < numSamples) {
-        const int chunk = numSamples - cursor;
-        Transport seg = transportStart;
-        if (seg.playing)
-            seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-        engine_.process(params, seg, left + cursor, right + cursor, chunk, scL ? scL + cursor : nullptr,
-                        scR ? scR + cursor : nullptr);
-    }
-
-    if (isMono) {
-        for (int i = 0; i < numSamples; ++i)
-            left[i] = 0.5f * (left[i] + right[i]);
-    }
+                seg.ppq += static_cast<double>(offset) * beatsPerSample;
+            if (hasSc) {
+                std::copy_n(scInL + offset, count, scScratchL_.data());
+                std::copy_n(scInR + offset, count, scScratchR_.data());
+            }
+            engine_.process(params, seg, left, right, count, hasSc ? scScratchL_.data() : nullptr,
+                            hasSc ? scScratchR_.data() : nullptr);
+        },
+        [&](const juce::MidiMessage& message) { handleMidi(message); });
 
     midi.clear();
     telemetry.publish(engine_.telemetry());

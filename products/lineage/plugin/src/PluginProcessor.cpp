@@ -3,6 +3,8 @@
 
 #include "PluginEditor.h"
 
+#include <hba/host/render_midi_block.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -37,7 +39,6 @@ PluginProcessor::~PluginProcessor() {
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
-    monoScratchR_.assign(static_cast<std::size_t>(std::max(4096, blockSize_)), 0.0f);
     standalonePpq_ = 0.0;
     prepareEngine();
 }
@@ -157,47 +158,19 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (curves.pull(audioCurves_))
         engine_.setLaneCurves(audioCurves_);
 
-    const bool isMono = (numChannels == 1);
-    float* left = buffer.getWritePointer(0);
-    float* right = isMono ? monoScratchR_.data() : buffer.getWritePointer(1);
-    if (isMono && numSamples > static_cast<int>(monoScratchR_.size())) {
-        buffer.clear();
-        midi.clear();
-        return;
-    }
-
     const Transport transportStart = readTransport(numSamples);
     lastBpm_.store(transportStart.bpm, std::memory_order_relaxed);
     const double beatsPerSample = (transportStart.bpm / 60.0) / sampleRate_;
 
-    int cursor = 0;
-    for (const auto metadata : midi) {
-        if (metadata.numBytes > 3)
-            continue;
-        const int eventSample = std::clamp(metadata.samplePosition, cursor, numSamples);
-        if (eventSample > cursor) {
-            const int chunk = eventSample - cursor;
+    hba::host::renderMidiBlock(
+        buffer, midi, monoScratchR_, numSamples,
+        [&](int offset, int count, float* left, float* right) {
             Transport seg = transportStart;
             if (seg.playing)
-                seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-            engine_.process(params, seg, left + cursor, right + cursor, chunk);
-            cursor = eventSample;
-        }
-        handleMidi(metadata.getMessage());
-    }
-
-    if (cursor < numSamples) {
-        const int chunk = numSamples - cursor;
-        Transport seg = transportStart;
-        if (seg.playing)
-            seg.ppq += static_cast<double>(cursor) * beatsPerSample;
-        engine_.process(params, seg, left + cursor, right + cursor, chunk);
-    }
-
-    if (isMono) {
-        for (int i = 0; i < numSamples; ++i)
-            left[i] = 0.5f * (left[i] + right[i]);
-    }
+                seg.ppq += static_cast<double>(offset) * beatsPerSample;
+            engine_.process(params, seg, left, right, count);
+        },
+        [&](const juce::MidiMessage& message) { handleMidi(message); });
 
     midi.clear();
     telemetry.publish(engine_.telemetry());

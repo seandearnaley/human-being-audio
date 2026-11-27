@@ -78,7 +78,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     std::atomic<double> sampleRate_{48000.0};
     int blockSize_ = 512;
 
-    std::vector<float> monoScratchR_;
+    std::array<float, 1024> monoScratchR_{};
 
     // Lock-free SPSC audition queue from UI thread to audio thread.
     std::array<std::uint32_t, kAuditionQueueSize> audQueue_{};

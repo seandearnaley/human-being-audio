@@ -95,7 +95,7 @@ class PluginProcessor final : public juce::AudioProcessor,
     double standalonePpq_ = 0.0;
 
     LaneCurves audioCurves_ = defaultLaneCurves();
-    std::vector<float> monoScratchR_;
+    std::array<float, 1024> monoScratchR_{};
 
     std::atomic<int> lastNote_{29};
     std::atomic<double> lastBpm_{172.0};
