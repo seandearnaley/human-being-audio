@@ -5,7 +5,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { expect, test } from "@playwright/test";
-import studio from "../../studio.json";
+import studio from "../../studio.json" with { type: "json" };
 
 const platforms = [
   ["macos", "macOS"],
