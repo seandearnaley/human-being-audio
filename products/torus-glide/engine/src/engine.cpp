@@ -559,8 +559,8 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
         const double detuneRatio = std::pow(2.0, (effDetuneCt * 0.5) / 1200.0);
 
         // Drain FDN reverb + chorus + oversampler + limiter lookahead buffers before sleeping
-        const int tailDrainLimit = latencySamples() + static_cast<int>((0.04 + curSpace * 1.45) * sr);
-        if (envLevel_ < 1e-6 && !anyGate) {
+        const int tailDrainLimit = latencySamples() + static_cast<int>(spaceDrainSeconds(curSpace) * sr);
+        if (envLevel_ < kSilentEnvelope && !anyGate) {
             if (silentTailSamples_ >= tailDrainLimit) {
                 outL[i] = 0.0f;
                 outR[i] = 0.0f;
