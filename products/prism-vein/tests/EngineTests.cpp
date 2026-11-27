@@ -31,7 +31,6 @@ TEST_CASE("Prism Vein Engine stays finite across all 4 engines, MIDI chords, sid
 
     std::vector<float> inL(total), inR(total), scL(total), scR(total), outL(total), outR(total);
     for (int i = 0; i < total; ++i) {
-        // Rich broadband saw-like input + stereo sidechain chord carrier.
         const double t = static_cast<double>(i) / sr;
         const double saw = 2.0 * (t * 55.0 - std::floor(t * 55.0)) - 1.0;
         const double sub = std::sin(hba::dsp::kTwoPi * 55.0 * t);
@@ -58,7 +57,6 @@ TEST_CASE("Prism Vein Engine stays finite across all 4 engines, MIDI chords, sid
 
             CHECK(engine.latencySamples() == (latMode == 1 ? 0 : pv::Engine::kFftSize));
 
-            // Trigger a live MIDI F min9 chord halfway through.
             for (int off = 0; off < total; off += block) {
                 if (off == 4096) {
                     engine.noteOn(53, 0.9f);
@@ -89,7 +87,6 @@ TEST_CASE("Prism Vein Sub-Safe LR4 bypass keeps 55 Hz sub mono and phase-intact 
     constexpr int total = 12288;
     std::vector<float> inL(total), inR(total), outL(total), outR(total);
     for (int i = 0; i < total; ++i) {
-        // Pure 55 Hz sub with opposite stereo tilt to verify subMono collapses it cleanly!
         const double s = 0.5 * std::sin(hba::dsp::kTwoPi * 55.0 * static_cast<double>(i) / sr);
         inL[static_cast<std::size_t>(i)] = static_cast<float>(s * 1.1);
         inR[static_cast<std::size_t>(i)] = static_cast<float>(s * 0.7);
@@ -119,14 +116,13 @@ TEST_CASE("Prism Vein Sub-Safe LR4 bypass keeps 55 Hz sub mono and phase-intact 
     CHECK(maxSideErr < 0.01);
 }
 
-TEST_CASE("Prism Vein Bark Auto-Tame actively attenuates harsh 3.4 kHz resonant spikes", "[engine]") {
+TEST_CASE("Prism Vein Bark Auto-Tame actively and symmetrically attenuates harsh 3.4 kHz resonant spikes", "[engine]") {
     constexpr double sr = 48000.0;
     constexpr int total = 16384;
     std::vector<float> inL(total), inR(total), outNoTameL(total), outNoTameR(total), outTamedL(total), outTamedR(total);
 
     hba::dsp::XorShift32 rng;
     rng.seed(12345u);
-    // Broadband noise bed + piercing narrowband 3492 Hz resonance (A7 / F harmonic whistle).
     for (int i = 0; i < total; ++i) {
         const double whistle = 0.48 * std::sin(hba::dsp::kTwoPi * 3492.3 * static_cast<double>(i) / sr);
         const double bed = 0.12 * rng.nextBipolar();
@@ -157,6 +153,173 @@ TEST_CASE("Prism Vein Bark Auto-Tame actively attenuates harsh 3.4 kHz resonant 
     CHECK(cutOff < 0.1f);
     CHECK(cutOn > 2.5f);
     CHECK(computeRms(outTamedL, 4096) < computeRms(outNoTameL, 4096) * 0.92);
+}
+
+TEST_CASE("Prism Vein MIDI-only mode gates wet cleanly, sustains on CC64, and tracks Pitch Bend", "[engine]") {
+    constexpr double sr = 48000.0;
+    constexpr int block = 256;
+    pv::Engine engine;
+    auto p = pv::Params::defaults();
+    p.set(pv::ParamId::pitchSource, static_cast<float>(pv::PitchSource::midi));
+    p.set(pv::ParamId::color, 1.0f);
+    p.set(pv::ParamId::grit, 0.0f);
+    p.set(pv::ParamId::airDb, 0.0f);
+    engine.setParams(p);
+    engine.prepare(sr, block);
+
+    std::vector<float> inL(block), inR(block), outL(block), outR(block);
+    auto fillSaw = [&](int offset) {
+        for (int i = 0; i < block; ++i) {
+            const double t = static_cast<double>(offset + i) / sr;
+            const float s = static_cast<float>(0.35 * (2.0 * (t * 220.0 - std::floor(t * 220.0)) - 1.0));
+            inL[static_cast<std::size_t>(i)] = s;
+            inR[static_cast<std::size_t>(i)] = s;
+        }
+    };
+
+    // 1. No MIDI notes held -> midiWaiting == true.
+    for (int blk = 0; blk < 16; ++blk) {
+        fillSaw(blk * block);
+        engine.process(inL.data(), inR.data(), nullptr, nullptr, outL.data(), outR.data(), block);
+    }
+    CHECK(engine.telemetry().midiWaiting);
+    CHECK_FALSE(engine.telemetry().midiActive);
+
+    // 2. Press MIDI chord + engage Sustain Pedal -> midiActive == true even after noteOff.
+    engine.noteOn(53, 0.9f);
+    engine.noteOn(60, 0.9f);
+    engine.setSustainPedal(true);
+    engine.setPitchBend(5.0f);
+    for (int blk = 0; blk < 16; ++blk) {
+        fillSaw((16 + blk) * block);
+        engine.process(inL.data(), inR.data(), nullptr, nullptr, outL.data(), outR.data(), block);
+    }
+    CHECK(engine.telemetry().midiActive);
+    CHECK_FALSE(engine.telemetry().midiWaiting);
+    CHECK(engine.telemetry().pitchBendSt == Catch::Approx(5.0f).margin(0.25f));
+
+    // Release keys while sustain pedal stays down -> chord stays latched!
+    engine.noteOff(53);
+    engine.noteOff(60);
+    for (int blk = 0; blk < 8; ++blk) {
+        fillSaw((32 + blk) * block);
+        engine.process(inL.data(), inR.data(), nullptr, nullptr, outL.data(), outR.data(), block);
+    }
+    CHECK(engine.telemetry().midiActive);
+
+    // Lift sustain pedal -> returns cleanly to midiWaiting!
+    engine.setSustainPedal(false);
+    for (int blk = 0; blk < 8; ++blk) {
+        fillSaw((40 + blk) * block);
+        engine.process(inL.data(), inR.data(), nullptr, nullptr, outL.data(), outR.data(), block);
+    }
+    CHECK(engine.telemetry().midiWaiting);
+    CHECK_FALSE(engine.telemetry().midiActive);
+}
+
+TEST_CASE("Prism Vein Carrier Morph scales linearly with input level (no quadratic distortion)", "[engine]") {
+    constexpr double sr = 48000.0;
+    constexpr int total = 12288;
+    auto runGain = [&](double gain) {
+        pv::Engine eng;
+        auto p = pv::Params::defaults();
+        p.set(pv::ParamId::engineMode, static_cast<float>(pv::EngineMode::carrierMorph));
+        p.set(pv::ParamId::color, 1.0f);
+        p.set(pv::ParamId::tame, 0.0f);
+        p.set(pv::ParamId::grit, 0.0f);
+        p.set(pv::ParamId::limitOn, 0.0f);
+        p.set(pv::ParamId::airDb, 0.0f);
+        eng.setParams(p);
+        eng.prepare(sr, 256);
+
+        std::vector<float> inL(total), inR(total), outL(total), outR(total);
+        for (int i = 0; i < total; ++i) {
+            const double t = static_cast<double>(i) / sr;
+            const float x = static_cast<float>(gain * (2.0 * (t * 220.0 - std::floor(t * 220.0)) - 1.0));
+            inL[static_cast<std::size_t>(i)] = x;
+            inR[static_cast<std::size_t>(i)] = x;
+        }
+        for (int off = 0; off < total; off += 256)
+            eng.process(inL.data() + off, inR.data() + off, nullptr, nullptr, outL.data() + off, outR.data() + off,
+                        256);
+        return computeRms(outL, 4096);
+    };
+
+    const double rmsFull = runGain(0.40);
+    const double rmsQuarter = runGain(0.10);
+    REQUIRE(rmsFull > 0.05);
+    REQUIRE(rmsQuarter > 0.01);
+    // Linear scaling means ratio should stay tightly around 4.0 (not 16.0!).
+    const double ratio = rmsFull / rmsQuarter;
+    CHECK(ratio == Catch::Approx(4.0).margin(0.45));
+}
+
+TEST_CASE("Prism Vein Engine switching, Freeze capture, Grit zero-crossing, and multi-rate blocks stay click-free",
+          "[engine]") {
+    constexpr double sr = 48000.0;
+    constexpr int block = 137; // prime odd block size
+    pv::Engine engine;
+    auto p = pv::Params::defaults();
+    p.set(pv::ParamId::demoAudition, 1.0f);
+    p.set(pv::ParamId::color, 0.85f);
+    engine.setParams(p);
+    engine.prepare(sr, block);
+
+    std::vector<float> zero(block, 0.0f), outL(block), outR(block);
+    float prevL = 0.0f;
+    float maxJump = 0.0f;
+
+    for (int blk = 0; blk < 120; ++blk) {
+        if (blk == 30)
+            p.set(pv::ParamId::engineMode, static_cast<float>(pv::EngineMode::harmonicComb));
+        if (blk == 60)
+            p.set(pv::ParamId::engineMode, static_cast<float>(pv::EngineMode::chordLattice));
+        if (blk == 80)
+            p.set(pv::ParamId::freeze, 1.0f);
+        if (blk == 95) {
+            p.set(pv::ParamId::freeze, 0.0f);
+            p.set(pv::ParamId::grit, 0.0f);
+        }
+        if (blk == 105)
+            p.set(pv::ParamId::grit, 0.45f);
+        engine.setParams(p);
+        engine.process(zero.data(), zero.data(), nullptr, nullptr, outL.data(), outR.data(), block);
+        for (int i = 0; i < block; ++i) {
+            REQUIRE(std::isfinite(outL[static_cast<std::size_t>(i)]));
+            REQUIRE(std::isfinite(outR[static_cast<std::size_t>(i)]));
+            if (blk >= 10)
+                maxJump = std::max(maxJump, std::abs(outL[static_cast<std::size_t>(i)] - prevL));
+            prevL = outL[static_cast<std::size_t>(i)];
+        }
+    }
+    // No harsh sample-to-sample discontinuities across mode switch, freeze toggle, or grit 0% sweep.
+    CHECK(maxJump < 0.45f);
+
+    // Multi-rate stability check (44.1 kHz, 96 kHz, 192 kHz) + Live 0ms real spectrum check.
+    for (double testSr : {44100.0, 96000.0, 192000.0}) {
+        pv::Engine srEng;
+        auto sp = pv::Params::defaults();
+        sp.set(pv::ParamId::latencyMode, static_cast<float>(pv::LatencyMode::live0ms));
+        srEng.setParams(sp);
+        srEng.prepare(testSr, 256);
+        std::vector<float> sIn(256), sOutL(256), sOutR(256);
+        for (int blk = 0; blk < 24; ++blk) {
+            for (int i = 0; i < 256; ++i)
+                sIn[static_cast<std::size_t>(i)] =
+                    static_cast<float>(0.45 * std::sin(hba::dsp::kTwoPi * 1000.0 * (blk * 256 + i) / testSr));
+            srEng.process(sIn.data(), sIn.data(), nullptr, nullptr, sOutL.data(), sOutR.data(), 256);
+            for (int i = 0; i < 256; ++i) {
+                REQUIRE(std::isfinite(sOutL[static_cast<std::size_t>(i)]));
+                REQUIRE(std::isfinite(sOutR[static_cast<std::size_t>(i)]));
+            }
+        }
+        // In Live 0ms, real FFT telemetry must show strong energy around 1 kHz (col ~52) vs 14 kHz (col ~90).
+        const auto& tel = srEng.telemetry();
+        float midPeak = 0.0f;
+        for (int c = 46; c <= 58; ++c)
+            midPeak = std::max(midPeak, tel.inSpectrum[static_cast<std::size_t>(c)]);
+        CHECK(midPeak > tel.inSpectrum[90] + 0.25f);
+    }
 }
 
 TEST_CASE("Prism Vein Demo Audition generates stereo audio without external input", "[engine]") {

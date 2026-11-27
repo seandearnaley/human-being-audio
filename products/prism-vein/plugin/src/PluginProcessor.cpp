@@ -38,6 +38,7 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     scScratchL_.assign(scratchN, 0.0f);
     scScratchR_.assign(scratchN, 0.0f);
     standalonePpq_ = 0.0;
+    midiParser_.reset(2.0f);
     prepareEngine();
 }
 
@@ -52,18 +53,21 @@ void PluginProcessor::prepareEngine() {
     setLatencySamples(engine_.latencySamples());
 }
 
-void PluginProcessor::parameterChanged(const juce::String& id, float) {
-    if (id == kQualityId || id == kLatencyId) {
-        pendingPrepare_.store(true, std::memory_order_release);
-        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating()) {
-            if (mm->isThisTheMessageThread())
-                handleAsyncUpdate();
-            else
-                triggerAsyncUpdate();
-        } else {
+void PluginProcessor::schedulePrepare() {
+    pendingPrepare_.store(true, std::memory_order_release);
+    if (auto* mm = juce::MessageManager::getInstanceWithoutCreating()) {
+        if (mm->isThisTheMessageThread())
             handleAsyncUpdate();
-        }
+        else
+            triggerAsyncUpdate();
+    } else {
+        handleAsyncUpdate();
     }
+}
+
+void PluginProcessor::parameterChanged(const juce::String& id, float) {
+    if (id == kQualityId || id == kLatencyId)
+        schedulePrepare();
 }
 
 void PluginProcessor::handleAsyncUpdate() {
@@ -109,13 +113,21 @@ Transport PluginProcessor::readTransport(int numSamples) {
 }
 
 void PluginProcessor::handleMidi(const juce::MidiMessage& message) noexcept {
-    if (message.isNoteOn()) {
-        engine_.noteOn(message.getNoteNumber(), message.getFloatVelocity());
-    } else if (message.isNoteOff()) {
-        engine_.noteOff(message.getNoteNumber());
-    } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
-        engine_.allNotesOff();
-    }
+    struct Sink {
+        Engine& engine;
+        void onNoteOn(int note, float vel) noexcept { engine.noteOn(note, vel); }
+        void onNoteOff(int note) noexcept { engine.noteOff(note); }
+        void onPitchBend(float semitones) noexcept { engine.setPitchBend(semitones); }
+        void onPitchBendRange(float) noexcept {}
+        void onModWheel(float norm01) noexcept { engine.setModWheel(norm01); }
+        void onSustain(bool down) noexcept { engine.setSustainPedal(down); }
+        void onTimbre(float) noexcept {}
+        void onChannelPressure(float) noexcept {}
+        void onPolyAftertouch(int, float) noexcept {}
+        void onResetControllers() noexcept { engine.resetControllers(); }
+        void onAllNotesOff() noexcept { engine.allNotesOff(); }
+    };
+    midiParser_.process(message, Sink{engine_});
 }
 
 void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
@@ -137,14 +149,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const int scCount = scEnabled ? getChannelCountOfBus(true, 1) : 0;
     const int scIdx0 = scCount > 0 ? getChannelIndexInProcessBlockBuffer(true, 1, 0) : -1;
     const int scIdx1 = scCount > 1 ? getChannelIndexInProcessBlockBuffer(true, 1, 1) : scIdx0;
-    const bool hasSc = scIdx0 >= 0 && scIdx0 < totalChannels && scIdx1 >= 0 && scIdx1 < totalChannels &&
-                       numSamples <= static_cast<int>(scScratchL_.size());
-    if (hasSc) {
-        std::memcpy(scScratchL_.data(), buffer.getReadPointer(scIdx0),
-                    static_cast<std::size_t>(numSamples) * sizeof(float));
-        std::memcpy(scScratchR_.data(), buffer.getReadPointer(scIdx1),
-                    static_cast<std::size_t>(numSamples) * sizeof(float));
-    }
+    const bool hasSc = scIdx0 >= 0 && scIdx0 < totalChannels && scIdx1 >= 0 && scIdx1 < totalChannels;
 
     const Params params = values_.snapshot();
     engine_.setParams(params);
@@ -153,7 +158,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         engine_.setLaneCurves(audioCurves_);
     }
 
-    const int maxChunk = static_cast<int>(monoScratchR_.size());
+    const int maxChunk = static_cast<int>(std::min({monoScratchR_.size(), scScratchL_.size(), scScratchR_.size()}));
     if (maxChunk <= 0) {
         buffer.clear();
         midi.clear();
@@ -162,8 +167,6 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const Transport transportStart = readTransport(numSamples);
     const double beatsPerSample = (transportStart.bpm / 60.0) / sampleRate_;
-    const float* scLBase = hasSc ? scScratchL_.data() : nullptr;
-    const float* scRBase = hasSc ? scScratchR_.data() : nullptr;
 
     const auto render = [&](int from, int to) {
         if (to <= from)
@@ -176,13 +179,22 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (isMono)
                 std::memcpy(right, left, static_cast<std::size_t>(chunk) * sizeof(float));
 
+            const float* scL = nullptr;
+            const float* scR = nullptr;
+            if (hasSc) {
+                std::memcpy(scScratchL_.data(), buffer.getReadPointer(scIdx0) + pos,
+                            static_cast<std::size_t>(chunk) * sizeof(float));
+                std::memcpy(scScratchR_.data(), buffer.getReadPointer(scIdx1) + pos,
+                            static_cast<std::size_t>(chunk) * sizeof(float));
+                scL = scScratchL_.data();
+                scR = scScratchR_.data();
+            }
+
             Transport seg = transportStart;
             if (seg.playing)
                 seg.ppq += static_cast<double>(pos) * beatsPerSample;
             engine_.setTransport(seg);
 
-            const float* scL = scLBase != nullptr ? (scLBase + pos) : nullptr;
-            const float* scR = scRBase != nullptr ? (scRBase + pos) : nullptr;
             engine_.process(left, right, scL, scR, left, right, chunk);
 
             if (isMono) {
@@ -204,6 +216,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     render(cursor, numSamples);
 
+    const int outCh = getChannelCountOfBus(false, 0);
+    for (int ch = mainCh; ch < std::min(outCh, totalChannels); ++ch)
+        buffer.clear(ch, 0, numSamples);
+
     midi.clear();
     telemetry.publish(engine_.telemetry());
 }
@@ -223,6 +239,8 @@ void PluginProcessor::setStateInformation(const void* data, int size) {
     state.replaceState(juce::ValueTree::fromXml(*xml));
     stateStore.reloadFromState();
     presets.reloadFromState();
+    // Ensure recalled latencyMode / OS quality updates engine latency immediately.
+    schedulePrepare();
 }
 
 } // namespace pv

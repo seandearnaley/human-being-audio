@@ -82,6 +82,8 @@ struct Editor::Impl final {
                    },
                    [this]() -> std::string {
                        const auto& tel = context.model.visuals();
+                       if (tel.midiWaiting)
+                           return "WAIT";
                        return tel.midiActive ? "MIDI" : describeChordMask(context.model.chordMask());
                    }) {
         host.onKeyPress = [this](const visage::KeyEvent& key) {

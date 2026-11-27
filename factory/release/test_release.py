@@ -59,6 +59,7 @@ class ProductIdentityTests(unittest.TestCase):
             "strike-body": ("ABCDEF019182FAEB48626D7553746264", "ABCDEF011234ABCD48626D7553746264"),
             "lineage": ("ABCDEF019182FAEB48626D754C6E6731", "ABCDEF011234ABCD48626D754C6E6731"),
             "datum": ("ABCDEF019182FAEB48626D7544746D31", "ABCDEF011234ABCD48626D7544746D31"),
+            "prism-vein": ("ABCDEF019182FAEB48626D755072766E", "ABCDEF011234ABCD48626D755072766E"),
         }
         for slug, pair in expected.items():
             self.assertEqual(verify_product.class_ids(slug), pair)

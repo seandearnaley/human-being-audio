@@ -8,6 +8,7 @@
 #include "Telemetry.h"
 #include "pv/engine.h"
 
+#include <hba/host/midi_expression.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
@@ -71,10 +72,12 @@ class PluginProcessor final : public juce::AudioProcessor,
   private:
     void parameterChanged(const juce::String& id, float value) override;
     void handleAsyncUpdate() override;
+    void schedulePrepare();
     void prepareEngine();
     Transport readTransport(int numSamples);
     void handleMidi(const juce::MidiMessage& message) noexcept;
 
+    hba::host::MidiExpressionParser midiParser_{2.0f};
     double sampleRate_ = 48000.0;
     int blockSize_ = 512;
     double standalonePpq_ = 0.0;

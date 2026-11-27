@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Prism Vein real-time DSP engine: phase-locked LR4 sub bypass, exact unity
 // Transient Shield, 4x Hann^2 COLA Stereo STFT (Chord Lattice / Carrier Morph /
-// Glass Freeze), 0ms Harmonic Comb bank, in-frame Bark Auto-Tame, ADAA2 grit,
-// and 4-lane tempo-synced modulation.
+// Glass Freeze), 0ms Harmonic Comb bank, two-pass temporally smoothed Bark
+// Auto-Tame, oversampled ADAA2 grit, MIDI expression, and 4-lane modulation.
 #pragma once
 
 #include "pv/nonblocking.h"
@@ -43,6 +43,7 @@ struct TelemetrySnapshot {
     float grDb = 0.0f;
     float transientAmt = 0.0f;
     float tamePeakDb = 0.0f;
+    float pitchBendSt = 0.0f;
     float sampleRate = 48000.0f;
     int latencySamples = 1024;
     double ppq = 0.0;
@@ -51,6 +52,7 @@ struct TelemetrySnapshot {
     double noteSec = 0.0;
     bool sidechainActive = false;
     bool midiActive = false;
+    bool midiWaiting = false;
     bool frozen = false;
 };
 
@@ -75,6 +77,10 @@ class Engine {
 
     void noteOn(int midiNote, float velocity) noexcept PV_NONBLOCKING;
     void noteOff(int midiNote) noexcept PV_NONBLOCKING;
+    void setSustainPedal(bool down) noexcept PV_NONBLOCKING;
+    void setPitchBend(float semitones) noexcept PV_NONBLOCKING;
+    void setModWheel(float norm01) noexcept PV_NONBLOCKING;
+    void resetControllers() noexcept PV_NONBLOCKING;
     void allNotesOff() noexcept PV_NONBLOCKING;
 
     int latencySamples() const noexcept PV_NONBLOCKING;
@@ -91,7 +97,7 @@ class Engine {
     static constexpr int kCombBufMask = kCombBufSize - 1;
 
     struct CombVoice {
-        // Fractional-delay stereo waveguide comb resonator (all harmonics 1..N up to Nyquist!).
+        // Fractional-delay stereo waveguide comb resonator (all harmonics 1..N up to Nyquist).
         std::array<float, kCombBufSize> bufL{};
         std::array<float, kCombBufSize> bufR{};
         int writePos = 0;
@@ -106,12 +112,14 @@ class Engine {
         float weight = 0.0f;
     };
 
-    void updateActiveChordTargets(const Params& p, double shiftSt) noexcept PV_NONBLOCKING;
-    void processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, const Params& p, double modColor,
-                          double modDecay, double modTame, double modShift, double modTilt, double modFan,
-                          double modMorph) noexcept PV_NONBLOCKING;
+    void updateActiveChordTargets(const Params& p, double totalShiftSt, bool& midiWaitingOut) noexcept PV_NONBLOCKING;
+    void processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, const Params& p, double modDecay,
+                          double modTame, double modTilt, double modFan, double modMorph,
+                          bool publishTelemetry) noexcept PV_NONBLOCKING;
     void processCombSample(double inL, double inR, double decayAmt, double tiltAmt, double fanAmt, double qSharp,
                            double& outL, double& outR) noexcept PV_NONBLOCKING;
+    void pushCombTelemetrySample(float inMono, float outMono, double liveTameCutDb,
+                                 double tameFocusHz) noexcept PV_NONBLOCKING;
     void synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLOCKING;
     void updateTelemetrySpectrum(const float* inMag, const float* outMag,
                                  const float* tameGain) noexcept PV_NONBLOCKING;
@@ -126,12 +134,17 @@ class Engine {
     Transport transport_{};
     std::uint16_t chordMask_ = kDefaultChordMask;
 
-    // Live MIDI note state (zero-allocation fixed tables).
+    // Live MIDI note & expression state (zero-allocation fixed tables).
     std::array<std::uint8_t, 128> midiHeld_{};
+    std::array<std::uint8_t, 128> midiSustained_{};
     std::array<std::uint8_t, 128> midiLatched_{};
     int midiHeldCount_ = 0;
+    int midiSustainedCount_ = 0;
     int midiLatchedCount_ = 0;
+    bool sustainDown_ = false;
     double lastMidiVelocity_ = 0.85;
+    double pitchBendTargetSt_ = 0.0;
+    double modWheelTarget_ = 0.0;
     bool prevHoldParam_ = false;
 
     // Resolved active chord fundamentals (Hz) & glide smoothers.
@@ -145,9 +158,11 @@ class Engine {
     double freeSec_ = 0.0;
     double noteSec_ = 0.0;
 
-    // Sub-safe LR4 crossover + Unity Transient Shield + exact STFT latency alignment.
+    // Sub-safe LR4 crossover (cached coefs) + Unity Transient Shield + exact STFT latency alignment.
     hba::dsp::Lr4Split subSplitL_{};
     hba::dsp::Lr4Split subSplitR_{};
+    hba::dsp::SvfCoefs cachedXoverCoefs_{};
+    double lastSubHz_ = -1.0;
     hba::dsp::TransientSplit transientSplit_{};
     hba::dsp::DelayLine<double> subDelayL_{};
     hba::dsp::DelayLine<double> subDelayR_{};
@@ -171,16 +186,43 @@ class Engine {
     std::array<float, kNumBins> maskL_{};
     std::array<float, kNumBins> maskR_{};
     std::array<float, kNumBins> workInMag_{};
+    std::array<float, kNumBins> workPreTameMag_{};
     std::array<float, kNumBins> workOutMag_{};
+    std::array<float, kNumBins> workCarrReL_{};
+    std::array<float, kNumBins> workCarrImL_{};
+    std::array<float, kNumBins> workCarrReR_{};
+    std::array<float, kNumBins> workCarrImR_{};
+    std::array<float, kNumBins> workCarrMag_{};
+    std::array<float, kNumBins> tameBinSmooth_{};
     std::array<float, kNumBins> workTameGain_{};
     std::array<float, kNumBins> envMain_{};
     std::array<float, kNumBins> envCarr_{};
     std::array<float, kNumBins> internalCarrPhase_{};
     float compGainSmoothed_ = 1.0f;
+    float freezeFade_ = 0.0f;
     bool freezeCaptured_ = false;
     bool prevFreezeParam_ = false;
 
-    // Zero-latency live Auto-Tame resonant de-harsher (used in Live 0ms mode).
+    // Analysis-only zero-latency FFT ring for live Harmonic Comb / Live 0ms spectrum telemetry.
+    hba::dsp::RealFft<kFftSize> telFft_{};
+    std::array<float, kFftSize> telWin_{};
+    std::array<float, kFftSize> telInRing_{};
+    std::array<float, kFftSize> telOutRing_{};
+    std::array<float, kFftSize> telTimeIn_{};
+    std::array<float, kFftSize> telTimeOut_{};
+    std::array<float, kFftSize> telScratchRe_{};
+    std::array<float, kFftSize> telScratchIm_{};
+    std::array<float, kNumBins> telInRe_{};
+    std::array<float, kNumBins> telInIm_{};
+    std::array<float, kNumBins> telOutRe_{};
+    std::array<float, kNumBins> telOutIm_{};
+    std::array<float, kNumBins> telInMag_{};
+    std::array<float, kNumBins> telOutMag_{};
+    std::array<float, kNumBins> telTameGain_{};
+    int telPos_ = 0;
+    int telHopCount_ = 0;
+
+    // Zero-latency live Auto-Tame resonant de-harsher (used in Live 0ms & Harmonic Comb modes).
     hba::dsp::BiquadState liveTameL_{};
     hba::dsp::BiquadState liveTameR_{};
     double liveTameEnv_ = 0.0;
@@ -199,7 +241,7 @@ class Engine {
     hba::dsp::SoftClipAdaa1 clipR_{};
     double grEnv_ = 1.0;
 
-    // Parameter smoothers.
+    // Parameter & crossfade smoothers.
     hba::dsp::Smoother smInputGain_{};
     hba::dsp::Smoother smOutputGain_{};
     hba::dsp::Smoother smSubGain_{};
@@ -209,6 +251,10 @@ class Engine {
     hba::dsp::Smoother smSubHz_{};
     hba::dsp::Smoother smAirDb_{};
     hba::dsp::Smoother smInHarm_{};
+    hba::dsp::Smoother smCombBlend_{};
+    hba::dsp::Smoother smMidiGate_{};
+    hba::dsp::Smoother smPitchBend_{};
+    hba::dsp::Smoother smModWheel_{};
 
     // Built-in Demo Neuro Reese + Breakbeat Audition Generator.
     double demoPhase1_ = 0.0;

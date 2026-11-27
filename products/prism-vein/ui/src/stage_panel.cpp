@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Hero Spectral Prism Lattice visualizer + interactive 12-note pitch-class chord bar
-// + 8 one-click chord voicing chips. Zero helper text, zero duplicated parameters.
+// (drag-paint & right-click solo) + 8 one-click chord voicing chips.
+// Zero helper text, zero duplicated parameters.
 #include "panels.h"
 
 #include <algorithm>
@@ -42,8 +43,9 @@ class ChordStrip final : public visage::Frame, public Live {
 
     void tick() override {
         const auto mask = context_.model.chordMask();
+        const auto& tel = context_.model.visuals();
         for (std::size_t i = 0; i < kChordPresets.size(); ++i) {
-            const bool active = (mask == kChordPresets[i].mask);
+            const bool active = !tel.midiActive && !tel.midiWaiting && (mask == kChordPresets[i].mask);
             presetBtns_[i]->setActive(active);
             presetBtns_[i]->setAccent(active ? colour::prism : colour::textDim);
         }
@@ -73,7 +75,8 @@ class ChordStrip final : public visage::Frame, public Live {
 
         const float sc = context_.scale;
         const auto& tel = context_.model.visuals();
-        const std::uint16_t activeMask = tel.midiActive ? tel.activePitchMask : context_.model.chordMask();
+        const std::uint16_t activeMask =
+            tel.midiWaiting ? 0u : (tel.midiActive ? tel.activePitchMask : context_.model.chordMask());
         const float keysW = keysAreaWidth();
         const float gap = 3.0f * sc;
         const float keyW = (keysW - gap * 11.0f) / 12.0f;
@@ -97,7 +100,6 @@ class ChordStrip final : public visage::Frame, public Live {
                 canvas.roundedRectangleBorder(x, y, keyW, keyH, metric::radiusSmall * sc, 1.15f * sc);
             }
             if (lit) {
-                // Crisp luminous top prism bar on active chord pitch class
                 canvas.setColor(hue);
                 canvas.roundedRectangle(x + 3.0f * sc, y + 2.0f * sc, keyW - 6.0f * sc, 2.4f * sc, 1.2f * sc);
             }
@@ -128,16 +130,51 @@ class ChordStrip final : public visage::Frame, public Live {
         const int pc = keyAt(e.position.x);
         if (pc < 0)
             return;
-        const std::uint16_t cur = context_.model.chordMask();
         const std::uint16_t bit = static_cast<std::uint16_t>(1u << pc);
-        std::uint16_t next = static_cast<std::uint16_t>(cur ^ bit);
-        if ((next & 0x0FFFu) == 0u)
-            next = bit; // always keep at least one active pitch class
-        context_.model.setChordMask(next);
-        redraw();
+        if (e.shouldTriggerPopup()) {
+            // Right-click solos this single root pitch class.
+            context_.model.setChordMask(bit);
+            dragging_ = false;
+            redraw();
+            return;
+        }
+        const std::uint16_t cur = context_.model.chordMask();
+        paintEnable_ = (cur & bit) == 0u;
+        dragging_ = true;
+        lastPaintedKey_ = pc;
+        applyPaintKey(pc);
+    }
+
+    void mouseDrag(const visage::MouseEvent& e) override {
+        if (!dragging_)
+            return;
+        const int pc = keyAt(e.position.x);
+        if (pc < 0 || pc == lastPaintedKey_)
+            return;
+        lastPaintedKey_ = pc;
+        hoveredKey_ = pc;
+        applyPaintKey(pc);
+    }
+
+    void mouseUp(const visage::MouseEvent&) override {
+        dragging_ = false;
+        lastPaintedKey_ = -1;
     }
 
   private:
+    void applyPaintKey(int pc) {
+        const std::uint16_t cur = context_.model.chordMask();
+        const std::uint16_t bit = static_cast<std::uint16_t>(1u << pc);
+        std::uint16_t next =
+            paintEnable_ ? static_cast<std::uint16_t>(cur | bit) : static_cast<std::uint16_t>(cur & ~bit);
+        if ((next & 0x0FFFu) == 0u)
+            next = bit; // always keep at least one active pitch class
+        if (next != cur) {
+            context_.model.setChordMask(next);
+            redraw();
+        }
+    }
+
     float keysAreaWidth() const { return std::min(width() * 0.56f, context_.px(690.0f)); }
 
     int keyAt(float x) const {
@@ -150,6 +187,9 @@ class ChordStrip final : public visage::Frame, public Live {
     Context& context_;
     std::array<std::unique_ptr<PillButton>, kChordPresets.size()> presetBtns_{};
     int hoveredKey_ = -1;
+    bool dragging_ = false;
+    bool paintEnable_ = true;
+    int lastPaintedKey_ = -1;
 };
 
 class StagePanel final : public Panel {
@@ -214,9 +254,10 @@ class StagePanel final : public Panel {
             canvas.fill(plotX + 2.0f * sc, gy, plotW - 4.0f * sc, 1.0f * sc);
         }
 
-        // 3. Glowing vertical Harmonic Chord Partial Veins (visual prism lattice!)
-        const std::uint16_t liveMask = tel.midiActive ? tel.activePitchMask : context_.model.chordMask();
-        const float shiftSt = context_.model.get(ParamId::shift);
+        // 3. Glowing vertical Harmonic Chord Partial Veins (with live Pitch Bend displacement!)
+        const std::uint16_t liveMask =
+            tel.midiWaiting ? 0u : (tel.midiActive ? tel.activePitchMask : context_.model.chordMask());
+        const float shiftSt = context_.model.get(ParamId::shift) + tel.pitchBendSt;
         const int octOff =
             (std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::octaveShift))), 0, 4) - 2) * 12;
         const int numHarms = std::clamp(static_cast<int>(std::lround(context_.model.get(ParamId::harmonics))), 1, 12);
@@ -256,13 +297,18 @@ class StagePanel final : public Panel {
         drawCurve(canvas, context_, tel.outSpectrum, plotX + 2.0f * sc, curveTop, plotW - 4.0f * sc, curveH, engHue,
                   0.0f, 1.0f, 0.0f, 0.0f, 1.95f);
 
-        // 6. Bark Auto-Tame Reduction Ribbon hanging cleanly below the top HUD badges
+        // 6. Bark Auto-Tame Reduction Ribbon + shaded dynamic cut + focus Hz tick marker
         if (context_.model.get(ParamId::tame) > 0.01f) {
             std::array<float, kSpectrumBins> invertedTame{};
             for (std::size_t i = 0; i < kSpectrumBins; ++i)
                 invertedTame[i] = 1.0f - std::clamp(tel.tameReduction[i] * 0.60f, 0.0f, 0.60f);
             drawCurve(canvas, context_, invertedTame, plotX + 2.0f * sc, curveTop, plotW - 4.0f * sc, curveH * 0.78f,
-                      colour::rose, 0.0f, 1.0f, 0.0f, 1.0f, 1.6f);
+                      colour::rose, 0.0f, 1.0f, 0.14f, 1.0f, 1.6f);
+
+            // Subtle Auto-Tame Focus Hz marker tick along curveTop
+            const float focusX = plotX + plotW * hzToNormX(context_.model.get(ParamId::tameFocusHz));
+            canvas.setColor(colour::withAlpha(colour::rose, 0.72f));
+            canvas.roundedRectangle(focusX - 1.5f * sc, curveTop - 3.5f * sc, 3.0f * sc, 7.0f * sc, 1.5f * sc);
         }
 
         // 7. Sub-Lock Crossover Line + Frequency Tag
@@ -298,7 +344,8 @@ class StagePanel final : public Panel {
 
         drawHudBadge("SHIELD", colour::tame, tel.transientAmt > 0.12f, 54.0f);
         drawHudBadge("SC", colour::harmonic, tel.sidechainActive, 34.0f);
-        drawHudBadge("MIDI", colour::prism, tel.midiActive, 44.0f);
+        drawHudBadge(tel.midiWaiting ? "WAIT MIDI" : "MIDI", tel.midiWaiting ? colour::tame : colour::prism,
+                     tel.midiActive || tel.midiWaiting, tel.midiWaiting ? 68.0f : 44.0f);
         if (tel.frozen)
             drawHudBadge("FROZEN", colour::rose, true, 56.0f);
     }

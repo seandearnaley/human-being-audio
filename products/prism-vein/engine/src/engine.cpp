@@ -20,7 +20,7 @@ inline hba::dsp::ShaperModel mapGritType(int choice) noexcept PV_NONBLOCKING {
     case 0:
         return hba::dsp::ShaperModel::tube;
     case 1:
-        return hba::dsp::ShaperModel::sine; // warm tape-like rounded knee at moderate drive
+        return hba::dsp::ShaperModel::sine;
     case 2:
         return hba::dsp::ShaperModel::fold;
     case 3:
@@ -34,7 +34,6 @@ inline hba::dsp::ShaperModel mapGritType(int choice) noexcept PV_NONBLOCKING {
 
 inline float magToUiNorm(float mag) noexcept PV_NONBLOCKING {
     const float db = 20.0f * std::log10(std::max(mag, 1.0e-5f));
-    // Map [-68 dB .. +4 dB] -> [0 .. 1]
     return std::clamp((db + 68.0f) / 72.0f, 0.0f, 1.0f);
 }
 
@@ -52,6 +51,27 @@ inline constexpr std::array<double, 12> kJustRatios{
     9.0 / 5.0,   // 10: m7
     15.0 / 8.0,  // 11: M7
 };
+
+inline void rotateQuadPhase(int k, float inRe, float inIm, float& outRe, float& outIm) noexcept PV_NONBLOCKING {
+    switch (k & 3) {
+    case 1:
+        outRe = -inIm;
+        outIm = inRe;
+        break;
+    case 2:
+        outRe = -inRe;
+        outIm = -inIm;
+        break;
+    case 3:
+        outRe = inIm;
+        outIm = -inRe;
+        break;
+    default:
+        outRe = inRe;
+        outIm = inIm;
+        break;
+    }
+}
 
 } // namespace
 
@@ -75,6 +95,12 @@ void Engine::prepare(double sampleRate, int maxBlockSize) {
     maxBlockSize_ = std::max(1, maxBlockSize);
 
     stft_.prepare(kFftSize);
+    telFft_.prepare(kFftSize);
+    for (int i = 0; i < kFftSize; ++i) {
+        telWin_[static_cast<std::size_t>(i)] = static_cast<float>(
+            0.5 * (1.0 - std::cos(hba::dsp::kTwoPi * static_cast<double>(i) / static_cast<double>(kFftSize))));
+    }
+
     transientSplit_.prepare(sampleRate_);
     subDelayL_.prepare(kFftSize);
     subDelayR_.prepare(kFftSize);
@@ -114,6 +140,8 @@ void Engine::reset() noexcept PV_NONBLOCKING {
     stft_.reset();
     subSplitL_.reset();
     subSplitR_.reset();
+    lastSubHz_ = -1.0;
+    cachedXoverCoefs_ = hba::dsp::butterworth(105.0, sampleRate_);
     transientSplit_.reset();
     subDelayL_.clear();
     subDelayR_.clear();
@@ -139,11 +167,20 @@ void Engine::reset() noexcept PV_NONBLOCKING {
     maskL_.fill(0.0f);
     maskR_.fill(0.0f);
     workInMag_.fill(0.0f);
+    workPreTameMag_.fill(0.0f);
     workOutMag_.fill(0.0f);
+    tameBinSmooth_.fill(1.0f);
     workTameGain_.fill(1.0f);
     compGainSmoothed_ = 1.0f;
+    freezeFade_ = 0.0f;
     freezeCaptured_ = false;
     prevFreezeParam_ = false;
+
+    telInRing_.fill(0.0f);
+    telOutRing_.fill(0.0f);
+    telTameGain_.fill(1.0f);
+    telPos_ = 0;
+    telHopCount_ = 0;
 
     for (auto& v : voices_) {
         v.bufL.fill(0.0f);
@@ -180,6 +217,10 @@ void Engine::reset() noexcept PV_NONBLOCKING {
     smSubHz_.reset();
     smAirDb_.reset();
     smInHarm_.reset();
+    smCombBlend_.reset();
+    smMidiGate_.reset();
+    smPitchBend_.reset();
+    smModWheel_.reset();
 
     demoPhase1_ = 0.0;
     demoPhase2_ = 0.37;
@@ -224,6 +265,10 @@ void Engine::noteOn(int midiNote, float velocity) noexcept PV_NONBLOCKING {
         midiHeld_[idx] = 1u;
         ++midiHeldCount_;
     }
+    if (midiSustained_[idx] != 0u) {
+        midiSustained_[idx] = 0u;
+        midiSustainedCount_ = std::max(0, midiSustainedCount_ - 1);
+    }
     if (hold && midiLatched_[idx] == 0u) {
         midiLatched_[idx] = 1u;
         ++midiLatchedCount_;
@@ -238,24 +283,60 @@ void Engine::noteOff(int midiNote) noexcept PV_NONBLOCKING {
     if (midiHeld_[idx] != 0u) {
         midiHeld_[idx] = 0u;
         midiHeldCount_ = std::max(0, midiHeldCount_ - 1);
+        if (sustainDown_ && midiSustained_[idx] == 0u) {
+            midiSustained_[idx] = 1u;
+            ++midiSustainedCount_;
+        }
     }
+}
+
+void Engine::setSustainPedal(bool down) noexcept PV_NONBLOCKING {
+    sustainDown_ = down;
+    if (!down && midiSustainedCount_ > 0) {
+        midiSustained_.fill(0);
+        midiSustainedCount_ = 0;
+    }
+}
+
+void Engine::setPitchBend(float semitones) noexcept PV_NONBLOCKING {
+    pitchBendTargetSt_ = std::isfinite(semitones) ? std::clamp(static_cast<double>(semitones), -48.0, 48.0) : 0.0;
+}
+
+void Engine::setModWheel(float norm01) noexcept PV_NONBLOCKING {
+    modWheelTarget_ = std::isfinite(norm01) ? std::clamp(static_cast<double>(norm01), 0.0, 1.0) : 0.0;
+}
+
+void Engine::resetControllers() noexcept PV_NONBLOCKING {
+    setSustainPedal(false);
+    pitchBendTargetSt_ = 0.0;
+    modWheelTarget_ = 0.0;
 }
 
 void Engine::allNotesOff() noexcept PV_NONBLOCKING {
     midiHeld_.fill(0);
+    midiSustained_.fill(0);
     midiLatched_.fill(0);
     midiHeldCount_ = 0;
+    midiSustainedCount_ = 0;
     midiLatchedCount_ = 0;
+    sustainDown_ = false;
 }
 
-void Engine::updateActiveChordTargets(const Params& p, double shiftSt) noexcept PV_NONBLOCKING {
+void Engine::updateActiveChordTargets(const Params& p, double totalShiftSt,
+                                      bool& midiWaitingOut) noexcept PV_NONBLOCKING {
     const bool hold = p.on(ParamId::midiHold);
     if (!hold && prevHoldParam_) {
         midiLatched_.fill(0);
         midiLatchedCount_ = 0;
-    } else if (hold && !prevHoldParam_ && midiHeldCount_ > 0) {
-        midiLatched_ = midiHeld_;
-        midiLatchedCount_ = midiHeldCount_;
+    } else if (hold && !prevHoldParam_ && (midiHeldCount_ + midiSustainedCount_) > 0) {
+        midiLatched_.fill(0);
+        midiLatchedCount_ = 0;
+        for (std::size_t n = 0; n < 128; ++n) {
+            if (midiHeld_[n] != 0u || midiSustained_[n] != 0u) {
+                midiLatched_[n] = 1u;
+                ++midiLatchedCount_;
+            }
+        }
     }
     prevHoldParam_ = hold;
 
@@ -267,22 +348,34 @@ void Engine::updateActiveChordTargets(const Params& p, double shiftSt) noexcept 
     int count = 0;
     std::uint16_t liveMask = 0u;
     bool usingMidi = false;
+    midiWaitingOut = false;
 
-    const auto& midiSrc = (hold && midiLatchedCount_ > 0) ? midiLatched_ : midiHeld_;
-    const int midiAvailable = (hold && midiLatchedCount_ > 0) ? midiLatchedCount_ : midiHeldCount_;
+    const bool useLatched = hold && midiLatchedCount_ > 0;
+    const int liveMidiCount = useLatched ? midiLatchedCount_ : (midiHeldCount_ + midiSustainedCount_);
 
-    if (pitchSrc == PitchSource::midi || (pitchSrc == PitchSource::midiPlusKeys && midiAvailable > 0)) {
-        usingMidi = midiAvailable > 0;
-        for (int n = 0; n < 128 && count < kMaxChordVoices; ++n) {
-            if (midiSrc[static_cast<std::size_t>(n)] != 0u) {
-                notes[static_cast<std::size_t>(count++)] = n + octOffset;
-                liveMask = static_cast<std::uint16_t>(liveMask | (1u << (n % 12)));
+    if (pitchSrc == PitchSource::midi || (pitchSrc == PitchSource::midiPlusKeys && liveMidiCount > 0)) {
+        if (liveMidiCount > 0) {
+            usingMidi = true;
+            for (int n = 0; n < 128 && count < kMaxChordVoices; ++n) {
+                const auto nu = static_cast<std::size_t>(n);
+                const bool active =
+                    useLatched ? (midiLatched_[nu] != 0u) : (midiHeld_[nu] != 0u || midiSustained_[nu] != 0u);
+                if (active) {
+                    notes[static_cast<std::size_t>(count++)] = n + octOffset;
+                    liveMask = static_cast<std::uint16_t>(liveMask | (1u << (n % 12)));
+                }
             }
+        } else if (pitchSrc == PitchSource::midi) {
+            // Dedicated MIDI-only mode: keep previous voice pitches smoothly while gating wet off.
+            midiWaitingOut = true;
+            telemetry_.activePitchMask = 0u;
+            telemetry_.midiActive = false;
+            telemetry_.midiWaiting = true;
+            return;
         }
     }
 
     if (count == 0) {
-        // Build well-voiced chord anchored around octave 3 (C3=48 .. B3=59) from 12-bit chordMask_.
         const std::uint16_t m = chordMask_ != 0u ? chordMask_ : kDefaultChordMask;
         liveMask = m;
         for (int pc = 0; pc < 12 && count < kMaxChordVoices; ++pc) {
@@ -292,13 +385,13 @@ void Engine::updateActiveChordTargets(const Params& p, double shiftSt) noexcept 
     }
 
     if (count == 0) {
-        notes[0] = 53 + octOffset; // F3 fallback
+        notes[0] = 53 + octOffset;
         count = 1;
         liveMask = static_cast<std::uint16_t>(1u << 5);
     }
 
     const int rootNote = notes[0];
-    const double rootHz = midiToHzEqual(static_cast<double>(rootNote) + shiftSt);
+    const double rootHz = midiToHzEqual(static_cast<double>(rootNote) + totalShiftSt);
 
     activeVoiceCount_ = count;
     const double invSqrtN = 1.0 / std::sqrt(static_cast<double>(count));
@@ -318,7 +411,7 @@ void Engine::updateActiveChordTargets(const Params& p, double shiftSt) noexcept 
                 const double rel = static_cast<double>(n - rootNote) + microDetune * 1.45;
                 hz = rootHz * std::pow(2.0045, rel / 12.0);
             } else {
-                hz = midiToHzEqual(static_cast<double>(n) + shiftSt + microDetune);
+                hz = midiToHzEqual(static_cast<double>(n) + totalShiftSt + microDetune);
             }
             v.targetHz = std::clamp(hz, 24.0, 0.42 * sampleRate_);
             if (v.weight <= 0.001f)
@@ -334,11 +427,12 @@ void Engine::updateActiveChordTargets(const Params& p, double shiftSt) noexcept 
 
     telemetry_.activePitchMask = liveMask;
     telemetry_.midiActive = usingMidi;
+    telemetry_.midiWaiting = false;
 }
 
-void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, const Params& p, double modColor,
-                              double modDecay, double modTame, double modShift, double modTilt, double modFan,
-                              double modMorph) noexcept PV_NONBLOCKING {
+void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, const Params& p, double modDecay,
+                              double modTame, double modTilt, double modFan, double modMorph,
+                              bool publishTelemetry) noexcept PV_NONBLOCKING {
     const int bins = fb.numBins;
     const float binHz = static_cast<float>(sampleRate_) / static_cast<float>(fb.fftSize);
     const float invBinHz = 1.0f / std::max(binHz, 1.0e-3f);
@@ -355,15 +449,16 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         static_cast<float>(std::clamp(static_cast<double>(p.real(ParamId::morphBlend)) + modMorph * 0.5, 0.0, 1.0));
     const float qSharp = p.real(ParamId::qSharpness);
     const int numHarms = std::clamp(static_cast<int>(std::lround(p.real(ParamId::harmonics))), 1, 16);
-    const float shimmer = p.real(ParamId::shimmer);
+    const float shimmer =
+        std::clamp(p.real(ParamId::shimmer) + static_cast<float>(smModWheel_.value()) * 0.20f, 0.0f, 1.0f);
     const float subHz = p.real(ParamId::subLockHz);
-    const float shiftMult = static_cast<float>(std::pow(2.0, modShift / 12.0));
     const float detuneRatio =
         static_cast<float>(std::pow(2.0, static_cast<double>(p.real(ParamId::detune)) / 1200.0) - 1.0);
     const bool freezeToggle = p.on(ParamId::freeze);
-    const bool frozen = freezeToggle || mode == EngineMode::glassFreeze;
+    const bool glassMode = (mode == EngineMode::glassFreeze);
+    const bool wantFrozen = freezeToggle || glassMode;
 
-    // 1. Measure input magnitudes and step voice glide.
+    // 1. Step voice glide smoothly at hop rate and measure input magnitudes.
     const float glideHopCoef =
         static_cast<float>(hba::dsp::onePoleCoef(std::max(0.001, static_cast<double>(p.real(ParamId::glideMs)) * 0.001),
                                                  static_cast<double>(fb.hopSize) * invSr_));
@@ -389,12 +484,10 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
     maskL_.fill(floorGain);
     maskR_.fill(floorGain);
 
-    // Gaussian bell width in FFT bins: crystalline at high Q (0.58 bins), lush at low Q (2.4 bins).
     const float sigmaBins = 0.58f + (1.0f - qSharp) * (1.0f - qSharp) * 1.95f;
     const float invTwoSigma2 = 0.5f / (sigmaBins * sigmaBins);
     const int splatRad = std::clamp(static_cast<int>(std::ceil(sigmaBins * 2.6f)), 2, 9);
 
-    // Track per-pitch-class glow for the UI ChordStrip.
     std::array<float, 12> pcGlow{};
     const float tiltExp = -0.58f + 0.76f * tilt;
 
@@ -402,10 +495,9 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         const auto& voice = voices_[static_cast<std::size_t>(v)];
         if (voice.weight <= 0.0f)
             continue;
-        const float f0 = static_cast<float>(voice.freqHz) * shiftMult;
+        const float f0 = static_cast<float>(voice.freqHz);
         if (f0 < 24.0f)
             continue;
-        // Identify pitch class for glow metering.
         const float midiEst = 69.0f + 12.0f * std::log2(std::max(f0, 20.0f) / 440.0f);
         int pc = static_cast<int>(std::lround(midiEst)) % 12;
         if (pc < 0)
@@ -417,12 +509,10 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 break;
 
             const float wTilt = std::pow(static_cast<float>(h), tiltExp) * voice.weight * 1.35f;
-            // Subtle micro-chorus detune spreads L/R partials smoothly above fundamental.
             const float detShift = (h > 1) ? (fh * detuneRatio * 0.52f) : 0.0f;
             const float bL = (fh - detShift) * invBinHz;
             const float bR = (fh + detShift) * invBinHz;
 
-            // Odd/even harmonic stereo fanning above 220 Hz (low end stays dead center!).
             const float stereoFactor = (fh > 220.0f) ? fan * 0.54f : 0.0f;
             const float sideSign = ((h + v) & 1) ? 1.0f : -1.0f;
             const float gainL = wTilt * (1.0f + sideSign * stereoFactor);
@@ -455,118 +545,37 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         }
     }
 
-    // 3. Apply selected spectral color engine.
-    // Exact hop phase rotation for 4x overlap (hop = N/4): exp(+j * pi/2 * k).
+    // 3. Apply live spectral color engine (Chord Lattice or Carrier Morph) + click-free Freeze cloud blend.
     const float decayCoef = std::pow(decay, 0.42f) * 0.945f;
     const float inputDrive = 1.0f - 0.58f * decayCoef;
+    const float hopPhaseStep =
+        static_cast<float>(hba::dsp::kTwoPi * static_cast<double>(fb.hopSize) / static_cast<double>(fb.fftSize));
 
-    if (mode == EngineMode::carrierMorph && !freezeToggle) {
-        // Smooth spectral envelopes (windowed moving average across ±6 bins) for vocoder/morph.
-        const bool useSc = fb.hasSidechain && scRms_ > 1.0e-4;
-        const float cTilt = p.real(ParamId::carrierTilt);
+    // Smooth click-free freeze crossfade (~25 ms over 5 hops).
+    const float freezeTarget = wantFrozen ? 1.0f : 0.0f;
+    freezeFade_ += 0.25f * (freezeTarget - freezeFade_);
+    if (!wantFrozen && freezeFade_ < 0.002f) {
+        freezeFade_ = 0.0f;
+        freezeCaptured_ = false;
+    }
 
-        for (int k = 0; k < bins; ++k) {
-            const auto ku = static_cast<std::size_t>(k);
-            const int lo = std::max(1, k - 5);
-            const int hi = std::min(bins - 1, k + 5);
-            float sumM = 0.0f;
-            float sumC = 0.0f;
-            const float invW = 1.0f / static_cast<float>(hi - lo + 1);
-            for (int j = lo; j <= hi; ++j) {
-                sumM += workInMag_[static_cast<std::size_t>(j)];
-                if (useSc) {
-                    sumC += 0.5f * (std::hypot(fb.scReL[j], fb.scImL[j]) + std::hypot(fb.scReR[j], fb.scImR[j]));
-                } else {
-                    sumC += 0.5f * (maskL_[static_cast<std::size_t>(j)] + maskR_[static_cast<std::size_t>(j)]);
-                }
-            }
-            envMain_[ku] = sumM * invW;
-            envCarr_[ku] = sumC * invW;
-        }
-
-        const float hopPhaseStep =
-            static_cast<float>(hba::dsp::kTwoPi * static_cast<double>(fb.hopSize) / static_cast<double>(fb.fftSize));
-        for (int k = 1; k < bins - 1; ++k) {
-            const auto ku = static_cast<std::size_t>(k);
-            const float freqNorm = static_cast<float>(k) / static_cast<float>(bins);
-            const float tiltGain = std::pow(std::max(freqNorm, 0.01f), cTilt * 0.55f);
-
-            float cReL = 0.0f, cImL = 0.0f, cReR = 0.0f, cImR = 0.0f;
-            if (useSc) {
-                cReL = fb.scReL[k];
-                cImL = fb.scImL[k];
-                cReR = fb.scReR[k];
-                cImR = fb.scImR[k];
-            } else {
-                // Internal harmonic chord carrier with coherent advancing phase.
-                internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
-                if (internalCarrPhase_[ku] > 6.2831853f)
-                    internalCarrPhase_[ku] -= 6.2831853f;
-                const float cs = std::cos(internalCarrPhase_[ku]);
-                const float sn = std::sin(internalCarrPhase_[ku]);
-                const float env = envMain_[ku] * 1.4f;
-                cReL = maskL_[ku] * env * cs;
-                cImL = maskL_[ku] * env * sn;
-                cReR = maskR_[ku] * env * cs;
-                cImR = maskR_[ku] * env * sn;
-            }
-
-            const float mMagL = std::hypot(fb.reL[k], fb.imL[k]);
-            const float mMagR = std::hypot(fb.reR[k], fb.imR[k]);
-            const float cMagL = std::hypot(cReL, cImL);
-            const float cMagR = std::hypot(cReR, cImR);
-
-            // Vocoder magnitude: Main envelope imprints onto Carrier fine structure.
-            const float vocScale = (envMain_[ku] / (envCarr_[ku] + 0.02f)) * tiltGain;
-            const float vocMagL = cMagL * vocScale;
-            const float vocMagR = cMagR * vocScale;
-
-            // Geometric cross-morph: sqrt(|Main| * |Carrier|) gently tinted by Chord Lattice.
-            const float geomMagL = std::sqrt(mMagL * (cMagL * tiltGain + 1.0e-6f)) * (0.45f + 0.55f * maskL_[ku]);
-            const float geomMagR = std::sqrt(mMagR * (cMagR * tiltGain + 1.0e-6f)) * (0.45f + 0.55f * maskR_[ku]);
-
-            const float outMagL = (1.0f - morph) * vocMagL + morph * geomMagL;
-            const float outMagR = (1.0f - morph) * vocMagR + morph * geomMagR;
-
-            // Blend phase direction safely via unit phasors (avoiding atan2 discontinuity).
-            const float cUnitReL = cReL / (cMagL + 1.0e-7f);
-            const float cUnitImL = cImL / (cMagL + 1.0e-7f);
-            const float mUnitReL = fb.reL[k] / (mMagL + 1.0e-7f);
-            const float mUnitImL = fb.imL[k] / (mMagL + 1.0e-7f);
-            float pReL = (1.0f - 0.5f * morph) * cUnitReL + (0.5f * morph) * mUnitReL;
-            float pImL = (1.0f - 0.5f * morph) * cUnitImL + (0.5f * morph) * mUnitImL;
-            const float pNormL = 1.0f / std::max(std::hypot(pReL, pImL), 1.0e-5f);
-            pReL *= pNormL;
-            pImL *= pNormL;
-
-            const float cUnitReR = cReR / (cMagR + 1.0e-7f);
-            const float cUnitImR = cImR / (cMagR + 1.0e-7f);
-            const float mUnitReR = fb.reR[k] / (mMagR + 1.0e-7f);
-            const float mUnitImR = fb.imR[k] / (mMagR + 1.0e-7f);
-            float pReR = (1.0f - 0.5f * morph) * cUnitReR + (0.5f * morph) * mUnitReR;
-            float pImR = (1.0f - 0.5f * morph) * cUnitImR + (0.5f * morph) * mUnitImR;
-            const float pNormR = 1.0f / std::max(std::hypot(pReR, pImR), 1.0e-5f);
-            pReR *= pNormR;
-            pImR *= pNormR;
-
-            fb.reL[k] = outMagL * pReL;
-            fb.imL[k] = outMagL * pImL;
-            fb.reR[k] = outMagR * pReR;
-            fb.imR[k] = outMagR * pImR;
-        }
-    } else if (frozen) {
-        // Glass Freeze / Latched Spectral Cloud: captures spectrum and plays it through the live Chord Lattice.
-        const bool justLatched = freezeToggle && !prevFreezeParam_;
-        const bool continuousCloud = !freezeToggle && mode == EngineMode::glassFreeze;
+    // Capture or continuously refresh frozen magnitude cloud whenever freeze is active.
+    const bool justLatched = freezeToggle && !prevFreezeParam_;
+    const bool continuousCloud = !freezeToggle && glassMode;
+    if (wantFrozen) {
         if (justLatched || !freezeCaptured_) {
+            // Capture max(live input, ringing chord tail) so freezing mid-tail never grabs silence!
             for (int k = 0; k < bins; ++k) {
                 const auto ku = static_cast<std::size_t>(k);
-                freezeMagL_[ku] = std::hypot(fb.reL[k], fb.imL[k]);
-                freezeMagR_[ku] = std::hypot(fb.reR[k], fb.imR[k]);
+                const float liveL = std::hypot(fb.reL[k], fb.imL[k]);
+                const float liveR = std::hypot(fb.reR[k], fb.imR[k]);
+                const float tailL = std::hypot(tailReL_[ku], tailImL_[ku]);
+                const float tailR = std::hypot(tailReR_[ku], tailImR_[ku]);
+                freezeMagL_[ku] = std::max(liveL, tailL * 0.85f);
+                freezeMagR_[ku] = std::max(liveR, tailR * 0.85f);
             }
             freezeCaptured_ = true;
         } else if (continuousCloud) {
-            // In Glass Freeze engine, new attacks refresh the cloud while decay sustains it!
             const float holdCoef = 0.80f + 0.185f * decay;
             for (int k = 0; k < bins; ++k) {
                 const auto ku = static_cast<std::size_t>(k);
@@ -578,14 +587,212 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                                                        : (holdCoef * freezeMagR_[ku] + (1.0f - holdCoef) * mR);
             }
         }
+    }
+    prevFreezeParam_ = freezeToggle;
 
-        const float hopBase =
-            static_cast<float>(hba::dsp::kTwoPi * static_cast<double>(fb.hopSize) / static_cast<double>(fb.fftSize));
+    // Live (non-frozen) engine computation (skip only when 100% frozen).
+    if (freezeFade_ < 0.998f) {
+        if (mode == EngineMode::carrierMorph) {
+            // Dimensionally exact Carrier Morph / Spectral Vocoder + coherent decay & shimmer.
+            const bool useSc = fb.hasSidechain && scRms_ > 1.0e-4;
+            const float cTilt = p.real(ParamId::carrierTilt);
+
+            // First compute actual carrier complex spectrum and its exact bin magnitudes.
+            workCarrMag_[0] = workCarrMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
+            for (int k = 1; k < bins - 1; ++k) {
+                const auto ku = static_cast<std::size_t>(k);
+                if (useSc) {
+                    workCarrReL_[ku] = fb.scReL[k];
+                    workCarrImL_[ku] = fb.scImL[k];
+                    workCarrReR_[ku] = fb.scReR[k];
+                    workCarrImR_[ku] = fb.scImR[k];
+                } else {
+                    internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
+                    if (internalCarrPhase_[ku] > 6.2831853f)
+                        internalCarrPhase_[ku] -= 6.2831853f;
+                    const float cs = std::cos(internalCarrPhase_[ku]);
+                    const float sn = std::sin(internalCarrPhase_[ku]);
+                    workCarrReL_[ku] = maskL_[ku] * cs;
+                    workCarrImL_[ku] = maskL_[ku] * sn;
+                    workCarrReR_[ku] = maskR_[ku] * cs;
+                    workCarrImR_[ku] = maskR_[ku] * sn;
+                }
+                workCarrMag_[ku] = 0.5f * (std::hypot(workCarrReL_[ku], workCarrImL_[ku]) +
+                                           std::hypot(workCarrReR_[ku], workCarrImR_[ku]));
+            }
+
+            // Compute matched 11-bin smoothed envelopes of Main and Carrier on identical linear magnitude scale.
+            for (int k = 1; k < bins - 1; ++k) {
+                const auto ku = static_cast<std::size_t>(k);
+                const int lo = std::max(1, k - 5);
+                const int hi = std::min(bins - 2, k + 5);
+                float sumM = 0.0f;
+                float sumC = 0.0f;
+                const float invW = 1.0f / static_cast<float>(hi - lo + 1);
+                for (int j = lo; j <= hi; ++j) {
+                    sumM += workInMag_[static_cast<std::size_t>(j)];
+                    sumC += workCarrMag_[static_cast<std::size_t>(j)];
+                }
+                envMain_[ku] = sumM * invW;
+                envCarr_[ku] = sumC * invW;
+            }
+
+            for (int k = 1; k < bins - 1; ++k) {
+                const auto ku = static_cast<std::size_t>(k);
+                const float freqNorm = static_cast<float>(k) / static_cast<float>(bins);
+                const float tiltGain = std::pow(std::max(freqNorm, 0.01f), cTilt * 0.55f);
+
+                const float mMagL = std::hypot(fb.reL[k], fb.imL[k]);
+                const float mMagR = std::hypot(fb.reR[k], fb.imR[k]);
+                const float cReL = workCarrReL_[ku];
+                const float cImL = workCarrImL_[ku];
+                const float cReR = workCarrReR_[ku];
+                const float cImR = workCarrImR_[ku];
+                const float cMagL = std::hypot(cReL, cImL);
+                const float cMagR = std::hypot(cReR, cImR);
+
+                // Linear Vocoder magnitude: Main envelope imprints onto Carrier fine structure.
+                const float vocScale = std::clamp(envMain_[ku] / (envCarr_[ku] + 1.0e-4f), 0.0f, 4.5f) * tiltGain;
+                const float vocMagL = cMagL * vocScale;
+                const float vocMagR = cMagR * vocScale;
+
+                // Level-matched Geometric Cross-Morph: linear in signal amplitude!
+                const float carrScaledL = cMagL * vocScale;
+                const float carrScaledR = cMagR * vocScale;
+                const float geomMagL = std::sqrt(mMagL * (carrScaledL + 1.0e-6f)) * (0.45f + 0.55f * maskL_[ku]);
+                const float geomMagR = std::sqrt(mMagR * (carrScaledR + 1.0e-6f)) * (0.45f + 0.55f * maskR_[ku]);
+
+                const float targetMagL = (1.0f - morph) * vocMagL + morph * geomMagL;
+                const float targetMagR = (1.0f - morph) * vocMagR + morph * geomMagR;
+
+                // Blend phase cleanly via unit phasors.
+                const float cUnitReL = cReL / (cMagL + 1.0e-7f);
+                const float cUnitImL = cImL / (cMagL + 1.0e-7f);
+                const float mUnitReL = fb.reL[k] / (mMagL + 1.0e-7f);
+                const float mUnitImL = fb.imL[k] / (mMagL + 1.0e-7f);
+                float pReL = (1.0f - 0.5f * morph) * cUnitReL + (0.5f * morph) * mUnitReL;
+                float pImL = (1.0f - 0.5f * morph) * cUnitImL + (0.5f * morph) * mUnitImL;
+                const float pNormL = 1.0f / std::max(std::hypot(pReL, pImL), 1.0e-5f);
+                pReL *= pNormL;
+                pImL *= pNormL;
+
+                const float cUnitReR = cReR / (cMagR + 1.0e-7f);
+                const float cUnitImR = cImR / (cMagR + 1.0e-7f);
+                const float mUnitReR = fb.reR[k] / (mMagR + 1.0e-7f);
+                const float mUnitImR = fb.imR[k] / (mMagR + 1.0e-7f);
+                float pReR = (1.0f - 0.5f * morph) * cUnitReR + (0.5f * morph) * mUnitReR;
+                float pImR = (1.0f - 0.5f * morph) * cUnitImR + (0.5f * morph) * mUnitImR;
+                const float pNormR = 1.0f / std::max(std::hypot(pReR, pImR), 1.0e-5f);
+                pReR *= pNormR;
+                pImR *= pNormR;
+
+                float drvReL = targetMagL * pReL;
+                float drvImL = targetMagL * pImL;
+                float drvReR = targetMagR * pReR;
+                float drvImR = targetMagR * pImR;
+
+                if (shimmer > 0.001f && k >= 6) {
+                    const auto halfK = static_cast<std::size_t>(k / 2);
+                    const float shimW = shimmer * 0.45f;
+                    drvReL += tailReL_[halfK] * maskL_[ku] * shimW;
+                    drvImL += tailImL_[halfK] * maskL_[ku] * shimW;
+                    drvReR += tailReR_[halfK] * maskR_[ku] * shimW;
+                    drvImR += tailImR_[halfK] * maskR_[ku] * shimW;
+                }
+
+                float rotReL = 0.0f, rotImL = 0.0f, rotReR = 0.0f, rotImR = 0.0f;
+                rotateQuadPhase(k, tailReL_[ku], tailImL_[ku], rotReL, rotImL);
+                rotateQuadPhase(k, tailReR_[ku], tailImR_[ku], rotReR, rotImR);
+
+                const float binDecay = decayCoef * 0.85f;
+                const float outReL = binDecay * rotReL + (1.0f - 0.5f * binDecay) * drvReL;
+                const float outImL = binDecay * rotImL + (1.0f - 0.5f * binDecay) * drvImL;
+                const float outReR = binDecay * rotReR + (1.0f - 0.5f * binDecay) * drvReR;
+                const float outImR = binDecay * rotImR + (1.0f - 0.5f * binDecay) * drvImR;
+
+                tailReL_[ku] = outReL;
+                tailImL_[ku] = outImL;
+                tailReR_[ku] = outReR;
+                tailImR_[ku] = outImR;
+
+                fb.reL[k] = outReL;
+                fb.imL[k] = outImL;
+                fb.reR[k] = outReR;
+                fb.imR[k] = outImR;
+            }
+        } else {
+            // Chord Lattice (Spectral Pitch Pulling + phase-coherent 4x COLA tail + Shimmer).
+            const float pullBlend = 0.28f + 0.52f * qSharp;
+            for (int k = 1; k < bins - 1; ++k) {
+                const auto ku = static_cast<std::size_t>(k);
+                const int lo = std::max(1, k - 4);
+                const int hi = std::min(bins - 2, k + 4);
+                float localMag = 0.0f;
+                for (int j = lo; j <= hi; ++j)
+                    localMag = std::max(localMag, workInMag_[static_cast<std::size_t>(j)]);
+                envMain_[ku] = localMag;
+            }
+
+            for (int k = 1; k < bins - 1; ++k) {
+                const auto ku = static_cast<std::size_t>(k);
+                float rotReL = 0.0f, rotImL = 0.0f, rotReR = 0.0f, rotImR = 0.0f;
+                rotateQuadPhase(k, tailReL_[ku], tailImL_[ku], rotReL, rotImL);
+                rotateQuadPhase(k, tailReR_[ku], tailImR_[ku], rotReR, rotImR);
+
+                internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
+                if (internalCarrPhase_[ku] > 6.2831853f)
+                    internalCarrPhase_[ku] -= 6.2831853f;
+                const float pullAmpL = envMain_[ku] * maskL_[ku] * pullBlend * 0.65f;
+                const float pullAmpR = envMain_[ku] * maskR_[ku] * pullBlend * 0.65f;
+                const float cs = std::cos(internalCarrPhase_[ku]);
+                const float sn = std::sin(internalCarrPhase_[ku]);
+
+                float drvReL = fb.reL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * cs;
+                float drvImL = fb.imL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * sn;
+                float drvReR = fb.reR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * cs;
+                float drvImR = fb.imR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * sn;
+
+                if (shimmer > 0.001f && k >= 6) {
+                    const auto halfK = static_cast<std::size_t>(k / 2);
+                    const float shimW = shimmer * 0.55f;
+                    drvReL += tailReL_[halfK] * maskL_[ku] * shimW;
+                    drvImL += tailImL_[halfK] * maskL_[ku] * shimW;
+                    drvReR += tailReR_[halfK] * maskR_[ku] * shimW;
+                    drvImR += tailImR_[halfK] * maskR_[ku] * shimW;
+                }
+
+                const float freqDamp =
+                    (k > bins / 2) ? (1.0f - 0.14f * static_cast<float>(k - bins / 2) / static_cast<float>(bins / 2))
+                                   : 1.0f;
+                const float binDecay = decayCoef * freqDamp;
+
+                const float outReL = binDecay * rotReL + inputDrive * drvReL;
+                const float outImL = binDecay * rotImL + inputDrive * drvImL;
+                const float outReR = binDecay * rotReR + inputDrive * drvReR;
+                const float outImR = binDecay * rotImR + inputDrive * drvImR;
+
+                tailReL_[ku] = outReL;
+                tailImL_[ku] = outImL;
+                tailReR_[ku] = outReR;
+                tailImR_[ku] = outImR;
+
+                fb.reL[k] = outReL;
+                fb.imL[k] = outImL;
+                fb.reR[k] = outReR;
+                fb.imR[k] = outImR;
+            }
+        }
+    }
+
+    // Blend smoothly with Glass Freeze / Latched cloud when freezeFade_ > 0.
+    if (freezeFade_ > 0.002f) {
+        const float liveW = 1.0f - freezeFade_;
         for (int k = 1; k < bins - 1; ++k) {
             const auto ku = static_cast<std::size_t>(k);
-            // Smooth bin-coherent phase drift with gentle stereo shimmer offset.
-            freezePhaseL_[ku] += hopBase * (static_cast<float>(k) + 0.03f * std::sin(static_cast<float>(k) * 0.37f));
-            freezePhaseR_[ku] += hopBase * (static_cast<float>(k) - 0.03f * std::cos(static_cast<float>(k) * 0.41f));
+            freezePhaseL_[ku] +=
+                hopPhaseStep * (static_cast<float>(k) + 0.03f * std::sin(static_cast<float>(k) * 0.37f));
+            freezePhaseR_[ku] +=
+                hopPhaseStep * (static_cast<float>(k) - 0.03f * std::cos(static_cast<float>(k) * 0.41f));
             if (freezePhaseL_[ku] > 6.2831853f)
                 freezePhaseL_[ku] -= 6.2831853f;
             if (freezePhaseR_[ku] > 6.2831853f)
@@ -598,110 +805,26 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 mL += shimmer * 0.55f * freezeMagL_[halfK] * maskL_[ku];
                 mR += shimmer * 0.55f * freezeMagR_[halfK] * maskR_[ku];
             }
-            fb.reL[k] = mL * std::cos(freezePhaseL_[ku]);
-            fb.imL[k] = mL * std::sin(freezePhaseL_[ku]);
-            fb.reR[k] = mR * std::cos(freezePhaseR_[ku]);
-            fb.imR[k] = mR * std::sin(freezePhaseR_[ku]);
-        }
-    } else {
-        // Chord Lattice (primary Color Bass / Neurofunk / Future Bass spectral colorizer).
-        // Compute local broadband envelope (radius +-4 bins) so Spectral Pitch Pulling
-        // energizes every chord partial from nearby bass/growl spectrum — turning even
-        // dark mono growls into lush, singing iridescent chords!
-        const float pullBlend = 0.28f + 0.52f * qSharp;
-        for (int k = 1; k < bins - 1; ++k) {
-            const auto ku = static_cast<std::size_t>(k);
-            const int lo = std::max(1, k - 4);
-            const int hi = std::min(bins - 2, k + 4);
-            float localMag = 0.0f;
-            for (int j = lo; j <= hi; ++j)
-                localMag = std::max(localMag, workInMag_[static_cast<std::size_t>(j)]);
-            envMain_[ku] = localMag;
-        }
+            const float frReL = mL * std::cos(freezePhaseL_[ku]);
+            const float frImL = mL * std::sin(freezePhaseL_[ku]);
+            const float frReR = mR * std::cos(freezePhaseR_[ku]);
+            const float frImR = mR * std::sin(freezePhaseR_[ku]);
 
-        const float hopPhaseStep =
-            static_cast<float>(hba::dsp::kTwoPi * static_cast<double>(fb.hopSize) / static_cast<double>(fb.fftSize));
-        for (int k = 1; k < bins - 1; ++k) {
-            const auto ku = static_cast<std::size_t>(k);
-            // Rotate tail complex state by exact exp(+j * pi/2 * k) for 4x COLA phase coherence!
-            float rotReL = tailReL_[ku];
-            float rotImL = tailImL_[ku];
-            float rotReR = tailReR_[ku];
-            float rotImR = tailImR_[ku];
-            switch (k & 3) {
-            case 1:
-                rotReL = -tailImL_[ku];
-                rotImL = tailReL_[ku];
-                rotReR = -tailImR_[ku];
-                rotImR = tailReR_[ku];
-                break;
-            case 2:
-                rotReL = -tailReL_[ku];
-                rotImL = -tailImL_[ku];
-                rotReR = -tailReR_[ku];
-                rotImR = -tailImR_[ku];
-                break;
-            case 3:
-                rotReL = tailImL_[ku];
-                rotImL = -tailReL_[ku];
-                rotReR = tailImR_[ku];
-                rotImR = -tailReR_[ku];
-                break;
-            default:
-                break;
+            if (liveW < 0.002f) {
+                fb.reL[k] = frReL;
+                fb.imL[k] = frImL;
+                fb.reR[k] = frReR;
+                fb.imR[k] = frImR;
+            } else {
+                fb.reL[k] = liveW * fb.reL[k] + freezeFade_ * frReL;
+                fb.imL[k] = liveW * fb.imL[k] + freezeFade_ * frImL;
+                fb.reR[k] = liveW * fb.reR[k] + freezeFade_ * frReR;
+                fb.imR[k] = liveW * fb.imR[k] + freezeFade_ * frImR;
             }
-
-            // Spectral Pitch Pulling: blend raw input bin with locally-gathered broadband
-            // energy steered onto coherent bin phase when this bin sits on a chord partial.
-            internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
-            if (internalCarrPhase_[ku] > 6.2831853f)
-                internalCarrPhase_[ku] -= 6.2831853f;
-            const float pullAmpL = envMain_[ku] * maskL_[ku] * pullBlend * 0.65f;
-            const float pullAmpR = envMain_[ku] * maskR_[ku] * pullBlend * 0.65f;
-            const float cs = std::cos(internalCarrPhase_[ku]);
-            const float sn = std::sin(internalCarrPhase_[ku]);
-
-            float drvReL = fb.reL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * cs;
-            float drvImL = fb.imL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * sn;
-            float drvReR = fb.reR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * cs;
-            float drvImR = fb.imR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * sn;
-
-            if (shimmer > 0.001f && k >= 6) {
-                const auto halfK = static_cast<std::size_t>(k / 2);
-                const float shimW = shimmer * 0.55f;
-                drvReL += tailReL_[halfK] * maskL_[ku] * shimW;
-                drvImL += tailImL_[halfK] * maskL_[ku] * shimW;
-                drvReR += tailReR_[halfK] * maskR_[ku] * shimW;
-                drvImR += tailImR_[halfK] * maskR_[ku] * shimW;
-            }
-
-            // Slightly faster tail decay in very high frequencies (> 9 kHz) to prevent metallic sizzle.
-            const float freqDamp =
-                (k > bins / 2) ? (1.0f - 0.14f * static_cast<float>(k - bins / 2) / static_cast<float>(bins / 2))
-                               : 1.0f;
-            const float binDecay = decayCoef * freqDamp;
-
-            const float outReL = binDecay * rotReL + inputDrive * drvReL;
-            const float outImL = binDecay * rotImL + inputDrive * drvImL;
-            const float outReR = binDecay * rotReR + inputDrive * drvReR;
-            const float outImR = binDecay * rotImR + inputDrive * drvImR;
-
-            tailReL_[ku] = outReL;
-            tailImL_[ku] = outImL;
-            tailReR_[ku] = outReR;
-            tailImR_[ku] = outImR;
-
-            fb.reL[k] = outReL;
-            fb.imL[k] = outImL;
-            fb.reR[k] = outReR;
-            fb.imR[k] = outImR;
         }
     }
-    prevFreezeParam_ = freezeToggle;
-    if (!frozen)
-        freezeCaptured_ = false;
 
-    // 4. Zero out sub bins inside STFT output cleanly (sub bypass carries < subLockHz in exact phase!).
+    // 4. Cleanly attenuate sub bins inside STFT (sub bypass carries < subLockHz in exact phase).
     fb.reL[0] = fb.imL[0] = fb.reR[0] = fb.imR[0] = 0.0f;
     fb.reL[bins - 1] = fb.imL[bins - 1] = fb.reR[bins - 1] = fb.imR[bins - 1] = 0.0f;
     for (int k = 1; k < subCutoffBin; ++k) {
@@ -713,39 +836,45 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         fb.imR[k] *= att;
     }
 
-    // 5. Energy-preserving loudness compensation so chord density & Q changes stay consistent!
+    // 5. Energy-preserving loudness compensation (freeze keeps steady loudness even when input stops).
     float coloredEnergy = 0.0f;
     for (int k = subCutoffBin; k < bins - 1; ++k) {
         const float mL = std::hypot(fb.reL[k], fb.imL[k]);
         const float mR = std::hypot(fb.reR[k], fb.imR[k]);
         const float m = 0.5f * (mL + mR);
-        workOutMag_[static_cast<std::size_t>(k)] = m;
         coloredEnergy += m * m;
     }
-    const float targetComp = (inEnergy > 1.0e-7f && coloredEnergy > 1.0e-7f)
+    const float targetComp = (!wantFrozen && inEnergy > 1.0e-7f && coloredEnergy > 1.0e-7f)
                                  ? std::clamp(std::sqrt(inEnergy / coloredEnergy) * 0.92f, 0.35f, 3.0f)
-                                 : 1.0f;
+                                 : (wantFrozen ? compGainSmoothed_ : 1.0f);
     compGainSmoothed_ += 0.18f * (targetComp - compGainSmoothed_);
 
-    // 6. In-frame Bark-Median Auto-Tame (zero extra latency resonance smoother!).
-    const float tameFocusHz = p.real(ParamId::tameFocusHz);
-    const float tameSelect = p.real(ParamId::tameSelect);
-    const float spikeThresh = 1.85f - 0.85f * tameSelect; // higher selectivity catches subtler whistling spikes
-    float maxTameCutDb = 0.0f;
-
-    workTameGain_.fill(1.0f);
+    // 6. Two-Pass Symmetric Bark Auto-Tame with per-bin attack/release smoothing!
+    // Pass A: apply compGain and populate immutable pre-tame magnitudes across ALL bins.
+    workPreTameMag_[0] = workPreTameMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
     for (int k = 1; k < bins - 1; ++k) {
         const auto ku = static_cast<std::size_t>(k);
         fb.reL[k] *= compGainSmoothed_;
         fb.imL[k] *= compGainSmoothed_;
         fb.reR[k] *= compGainSmoothed_;
         fb.imR[k] *= compGainSmoothed_;
+        workPreTameMag_[ku] = 0.5f * (std::hypot(fb.reL[k], fb.imL[k]) + std::hypot(fb.reR[k], fb.imR[k]));
+    }
 
-        const float mag = 0.5f * (std::hypot(fb.reL[k], fb.imL[k]) + std::hypot(fb.reR[k], fb.imR[k]));
-        workOutMag_[ku] = mag;
+    // Pass B: compute true symmetric Bark prominence strictly from immutable workPreTameMag_.
+    const float tameFocusHz = p.real(ParamId::tameFocusHz);
+    const float tameSelect = p.real(ParamId::tameSelect);
+    const float spikeThresh = 1.85f - 0.85f * tameSelect;
+    float maxTameCutDb = 0.0f;
+
+    workTameGain_[0] = workTameGain_[static_cast<std::size_t>(bins - 1)] = 1.0f;
+    workOutMag_[0] = workOutMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
+    for (int k = 1; k < bins - 1; ++k) {
+        const auto ku = static_cast<std::size_t>(k);
+        const float mag = workPreTameMag_[ku];
+        float targetAtten = 1.0f;
 
         if (tameAmt > 0.005f && k >= subCutoffBin) {
-            // Bark-scaled local neighborhood radius around bin k.
             const float fHz = static_cast<float>(k) * binHz;
             const int rad = std::clamp(static_cast<int>(2.0f + fHz * 0.0018f), 3, 14);
             const int lo = std::max(subCutoffBin, k - rad);
@@ -755,49 +884,54 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
             for (int j = lo; j <= hi; ++j) {
                 if (std::abs(j - k) <= 1)
                     continue;
-                localSum += workOutMag_[static_cast<std::size_t>(j)];
+                localSum += workPreTameMag_[static_cast<std::size_t>(j)];
                 ++localCnt;
             }
             const float localAvg = localCnt > 0 ? (localSum / static_cast<float>(localCnt)) : mag;
             const float ratio = mag / (localAvg + 1.0e-5f);
 
-            // Broad log-frequency focus bell centered on tameFocusHz (sigma = 1.65 octaves).
             const float octDist = std::log2(std::max(fHz, 120.0f) / std::max(tameFocusHz, 300.0f));
             const float focusW = 0.28f + 0.72f * std::exp(-0.5f * (octDist * octDist) / (1.65f * 1.65f));
 
             if (ratio > spikeThresh) {
                 const float excess = (ratio - spikeThresh) / std::max(ratio, 1.0f);
-                const float atten = 1.0f - std::clamp(excess * tameAmt * focusW * 1.15f, 0.0f, 0.86f);
-                fb.reL[k] *= atten;
-                fb.imL[k] *= atten;
-                fb.reR[k] *= atten;
-                fb.imR[k] *= atten;
-                workTameGain_[ku] = atten;
-                workOutMag_[ku] *= atten;
-                const float cutDb = -20.0f * std::log10(std::max(atten, 0.05f));
-                maxTameCutDb = std::max(maxTameCutDb, cutDb);
+                targetAtten = 1.0f - std::clamp(excess * tameAmt * focusW * 1.15f, 0.0f, 0.86f);
             }
+        }
+
+        // Smooth per-bin gain with fast attack (catches spikes) and silky release (zero chatter).
+        const float prevG = tameBinSmooth_[ku];
+        const float sm = (targetAtten < prevG) ? 0.45f : 0.16f;
+        const float atten = prevG + sm * (targetAtten - prevG);
+        tameBinSmooth_[ku] = atten;
+
+        fb.reL[k] *= atten;
+        fb.imL[k] *= atten;
+        fb.reR[k] *= atten;
+        fb.imR[k] *= atten;
+        workTameGain_[ku] = atten;
+        workOutMag_[ku] = mag * atten;
+
+        if (atten < 0.995f) {
+            const float cutDb = -20.0f * std::log10(std::max(atten, 0.05f));
+            maxTameCutDb = std::max(maxTameCutDb, cutDb);
         }
     }
 
-    // 7. Publish smooth telemetry for the 60 FPS Visage Spectral Prism Lattice!
-    updateTelemetrySpectrum(workInMag_.data(), workOutMag_.data(), workTameGain_.data());
-    telemetry_.tamePeakDb = 0.72f * telemetry_.tamePeakDb + 0.28f * maxTameCutDb;
-    telemetry_.frozen = frozen;
-    for (std::size_t pc = 0; pc < 12; ++pc)
-        telemetry_.pitchEnergy[pc] = 0.65f * telemetry_.pitchEnergy[pc] + 0.35f * pcGlow[pc];
-    (void)modColor;
+    if (publishTelemetry) {
+        updateTelemetrySpectrum(workInMag_.data(), workOutMag_.data(), workTameGain_.data());
+        telemetry_.tamePeakDb = 0.72f * telemetry_.tamePeakDb + 0.28f * maxTameCutDb;
+        telemetry_.frozen = wantFrozen;
+        for (std::size_t pc = 0; pc < 12; ++pc)
+            telemetry_.pitchEnergy[pc] = 0.65f * telemetry_.pitchEnergy[pc] + 0.35f * pcGlow[pc];
+    }
 }
 
 void Engine::processCombSample(double inL, double inR, double decayAmt, double tiltAmt, double fanAmt, double qSharp,
                                double& outL, double& outR) noexcept PV_NONBLOCKING {
-    // 12-voice stereo tuned fractional-delay waveguide comb bank: generates ALL
-    // crystal-clear chord harmonics up to Nyquist at exact 0 samples latency!
     const double monoIn = 0.5 * (inL + inR);
     const double sideIn = 0.5 * (inL - inR);
-    // Target decay time T60 in [0.04s .. 1.65s]; feedback per period depends on voice frequency!
     const double t60 = 0.04 + std::pow(std::clamp(decayAmt, 0.0, 1.0), 1.5) * 1.60;
-    // Feedback lowpass damping controlled by tilt (-1 dark wood -> +1 bright glass).
     const double dampCutoff = 1400.0 * std::pow(10.0, std::clamp(tiltAmt, -1.0, 1.0) * 0.58 + 0.42);
     const double dampCoef =
         hba::dsp::onePoleCoef(1.0 / (hba::dsp::kTwoPi * std::clamp(dampCutoff, 450.0, 18000.0)), invSr_);
@@ -815,14 +949,11 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
 
         const double f =
             std::clamp(voice.freqHz, sampleRate_ / static_cast<double>(kCombBufSize - 8), 0.35 * sampleRate_);
-        // Subtle stereo delay detune controlled by fanAmt for luscious stereo width.
         const double stereoDet = 1.0 + fanAmt * 0.0028 * ((v & 1) ? 1.0 : -1.0);
         const double delayL = std::clamp(sampleRate_ / (f * stereoDet), 2.0, static_cast<double>(kCombBufSize - 4));
         const double delayR = std::clamp(sampleRate_ / (f / stereoDet), 2.0, static_cast<double>(kCombBufSize - 4));
 
-        // Frequency-compensated feedback so high notes and low notes decay at uniform musical T60!
         const double fb = std::clamp(std::pow(0.001, 1.0 / std::max(f * t60, 0.25)), 0.35, 0.965);
-        // Alternating polarity on upper voices for airy hollow-tube stereo shimmer when fan is high.
         const double polR = (fanAmt > 0.35 && (v & 1) != 0) ? (1.0 - 0.55 * (fanAmt - 0.35)) : 1.0;
 
         const auto readInterp = [&](const std::array<float, kCombBufSize>& buf, double dSamples) noexcept {
@@ -838,7 +969,6 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
         const double tapL = readInterp(voice.bufL, delayL);
         const double tapR = readInterp(voice.bufR, delayR);
 
-        // One-pole lowpass damping + DC block inside feedback path.
         voice.lpL += dampCoef * (tapL - voice.lpL);
         voice.lpR += dampCoef * (tapR - voice.lpR);
         const double dcL = voice.lpL - voice.dcInL + dcR * voice.dcOutL;
@@ -865,10 +995,70 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
     outR = hba::dsp::softGuard(sumR * 1.15, 0.95, 1.85);
 }
 
+void Engine::pushCombTelemetrySample(float inMono, float outMono, double liveTameCutDb,
+                                     double tameFocusHz) noexcept PV_NONBLOCKING {
+    constexpr int kMask = kFftSize - 1;
+    telInRing_[static_cast<std::size_t>(telPos_)] = inMono;
+    telOutRing_[static_cast<std::size_t>(telPos_)] = outMono;
+    telPos_ = (telPos_ + 1) & kMask;
+    if (++telHopCount_ < 512)
+        return;
+    telHopCount_ = 0;
+
+    for (int i = 0; i < kFftSize; ++i) {
+        const auto idx = static_cast<std::size_t>((telPos_ + i) & kMask);
+        const float w = telWin_[static_cast<std::size_t>(i)];
+        telTimeIn_[static_cast<std::size_t>(i)] = telInRing_[idx] * w;
+        telTimeOut_[static_cast<std::size_t>(i)] = telOutRing_[idx] * w;
+    }
+
+    // 2-for-1 FFT: analyze mono input (L slot) and mono comb output (R slot) in ONE real FFT!
+    telFft_.forwardStereo(telTimeIn_.data(), telTimeOut_.data(), telInRe_.data(), telInIm_.data(), telOutRe_.data(),
+                          telOutIm_.data(), telScratchRe_.data(), telScratchIm_.data());
+
+    const float binHz = static_cast<float>(sampleRate_) / static_cast<float>(kFftSize);
+    const float cutLinear = static_cast<float>(hba::dsp::dbToGain(-std::max(0.0, liveTameCutDb)));
+    for (int k = 0; k < kNumBins; ++k) {
+        const auto ku = static_cast<std::size_t>(k);
+        telInMag_[ku] = std::hypot(telInRe_[ku], telInIm_[ku]);
+        telOutMag_[ku] = std::hypot(telOutRe_[ku], telOutIm_[ku]);
+        if (liveTameCutDb > 0.1 && k > 0) {
+            const float fHz = static_cast<float>(k) * binHz;
+            const float oct = std::log2(std::max(fHz, 120.0f) / std::max(static_cast<float>(tameFocusHz), 300.0f));
+            const float bell = std::exp(-0.5f * oct * oct / (0.85f * 0.85f));
+            telTameGain_[ku] = 1.0f - bell * (1.0f - cutLinear);
+        } else {
+            telTameGain_[ku] = 1.0f;
+        }
+    }
+
+    // Compute per-pitch-class glow from real comb spectrum too!
+    std::array<float, 12> pcGlow{};
+    const float invBinHz = 1.0f / std::max(binHz, 1.0e-3f);
+    for (int v = 0; v < activeVoiceCount_; ++v) {
+        const auto& voice = voices_[static_cast<std::size_t>(v)];
+        if (voice.weight <= 0.0f)
+            continue;
+        const float f0 = static_cast<float>(voice.freqHz);
+        const int b = std::clamp(static_cast<int>(std::lround(f0 * invBinHz)), 1, kNumBins - 1);
+        const float midiEst = 69.0f + 12.0f * std::log2(std::max(f0, 20.0f) / 440.0f);
+        int pc = static_cast<int>(std::lround(midiEst)) % 12;
+        if (pc < 0)
+            pc += 12;
+        pcGlow[static_cast<std::size_t>(pc)] =
+            std::max(pcGlow[static_cast<std::size_t>(pc)], magToUiNorm(telOutMag_[static_cast<std::size_t>(b)] * 1.8f));
+    }
+
+    updateTelemetrySpectrum(telInMag_.data(), telOutMag_.data(), telTameGain_.data());
+    telemetry_.tamePeakDb = 0.72f * telemetry_.tamePeakDb + 0.28f * static_cast<float>(liveTameCutDb);
+    telemetry_.frozen = false;
+    for (std::size_t pc = 0; pc < 12; ++pc)
+        telemetry_.pitchEnergy[pc] = 0.65f * telemetry_.pitchEnergy[pc] + 0.35f * pcGlow[pc];
+}
+
 void Engine::synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLOCKING {
-    // Built-in 172 BPM Neuro Reese + Breakbeat internal exciter for instant auditioning!
     const double bpm = std::clamp(transport_.bpm, 60.0, 220.0);
-    const double stepsPerSec = (bpm / 60.0) * 4.0; // 16th notes
+    const double stepsPerSec = (bpm / 60.0) * 4.0;
     demoStepPhase_ += stepsPerSec * invSr_;
     if (demoStepPhase_ >= 1.0) {
         demoStepPhase_ -= 1.0;
@@ -883,8 +1073,7 @@ void Engine::synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLO
             demoHatEnv_ = (demoStep_ & 1) ? 0.55 : 0.85;
     }
 
-    // Fat stereo detuned F1 (43.65 Hz) Neuro Reese bass with slow moving resonant formant filter.
-    const double baseHz = (demoStep_ >= 12) ? 48.999 : 43.654; // F1 -> G1 turnaround
+    const double baseHz = (demoStep_ >= 12) ? 48.999 : 43.654;
     demoPhase1_ += baseHz * 1.007 * invSr_;
     demoPhase2_ += baseHz * 0.993 * invSr_;
     demoPhaseSub_ += baseHz * invSr_;
@@ -906,7 +1095,6 @@ void Engine::synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLO
     const double fR = std::tanh(demoReeseFilterR_.lowpass(reeseCoefs, reeseR) * 2.1);
     const double sub = std::sin(hba::dsp::kTwoPi * demoPhaseSub_) * 0.42;
 
-    // Tight neuro kick + crisp noise snare + hat for Transient Shield testing.
     double kick = 0.0;
     if (demoKickEnv_ > 1.0e-4) {
         const double kHz = 46.0 + 210.0 * demoKickEnv_ * demoKickEnv_;
@@ -942,7 +1130,6 @@ void Engine::updateTelemetrySpectrum(const float* inMag, const float* outMag,
         float minTame = 1.0f;
 
         if (hiF - loF < 1.25f) {
-            // Smooth fractional bin interpolation in low frequencies so the log curve has zero staircase steps!
             const float center = 0.5f * (loF + hiF);
             const int k0 = std::clamp(static_cast<int>(std::floor(center)), 0, kNumBins - 2);
             const int k1 = k0 + 1;
@@ -960,7 +1147,6 @@ void Engine::updateTelemetrySpectrum(const float* inMag, const float* outMag,
                 minTame = std::min(minTame, tameGain[ku]);
             }
         }
-        // Normalize FFT magnitude by N/4 for visual headroom.
         const float normIn = magToUiNorm(peakIn * (4.0f / static_cast<float>(kFftSize)));
         const float normOut = magToUiNorm(peakOut * (4.0f / static_cast<float>(kFftSize)));
         const float tameAmtUi = std::clamp(1.0f - minTame, 0.0f, 1.0f);
@@ -981,7 +1167,7 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
     const auto engineMode = static_cast<EngineMode>(p.choice(ParamId::engineMode));
     const auto latMode = static_cast<LatencyMode>(p.choice(ParamId::latencyMode));
     const bool liveZeroLat = (latMode == LatencyMode::live0ms);
-    const bool useCombAudio = liveZeroLat || (engineMode == EngineMode::harmonicComb);
+    const bool wantCombAudio = liveZeroLat || (engineMode == EngineMode::harmonicComb);
     const bool subMono = p.on(ParamId::subMono);
     const bool demoOn = p.on(ParamId::demoAudition);
     const bool limitOn = p.on(ParamId::limitOn);
@@ -1020,24 +1206,32 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
     const double modColor = mod[static_cast<std::size_t>(LaneTarget::color)];
     const double modDecay = mod[static_cast<std::size_t>(LaneTarget::decay)];
     const double modTame = mod[static_cast<std::size_t>(LaneTarget::tame)];
-    const double modShift = mod[static_cast<std::size_t>(LaneTarget::shift)] * 12.0; // +/- 1 octave
+    const double modShift = mod[static_cast<std::size_t>(LaneTarget::shift)] * 12.0;
     const double modGrit = mod[static_cast<std::size_t>(LaneTarget::grit)];
     const double modTilt = mod[static_cast<std::size_t>(LaneTarget::tilt)];
     const double modFan = mod[static_cast<std::size_t>(LaneTarget::fan)];
     const double modMorph = mod[static_cast<std::size_t>(LaneTarget::morph)];
 
-    // Update active chord targets with base shift (st) + modulation shift.
-    updateActiveChordTargets(p, static_cast<double>(p.real(ParamId::shift)));
+    const double blkSmCoef = hba::dsp::onePoleCoef(0.015, static_cast<double>(numSamples) * invSr_);
+    const double pitchBendSt = smPitchBend_.step(pitchBendTargetSt_, blkSmCoef);
+    const double modWheel = smModWheel_.step(modWheelTarget_, blkSmCoef);
+
+    // Unified chord target update: Shift + Lane Shift + MIDI Pitch Bend apply to ALL 4 engines!
+    bool midiWaiting = false;
+    updateActiveChordTargets(p, static_cast<double>(p.real(ParamId::shift)) + modShift + pitchBendSt, midiWaiting);
     voiceGlideCoef_ =
         hba::dsp::onePoleCoef(std::max(0.001, static_cast<double>(p.real(ParamId::glideMs)) * 0.001), invSr_);
 
     const double smCoef = hba::dsp::onePoleCoef(0.008, invSr_);
+    const double combFadeCoef = hba::dsp::onePoleCoef(0.012, invSr_);
+    const double midiGateCoef = hba::dsp::onePoleCoef(0.020, invSr_);
+
     const double targetInGain = hba::dsp::dbToGain(static_cast<double>(p.real(ParamId::inputDb)));
     const double targetOutGain = hba::dsp::dbToGain(static_cast<double>(p.real(ParamId::outputDb)));
     const double targetSubGain = hba::dsp::dbToGain(static_cast<double>(p.real(ParamId::subLevelDb)));
     const double velScale = 1.0 - static_cast<double>(p.real(ParamId::velToColor)) * (1.0 - lastMidiVelocity_);
-    const double targetColor =
-        std::clamp((static_cast<double>(p.real(ParamId::color)) + modColor * 0.5) * velScale, 0.0, 1.0);
+    const double targetColor = std::clamp(
+        (static_cast<double>(p.real(ParamId::color)) + modColor * 0.5 + modWheel * 0.25) * velScale, 0.0, 1.0);
     const double targetShield = static_cast<double>(p.real(ParamId::transientShield));
     const double targetGrit = std::clamp(static_cast<double>(p.real(ParamId::grit)) + modGrit * 0.5, 0.0, 1.0);
     const double targetSubHz = static_cast<double>(p.real(ParamId::subLockHz));
@@ -1050,6 +1244,8 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
     const double fanComb = std::clamp(static_cast<double>(p.real(ParamId::stereoFan)) + modFan * 0.5, 0.0, 1.0);
     const double qSharp = static_cast<double>(p.real(ParamId::qSharpness));
     const double liveTameAmt = std::clamp(static_cast<double>(p.real(ParamId::tame)) + modTame * 0.5, 0.0, 1.0);
+    const double tameFocusHz = static_cast<double>(p.real(ParamId::tameFocusHz));
+    const double liveTameCutDb = 10.0 * liveTameAmt * std::clamp(liveTameEnv_ * 2.2, 0.0, 1.0);
 
     const bool hasScBus = (sidechainL != nullptr && sidechainR != nullptr);
     const bool analyzeSc = !liveZeroLat && engineMode == EngineMode::carrierMorph && hasScBus;
@@ -1061,11 +1257,11 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
     float blockMaxTrans = 0.0f;
     double blockMinGr = 1.0;
 
-    // Update Air Shelf and Live Auto-Tame biquads once per block.
-    const auto airCoefs = hba::dsp::BiquadCoefs::highShelf(7600.0, 0.72, smAirDb_.step(targetAirDb, 1.0), sampleRate_);
+    // Smoothly updated block-rate Air Shelf & Live Auto-Tame biquads.
+    const double smoothAirDb = smAirDb_.step(targetAirDb, blkSmCoef);
+    const auto airCoefs = hba::dsp::BiquadCoefs::highShelf(7600.0, 0.72, smoothAirDb, sampleRate_);
     const auto liveTameCoefs = hba::dsp::BiquadCoefs::peak(
-        static_cast<double>(p.real(ParamId::tameFocusHz)), 1.2 + 2.4 * static_cast<double>(p.real(ParamId::tameSelect)),
-        -10.0 * liveTameAmt * std::clamp(liveTameEnv_ * 2.2, 0.0, 1.0), sampleRate_);
+        tameFocusHz, 1.2 + 2.4 * static_cast<double>(p.real(ParamId::tameSelect)), -liveTameCutDb, sampleRate_);
 
     std::array<float, hba::dsp::kMaxOversampling> osBufL{};
     std::array<float, hba::dsp::kMaxOversampling> osBufR{};
@@ -1079,11 +1275,13 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
         const double inGain = smInputGain_.step(targetInGain, smCoef);
         const double outGain = smOutputGain_.step(targetOutGain, smCoef);
         const double subGain = smSubGain_.step(targetSubGain, smCoef);
-        const double colorMix = smColor_.step(targetColor, smCoef);
+        const double midiGate = smMidiGate_.step(midiWaiting ? 0.0 : 1.0, midiGateCoef);
+        const double colorMix = smColor_.step(targetColor, smCoef) * midiGate;
         const double shieldAmt = smShield_.step(targetShield, smCoef);
         const double gritAmt = smGrit_.step(targetGrit, smCoef);
         const double subHz = smSubHz_.step(targetSubHz, smCoef);
         const double inHarm = smInHarm_.step(targetInHarm, smCoef);
+        const double combBlend = smCombBlend_.step(wantCombAudio ? 1.0 : 0.0, combFadeCoef);
 
         double xL = (inL != nullptr && std::isfinite(inL[i])) ? static_cast<double>(inL[i]) * inGain : 0.0;
         double xR = (inR != nullptr && std::isfinite(inR[i])) ? static_cast<double>(inR[i]) * inGain : 0.0;
@@ -1104,11 +1302,14 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             scRms_ *= 0.999;
         }
 
-        // 1. Phase-locked LR4 Sub Crossover (< subLockHz bypasses spectral engine cleanly!).
-        const auto xoverCoefs = hba::dsp::butterworth(subHz, sampleRate_);
+        // 1. Phase-locked LR4 Sub Crossover with cached coefs (avoids per-sample tan() when static).
+        if (std::abs(subHz - lastSubHz_) > 1.0e-4) {
+            cachedXoverCoefs_ = hba::dsp::butterworth(subHz, sampleRate_);
+            lastSubHz_ = subHz;
+        }
         double subL = 0.0, highL = 0.0, subR = 0.0, highR = 0.0;
-        subSplitL_.process(xoverCoefs, xL, subL, highL);
-        subSplitR_.process(xoverCoefs, xR, subR, highR);
+        subSplitL_.process(cachedXoverCoefs_, xL, subL, highL);
+        subSplitR_.process(cachedXoverCoefs_, xR, subR, highR);
         if (subMono) {
             const double m = 0.5 * (subL + subR);
             subL = subR = m;
@@ -1122,7 +1323,7 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             transientSplit_.process(highL, highR, shieldAmt, shieldSens, transL, transR, bodyL, bodyR);
         blockMaxTrans = std::max(blockMaxTrans, static_cast<float>(transMask));
 
-        // 3. Spectral STFT vs Zero-Latency Harmonic Comb processing.
+        // 3. Spectral STFT vs Zero-Latency Harmonic Comb with click-free crossfading + real FFT telemetry!
         double wetBodyL = 0.0;
         double wetBodyR = 0.0;
         double alignedSubL = subL;
@@ -1133,13 +1334,6 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
         double alignedDryBodyR = bodyR;
 
         if (!liveZeroLat) {
-            float stftOutL = 0.0f;
-            float stftOutR = 0.0f;
-            stft_.processSample(
-                static_cast<float>(bodyL), static_cast<float>(bodyR), static_cast<float>(scL), static_cast<float>(scR),
-                analyzeSc, stftOutL, stftOutR, [&](hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb) noexcept {
-                    processStftFrame(fb, p, modColor, modDecay, modTame, modShift, modTilt, modFan, modMorph);
-                });
             alignedSubL = subDelayL_.process(subL);
             alignedSubR = subDelayR_.process(subR);
             alignedTransL = transDelayL_.process(transL);
@@ -1147,31 +1341,61 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             alignedDryBodyL = dryBodyDelayL_.process(bodyL);
             alignedDryBodyR = dryBodyDelayR_.process(bodyR);
 
-            if (useCombAudio) {
+            float stftOutL = 0.0f;
+            float stftOutR = 0.0f;
+            const bool runStft = (combBlend < 0.999);
+            const bool runComb = (combBlend > 0.001);
+
+            if (runStft) {
+                stft_.processSample(static_cast<float>(bodyL), static_cast<float>(bodyR), static_cast<float>(scL),
+                                    static_cast<float>(scR), analyzeSc, stftOutL, stftOutR,
+                                    [&](hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb) noexcept {
+                                        processStftFrame(fb, p, modDecay, modTame, modTilt, modFan, modMorph,
+                                                         !wantCombAudio);
+                                    });
+            }
+
+            double combOutL = 0.0;
+            double combOutR = 0.0;
+            if (runComb) {
                 double cL = 0.0, cR = 0.0;
                 processCombSample(bodyL, bodyR, decayComb, tiltComb, fanComb, qSharp, cL, cR);
-                wetBodyL = combDelayL_.process(cL);
-                wetBodyR = combDelayR_.process(cR);
+                const double pk = std::max(std::abs(cL), std::abs(cR));
+                liveTameEnv_ += 0.002 * (pk - liveTameEnv_);
+                cL = liveTameL_.process(liveTameCoefs, cL);
+                cR = liveTameR_.process(liveTameCoefs, cR);
+                combOutL = combDelayL_.process(cL);
+                combOutR = combDelayR_.process(cR);
+                if (wantCombAudio) {
+                    pushCombTelemetrySample(static_cast<float>(0.5 * (bodyL + bodyR)),
+                                            static_cast<float>(0.5 * (cL + cR)), liveTameCutDb, tameFocusHz);
+                }
             } else {
-                wetBodyL = static_cast<double>(stftOutL);
-                wetBodyR = static_cast<double>(stftOutR);
+                // Keep comb delay line quiet when inactive so switching into Comb is silent.
+                (void)combDelayL_.process(0.0);
+                (void)combDelayR_.process(0.0);
             }
+
+            wetBodyL = (1.0 - combBlend) * static_cast<double>(stftOutL) + combBlend * combOutL;
+            wetBodyR = (1.0 - combBlend) * static_cast<double>(stftOutR) + combBlend * combOutR;
         } else {
-            // Exact 0-sample latency Harmonic Comb mode!
+            // Exact 0-sample latency Harmonic Comb mode with zero-latency real FFT telemetry!
             double cL = 0.0, cR = 0.0;
             processCombSample(bodyL, bodyR, decayComb, tiltComb, fanComb, qSharp, cL, cR);
             const double pk = std::max(std::abs(cL), std::abs(cR));
             liveTameEnv_ += 0.002 * (pk - liveTameEnv_);
             wetBodyL = liveTameL_.process(liveTameCoefs, cL);
             wetBodyR = liveTameR_.process(liveTameCoefs, cR);
+            pushCombTelemetrySample(static_cast<float>(0.5 * (bodyL + bodyR)),
+                                    static_cast<float>(0.5 * (wetBodyL + wetBodyR)), liveTameCutDb, tameFocusHz);
         }
 
         // 4. Blend colored body + optional unquantized source grit + recombine phase-locked Sub & Transients!
         double midHighL = (1.0 - colorMix) * alignedDryBodyL + colorMix * (wetBodyL + inHarm * 0.45 * alignedDryBodyL);
         double midHighR = (1.0 - colorMix) * alignedDryBodyR + colorMix * (wetBodyR + inHarm * 0.45 * alignedDryBodyR);
 
-        // 5. Post-Color ADAA2 Grit (oversampled on mid/high band so sub remains pristine and punchy!).
-        if (gritAmt > 0.001) {
+        // 5. Post-Color ADAA2 Grit (oversampled on mid/high; click-free bypass through 0%).
+        if (gritAmt > 1.0e-4) {
             const double driveGain = 1.0 + gritAmt * 5.2;
             const double invComp = 1.0 / (1.0 + gritAmt * 1.15);
             osL_.up(static_cast<float>(midHighL), osBufL.data());
@@ -1189,6 +1413,9 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             }
             midHighL = static_cast<double>(osL_.down(osBufL.data()));
             midHighR = static_cast<double>(osR_.down(osBufR.data()));
+        } else {
+            (void)shaperL_.bypass(midHighL);
+            (void)shaperR_.bypass(midHighR);
         }
 
         // 6. Air high-shelf on mid/high + exact phase-aligned recombination with Sub + Transients!
@@ -1224,22 +1451,11 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
         blockPeakR = std::max(blockPeakR, std::abs(fOutR));
     }
 
-    // Update non-STFT telemetry smoothly in Live 0ms mode so the stage never freezes.
-    if (liveZeroLat) {
-        const float energy = std::clamp(std::max(blockPeakL, blockPeakR), 0.0f, 1.0f);
-        for (int i = 0; i < kSpectrumBins; ++i) {
-            const auto iu = static_cast<std::size_t>(i);
-            const float slope = std::exp(-static_cast<float>(i) / 38.0f);
-            telemetry_.inSpectrum[iu] = 0.78f * telemetry_.inSpectrum[iu] + 0.22f * energy * slope;
-            telemetry_.outSpectrum[iu] = 0.78f * telemetry_.outSpectrum[iu] + 0.22f * energy * slope * 1.15f;
-            telemetry_.tameReduction[iu] = 0.85f * telemetry_.tameReduction[iu];
-        }
-    }
-
     telemetry_.peakL = blockPeakL;
     telemetry_.peakR = blockPeakR;
     telemetry_.grDb = static_cast<float>(hba::dsp::gainToDb(std::clamp(blockMinGr, 0.05, 1.0)));
     telemetry_.transientAmt = 0.65f * telemetry_.transientAmt + 0.35f * blockMaxTrans;
+    telemetry_.pitchBendSt = static_cast<float>(pitchBendSt);
     telemetry_.sampleRate = static_cast<float>(sampleRate_);
     telemetry_.latencySamples = latencySamples();
     telemetry_.ppq = hostPpq_;
