@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Product,
-    [ValidateSet('release', 'dev')][string]$Preset = 'release'
+    [ValidateSet('release', 'dev', 'windows-editor')][string]$Preset = 'release'
 )
 $ErrorActionPreference = 'Stop'
 $catalogue = Get-Content -Raw "$PSScriptRoot/../studio.json" | ConvertFrom-Json -AsHashtable

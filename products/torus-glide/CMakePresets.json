@@ -12,18 +12,49 @@
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "TG_BUILD_PLUGIN": "OFF"
             }
+        },
+        {
+            "name": "windows-editor",
+            "inherits": "release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
         }
     ],
     "buildPresets": [
         {
             "name": "engine",
             "configurePreset": "engine"
+        },
+        {
+            "name": "windows-editor",
+            "configurePreset": "windows-editor",
+            "targets": [
+                "hba_windows_editor_tests"
+            ]
         }
     ],
     "testPresets": [
         {
             "name": "engine",
             "configurePreset": "engine",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "windows-editor",
+            "configurePreset": "windows-editor",
+            "filter": {
+                "include": {
+                    "label": "^windows-editor$"
+                }
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
             "output": {
                 "outputOnFailure": true
             }

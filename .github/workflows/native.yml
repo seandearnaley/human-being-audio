@@ -28,6 +28,7 @@ jobs:
       products: ${{ steps.plan.outputs.products }}
       macos: ${{ steps.plan.outputs.macos }}
       windows: ${{ steps.plan.outputs.windows }}
+      windows_editor_only: ${{ steps.plan.outputs.windows_editor_only }}
       livecut_windows_only: ${{ steps.plan.outputs.livecut_windows_only }}
       base: ${{ steps.plan.outputs.base }}
     steps:
@@ -190,7 +191,7 @@ jobs:
   windows:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'windows')
-    name: ${{ matrix.product }} · Windows x64
+    name: ${{ matrix.product == 'torus-glide' && fromJSON(needs.plan.outputs.windows_editor_only) && 'Shared editor' || matrix.product }} · Windows x64
     runs-on: windows-2025-vs2026
     strategy:
       fail-fast: false
@@ -229,7 +230,8 @@ jobs:
       - shell: pwsh
         env:
           PRODUCT: ${{ matrix.product }}
-        run: ./cmake/windows-release.ps1 -Product $env:PRODUCT
+          PRESET: ${{ matrix.product == 'torus-glide' && fromJSON(needs.plan.outputs.windows_editor_only) && 'windows-editor' || 'release' }}
+        run: ./cmake/windows-release.ps1 -Product $env:PRODUCT -Preset $env:PRESET
 
   macos:
     needs: plan

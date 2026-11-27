@@ -3,7 +3,6 @@ add_executable(pv_plugin_tests
 
 if(WIN32)
     target_sources(pv_plugin_tests PRIVATE
-        "${PROJECT_SOURCE_DIR}/../../modules/plugin-host/tests/WindowsEditorLifetimeTests.cpp"
         "${PROJECT_SOURCE_DIR}/../../modules/plugin-host/tests/WindowsEditorSizeTests.cpp")
 endif()
 

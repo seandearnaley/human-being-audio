@@ -18,7 +18,8 @@ if(TG_BUILD_PLUGIN)
     add_executable(tg_plugin_tests
         plugin/PluginTests.cpp)
     if(WIN32)
-        target_sources(tg_plugin_tests PRIVATE "${PROJECT_SOURCE_DIR}/../../modules/plugin-host/tests/WindowsEditorLifetimeTests.cpp")
+        add_subdirectory("${PROJECT_SOURCE_DIR}/../../modules/plugin-host/tests/windows"
+                         "${CMAKE_CURRENT_BINARY_DIR}/windows-editor")
     endif()
     hba_build_for_host_only(tg_plugin_tests)
     target_link_libraries(tg_plugin_tests PRIVATE TorusGlide Catch2::Catch2WithMain tg_warnings)

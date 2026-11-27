@@ -27,16 +27,17 @@ def plan_checks(products, changes, version_only=()):
     paths = set(changes or [])
     full = changes is None or ".github/workflows/native.yml" in paths or any(p.startswith("factory/quality/") for p in paths)
     windows_toolchain = {p for p in paths if p.startswith("cmake/patches/windows/") or p == "cmake/windows-release.ps1"}
-    # The Cutline UI target owns these Windows-only shared editor integration tests.
-    windows_editor_tests = {p for p in paths if p.startswith("modules/visage-ui/tests/windows/")}
+    windows_editor_tests = {p for p in paths if p.startswith("modules/plugin-host/tests/windows/")}
     cross_platform = paths.difference(version_only, windows_toolchain, windows_editor_tests)
     native = affected(products, None if changes is None else cross_platform)
     macos = [p for p in native if p != "livecut-redux"]
     if ".github/workflows/macos-product.yml" in paths:
         macos = [p for p in products if p != "livecut-redux"]
     windows_products = set(products if windows_toolchain else native)
-    if windows_editor_tests and "cutline" in products:
-        windows_products.add("cutline")
+    # A full Torus Glide build already includes the shared target.
+    windows_editor_only = bool(windows_editor_tests) and "torus-glide" not in windows_products
+    if windows_editor_only:
+        windows_products.add("torus-glide")
     windows = [p for p in products if p in windows_products and p != "livecut-redux"]
     jobs = ["ubuntu", "format", "realtime"] if native else []
     if not native and (windows_editor_tests or any(p.startswith("research/") and Path(p).suffix in
@@ -60,7 +61,7 @@ def plan_checks(products, changes, version_only=()):
             p in {".github/workflows/factory.yml", ".github/workflows/release.yml"} for p in paths):
         jobs.append("factory")
     return {"products": native, "macos": macos, "windows": windows,
-            "livecut_windows_only": livecut_windows_only, "jobs": jobs}
+            "windows_editor_only": windows_editor_only, "livecut_windows_only": livecut_windows_only, "jobs": jobs}
 
 
 def lint_inputs(product, sources, changes):
