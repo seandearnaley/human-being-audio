@@ -8,6 +8,7 @@ import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-
 import strikeBodyImage from "../../products/strike-body/press/screenshots/strike-body-interface.png";
 import lineageImage from "../../products/lineage/press/screenshots/lineage-interface.png";
 import datumImage from "../../products/datum/press/screenshots/datum-interface.png";
+import prismVeinImage from "../../products/prism-vein/press/screenshots/prism-vein-interface.png";
 import { PLATFORMS, PRODUCTS, PRODUCTS_BY_SLUG, STUDIO } from "../lib/catalog.mjs";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
@@ -24,6 +25,7 @@ const PRODUCT_IMAGES = {
   "strike-body": strikeBodyImage,
   lineage: lineageImage,
   datum: datumImage,
+  "prism-vein": prismVeinImage,
 };
 
 function Product({ product, release, unavailable }) {
@@ -228,11 +230,11 @@ export default async function Page() {
               <summary>macOS</summary>
               <div className="faq__body">
                 Close your host and open the signed, notarized PKG. It installs
-                the Audio Unit (Audio Unit Music Effect for Livecut Redux and
-                Pole Field, Audio Unit MIDI FX for Cutline) and VST3 in the
-                system Audio Plug-Ins folder and the standalone in Applications.
-                All six plugins require macOS 12 or later and contain universal
-                Apple Silicon and Intel binaries.
+                the Audio Unit (Audio Unit Music Effect for Livecut Redux, Pole
+                Field and Prism Vein, Audio Unit MIDI FX for Cutline) and VST3
+                in the system Audio Plug-Ins folder and the standalone in
+                Applications. All nine plugins require macOS 12 or later and
+                contain universal Apple Silicon and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for

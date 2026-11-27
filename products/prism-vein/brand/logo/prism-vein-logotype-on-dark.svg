@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1660" height="334" viewBox="0 0 1660 334">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Prism mark -->
+    <line x1="22" y1="186" x2="108" y2="162" stroke="#e6ebf0" stroke-width="16"/>
+    <line x1="196" y1="138" x2="278" y2="104" stroke="#3ee5a0" stroke-width="14"/>
+    <line x1="204" y1="158" x2="282" y2="146" stroke="#38e8ff" stroke-width="16"/>
+    <line x1="210" y1="178" x2="280" y2="188" stroke="#a884ff" stroke-width="14"/>
+    <line x1="214" y1="198" x2="274" y2="230" stroke="#f5a638" stroke-width="12"/>
+    <polygon points="158,64 236,248 80,248" fill="#0d121a" stroke="#e6ebf0" stroke-width="18"/>
+    <line x1="114" y1="164" x2="198" y2="158" stroke="#38e8ff" stroke-width="10"/>
+
+    <!-- Wordmark: prism vein -->
+    <g transform="translate(330, 246)" stroke-width="30">
+      <!-- p -->
+      <path d="M0,-124 V52" stroke="#e6ebf0"/>
+      <circle cx="58" cy="-64" r="58" stroke="#e6ebf0"/>
+      <!-- r -->
+      <path d="M168,0 V-122 M168,-72 A46,46 0 0 1 226,-116" stroke="#e6ebf0"/>
+      <!-- i -->
+      <path d="M276,0 V-122" stroke="#e6ebf0"/>
+      <circle cx="276" cy="-168" r="16" fill="#38e8ff" stroke="none"/>
+      <!-- s -->
+      <path d="M402,-104 C386,-126 334,-126 334,-94 C334,-64 410,-66 410,-32 C410,6 346,6 328,-18" stroke="#e6ebf0"/>
+      <!-- m -->
+      <path d="M466,0 V-122 M466,-76 A38,38 0 0 1 542,-76 V0 M542,-76 A38,38 0 0 1 618,-76 V0" stroke="#e6ebf0"/>
+
+      <!-- v (prism cyan accent) -->
+      <path d="M710,-122 L764,0 L818,-122" stroke="#38e8ff"/>
+      <!-- e -->
+      <path d="M862,-62 H976 A58,58 0 1 0 960,-18" stroke="#e6ebf0"/>
+      <!-- i -->
+      <path d="M1032,0 V-122" stroke="#e6ebf0"/>
+      <circle cx="1032" cy="-168" r="16" fill="#a884ff" stroke="none"/>
+      <!-- n -->
+      <path d="M1092,0 V-122 M1092,-72 A48,48 0 0 1 1188,-72 V0" stroke="#e6ebf0"/>
+    </g>
+  </g>
+</svg>

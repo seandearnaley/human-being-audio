@@ -133,8 +133,8 @@ test("the sculpture responds to keyboard controls and survives SPA round-trip na
   await slider.focus();
   await slider.press("ArrowRight");
   await expect(slider).toHaveAttribute("aria-valuetext", "16 percent");
-  await page.getByRole("button", { name: "Freeze" }).click();
-  await expect(page.getByRole("button", { name: "Freeze" })).toHaveAttribute(
+  await page.getByRole("button", { name: "Freeze", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Freeze", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
