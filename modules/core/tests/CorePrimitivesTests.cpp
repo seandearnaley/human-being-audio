@@ -126,3 +126,10 @@ TEST_CASE("hba::dsp pitch, random, oscillator, allpass, and biquad are accurate 
         ph = hba::dsp::frac(ph + inc);
     }
 }
+
+#if defined(__linux__)
+TEST_CASE("A buffered WAV write reports a full destination", "[core][wav]") {
+    const float samples[] = {0.25f, -0.25f};
+    REQUIRE_FALSE(hba::core::writeWavFloat("/dev/full", samples, 2, 48000));
+}
+#endif
