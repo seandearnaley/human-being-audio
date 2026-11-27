@@ -19,9 +19,14 @@ function(hba_add_nlohmann_json)
 endfunction()
 
 function(hba_add_visage)
+    if(WIN32)
+        # DXGI can return NOT_CURRENTLY_AVAILABLE in a headless host. Only S_OK owns an output.
+        set(visage_platform_patch PATCHES "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/patches/visage-1.0.0-win32-output-enumeration.patch")
+    endif()
     CPMAddPackage(
         NAME visage
         VERSION 1.0.0
+        ${visage_platform_patch}
         URL "https://github.com/VitalAudio/visage/archive/refs/tags/v1.0.0.tar.gz"
         URL_HASH SHA256=4ad2deb0ac069c1ac070652691d7eef8ee47961748bc3859d14f49d3bd0a7335
         SYSTEM YES
