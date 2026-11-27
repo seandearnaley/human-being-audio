@@ -6743,8 +6743,13 @@ The plugin writes its saved state onto a copy, so saving changes nothing in the 
 - Only one scene switch boundary is remembered at a time.
 - In MIDI Slicer mode, a scene switch inside a block plays the new scene's phrase for that whole block.
 - Cutline 2 user presets are not loaded and no message is shown. `Presets::scan` reads user presets through the shared `hba::host::appendUserPresets`, which drops a file that does not parse together with its error, so `kOldFormatError` never reaches anyone: a Cutline 2 preset simply does not appear in the list. The shared module was left alone. Whether to show a message is a decision for the founder.
+- While the transport runs on, a small forward skip (up to 1/8 beat) or Shift moving suddenly earlier is played, not dropped: the skipped stretch sounds on the block's first sample. It is bounded (under half a beat of hits at the fastest tempo and a full Shift swing), same-note hits merge, and the MIDI stays well-formed.
+- A tempo step in the middle of one large block can still read as a loop (at 4096 samples and 48 kHz, a drop of more than about 11 BPM), which flushes and can double one hit. Hosts normally change tempo on block boundaries.
+- With all 32 voices sounding and a 33rd note starting on the same sample as the note it steals, that stolen note can be left hanging. Drum mode cannot reach it (a kit map has at most 8 notes); MIDI Slicer mode with a very large held chord could.
 
 ### Minor items left for the whole-branch review
+
+The final fix round below resolved these entries of the list: the `setPatternBars` short-lane test, the kit-map comment, the `silenced` flag, the PLAY dock's Quant chip, the `getStateInformation` comment, `kGrooveBankProp` defined twice, and the untested state paths (wrong root tag, missing bank). The whole-branch review judged these not worth doing: the merge's velocity-0 marker, the kept lane's flash, the refused-note-on audition test, `kMaxSwingBeats` over-reserving, the unused include, `serialisePreset` always writing the bank, `reloadFromState` on failure, and the drag label (it refreshes every tick). Everything else stays open for the grid, library, PLAY and release work.
 
 - `kMaxSwingBeats` reserves more than it needs (about 0.03 beats would do) and repeats `swingBeat`'s 0.125.
 - The clamp limits (24, 20, 127, 4) are written out in `groove.h` and `groove_json.cpp`, while `hits.h` has `kMaxNudge` and `kMaxOffsetMs`.
@@ -6781,6 +6786,7 @@ The whole-branch review returned "merge with fixes". This round made them:
 - All grid edits share one undo tag, so two different edits within the coalescing window undo together.
 - Every drag tick serialises the whole bank into the state tree.
 - Whether to tell the user that a Cutline 2 preset was not loaded (see "Known limits that were accepted").
+- The PLAY tabs show the pad key hints whenever Pad MIDI is on, including in MIDI Slicer mode, where Pad MIDI does nothing.
 
 ### Not verified here
 

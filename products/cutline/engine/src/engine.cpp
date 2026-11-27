@@ -336,8 +336,9 @@ const DensityMap& Engine::Impl::densityMap() const noexcept CL_NONBLOCKING {
 // True when bar `absBar` plays its fill. The whole decision, the schedule or fillNow, is latched once per bar, at
 // the first block that reaches the earliest moment a hit in `pat`'s fill window could start (a full early nudge,
 // lane offset and flam before the window). Before that moment only the schedule is reported: no fill-window hit can
-// sound yet, so the bar resolves to the same notes whichever way the latch will fall. After it, changing Fill,
-// Rate or the scene cannot half-apply the fill.
+// sound yet, so the bar resolves to the same notes whichever way the latch will fall. After it, changing Fill
+// or the scene cannot half-apply the fill. A change of the effective rate moves the playhead to a different bar,
+// so process() clears the latches then and the decision is made afresh.
 bool Engine::Impl::fillActiveFor(const Pattern& pat, std::int64_t absBar, bool fillNow, int everyBars, double scaledEnd,
                                  double beatsPerMs) noexcept CL_NONBLOCKING {
     const bool scheduled = fillScheduled(absBar, everyBars);
