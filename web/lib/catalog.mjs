@@ -84,28 +84,19 @@ const PRODUCT_DETAILS = {
     credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   cutline: {
-    kind: "MIDI articulator",
+    kind: "Drum sequencer & MIDI slicer",
     hue: 262,
     bpm: 172,
     form: "tube",
     formLabel: "Tube",
-    alt: "Cutline’s interactive phrase grammar tape, chord progression strip, gravitational piano roll, velocity lane and multi-hue expression lanes",
-    body: "Sculpt deterministic Statement, Answer, Mutation, Ratchet and Turnaround phrases on a tactile piano roll with a Chord Progression Strip, bend them through a gravitational microtiming field and drive any synth with four MPE and CC lanes.",
+    alt: "Cutline’s eight-lane drum grid with four scene selectors, density and swing controls, and its GRID and PLAY tabs",
+    body: "Write a beat across eight lanes, switch between four scenes and use the PLAY pad to repeat, roll or drop parts without losing your place. MIDI Slicer plays held chords and captured clips through a gate pattern.",
     features: [
-      [
-        "Tactile Phrase Stage & Chord Strip",
-        "Five BBCut-inspired grammars with Loop/Evolve modes, polyphonic breaks, Chord Progression Strip and 64-step seed history. Click spans to lock them, drag dividers, drag scale-snapped notes and durations or Alt-click to mute.",
-      ],
-      [
-        "Live MIDI, Mono, MPE & Drums",
-        "Play Live MIDI Transpose or Chord Carve with Latch, and stream Ableton-safe Mono Ch 1 (with RPN bend range), full MPE Lower Zone (Ch 2–15, ±48 st) or Drum Kit articulation with live activity LEDs.",
-      ],
-      [
-        "8-voice PolyBLEP audition & Drag .mid",
-        "Preview immediately with the anti-aliased 8-voice poly audition synth (Reese, Sub, Pluck, Kit), drag the exact current 960-PPQ .mid phrase into your DAW, and compare takes with Undo/Redo and A/B slots.",
-      ],
+      ["Layered drum grid", "Draw Core, Groove and Detail hits. Density reveals the layers, swing delays offbeat sixteenths and Dynamics changes their velocity contrast."],
+      ["Six PLAY programs", "Hold Repeat, Roll, Density, Rate, Drop or Fill. Each engages on the next sixteenth and returns to the pattern in phase when you let go."],
+      ["MIDI Slicer", "Gate held notes or a captured clip across up to 32 steps. Use the built-in audition sound or send MIDI to another instrument."],
     ],
-    credits: "Includes 32 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 46 patterns, 13 fills and 22 factory presets.",
   },
   "torus-glide": {
     kind: "Pitch-manifold synth",
@@ -286,15 +277,10 @@ export const FIELD_GUIDE_CHAPTERS = [
     status: "Planned",
     live: false,
     hue: PRODUCTS_BY_SLUG.cutline.hue,
-    title: "Algorithmic Breakbeat Grammar, Microtiming Gravity & MPE Articulation",
+    title: "Drum grids, performance fills and MIDI slicing",
     summary:
-      "Translate Nick Collins’ BBCut phrase grammars into deterministic Statement/Answer/Mutation timelines, warp beats through gravitational microtiming fields, and emit 14-bit RPN/MPE Lower Zone streams.",
-    topics: [
-      "BBCut Phrase Grammars",
-      "Gravitational Microtiming",
-      "MPE Lower Zone (±48 st)",
-      "960-PPQ MIDI Export",
-    ],
+      "Follow a beat from its three density layers to MIDI output, then hold a PLAY gesture and hear how the sequencer returns to the groove in phase.",
+    topics: ["Layered patterns", "Four scenes", "Quantized PLAY gestures", "MIDI Slicer"],
   },
   {
     num: "Chapter 05",
