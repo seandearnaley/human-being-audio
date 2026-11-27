@@ -88,6 +88,15 @@ template <typename RequestT, typename StateT> class OfflineWavWorker final : pri
 
   private:
     void run() override {
+        try {
+            renderToFile();
+        } catch (...) {
+            // JUCE thread entry points must contain exceptions from the render callback and file I/O.
+            state_.store(StateT::failed, std::memory_order_release);
+        }
+    }
+
+    void renderToFile() {
         const std::uint64_t myGen = activeGen_.load(std::memory_order_acquire);
         RequestT req;
         juce::File target;

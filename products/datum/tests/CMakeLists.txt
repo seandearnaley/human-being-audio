@@ -14,7 +14,7 @@ if(DT_BUILD_TESTS)
     endif()
 
     if(DT_BUILD_PLUGIN)
-        add_executable(dt_plugin_tests plugin/PluginTests.cpp)
+        add_executable(dt_plugin_tests plugin/PluginTests.cpp plugin/OfflineExportTests.cpp)
         hba_build_for_host_only(dt_plugin_tests)
         target_link_libraries(dt_plugin_tests PRIVATE Datum Catch2::Catch2WithMain dt_warnings)
         catch_discover_tests(dt_plugin_tests DISCOVERY_MODE PRE_TEST)
