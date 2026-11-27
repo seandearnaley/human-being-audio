@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "tg/chord_matrix.h"
 #include "tg/engine.h"
 #include "tg/params.h"
@@ -10,14 +12,14 @@
 
 namespace tg::ui {
 
-enum class ResampleState { idle, rendering, ready };
+enum class ResampleState { idle, rendering, ready, failed };
 
 struct PresetEntry {
     std::string name;
     std::string category;
 };
 
-class Model {
+class Model : public hba::ui::PresetMenuHost {
   public:
     virtual ~Model() = default;
 

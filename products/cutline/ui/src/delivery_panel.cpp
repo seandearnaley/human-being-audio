@@ -18,7 +18,7 @@ class DeliveryPanel final : public Panel {
         for (auto* r : {&shiftMs_, &ccThin_, &exprAmt_, &holdMidi_, &audition_, &auditionGain_})
             addChild(r);
         dragMid_.setAccent(colour::iris);
-        dragMid_.setOnDrag([this] { context_.model.dragMidiPhrase(); });
+        dragMid_.setOnDragOut([this] { context_.model.dragMidiPhrase(); });
         addChild(&dragMid_);
     }
 

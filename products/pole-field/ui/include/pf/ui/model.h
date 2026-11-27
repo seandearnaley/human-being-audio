@@ -1,5 +1,7 @@
 #pragma once
 
+#include <hba/ui/accessible_controls.h>
+
 #include "pf/cubes.h"
 #include "pf/lanes.h"
 #include "pf/params.h"
@@ -55,8 +57,8 @@ struct PresetInfo {
     std::string category;
 };
 
-class Model {
-public:
+class Model : public hba::ui::PresetMenuHost {
+  public:
     virtual ~Model() = default;
 
     virtual float get(ParamId id) const = 0;
@@ -99,5 +101,4 @@ public:
     virtual void toggleAB() {}
     virtual void copyAB() {}
 };
-
 }

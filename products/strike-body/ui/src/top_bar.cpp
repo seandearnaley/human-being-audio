@@ -21,6 +21,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
       ab_(ctx, "A", [this] { context_.model.toggleAB(); }),
       autoAlign_(ctx, "Auto-Align", [this] { context_.model.runAutoAlign(); }),
       bounceWav_(ctx, "Bounce .wav", [this] { context_.model.startBounce(); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });
@@ -40,13 +44,14 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout)
             context_.model.dragBouncedWav();
     });
 
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick([this] {
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
 
     for (visage::Frame* child :
-         std::initializer_list<visage::Frame*>{&padMain_, &padGhost_, &padRim_, &padRoll_, &prevPreset_, &presetName_,
-                                               &nextPreset_, &undo_, &redo_, &ab_, &autoAlign_, &bounceWav_}) {
+         std::initializer_list<visage::Frame*>{&prevPreset_, &presetName_, &nextPreset_, &undo_, &redo_, &ab_,
+                                               &padMain_, &padGhost_, &padRim_, &padRoll_, &autoAlign_, &bounceWav_}) {
         addChild(child);
     }
 
@@ -83,23 +88,10 @@ void TopBar::tick() {
                                 context_.model.isSlotB(), colour::body, colour::shell, 0xffc6d4ec, colour::textFaint);
 
     const auto bstate = context_.model.bounceState();
-    if (bstate == BounceState::rendering) {
-        bounceWav_.setLabel("Bouncing...");
-        bounceWav_.setActive(false);
-    } else if (bstate == BounceState::ready) {
-        bounceWav_.setLabel("Drag .wav");
-        bounceWav_.setActive(true);
-    } else {
-        bounceWav_.setLabel("Bounce .wav");
-        bounceWav_.setActive(false);
-    }
+    hba::ui::syncWavExport(bounceWav_, bstate);
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(
-        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
-        [this] { context_.model.savePreset(); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     hba::ui::drawBrandWordmark(canvas, wordmark_, brand::strike_body_logotype_on_dark_svg, 2100.0f / 334.0f, 24.0f,
@@ -124,13 +116,6 @@ void TopBar::resized() {
     wordmark_.setBounds(px(6.0f), 0.0f, px(168.0f), h);
 
     float x = px(180.0f);
-    const float padW = px(66.0f);
-    for (auto* b : {&padMain_, &padGhost_, &padRim_, &padRoll_}) {
-        b->setBounds(x, y, padW, bh);
-        x += padW + px(5.0f);
-    }
-    x += px(14.0f);
-
     const float arrW = px(26.0f);
     const float nameW = px(236.0f);
     prevPreset_.setBounds(x, y, arrW, bh);
@@ -145,6 +130,14 @@ void TopBar::resized() {
     redo_.setBounds(x, y, px(46.0f), bh);
     x += px(46.0f) + px(4.0f);
     ab_.setBounds(x, y, px(30.0f), bh);
+
+    x += px(44.0f);
+    const float padW = px(66.0f);
+    for (auto* b : {&padMain_, &padGhost_, &padRim_, &padRoll_}) {
+        b->setBounds(x, y, padW, bh);
+        x += padW + px(5.0f);
+    }
+    x += px(14.0f);
 
     float rx = width() - px(10.0f);
     const float wavW = px(98.0f);

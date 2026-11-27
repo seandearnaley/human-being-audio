@@ -27,6 +27,10 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
       hitBtn_(ctx, "HIT", [this] { context_.model.triggerAudition(-1, 0.98f); }),
       dragWav_(ctx, "Drag .wav", [this] { context_.model.startWavExport(view_ == Editor::View::compose); }),
       dragMid_(ctx, "Drag .mid", [this] { context_.model.dragPatternMidi(); }) {
+    prevPreset_.setName("Previous preset");
+    nextPreset_.setName("Next preset");
+    presetName_.setAccessibilityPrefix("Preset");
+    ab_.setAccessibilityPrefix("Compare slot");
     addChild(&wordmark_);
     hba::ui::setupWordmarkButton(wordmark_, std::move(showAbout),
                                  [this](visage::Canvas& canvas) { drawWordmark(canvas); });
@@ -47,8 +51,6 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
     dragWav_.setOnDragOut([this] {
         if (context_.model.wavExportState() == ExportState::ready)
             context_.model.dragExportedWav();
-        else
-            context_.model.startWavExport(view_ == Editor::View::compose);
     });
     dragWav_.setOnRightClick([this] {
         visage::PopupMenu menu;
@@ -67,6 +69,7 @@ TopBar::TopBar(Context& ctx, std::function<void()> showAbout, std::function<void
     dragMid_.setFontSize(10.2f);
     dragMid_.setOnDragOut([this] { context_.model.dragPatternMidi(); });
 
+    ab_.setAlternateAction([this] { context_.model.copyAB(); });
     ab_.setOnRightClick([this] {
         hba::ui::showCopyABMenu(context_.model.isSlotB(), &ab_, [this] { context_.model.copyAB(); }, false);
     });
@@ -113,16 +116,7 @@ void TopBar::tick() {
                                 context_.model.isSlotB(), colour::sub, colour::body);
 
     const auto estate = context_.model.wavExportState();
-    if (estate == ExportState::rendering) {
-        dragWav_.setLabel("Render...");
-        dragWav_.setActive(false);
-    } else if (estate == ExportState::ready) {
-        dragWav_.setLabel("Drag .wav \xe2\x86\x97");
-        dragWav_.setActive(true);
-    } else {
-        dragWav_.setLabel("Render .wav");
-        dragWav_.setActive(false);
-    }
+    hba::ui::syncWavExport(dragWav_, estate);
 
     const auto& tel = context_.model.visuals();
     const float nextL = linearToDb(tel.peakL);
@@ -134,11 +128,7 @@ void TopBar::tick() {
     redraw();
 }
 
-void TopBar::showPresetMenu() {
-    hba::ui::showCategorizedPresetMenu(
-        context_.model.presets(), &presetName_, [this](int i) { context_.model.loadPreset(i); },
-        [this] { context_.model.savePreset(); });
-}
+void TopBar::showPresetMenu() { hba::ui::showStudioPresetMenu(context_.model, &presetName_); }
 
 void TopBar::drawWordmark(visage::Canvas& canvas) {
     hba::ui::drawBrandWordmark(canvas, wordmark_, brand::datum_logotype_on_dark_svg, 1260.0f / 334.0f, 24.0f, 8.0f,

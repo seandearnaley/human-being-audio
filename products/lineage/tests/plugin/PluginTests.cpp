@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "PluginModel.h"
+#include "../../ui/src/controls.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_approx.hpp>
@@ -225,4 +226,29 @@ TEST_CASE("lineage renders a mono host block beyond the prepared size", "[plugin
     midi.addEvent(juce::MidiMessage::noteOff(1, 36), 7800);
     proc.processBlock(audio, midi);
     CHECK(audio.getMagnitude(4096, 4096) > 0.001f);
+}
+
+TEST_CASE("Lineage bounce keeps small pointer movements as clicks", "[plugin][gesture]") {
+    ensureJuce();
+    ln::PluginProcessor processor;
+    ln::PluginModel model(processor);
+    ln::ui::Context context(model);
+    int clicks = 0, drags = 0;
+    ln::ui::PillButton button(context, "Bounce WAV", [&] { ++clicks; });
+    button.setBounds(0, 0, 100, 28);
+    button.setOnDragOut([&] { ++drags; });
+    visage::MouseEvent event{};
+    event.position = {10, 10};
+    button.mouseDown(event);
+    event.position.x += 1;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 0);
+    button.mouseDown(event);
+    event.position.x += 12;
+    button.mouseDrag(event);
+    button.mouseUp(event);
+    CHECK(clicks == 1);
+    CHECK(drags == 1);
 }

@@ -23,6 +23,7 @@ class Editor {
 
     void attach(void* parentView, int width, int height);
     void detach();
+    visage::Frame& rootFrame();
     void setSize(int width, int height);
     void setGridMode(bool grid);
     void setFillView(bool fill);

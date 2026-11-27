@@ -20,6 +20,7 @@ public:
 
     void attach(void* parentView, int width, int height);
     void detach();
+    visage::Frame& rootFrame();
     void setSize(int width, int height);
 
 #if defined(__linux__)

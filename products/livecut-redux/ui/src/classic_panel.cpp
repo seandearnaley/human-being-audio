@@ -167,7 +167,7 @@ ClassicPanel::ClassicPanel(Context& context)
     wet_ = std::make_unique<ParamSlider>(context, "wet", "Wet Mix", colour::accent, true);
 
     dragWavBtn_.setAccent(colour::cyan);
-    dragWavBtn_.setOnDrag([this] { context_.model.beginDragCaptureWav(); });
+    dragWavBtn_.setOnDragOut([this] { context_.model.beginDragCaptureWav(); });
     rollSeed_.setAccent(colour::textDim);
     captureBtn_.setAccent(colour::textDim);
     saveWavBtn_.setAccent(colour::textDim);
@@ -399,6 +399,7 @@ void ClassicPanel::tick() {
 
     dragWavBtn_.setLabel(v.hasCapture ? "Drag .wav \u2197" : "Drag .wav");
     dragWavBtn_.setActive(v.hasCapture);
+    dragWavBtn_.setDragReady(v.hasCapture);
     saveWavBtn_.setEnabledState(v.hasCapture);
 
     if (v.canApplyMode != lastCanApply_) {
