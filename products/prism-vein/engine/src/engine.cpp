@@ -75,6 +75,11 @@ inline void rotateQuadPhase(int k, float inRe, float inIm, float& outRe, float& 
 
 } // namespace
 
+Engine::Engine() : buf_(std::make_unique<Buffers>()) {}
+Engine::~Engine() = default;
+Engine::Engine(Engine&&) noexcept = default;
+Engine& Engine::operator=(Engine&&) noexcept = default;
+
 double Engine::justIntervalRatio(int semitonesFromRoot) noexcept PV_NONBLOCKING {
     int oct = 0;
     int st = semitonesFromRoot;
@@ -94,10 +99,10 @@ void Engine::prepare(double sampleRate, int maxBlockSize) {
     invSr_ = 1.0 / sampleRate_;
     maxBlockSize_ = std::max(1, maxBlockSize);
 
-    stft_.prepare(kFftSize);
-    telFft_.prepare(kFftSize);
+    buf_->stft.prepare(kFftSize);
+    buf_->telFft.prepare(kFftSize);
     for (int i = 0; i < kFftSize; ++i) {
-        telWin_[static_cast<std::size_t>(i)] = static_cast<float>(
+        buf_->telWin[static_cast<std::size_t>(i)] = static_cast<float>(
             0.5 * (1.0 - std::cos(hba::dsp::kTwoPi * static_cast<double>(i) / static_cast<double>(kFftSize))));
     }
 
@@ -137,7 +142,7 @@ void Engine::prepare(double sampleRate, int maxBlockSize) {
 }
 
 void Engine::reset() noexcept PV_NONBLOCKING {
-    stft_.reset();
+    buf_->stft.reset();
     subSplitL_.reset();
     subSplitR_.reset();
     lastSubHz_ = -1.0;
@@ -152,37 +157,37 @@ void Engine::reset() noexcept PV_NONBLOCKING {
     combDelayL_.clear();
     combDelayR_.clear();
 
-    tailReL_.fill(0.0f);
-    tailImL_.fill(0.0f);
-    tailReR_.fill(0.0f);
-    tailImR_.fill(0.0f);
-    freezeMagL_.fill(0.0f);
-    freezeMagR_.fill(0.0f);
+    buf_->tailReL.fill(0.0f);
+    buf_->tailImL.fill(0.0f);
+    buf_->tailReR.fill(0.0f);
+    buf_->tailImR.fill(0.0f);
+    buf_->freezeMagL.fill(0.0f);
+    buf_->freezeMagR.fill(0.0f);
     for (int k = 0; k < kNumBins; ++k) {
         const float kf = static_cast<float>(k);
-        freezePhaseL_[static_cast<std::size_t>(k)] = kf * 1.6180339f;
-        freezePhaseR_[static_cast<std::size_t>(k)] = kf * 2.4142135f;
-        internalCarrPhase_[static_cast<std::size_t>(k)] = kf * 0.7853981f;
+        buf_->freezePhaseL[static_cast<std::size_t>(k)] = kf * 1.6180339f;
+        buf_->freezePhaseR[static_cast<std::size_t>(k)] = kf * 2.4142135f;
+        buf_->internalCarrPhase[static_cast<std::size_t>(k)] = kf * 0.7853981f;
     }
-    maskL_.fill(0.0f);
-    maskR_.fill(0.0f);
-    workInMag_.fill(0.0f);
-    workPreTameMag_.fill(0.0f);
-    workOutMag_.fill(0.0f);
-    tameBinSmooth_.fill(1.0f);
-    workTameGain_.fill(1.0f);
+    buf_->maskL.fill(0.0f);
+    buf_->maskR.fill(0.0f);
+    buf_->workInMag.fill(0.0f);
+    buf_->workPreTameMag.fill(0.0f);
+    buf_->workOutMag.fill(0.0f);
+    buf_->tameBinSmooth.fill(1.0f);
+    buf_->workTameGain.fill(1.0f);
     compGainSmoothed_ = 1.0f;
     freezeFade_ = 0.0f;
     freezeCaptured_ = false;
     prevFreezeParam_ = false;
 
-    telInRing_.fill(0.0f);
-    telOutRing_.fill(0.0f);
-    telTameGain_.fill(1.0f);
+    buf_->telInRing.fill(0.0f);
+    buf_->telOutRing.fill(0.0f);
+    buf_->telTameGain.fill(1.0f);
     telPos_ = 0;
     telHopCount_ = 0;
 
-    for (auto& v : voices_) {
+    for (auto& v : buf_->voices) {
         v.bufL.fill(0.0f);
         v.bufR.fill(0.0f);
         v.writePos = 0;
@@ -399,7 +404,7 @@ void Engine::updateActiveChordTargets(const Params& p, double totalShiftSt,
     const float fan = p.real(ParamId::stereoFan);
 
     for (int i = 0; i < kMaxChordVoices; ++i) {
-        auto& v = voices_[static_cast<std::size_t>(i)];
+        auto& v = buf_->voices[static_cast<std::size_t>(i)];
         if (i < count) {
             const int n = notes[static_cast<std::size_t>(i)];
             const double microSign = (i % 2 == 0) ? 1.0 : -1.0;
@@ -463,7 +468,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         static_cast<float>(hba::dsp::onePoleCoef(std::max(0.001, static_cast<double>(p.real(ParamId::glideMs)) * 0.001),
                                                  static_cast<double>(fb.hopSize) * invSr_));
     for (int v = 0; v < activeVoiceCount_; ++v) {
-        auto& voice = voices_[static_cast<std::size_t>(v)];
+        auto& voice = buf_->voices[static_cast<std::size_t>(v)];
         voice.freqHz += static_cast<double>(glideHopCoef) * (voice.targetHz - voice.freqHz);
     }
 
@@ -474,15 +479,15 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         const float mL = std::hypot(fb.reL[k], fb.imL[k]);
         const float mR = std::hypot(fb.reR[k], fb.imR[k]);
         const float m = 0.5f * (mL + mR);
-        workInMag_[ku] = m;
+        buf_->workInMag[ku] = m;
         if (k >= subCutoffBin)
             inEnergy += m * m;
     }
 
     // 2. Build stereo Harmonic Chord Lattice mask (with odd/even stereo fanning & Q sharpness).
     const float floorGain = 0.002f + 0.11f * (1.0f - qSharp) * (1.0f - qSharp);
-    maskL_.fill(floorGain);
-    maskR_.fill(floorGain);
+    buf_->maskL.fill(floorGain);
+    buf_->maskR.fill(floorGain);
 
     const float sigmaBins = 0.58f + (1.0f - qSharp) * (1.0f - qSharp) * 1.95f;
     const float invTwoSigma2 = 0.5f / (sigmaBins * sigmaBins);
@@ -492,7 +497,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
     const float tiltExp = -0.58f + 0.76f * tilt;
 
     for (int v = 0; v < activeVoiceCount_; ++v) {
-        const auto& voice = voices_[static_cast<std::size_t>(v)];
+        const auto& voice = buf_->voices[static_cast<std::size_t>(v)];
         if (voice.weight <= 0.0f)
             continue;
         const float f0 = static_cast<float>(voice.freqHz);
@@ -526,7 +531,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const float d = static_cast<float>(k) - bL;
                 const float bell = std::exp(-d * d * invTwoSigma2);
                 const auto ku = static_cast<std::size_t>(k);
-                maskL_[ku] = std::min(3.4f, maskL_[ku] + gainL * bell);
+                buf_->maskL[ku] = std::min(3.4f, buf_->maskL[ku] + gainL * bell);
             }
             const int loR = std::max(1, centerR - splatRad);
             const int hiR = std::min(bins - 2, centerR + splatRad);
@@ -534,13 +539,13 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const float d = static_cast<float>(k) - bR;
                 const float bell = std::exp(-d * d * invTwoSigma2);
                 const auto ku = static_cast<std::size_t>(k);
-                maskR_[ku] = std::min(3.4f, maskR_[ku] + gainR * bell);
+                buf_->maskR[ku] = std::min(3.4f, buf_->maskR[ku] + gainR * bell);
             }
 
             if (h <= 2 && centerL >= 1 && centerL < bins) {
                 pcGlow[static_cast<std::size_t>(pc)] =
                     std::max(pcGlow[static_cast<std::size_t>(pc)],
-                             magToUiNorm(workInMag_[static_cast<std::size_t>(centerL)] * 1.8f));
+                             magToUiNorm(buf_->workInMag[static_cast<std::size_t>(centerL)] * 1.8f));
             }
         }
     }
@@ -569,10 +574,10 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const auto ku = static_cast<std::size_t>(k);
                 const float liveL = std::hypot(fb.reL[k], fb.imL[k]);
                 const float liveR = std::hypot(fb.reR[k], fb.imR[k]);
-                const float tailL = std::hypot(tailReL_[ku], tailImL_[ku]);
-                const float tailR = std::hypot(tailReR_[ku], tailImR_[ku]);
-                freezeMagL_[ku] = std::max(liveL, tailL * 0.85f);
-                freezeMagR_[ku] = std::max(liveR, tailR * 0.85f);
+                const float tailL = std::hypot(buf_->tailReL[ku], buf_->tailImL[ku]);
+                const float tailR = std::hypot(buf_->tailReR[ku], buf_->tailImR[ku]);
+                buf_->freezeMagL[ku] = std::max(liveL, tailL * 0.85f);
+                buf_->freezeMagR[ku] = std::max(liveR, tailR * 0.85f);
             }
             freezeCaptured_ = true;
         } else if (continuousCloud) {
@@ -581,10 +586,12 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const auto ku = static_cast<std::size_t>(k);
                 const float mL = std::hypot(fb.reL[k], fb.imL[k]);
                 const float mR = std::hypot(fb.reR[k], fb.imR[k]);
-                freezeMagL_[ku] = mL > freezeMagL_[ku] ? (0.45f * mL + 0.55f * freezeMagL_[ku])
-                                                       : (holdCoef * freezeMagL_[ku] + (1.0f - holdCoef) * mL);
-                freezeMagR_[ku] = mR > freezeMagR_[ku] ? (0.45f * mR + 0.55f * freezeMagR_[ku])
-                                                       : (holdCoef * freezeMagR_[ku] + (1.0f - holdCoef) * mR);
+                buf_->freezeMagL[ku] = mL > buf_->freezeMagL[ku]
+                                           ? (0.45f * mL + 0.55f * buf_->freezeMagL[ku])
+                                           : (holdCoef * buf_->freezeMagL[ku] + (1.0f - holdCoef) * mL);
+                buf_->freezeMagR[ku] = mR > buf_->freezeMagR[ku]
+                                           ? (0.45f * mR + 0.55f * buf_->freezeMagR[ku])
+                                           : (holdCoef * buf_->freezeMagR[ku] + (1.0f - holdCoef) * mR);
             }
         }
     }
@@ -598,27 +605,27 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
             const float cTilt = p.real(ParamId::carrierTilt);
 
             // First compute actual carrier complex spectrum and its exact bin magnitudes.
-            workCarrMag_[0] = workCarrMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
+            buf_->workCarrMag[0] = buf_->workCarrMag[static_cast<std::size_t>(bins - 1)] = 0.0f;
             for (int k = 1; k < bins - 1; ++k) {
                 const auto ku = static_cast<std::size_t>(k);
                 if (useSc) {
-                    workCarrReL_[ku] = fb.scReL[k];
-                    workCarrImL_[ku] = fb.scImL[k];
-                    workCarrReR_[ku] = fb.scReR[k];
-                    workCarrImR_[ku] = fb.scImR[k];
+                    buf_->workCarrReL[ku] = fb.scReL[k];
+                    buf_->workCarrImL[ku] = fb.scImL[k];
+                    buf_->workCarrReR[ku] = fb.scReR[k];
+                    buf_->workCarrImR[ku] = fb.scImR[k];
                 } else {
-                    internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
-                    if (internalCarrPhase_[ku] > 6.2831853f)
-                        internalCarrPhase_[ku] -= 6.2831853f;
-                    const float cs = std::cos(internalCarrPhase_[ku]);
-                    const float sn = std::sin(internalCarrPhase_[ku]);
-                    workCarrReL_[ku] = maskL_[ku] * cs;
-                    workCarrImL_[ku] = maskL_[ku] * sn;
-                    workCarrReR_[ku] = maskR_[ku] * cs;
-                    workCarrImR_[ku] = maskR_[ku] * sn;
+                    buf_->internalCarrPhase[ku] += hopPhaseStep * static_cast<float>(k);
+                    if (buf_->internalCarrPhase[ku] > 6.2831853f)
+                        buf_->internalCarrPhase[ku] -= 6.2831853f;
+                    const float cs = std::cos(buf_->internalCarrPhase[ku]);
+                    const float sn = std::sin(buf_->internalCarrPhase[ku]);
+                    buf_->workCarrReL[ku] = buf_->maskL[ku] * cs;
+                    buf_->workCarrImL[ku] = buf_->maskL[ku] * sn;
+                    buf_->workCarrReR[ku] = buf_->maskR[ku] * cs;
+                    buf_->workCarrImR[ku] = buf_->maskR[ku] * sn;
                 }
-                workCarrMag_[ku] = 0.5f * (std::hypot(workCarrReL_[ku], workCarrImL_[ku]) +
-                                           std::hypot(workCarrReR_[ku], workCarrImR_[ku]));
+                buf_->workCarrMag[ku] = 0.5f * (std::hypot(buf_->workCarrReL[ku], buf_->workCarrImL[ku]) +
+                                                std::hypot(buf_->workCarrReR[ku], buf_->workCarrImR[ku]));
             }
 
             // Compute matched 11-bin smoothed envelopes of Main and Carrier on identical linear magnitude scale.
@@ -630,11 +637,11 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 float sumC = 0.0f;
                 const float invW = 1.0f / static_cast<float>(hi - lo + 1);
                 for (int j = lo; j <= hi; ++j) {
-                    sumM += workInMag_[static_cast<std::size_t>(j)];
-                    sumC += workCarrMag_[static_cast<std::size_t>(j)];
+                    sumM += buf_->workInMag[static_cast<std::size_t>(j)];
+                    sumC += buf_->workCarrMag[static_cast<std::size_t>(j)];
                 }
-                envMain_[ku] = sumM * invW;
-                envCarr_[ku] = sumC * invW;
+                buf_->envMain[ku] = sumM * invW;
+                buf_->envCarr[ku] = sumC * invW;
             }
 
             for (int k = 1; k < bins - 1; ++k) {
@@ -644,23 +651,24 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
 
                 const float mMagL = std::hypot(fb.reL[k], fb.imL[k]);
                 const float mMagR = std::hypot(fb.reR[k], fb.imR[k]);
-                const float cReL = workCarrReL_[ku];
-                const float cImL = workCarrImL_[ku];
-                const float cReR = workCarrReR_[ku];
-                const float cImR = workCarrImR_[ku];
+                const float cReL = buf_->workCarrReL[ku];
+                const float cImL = buf_->workCarrImL[ku];
+                const float cReR = buf_->workCarrReR[ku];
+                const float cImR = buf_->workCarrImR[ku];
                 const float cMagL = std::hypot(cReL, cImL);
                 const float cMagR = std::hypot(cReR, cImR);
 
                 // Linear Vocoder magnitude: Main envelope imprints onto Carrier fine structure.
-                const float vocScale = std::clamp(envMain_[ku] / (envCarr_[ku] + 1.0e-4f), 0.0f, 4.5f) * tiltGain;
+                const float vocScale =
+                    std::clamp(buf_->envMain[ku] / (buf_->envCarr[ku] + 1.0e-4f), 0.0f, 4.5f) * tiltGain;
                 const float vocMagL = cMagL * vocScale;
                 const float vocMagR = cMagR * vocScale;
 
                 // Level-matched Geometric Cross-Morph: linear in signal amplitude!
                 const float carrScaledL = cMagL * vocScale;
                 const float carrScaledR = cMagR * vocScale;
-                const float geomMagL = std::sqrt(mMagL * (carrScaledL + 1.0e-6f)) * (0.45f + 0.55f * maskL_[ku]);
-                const float geomMagR = std::sqrt(mMagR * (carrScaledR + 1.0e-6f)) * (0.45f + 0.55f * maskR_[ku]);
+                const float geomMagL = std::sqrt(mMagL * (carrScaledL + 1.0e-6f)) * (0.45f + 0.55f * buf_->maskL[ku]);
+                const float geomMagR = std::sqrt(mMagR * (carrScaledR + 1.0e-6f)) * (0.45f + 0.55f * buf_->maskR[ku]);
 
                 const float targetMagL = (1.0f - morph) * vocMagL + morph * geomMagL;
                 const float targetMagR = (1.0f - morph) * vocMagR + morph * geomMagR;
@@ -694,15 +702,15 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 if (shimmer > 0.001f && k >= 6) {
                     const auto halfK = static_cast<std::size_t>(k / 2);
                     const float shimW = shimmer * 0.45f;
-                    drvReL += tailReL_[halfK] * maskL_[ku] * shimW;
-                    drvImL += tailImL_[halfK] * maskL_[ku] * shimW;
-                    drvReR += tailReR_[halfK] * maskR_[ku] * shimW;
-                    drvImR += tailImR_[halfK] * maskR_[ku] * shimW;
+                    drvReL += buf_->tailReL[halfK] * buf_->maskL[ku] * shimW;
+                    drvImL += buf_->tailImL[halfK] * buf_->maskL[ku] * shimW;
+                    drvReR += buf_->tailReR[halfK] * buf_->maskR[ku] * shimW;
+                    drvImR += buf_->tailImR[halfK] * buf_->maskR[ku] * shimW;
                 }
 
                 float rotReL = 0.0f, rotImL = 0.0f, rotReR = 0.0f, rotImR = 0.0f;
-                rotateQuadPhase(k, tailReL_[ku], tailImL_[ku], rotReL, rotImL);
-                rotateQuadPhase(k, tailReR_[ku], tailImR_[ku], rotReR, rotImR);
+                rotateQuadPhase(k, buf_->tailReL[ku], buf_->tailImL[ku], rotReL, rotImL);
+                rotateQuadPhase(k, buf_->tailReR[ku], buf_->tailImR[ku], rotReR, rotImR);
 
                 const float binDecay = decayCoef * 0.85f;
                 const float outReL = binDecay * rotReL + (1.0f - 0.5f * binDecay) * drvReL;
@@ -710,10 +718,10 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const float outReR = binDecay * rotReR + (1.0f - 0.5f * binDecay) * drvReR;
                 const float outImR = binDecay * rotImR + (1.0f - 0.5f * binDecay) * drvImR;
 
-                tailReL_[ku] = outReL;
-                tailImL_[ku] = outImL;
-                tailReR_[ku] = outReR;
-                tailImR_[ku] = outImR;
+                buf_->tailReL[ku] = outReL;
+                buf_->tailImL[ku] = outImL;
+                buf_->tailReR[ku] = outReR;
+                buf_->tailImR[ku] = outImR;
 
                 fb.reL[k] = outReL;
                 fb.imL[k] = outImL;
@@ -729,36 +737,36 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const int hi = std::min(bins - 2, k + 4);
                 float localMag = 0.0f;
                 for (int j = lo; j <= hi; ++j)
-                    localMag = std::max(localMag, workInMag_[static_cast<std::size_t>(j)]);
-                envMain_[ku] = localMag;
+                    localMag = std::max(localMag, buf_->workInMag[static_cast<std::size_t>(j)]);
+                buf_->envMain[ku] = localMag;
             }
 
             for (int k = 1; k < bins - 1; ++k) {
                 const auto ku = static_cast<std::size_t>(k);
                 float rotReL = 0.0f, rotImL = 0.0f, rotReR = 0.0f, rotImR = 0.0f;
-                rotateQuadPhase(k, tailReL_[ku], tailImL_[ku], rotReL, rotImL);
-                rotateQuadPhase(k, tailReR_[ku], tailImR_[ku], rotReR, rotImR);
+                rotateQuadPhase(k, buf_->tailReL[ku], buf_->tailImL[ku], rotReL, rotImL);
+                rotateQuadPhase(k, buf_->tailReR[ku], buf_->tailImR[ku], rotReR, rotImR);
 
-                internalCarrPhase_[ku] += hopPhaseStep * static_cast<float>(k);
-                if (internalCarrPhase_[ku] > 6.2831853f)
-                    internalCarrPhase_[ku] -= 6.2831853f;
-                const float pullAmpL = envMain_[ku] * maskL_[ku] * pullBlend * 0.65f;
-                const float pullAmpR = envMain_[ku] * maskR_[ku] * pullBlend * 0.65f;
-                const float cs = std::cos(internalCarrPhase_[ku]);
-                const float sn = std::sin(internalCarrPhase_[ku]);
+                buf_->internalCarrPhase[ku] += hopPhaseStep * static_cast<float>(k);
+                if (buf_->internalCarrPhase[ku] > 6.2831853f)
+                    buf_->internalCarrPhase[ku] -= 6.2831853f;
+                const float pullAmpL = buf_->envMain[ku] * buf_->maskL[ku] * pullBlend * 0.65f;
+                const float pullAmpR = buf_->envMain[ku] * buf_->maskR[ku] * pullBlend * 0.65f;
+                const float cs = std::cos(buf_->internalCarrPhase[ku]);
+                const float sn = std::sin(buf_->internalCarrPhase[ku]);
 
-                float drvReL = fb.reL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * cs;
-                float drvImL = fb.imL[k] * maskL_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * sn;
-                float drvReR = fb.reR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * cs;
-                float drvImR = fb.imR[k] * maskR_[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * sn;
+                float drvReL = fb.reL[k] * buf_->maskL[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * cs;
+                float drvImL = fb.imL[k] * buf_->maskL[ku] * (1.0f - 0.35f * pullBlend) + pullAmpL * sn;
+                float drvReR = fb.reR[k] * buf_->maskR[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * cs;
+                float drvImR = fb.imR[k] * buf_->maskR[ku] * (1.0f - 0.35f * pullBlend) + pullAmpR * sn;
 
                 if (shimmer > 0.001f && k >= 6) {
                     const auto halfK = static_cast<std::size_t>(k / 2);
                     const float shimW = shimmer * 0.55f;
-                    drvReL += tailReL_[halfK] * maskL_[ku] * shimW;
-                    drvImL += tailImL_[halfK] * maskL_[ku] * shimW;
-                    drvReR += tailReR_[halfK] * maskR_[ku] * shimW;
-                    drvImR += tailImR_[halfK] * maskR_[ku] * shimW;
+                    drvReL += buf_->tailReL[halfK] * buf_->maskL[ku] * shimW;
+                    drvImL += buf_->tailImL[halfK] * buf_->maskL[ku] * shimW;
+                    drvReR += buf_->tailReR[halfK] * buf_->maskR[ku] * shimW;
+                    drvImR += buf_->tailImR[halfK] * buf_->maskR[ku] * shimW;
                 }
 
                 const float freqDamp =
@@ -771,10 +779,10 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 const float outReR = binDecay * rotReR + inputDrive * drvReR;
                 const float outImR = binDecay * rotImR + inputDrive * drvImR;
 
-                tailReL_[ku] = outReL;
-                tailImL_[ku] = outImL;
-                tailReR_[ku] = outReR;
-                tailImR_[ku] = outImR;
+                buf_->tailReL[ku] = outReL;
+                buf_->tailImL[ku] = outImL;
+                buf_->tailReR[ku] = outReR;
+                buf_->tailImR[ku] = outImR;
 
                 fb.reL[k] = outReL;
                 fb.imL[k] = outImL;
@@ -789,26 +797,26 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         const float liveW = 1.0f - freezeFade_;
         for (int k = 1; k < bins - 1; ++k) {
             const auto ku = static_cast<std::size_t>(k);
-            freezePhaseL_[ku] +=
+            buf_->freezePhaseL[ku] +=
                 hopPhaseStep * (static_cast<float>(k) + 0.03f * std::sin(static_cast<float>(k) * 0.37f));
-            freezePhaseR_[ku] +=
+            buf_->freezePhaseR[ku] +=
                 hopPhaseStep * (static_cast<float>(k) - 0.03f * std::cos(static_cast<float>(k) * 0.41f));
-            if (freezePhaseL_[ku] > 6.2831853f)
-                freezePhaseL_[ku] -= 6.2831853f;
-            if (freezePhaseR_[ku] > 6.2831853f)
-                freezePhaseR_[ku] -= 6.2831853f;
+            if (buf_->freezePhaseL[ku] > 6.2831853f)
+                buf_->freezePhaseL[ku] -= 6.2831853f;
+            if (buf_->freezePhaseR[ku] > 6.2831853f)
+                buf_->freezePhaseR[ku] -= 6.2831853f;
 
-            float mL = freezeMagL_[ku] * maskL_[ku];
-            float mR = freezeMagR_[ku] * maskR_[ku];
+            float mL = buf_->freezeMagL[ku] * buf_->maskL[ku];
+            float mR = buf_->freezeMagR[ku] * buf_->maskR[ku];
             if (shimmer > 0.001f && k >= 4) {
                 const auto halfK = static_cast<std::size_t>(k / 2);
-                mL += shimmer * 0.55f * freezeMagL_[halfK] * maskL_[ku];
-                mR += shimmer * 0.55f * freezeMagR_[halfK] * maskR_[ku];
+                mL += shimmer * 0.55f * buf_->freezeMagL[halfK] * buf_->maskL[ku];
+                mR += shimmer * 0.55f * buf_->freezeMagR[halfK] * buf_->maskR[ku];
             }
-            const float frReL = mL * std::cos(freezePhaseL_[ku]);
-            const float frImL = mL * std::sin(freezePhaseL_[ku]);
-            const float frReR = mR * std::cos(freezePhaseR_[ku]);
-            const float frImR = mR * std::sin(freezePhaseR_[ku]);
+            const float frReL = mL * std::cos(buf_->freezePhaseL[ku]);
+            const float frImL = mL * std::sin(buf_->freezePhaseL[ku]);
+            const float frReR = mR * std::cos(buf_->freezePhaseR[ku]);
+            const float frImR = mR * std::sin(buf_->freezePhaseR[ku]);
 
             if (liveW < 0.002f) {
                 fb.reL[k] = frReL;
@@ -851,27 +859,27 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
 
     // 6. Two-Pass Symmetric Bark Auto-Tame with per-bin attack/release smoothing!
     // Pass A: apply compGain and populate immutable pre-tame magnitudes across ALL bins.
-    workPreTameMag_[0] = workPreTameMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
+    buf_->workPreTameMag[0] = buf_->workPreTameMag[static_cast<std::size_t>(bins - 1)] = 0.0f;
     for (int k = 1; k < bins - 1; ++k) {
         const auto ku = static_cast<std::size_t>(k);
         fb.reL[k] *= compGainSmoothed_;
         fb.imL[k] *= compGainSmoothed_;
         fb.reR[k] *= compGainSmoothed_;
         fb.imR[k] *= compGainSmoothed_;
-        workPreTameMag_[ku] = 0.5f * (std::hypot(fb.reL[k], fb.imL[k]) + std::hypot(fb.reR[k], fb.imR[k]));
+        buf_->workPreTameMag[ku] = 0.5f * (std::hypot(fb.reL[k], fb.imL[k]) + std::hypot(fb.reR[k], fb.imR[k]));
     }
 
-    // Pass B: compute true symmetric Bark prominence strictly from immutable workPreTameMag_.
+    // Pass B: compute true symmetric Bark prominence strictly from immutable buf_->workPreTameMag.
     const float tameFocusHz = p.real(ParamId::tameFocusHz);
     const float tameSelect = p.real(ParamId::tameSelect);
     const float spikeThresh = 1.85f - 0.85f * tameSelect;
     float maxTameCutDb = 0.0f;
 
-    workTameGain_[0] = workTameGain_[static_cast<std::size_t>(bins - 1)] = 1.0f;
-    workOutMag_[0] = workOutMag_[static_cast<std::size_t>(bins - 1)] = 0.0f;
+    buf_->workTameGain[0] = buf_->workTameGain[static_cast<std::size_t>(bins - 1)] = 1.0f;
+    buf_->workOutMag[0] = buf_->workOutMag[static_cast<std::size_t>(bins - 1)] = 0.0f;
     for (int k = 1; k < bins - 1; ++k) {
         const auto ku = static_cast<std::size_t>(k);
-        const float mag = workPreTameMag_[ku];
+        const float mag = buf_->workPreTameMag[ku];
         float targetAtten = 1.0f;
 
         if (tameAmt > 0.005f && k >= subCutoffBin) {
@@ -884,7 +892,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
             for (int j = lo; j <= hi; ++j) {
                 if (std::abs(j - k) <= 1)
                     continue;
-                localSum += workPreTameMag_[static_cast<std::size_t>(j)];
+                localSum += buf_->workPreTameMag[static_cast<std::size_t>(j)];
                 ++localCnt;
             }
             const float localAvg = localCnt > 0 ? (localSum / static_cast<float>(localCnt)) : mag;
@@ -900,17 +908,17 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
         }
 
         // Smooth per-bin gain with fast attack (catches spikes) and silky release (zero chatter).
-        const float prevG = tameBinSmooth_[ku];
+        const float prevG = buf_->tameBinSmooth[ku];
         const float sm = (targetAtten < prevG) ? 0.45f : 0.16f;
         const float atten = prevG + sm * (targetAtten - prevG);
-        tameBinSmooth_[ku] = atten;
+        buf_->tameBinSmooth[ku] = atten;
 
         fb.reL[k] *= atten;
         fb.imL[k] *= atten;
         fb.reR[k] *= atten;
         fb.imR[k] *= atten;
-        workTameGain_[ku] = atten;
-        workOutMag_[ku] = mag * atten;
+        buf_->workTameGain[ku] = atten;
+        buf_->workOutMag[ku] = mag * atten;
 
         if (atten < 0.995f) {
             const float cutDb = -20.0f * std::log10(std::max(atten, 0.05f));
@@ -919,7 +927,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
     }
 
     if (publishTelemetry) {
-        updateTelemetrySpectrum(workInMag_.data(), workOutMag_.data(), workTameGain_.data());
+        updateTelemetrySpectrum(buf_->workInMag.data(), buf_->workOutMag.data(), buf_->workTameGain.data());
         telemetry_.tamePeakDb = 0.72f * telemetry_.tamePeakDb + 0.28f * maxTameCutDb;
         telemetry_.frozen = wantFrozen;
         for (std::size_t pc = 0; pc < 12; ++pc)
@@ -941,7 +949,7 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
     double sumL = 0.0;
     double sumR = 0.0;
     for (int v = 0; v < activeVoiceCount_; ++v) {
-        auto& voice = voices_[static_cast<std::size_t>(v)];
+        auto& voice = buf_->voices[static_cast<std::size_t>(v)];
         voice.freqHz += voiceGlideCoef_ * (voice.targetHz - voice.freqHz);
         const double w = static_cast<double>(voice.weight);
         if (w <= 1.0e-5)
@@ -998,8 +1006,8 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
 void Engine::pushCombTelemetrySample(float inMono, float outMono, double liveTameCutDb,
                                      double tameFocusHz) noexcept PV_NONBLOCKING {
     constexpr int kMask = kFftSize - 1;
-    telInRing_[static_cast<std::size_t>(telPos_)] = inMono;
-    telOutRing_[static_cast<std::size_t>(telPos_)] = outMono;
+    buf_->telInRing[static_cast<std::size_t>(telPos_)] = inMono;
+    buf_->telOutRing[static_cast<std::size_t>(telPos_)] = outMono;
     telPos_ = (telPos_ + 1) & kMask;
     if (++telHopCount_ < 512)
         return;
@@ -1007,28 +1015,29 @@ void Engine::pushCombTelemetrySample(float inMono, float outMono, double liveTam
 
     for (int i = 0; i < kFftSize; ++i) {
         const auto idx = static_cast<std::size_t>((telPos_ + i) & kMask);
-        const float w = telWin_[static_cast<std::size_t>(i)];
-        telTimeIn_[static_cast<std::size_t>(i)] = telInRing_[idx] * w;
-        telTimeOut_[static_cast<std::size_t>(i)] = telOutRing_[idx] * w;
+        const float w = buf_->telWin[static_cast<std::size_t>(i)];
+        buf_->telTimeIn[static_cast<std::size_t>(i)] = buf_->telInRing[idx] * w;
+        buf_->telTimeOut[static_cast<std::size_t>(i)] = buf_->telOutRing[idx] * w;
     }
 
     // 2-for-1 FFT: analyze mono input (L slot) and mono comb output (R slot) in ONE real FFT!
-    telFft_.forwardStereo(telTimeIn_.data(), telTimeOut_.data(), telInRe_.data(), telInIm_.data(), telOutRe_.data(),
-                          telOutIm_.data(), telScratchRe_.data(), telScratchIm_.data());
+    buf_->telFft.forwardStereo(buf_->telTimeIn.data(), buf_->telTimeOut.data(), buf_->telInRe.data(),
+                               buf_->telInIm.data(), buf_->telOutRe.data(), buf_->telOutIm.data(),
+                               buf_->telScratchRe.data(), buf_->telScratchIm.data());
 
     const float binHz = static_cast<float>(sampleRate_) / static_cast<float>(kFftSize);
     const float cutLinear = static_cast<float>(hba::dsp::dbToGain(-std::max(0.0, liveTameCutDb)));
     for (int k = 0; k < kNumBins; ++k) {
         const auto ku = static_cast<std::size_t>(k);
-        telInMag_[ku] = std::hypot(telInRe_[ku], telInIm_[ku]);
-        telOutMag_[ku] = std::hypot(telOutRe_[ku], telOutIm_[ku]);
+        buf_->telInMag[ku] = std::hypot(buf_->telInRe[ku], buf_->telInIm[ku]);
+        buf_->telOutMag[ku] = std::hypot(buf_->telOutRe[ku], buf_->telOutIm[ku]);
         if (liveTameCutDb > 0.1 && k > 0) {
             const float fHz = static_cast<float>(k) * binHz;
             const float oct = std::log2(std::max(fHz, 120.0f) / std::max(static_cast<float>(tameFocusHz), 300.0f));
             const float bell = std::exp(-0.5f * oct * oct / (0.85f * 0.85f));
-            telTameGain_[ku] = 1.0f - bell * (1.0f - cutLinear);
+            buf_->telTameGain[ku] = 1.0f - bell * (1.0f - cutLinear);
         } else {
-            telTameGain_[ku] = 1.0f;
+            buf_->telTameGain[ku] = 1.0f;
         }
     }
 
@@ -1036,7 +1045,7 @@ void Engine::pushCombTelemetrySample(float inMono, float outMono, double liveTam
     std::array<float, 12> pcGlow{};
     const float invBinHz = 1.0f / std::max(binHz, 1.0e-3f);
     for (int v = 0; v < activeVoiceCount_; ++v) {
-        const auto& voice = voices_[static_cast<std::size_t>(v)];
+        const auto& voice = buf_->voices[static_cast<std::size_t>(v)];
         if (voice.weight <= 0.0f)
             continue;
         const float f0 = static_cast<float>(voice.freqHz);
@@ -1045,11 +1054,11 @@ void Engine::pushCombTelemetrySample(float inMono, float outMono, double liveTam
         int pc = static_cast<int>(std::lround(midiEst)) % 12;
         if (pc < 0)
             pc += 12;
-        pcGlow[static_cast<std::size_t>(pc)] =
-            std::max(pcGlow[static_cast<std::size_t>(pc)], magToUiNorm(telOutMag_[static_cast<std::size_t>(b)] * 1.8f));
+        pcGlow[static_cast<std::size_t>(pc)] = std::max(
+            pcGlow[static_cast<std::size_t>(pc)], magToUiNorm(buf_->telOutMag[static_cast<std::size_t>(b)] * 1.8f));
     }
 
-    updateTelemetrySpectrum(telInMag_.data(), telOutMag_.data(), telTameGain_.data());
+    updateTelemetrySpectrum(buf_->telInMag.data(), buf_->telOutMag.data(), buf_->telTameGain.data());
     telemetry_.tamePeakDb = 0.72f * telemetry_.tamePeakDb + 0.28f * static_cast<float>(liveTameCutDb);
     telemetry_.frozen = false;
     for (std::size_t pc = 0; pc < 12; ++pc)
@@ -1347,12 +1356,12 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             const bool runComb = (combBlend > 0.001);
 
             if (runStft) {
-                stft_.processSample(static_cast<float>(bodyL), static_cast<float>(bodyR), static_cast<float>(scL),
-                                    static_cast<float>(scR), analyzeSc, stftOutL, stftOutR,
-                                    [&](hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb) noexcept {
-                                        processStftFrame(fb, p, modDecay, modTame, modTilt, modFan, modMorph,
-                                                         !wantCombAudio);
-                                    });
+                buf_->stft.processSample(static_cast<float>(bodyL), static_cast<float>(bodyR), static_cast<float>(scL),
+                                         static_cast<float>(scR), analyzeSc, stftOutL, stftOutR,
+                                         [&](hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb) noexcept {
+                                             processStftFrame(fb, p, modDecay, modTame, modTilt, modFan, modMorph,
+                                                              !wantCombAudio);
+                                         });
             }
 
             double combOutL = 0.0;

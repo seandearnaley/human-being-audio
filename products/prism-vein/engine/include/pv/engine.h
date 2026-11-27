@@ -23,6 +23,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 namespace pv {
 
@@ -62,7 +63,12 @@ class Engine {
     static constexpr int kNumBins = kFftSize / 2 + 1;
     static constexpr int kMaxChordVoices = 12;
 
-    Engine() noexcept = default;
+    Engine();
+    ~Engine();
+    Engine(const Engine&) = delete;
+    Engine& operator=(const Engine&) = delete;
+    Engine(Engine&&) noexcept;
+    Engine& operator=(Engine&&) noexcept;
 
     void prepare(double sampleRate, int maxBlockSize);
     void reset() noexcept PV_NONBLOCKING;
@@ -147,8 +153,54 @@ class Engine {
     double modWheelTarget_ = 0.0;
     bool prevHoldParam_ = false;
 
-    // Resolved active chord fundamentals (Hz) & glide smoothers.
-    std::array<CombVoice, kMaxChordVoices> voices_{};
+    struct Buffers {
+        std::array<CombVoice, kMaxChordVoices> voices{};
+
+        // 4x Hann^2 COLA Stereo STFT + spectral memory buffers.
+        hba::dsp::StereoStft<kFftSize> stft{};
+        std::array<float, kNumBins> tailReL{};
+        std::array<float, kNumBins> tailImL{};
+        std::array<float, kNumBins> tailReR{};
+        std::array<float, kNumBins> tailImR{};
+        std::array<float, kNumBins> freezeMagL{};
+        std::array<float, kNumBins> freezeMagR{};
+        std::array<float, kNumBins> freezePhaseL{};
+        std::array<float, kNumBins> freezePhaseR{};
+        std::array<float, kNumBins> maskL{};
+        std::array<float, kNumBins> maskR{};
+        std::array<float, kNumBins> workInMag{};
+        std::array<float, kNumBins> workPreTameMag{};
+        std::array<float, kNumBins> workOutMag{};
+        std::array<float, kNumBins> workCarrReL{};
+        std::array<float, kNumBins> workCarrImL{};
+        std::array<float, kNumBins> workCarrReR{};
+        std::array<float, kNumBins> workCarrImR{};
+        std::array<float, kNumBins> workCarrMag{};
+        std::array<float, kNumBins> tameBinSmooth{};
+        std::array<float, kNumBins> workTameGain{};
+        std::array<float, kNumBins> envMain{};
+        std::array<float, kNumBins> envCarr{};
+        std::array<float, kNumBins> internalCarrPhase{};
+
+        // Analysis-only zero-latency FFT ring for live Harmonic Comb / Live 0ms spectrum telemetry.
+        hba::dsp::RealFft<kFftSize> telFft{};
+        std::array<float, kFftSize> telWin{};
+        std::array<float, kFftSize> telInRing{};
+        std::array<float, kFftSize> telOutRing{};
+        std::array<float, kFftSize> telTimeIn{};
+        std::array<float, kFftSize> telTimeOut{};
+        std::array<float, kFftSize> telScratchRe{};
+        std::array<float, kFftSize> telScratchIm{};
+        std::array<float, kNumBins> telInRe{};
+        std::array<float, kNumBins> telInIm{};
+        std::array<float, kNumBins> telOutRe{};
+        std::array<float, kNumBins> telOutIm{};
+        std::array<float, kNumBins> telInMag{};
+        std::array<float, kNumBins> telOutMag{};
+        std::array<float, kNumBins> telTameGain{};
+    };
+
+    // Resolved active chord voice count & glide smoother.
     int activeVoiceCount_ = 5;
     double voiceGlideCoef_ = 0.02;
 
@@ -173,52 +225,13 @@ class Engine {
     hba::dsp::DelayLine<double> combDelayL_{};
     hba::dsp::DelayLine<double> combDelayR_{};
 
-    // 4x Hann^2 COLA Stereo STFT + spectral memory buffers.
-    hba::dsp::StereoStft<kFftSize> stft_{};
-    std::array<float, kNumBins> tailReL_{};
-    std::array<float, kNumBins> tailImL_{};
-    std::array<float, kNumBins> tailReR_{};
-    std::array<float, kNumBins> tailImR_{};
-    std::array<float, kNumBins> freezeMagL_{};
-    std::array<float, kNumBins> freezeMagR_{};
-    std::array<float, kNumBins> freezePhaseL_{};
-    std::array<float, kNumBins> freezePhaseR_{};
-    std::array<float, kNumBins> maskL_{};
-    std::array<float, kNumBins> maskR_{};
-    std::array<float, kNumBins> workInMag_{};
-    std::array<float, kNumBins> workPreTameMag_{};
-    std::array<float, kNumBins> workOutMag_{};
-    std::array<float, kNumBins> workCarrReL_{};
-    std::array<float, kNumBins> workCarrImL_{};
-    std::array<float, kNumBins> workCarrReR_{};
-    std::array<float, kNumBins> workCarrImR_{};
-    std::array<float, kNumBins> workCarrMag_{};
-    std::array<float, kNumBins> tameBinSmooth_{};
-    std::array<float, kNumBins> workTameGain_{};
-    std::array<float, kNumBins> envMain_{};
-    std::array<float, kNumBins> envCarr_{};
-    std::array<float, kNumBins> internalCarrPhase_{};
+    // Pre-allocated heap storage for bulk STFT/Comb/FFT buffers so sizeof(Engine) stays < 8 KB
+    // (safe on Windows 1 MB thread stacks even with multiple stack-allocated processors).
+    std::unique_ptr<Buffers> buf_;
     float compGainSmoothed_ = 1.0f;
     float freezeFade_ = 0.0f;
     bool freezeCaptured_ = false;
     bool prevFreezeParam_ = false;
-
-    // Analysis-only zero-latency FFT ring for live Harmonic Comb / Live 0ms spectrum telemetry.
-    hba::dsp::RealFft<kFftSize> telFft_{};
-    std::array<float, kFftSize> telWin_{};
-    std::array<float, kFftSize> telInRing_{};
-    std::array<float, kFftSize> telOutRing_{};
-    std::array<float, kFftSize> telTimeIn_{};
-    std::array<float, kFftSize> telTimeOut_{};
-    std::array<float, kFftSize> telScratchRe_{};
-    std::array<float, kFftSize> telScratchIm_{};
-    std::array<float, kNumBins> telInRe_{};
-    std::array<float, kNumBins> telInIm_{};
-    std::array<float, kNumBins> telOutRe_{};
-    std::array<float, kNumBins> telOutIm_{};
-    std::array<float, kNumBins> telInMag_{};
-    std::array<float, kNumBins> telOutMag_{};
-    std::array<float, kNumBins> telTameGain_{};
     int telPos_ = 0;
     int telHopCount_ = 0;
 

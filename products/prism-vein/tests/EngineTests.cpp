@@ -254,6 +254,8 @@ TEST_CASE("Prism Vein Carrier Morph scales linearly with input level (no quadrat
     CHECK(ratio == Catch::Approx(4.0).margin(0.45));
 }
 
+static_assert(sizeof(pv::Engine) < 16384, "pv::Engine must remain stack-safe on 1 MB Windows stacks");
+
 TEST_CASE("Prism Vein Engine switching, Freeze capture, Grit zero-crossing, and multi-rate blocks stay click-free",
           "[engine]") {
     constexpr double sr = 48000.0;
