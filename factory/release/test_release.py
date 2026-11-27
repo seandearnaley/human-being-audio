@@ -30,6 +30,13 @@ class ReleaseRecordTests(unittest.TestCase):
             self.assertFalse((Path(tmp) / "release.json").exists())
 
 class ProductNotesTests(unittest.TestCase):
+    def test_every_installer_has_its_product_notices(self):
+        for slug in release.PRODUCTS:
+            for name in ("LICENSE", "README.md"):
+                with self.subTest(product=slug, notice=name):
+                    notice = release.ROOT / "products" / slug / name
+                    self.assertTrue(notice.read_text(encoding="utf-8").strip())
+
     def test_notes_bind_current_product_to_exact_source(self):
         sha = "f" * 40
         for slug in release.PRODUCTS:
