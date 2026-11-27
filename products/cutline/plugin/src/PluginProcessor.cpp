@@ -78,7 +78,31 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const Transport transport = readTransport(numSamples);
     ingestMidi(midi, transport);
+    // A note that passed through while bypassed ends at the instrument, not in Cutline.
+    struct Release {
+        std::array<juce::uint8, 3> bytes{};
+        int sample = 0;
+    };
+    std::array<Release, 64> releases{};
+    std::size_t releaseCount = 0;
+    for (const auto metadata : midi) {
+        if (releaseCount >= releases.size() || metadata.numBytes != 3)
+            continue;
+        const auto msg = metadata.getMessage();
+        if (!msg.isNoteOff())
+            continue;
+        auto& held = passedThrough_[static_cast<std::size_t>(msg.getChannel() - 1)];
+        const auto note = static_cast<std::size_t>(msg.getNoteNumber());
+        if (!held.test(note))
+            continue;
+        held.reset(note);
+        Release& r = releases[releaseCount++];
+        std::copy_n(metadata.data, 3, r.bytes.begin());
+        r.sample = metadata.samplePosition;
+    }
     midi.clear();
+    for (std::size_t i = 0; i < releaseCount; ++i)
+        midi.addEvent(releases[i].bytes.data(), 3, releases[i].sample);
 
     const Params params = values_.snapshot();
     if (curves.pull(audioCurves_))
@@ -122,7 +146,7 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 }
 
 // Bypassed: every note Cutline has sounding gets its note-off first, at the block's first sample, so a slicer or drum
-// note never hangs; then the incoming MIDI passes through unchanged. The input still reaches the engine, so a chord
+// note never hangs; then the incoming MIDI passes through. The input still reaches the engine, so a chord
 // released while bypassed is not held when Cutline comes back.
 void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
@@ -130,10 +154,24 @@ void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juc
     const int numSamples = buffer.getNumSamples();
     ingestMidi(midi, readTransport(std::max(0, numSamples)));
     engine_.releaseAll(outEvents_);
-    if (outEvents_.count == 0)
-        return;
+    // The input, set aside so the note-offs go first. A note-off passes only for a note whose note-on passed through
+    // while bypassed: Cutline consumed the others, so the instrument never had them.
     bypassMidi_.clear();
-    bypassMidi_.addEvents(midi, 0, -1, 0); // the input, set aside so the note-offs go first
+    for (const auto metadata : midi) {
+        if (metadata.numBytes == 3) {
+            const auto msg = metadata.getMessage();
+            auto& held = passedThrough_[static_cast<std::size_t>(msg.getChannel() - 1)];
+            const auto note = static_cast<std::size_t>(msg.getNoteNumber());
+            if (msg.isNoteOn()) {
+                held.set(note);
+            } else if (msg.isNoteOff()) {
+                if (!held.test(note))
+                    continue;
+                held.reset(note);
+            }
+        }
+        bypassMidi_.addEvent(metadata.data, metadata.numBytes, metadata.samplePosition);
+    }
     midi.clear();
     for (int i = 0; i < outEvents_.count; ++i) {
         const auto& ev = outEvents_.events[static_cast<std::size_t>(i)];

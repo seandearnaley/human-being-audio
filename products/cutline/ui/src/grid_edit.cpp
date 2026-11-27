@@ -181,10 +181,13 @@ std::string pocketLabel(int ms) {
 }
 
 HitTiming tickTiming(float swing, double bpm, int rateIdx) noexcept {
+    return tickTimingAtRate(swing, bpm, kSeqRateMultipliers[static_cast<std::size_t>(std::clamp(rateIdx, 0, 2))]);
+}
+
+HitTiming tickTimingAtRate(float swing, double bpm, double rate) noexcept {
     HitTiming timing;
     timing.swing = static_cast<double>(std::clamp(swing, 0.0f, 1.0f));
-    timing.beatsPerMs = std::clamp(bpm, 20.0, 400.0) / 60000.0 *
-                        kSeqRateMultipliers[static_cast<std::size_t>(std::clamp(rateIdx, 0, 2))];
+    timing.beatsPerMs = std::clamp(bpm, 20.0, 400.0) / 60000.0 * std::clamp(rate, 0.25, 4.0);
     return timing;
 }
 

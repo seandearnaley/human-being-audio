@@ -232,7 +232,9 @@ void GridStagePanel::drawPhraseStrip(visage::Canvas& canvas, const Layout& lay, 
     in.absBar = vis.position.absBar;
     in.patternBars = patternBars(groove.bank.scenes[static_cast<std::size_t>(scene)]);
     in.fillEvery = kFillEveryBars[static_cast<std::size_t>(fillIdx)];
-    in.fillNow = context_.model.get(ParamId::fillNow) > 0.5f;
+    // As the engine decides it: the Fill Now parameter, or the Fill pad while it is held.
+    in.fillNow = context_.model.get(ParamId::fillNow) > 0.5f ||
+                 (vis.padEngaged && vis.activePadProgram == static_cast<int>(PadProgram::fill));
     in.pendingScene = vis.pendingScene;
     in.pendingOnBar = static_cast<int>(context_.model.get(ParamId::sceneQuantize) + 0.5f) == 3; // 1 Bar
     const grid::Phrase phrase = grid::phraseOf(in);
@@ -346,8 +348,12 @@ void GridStagePanel::drawDrumGrid(visage::Canvas& canvas, const Layout& lay, con
     const int steps = lay.steps;
 
     // When each hit lands: forEachHit with the bars above, the Swing, the BPM and the lane pockets.
-    const HitTiming timing = grid::tickTiming(context_.model.get(ParamId::swing), vis.bpm,
-                                              static_cast<int>(context_.model.get(ParamId::seqRate) + 0.5f));
+    // While playing, the rate the engine used (Rate times the Rate pad), so pockets and flams are drawn where they
+    // play.
+    const int rateIdx = std::clamp(static_cast<int>(context_.model.get(ParamId::seqRate) + 0.5f), 0, 2);
+    const double rate =
+        vis.playing ? static_cast<double>(vis.position.rate) : kSeqRateMultipliers[static_cast<std::size_t>(rateIdx)];
+    const HitTiming timing = grid::tickTimingAtRate(context_.model.get(ParamId::swing), vis.bpm, rate);
     std::array<grid::BarTicks, kMaxPatternBars> ticks{};
     if (fillView())
         grid::barTicks(pattern, fillBar, timing, ticks[0]);

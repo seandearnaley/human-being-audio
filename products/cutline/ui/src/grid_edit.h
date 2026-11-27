@@ -150,6 +150,7 @@ using BarTicks = std::array<std::array<CellTicks, kStepsPerBar>, kDrumLaneCount>
 
 // The timing forEachHit plays with, from the Swing parameter, the BPM and the Rate choice (0.5x, 1x, 2x).
 HitTiming tickTiming(float swing, double bpm, int rateIdx) noexcept;
+HitTiming tickTimingAtRate(float swing, double bpm, double rate) noexcept; // rate: pattern beats per host beat
 
 // A hit `beatsFromCellStart` after the start of its 16th-note cell (0.25 beats wide).
 Tick tickAt(double beatsFromCellStart, bool grace) noexcept;

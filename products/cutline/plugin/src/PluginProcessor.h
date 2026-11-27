@@ -13,6 +13,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
+#include <bitset>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,9 @@ class PluginProcessor final : public juce::AudioProcessor {
     GrooveState audioGroove_{};
     MidiEventBuffer outEvents_{};
     juce::MidiBuffer bypassMidi_; // note-offs then the pass-through input, while bypassed
+    // Notes whose note-on passed through while bypassed, per channel: their note-offs must reach the instrument even
+    // after bypass ends, and no other note-off passes through while bypassed.
+    std::array<std::bitset<128>, 16> passedThrough_{};
     std::vector<float> monoScratchR_;
     double sampleRate_ = 48000.0;
     double standalonePpq_ = 0.0;

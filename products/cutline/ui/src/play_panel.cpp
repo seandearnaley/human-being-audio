@@ -259,16 +259,26 @@ void PlayPanel::tick() {
     // The surface's clock and its notes keep up even while PLAY is hidden, so showing it never shows stale marks.
     constexpr float dt = 1.0f / 60.0f;
     const double bpm = v.bpm > 1.0 ? v.bpm : 120.0;
+    const auto sentCount = static_cast<std::size_t>(std::clamp(v.sentCount, 0, kMaxSentPerRefresh));
+    std::array<SentNote, kMaxSentPerRefresh> sent{};
+    std::copy_n(v.sent.begin(), sentCount, sent.begin());
     if (v.playing && v.ppq != telemetryPpq_) {
-        // A loop or a jump: the marks move with the clock, so each keeps its age and still fades over one bar.
-        if (v.ppq < nowPpq_ - 0.25 || v.ppq > nowPpq_ + 2.0)
-            history_.shift(v.ppq - nowPpq_);
+        // A loop or a jump: the marks move with the clock, so each keeps its age and still fades over one bar. Notes
+        // drained in this tick that were sent before the jump are still on the old clock (ahead of the new position),
+        // so they move with it too.
+        if (v.ppq < nowPpq_ - 0.25 || v.ppq > nowPpq_ + 2.0) {
+            const double jump = v.ppq - nowPpq_;
+            history_.shift(jump);
+            for (std::size_t i = 0; i < sentCount; ++i)
+                if (sent[i].ppq > v.ppq + 0.25)
+                    sent[i].ppq += jump;
+        }
         nowPpq_ = v.ppq;
         telemetryPpq_ = v.ppq;
     } else {
         nowPpq_ += static_cast<double>(dt) * bpm / 60.0; // between updates, and after a stop: fade out over a bar
     }
-    history_.ingest({v.sent.data(), static_cast<std::size_t>(std::clamp(v.sentCount, 0, kMaxSentPerRefresh))});
+    history_.ingest({sent.data(), sentCount});
 
     if (!isVisible()) {
         endPadTouch();

@@ -480,6 +480,29 @@ TEST_CASE("Bypass sends a note-off for every sounding note, then passes MIDI thr
         midi.clear();
         proc.processBlockBypassed(buf, midi);
         CHECK(midi.getNumEvents() == 0);
+
+        // A note-off for a note Cutline consumed (its note-on never passed through) does not pass while bypassed.
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOff(1, 60), 3);
+        proc.processBlockBypassed(buf, midi);
+        CHECK(midi.getNumEvents() == 0);
+
+        // Bypass ends while 72 is still held: its note-off reaches the instrument once, and only once.
+        auto noteOffsFor = [&](int note) {
+            int count = 0;
+            for (const auto metadata : midi)
+                if (metadata.getMessage().isNoteOff() && metadata.getMessage().getNoteNumber() == note)
+                    ++count;
+            return count;
+        };
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOff(1, 72), 5);
+        proc.processBlock(buf, midi);
+        CHECK(noteOffsFor(72) == 1);
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOff(1, 72), 5);
+        proc.processBlock(buf, midi);
+        CHECK(noteOffsFor(72) == 0);
         proc.setPlayHead(nullptr);
     }
 }
