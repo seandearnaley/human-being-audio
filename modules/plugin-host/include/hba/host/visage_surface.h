@@ -16,6 +16,7 @@ namespace hba::host {
 #if JUCE_MAC
 struct VisageSurface : juce::NSViewComponent {
     VisageSurface();
+    void useHostFileDropTarget();
     void* nativeHandle(juce::ComponentPeer* /*peer*/) { return getView(); }
 };
 #elif JUCE_LINUX

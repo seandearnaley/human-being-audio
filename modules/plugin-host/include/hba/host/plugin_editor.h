@@ -181,6 +181,10 @@ class StudioPluginEditor : public juce::AudioProcessorEditor {
             return;
         view_.attach(nativeView, getWidth(), getHeight());
         attachedTo_ = nativeView;
+#if JUCE_MAC
+        if (dynamic_cast<juce::FileDragAndDropTarget*>(this) != nullptr)
+            nativeHost_.useHostFileDropTarget();
+#endif
 #if JUCE_LINUX
         // The embedded Visage window owns a separate X11 connection.
         if (const int fd = view_.eventFd(); fd >= 0)
