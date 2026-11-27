@@ -5,6 +5,8 @@
 #include "tg/engine.h"
 #include "tg/export.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -384,4 +386,35 @@ TEST_CASE("Playable 2D Manifold Pad triggers sound directly, freezes/reverses Sp
     }
     REQUIRE(midSq > 0.01);
     REQUIRE(sideSq / midSq < 0.03);
+}
+
+TEST_CASE("Manifold Space starts silent and renders a finite tail at high sample rates", "[engine][space]") {
+    auto params = tg::Params::defaults();
+    params.set(tg::ParamId::space, 100.0f);
+    tg::Engine engine;
+    constexpr int block = 64;
+    std::array<float, block> left{}, right{};
+    for (const auto rate : {48000.0, 88200.0, 96000.0, 192000.0}) {
+        CAPTURE(rate);
+        engine.prepare(rate, block, 2);
+        engine.process(params, {}, left.data(), right.data(), block, nullptr);
+        for (const auto& channel : {left, right})
+            REQUIRE(std::all_of(channel.begin(), channel.end(), [](float sample) { return sample == 0.0f; }));
+
+        engine.noteOn(41, 0.9f);
+        float peak = 0.0f;
+        const int blocks = static_cast<int>(std::ceil(0.12 * rate / block));
+        for (int i = 0; i < blocks; ++i) {
+            if (i == blocks / 2)
+                engine.noteOff(41);
+            engine.process(params, {}, left.data(), right.data(), block, nullptr);
+            for (const auto& channel : {left, right}) {
+                REQUIRE(
+                    std::all_of(channel.begin(), channel.end(), [](float sample) { return std::isfinite(sample); }));
+                for (float sample : channel)
+                    peak = std::max(peak, std::abs(sample));
+            }
+        }
+        REQUIRE(peak > 0.0f);
+    }
 }
