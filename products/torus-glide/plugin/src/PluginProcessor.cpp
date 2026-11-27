@@ -27,6 +27,13 @@ PluginProcessor::~PluginProcessor() {
     cancelPendingUpdate();
 }
 
+double PluginProcessor::getTailLengthSeconds() const {
+    // A one-pole release from unity reaches the engine's silence threshold after
+    // -log(threshold) time constants. Space can be modulated to its full drain time.
+    return -std::log(Engine::kSilentEnvelope) * currentParams().real(ParamId::releaseMs) * 0.001 +
+           Engine::spaceDrainSeconds(1.0) + pipelineTailSeconds_.load(std::memory_order_relaxed);
+}
+
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 8000.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
@@ -43,6 +50,7 @@ void PluginProcessor::prepareEngine() {
     engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
     engine_.setLaneCurves(curves.all());
     engine_.setSceneMatrix(matrix.get());
+    pipelineTailSeconds_.store((engine_.latencySamples() + 3.0) / sampleRate_, std::memory_order_relaxed);
     setLatencySamples(engine_.latencySamples());
 }
 

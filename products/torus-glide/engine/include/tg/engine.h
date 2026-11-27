@@ -105,6 +105,9 @@ class Engine {
     void allNotesOff() noexcept HBA_NONBLOCKING;
 
     int activeNote() const noexcept HBA_NONBLOCKING { return currentNote_; }
+    static constexpr double kSilentEnvelope = 1e-6;
+    static constexpr double spaceDrainSeconds(double amount) noexcept { return 0.04 + amount * 1.45; }
+
     int latencySamples() const noexcept HBA_NONBLOCKING;
 
     // Main zero-allocation real-time audio + optional MPE MIDI output block.

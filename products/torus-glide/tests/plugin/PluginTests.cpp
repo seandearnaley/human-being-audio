@@ -122,3 +122,36 @@ TEST_CASE("PluginModel Undo/Redo, A/B compare, and MPE MIDI export work end-to-e
     model.jumpToScene(3);
     REQUIRE(model.get(tg::ParamId::morph) == Approx(100.0f).margin(1.0f));
 }
+
+TEST_CASE("torus-glide renders its longest release inside the reported host tail", "[plugin][tail]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    tg::PluginProcessor proc;
+    constexpr int rate = 22050, block = 256;
+    proc.setRateAndBufferSizeDetails(rate, block);
+    proc.prepareToPlay(rate, block);
+    proc.state.getParameter("releaseMs")->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> audio(2, block);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.95f), 0);
+    for (int i = 0; i < 40; ++i) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+    }
+    midi.addEvent(juce::MidiMessage::noteOff(1, 36), 0);
+    const int end = static_cast<int>(std::ceil(proc.getTailLengthSeconds() * rate));
+    REQUIRE(end < rate * 60);
+    float peakAfter = 0.0f, peakBefore = 0.0f;
+    for (int start = 0; start < end + 2 * block; start += block) {
+        audio.clear();
+        proc.processBlock(audio, midi);
+        midi.clear();
+        if (start == 0)
+            peakBefore = audio.getMagnitude(0, block);
+        const int from = std::clamp(end - start, 0, block);
+        if (from < block)
+            peakAfter = std::max(peakAfter, audio.getMagnitude(from, block - from));
+    }
+    REQUIRE(peakBefore > 0.01f);
+    CHECK(peakAfter < 1.0e-6f);
+}

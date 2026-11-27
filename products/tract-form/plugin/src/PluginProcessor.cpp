@@ -29,6 +29,11 @@ PluginProcessor::~PluginProcessor() {
     cancelPendingUpdate();
 }
 
+double PluginProcessor::getTailLengthSeconds() const {
+    // The Tract Form gate reaches exactly zero at the selected release time.
+    return currentParams()[ParamId::ampRelease] * 0.001 + pipelineTailSeconds_.load(std::memory_order_relaxed);
+}
+
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
     blockSize_ = std::max(1, samplesPerBlock);
@@ -44,6 +49,7 @@ void PluginProcessor::prepareEngine() {
         std::clamp(values_.snapshot().choice(ParamId::quality), 0, static_cast<int>(kQualityFactors.size()) - 1));
     engine_.prepare(sampleRate_, blockSize_, kQualityFactors[quality]);
     engine_.setPitchBendRange(midiParser_.pitchBendRangeSt());
+    pipelineTailSeconds_.store((engine_.latencySamples() + 3.0) / sampleRate_, std::memory_order_relaxed);
     setLatencySamples(engine_.latencySamples());
 }
 
