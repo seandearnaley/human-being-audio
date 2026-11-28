@@ -20,8 +20,9 @@ On Ubuntu, the editor uses Vulkan through the desktop graphics driver. The studi
 ## What it does
 
 - **Master sine** sets the pitch, phase-modulates both reese voices and becomes the sub.
-- **Reese A and B** are Nyquist-guarded analog phase-warped voices with detune, ratio, phase offset and a tempo-synced feedback loop into their phase.
+- **Reese A and B** each play Sine, Saw, Pulse or resonant phase distortion (PD), stacked up to seven deep, with detune, ratio, phase offset and a feedback loop into their phase timed in cycles of the note.
 - **Tract** morphs a five-formant filter between two vowels (switchable Pre or Post fold).
+- **Filter** follows the note: Clean, Ladder, MS-20, Low-pass or Notch, with resonance and drive, before or after the fold.
 - **Fold & 4× ADAA1 Growl Stage** pairs an oversampled ADAA2 wavefolder with a 4× HIIR ADAA1 growl clipper for clean, alias-free rolling harmonics.
 - **Mid/side** keeps everything below the crossover mono.
 - **Movement & MIDI expression** pairs four Bézier curve lanes (`Sync`, `Retrig`, `1-Shot`, plus BPM-independent `Free` and note-retriggered `Free R` Hz LFOs with phase-locked `Follow` + `÷4..×4` ratios) with smooth `CC1`, `CC74`, aftertouch, `CC121`, and RPN `00 00` pitch-bend modulation, visualized with live modulation ghost arcs on macro knobs and bars.
