@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Neuro Shatter</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Neuro Shatter", "backdrop": false,
+  "params": [
+    { "name": "hue", "type": "number", "default": 185, "min": 0, "max": 360 },
+    { "name": "slices", "type": "number", "default": 18, "min": 4, "max": 48 },
+    { "name": "spread", "type": "number", "default": 0.35, "min": 0, "max": 1 }
+  ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+  const c = document.getElementById('c'), g = c.getContext('2d');
+  const off = document.createElement('canvas'), og = off.getContext('2d');
+  let hits = 0, prevSnare = 0, key = '';
+  function hash(a, b, s) {
+    let h = (a * 374761393 + b * 668265263 + s * 2246822519) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return ((h >>> 0) / 4294967296) * 2 - 1;
+  }
+  function renderText(W, H, hue) {
+    off.width = W; off.height = H;
+    og.clearRect(0, 0, W, H);
+    let size = Math.min(H * 0.42, W * 0.3);
+    og.font = `900 ${size}px "Arial Black", Impact, "Helvetica Neue", Arial, sans-serif`;
+    const tw = og.measureText('NEURO').width;
+    if (tw > W * 0.9) { size *= W * 0.9 / tw; og.font = `900 ${size}px "Arial Black", Impact, "Helvetica Neue", Arial, sans-serif`; }
+    og.textAlign = 'center'; og.textBaseline = 'middle';
+    og.fillStyle = `hsl(${hue} 95% 62%)`;
+    og.shadowColor = `hsl(${hue} 100% 55%)`; og.shadowBlur = size * 0.12;
+    og.fillText('NEURO', W / 2, H / 2);
+    og.shadowBlur = 0; og.fillStyle = '#f4ffff';
+    og.fillText('NEURO', W / 2, H / 2);
+    return size;
+  }
+  let textSize = 0;
+  addEventListener('frame', ({ detail: f }) => {
+    const W = f.width, H = f.height, p = f.params;
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    const k = W + 'x' + H + ':' + p.hue;
+    if (k !== key) { key = k; textSize = renderText(W, H, p.hue); }
+    if (f.snare > 0.9 && prevSnare < 0.9) hits++;
+    prevSnare = f.snare;
+    g.clearRect(0, 0, W, H);
+
+    const s = f.snare, n = Math.round(p.slices);
+    const top = H / 2 - textSize * 0.6, band = textSize * 1.2 / n;
+    const amp = s * s * W * p.spread;
+    // untouched region outside band
+    g.drawImage(off, 0, 0, W, top, 0, 0, W, top);
+    g.drawImage(off, 0, top + band * n, W, H - top - band * n, 0, top + band * n, W, H - top - band * n);
+    for (let i = 0; i < n; i++) {
+      const y = top + i * band;
+      const dx = hash(i, hits, f.seed) * amp;
+      const dy = hash(i + 99, hits, f.seed) * s * band * 0.6;
+      if (s > 0.15) {
+        // chromatic ghosts
+        g.globalAlpha = 0.5 * s;
+        g.globalCompositeOperation = 'lighter';
+        g.drawImage(off, 0, y, W, band, dx * 1.25 + s * 12, y + dy, W, band);
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = 1;
+      }
+      g.drawImage(off, 0, y, W, band, dx, y + dy, W, band);
+    }
+
+    // kick: subtle glow pulse
+    if (f.kick > 0.05) {
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = f.kick * 0.25;
+      const sc = 1 + f.kick * 0.04;
+      g.drawImage(off, W / 2 - W * sc / 2, H / 2 - H * sc / 2, W * sc, H * sc);
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    }
+
+    // hats: thin scan lines
+    const h = f.hat;
+    if (h > 0.04) {
+      const lines = 6 + Math.floor(h * 10);
+      const lw = Math.max(1, H / 540);
+      for (let j = 0; j < lines; j++) {
+        const r = (hash(j, Math.floor(f.beat * 8), f.seed + 7) + 1) / 2;
+        const y = r * H;
+        g.fillStyle = `hsla(${p.hue} 100% 85% / ${h * (0.3 + 0.6 * ((hash(j, 3, f.seed) + 1) / 2))})`;
+        g.fillRect(0, y, W, lw);
+      }
+      g.fillStyle = `rgba(0,0,0,${h * 0.35})`;
+      for (let y = 0; y < H; y += lw * 4) g.fillRect(0, y, W, lw);
+    }
+  });
+</script>

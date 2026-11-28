@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scene scoring</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  iframe { display: block; width: 960px; height: 540px; border: 0; }
+</style>
+<div id="slot"></div>
+<script type="module">
+  // One scene, shown plainly, stepped by musical position. No compositor, so a failure here is the scene's.
+  import { loadScene, drive } from "./host.js";
+  import { frameAt } from "./take.js";
+
+  let scene = null;
+  window.load = async (url) => {
+    const iframe = document.createElement("iframe");
+    document.getElementById("slot").replaceChildren(iframe);
+    scene = await loadScene(iframe, url);
+    return { elements: scene.doc.querySelectorAll("*").length, params: Object.keys(scene.params) };
+  };
+  window.step = async (n, fps, bpm, pattern = {}) => {
+    const started = performance.now();
+    drive(scene, frameAt(n, { fps, bpm, width: 960, height: 540, seed: 7, ...pattern }));
+    const ms = performance.now() - started;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return ms;
+  };
+  window.errors = () => scene.errors;
+</script>

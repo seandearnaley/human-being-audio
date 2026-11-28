@@ -16,6 +16,7 @@
   - `torus-glide` — Bar-locked Shepard-Risset & polyphonic chord-bend pitch-manifold synth (JUCE 9 + Visage 1.0)
   - `strike-body` — Phase-locked neuro snare, kick & nonlinear modal percussion synthesizer (JUCE 9 + Visage 1.0)
   - `livecut-redux` — Breakbeat & spectral live slicer (JUCE 9 + Visage 1.0)
+  - `stage` — Visuals played by notes: an Electron app (`app/`) and the Stage Link / Stage Sound plugins (`plugin/`, JUCE 9). Unreleased and not in `studio.json`; see `products/stage/README.md`
   - `datum` — Kick synthesizer with transient import and sidechain alignment (JUCE 9 + Visage 1.0)
   - `lineage` — Reese synthesizer with stereo print generation and stacking (JUCE 9 + Visage 1.0)
   - `prism-vein` — Spectral color bass resonator, chord vocoder & Bark auto-tame FX (JUCE 9 + Visage 1.0)

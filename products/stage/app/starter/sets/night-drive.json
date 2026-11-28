@@ -1,0 +1,12 @@
+{
+  "name": "Night Drive",
+  "cut": "/home/library/cuts/push.wgsl",
+  "look": "/home/library/looks/tube.wgsl",
+  "layers": [
+    { "name": "Back", "cutBeats": 2, "scenes": {
+      "60": "/home/library/scenes/ridge-sonnet.html", "61": "/home/library/scenes/night-sonnet.html",
+      "62": "/home/library/scenes/tunnel-opus.html", "63": "/home/library/scenes/tunnel-sonnet.html" } },
+    { "name": "Front", "cutBeats": 1, "scenes": {
+      "60": "/home/library/scenes/word-opus.html", "62": "/home/library/scenes/word-sonnet.html" } }
+  ]
+}

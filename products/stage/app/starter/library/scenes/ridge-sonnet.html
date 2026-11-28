@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sunset Ridges</title>
+<script type="application/json" id="scene">
+{ "scene": 1, "name": "Sunset Ridges", "backdrop": true,
+  "params": [ { "name": "hue", "type": "number", "default": 24, "min": 0, "max": 60 } ] }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+<canvas id="c"></canvas>
+<script>
+  const c = document.getElementById('c'), g = c.getContext('2d');
+  function rng(s){ return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  let ph = null;
+  function height(x, id) {
+    const p = ph;
+    return Math.max(0, 0.5 + 0.28 * Math.sin(x * 7 + id * 0.9 + p[0]) + 0.2 * Math.sin(x * 13 - id * 1.7 + p[1])
+      + 0.12 * Math.sin(x * 29 + id * 2.3 + p[2]) + 0.06 * Math.sin(x * 53 - id * 3.1 + p[3]));
+  }
+  addEventListener('frame', ({ detail: f }) => {
+    if (c.width !== f.width || c.height !== f.height) { c.width = f.width; c.height = f.height; }
+    if (!ph) { const r = rng(f.seed); ph = [r()*6.28, r()*6.28, r()*6.28, r()*6.28]; }
+    const W = c.width, H = c.height, m = Math.min(W, H);
+    const hue = f.params.hue;
+    const horizon = H * 0.58;
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+
+    // sun
+    const R = m * 0.2, cx = W / 2, cy = horizon - R * 0.35;
+    const sn = f.snare;
+    const glow = g.createRadialGradient(cx, cy, R * 0.5, cx, cy, R * (2.2 + sn * 2.5));
+    glow.addColorStop(0, `hsla(${hue},100%,55%,${0.25 + sn * 0.6})`);
+    glow.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    g.save();
+    g.beginPath(); g.arc(cx, cy, R * (1 + sn * 0.06), 0, 7); g.clip();
+    const sg = g.createLinearGradient(0, cy - R, 0, cy + R);
+    sg.addColorStop(0, `hsl(${hue + 22},100%,${60 + sn * 35}%)`);
+    sg.addColorStop(1, `hsl(${hue - 12},100%,${45 + sn * 40}%)`);
+    g.fillStyle = sg; g.fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4);
+    g.fillStyle = '#000';
+    for (let i = 0; i < 7; i++) {
+      const y = cy + R * (0.05 + i * 0.14), hh = R * (0.015 + i * 0.012) * (1 - sn * 0.6);
+      g.fillRect(cx - R, y, R * 2, hh);
+    }
+    g.restore();
+
+    // ridges
+    const N = 18;
+    const s = f.beat * 0.25;
+    const base = Math.floor(s), frac = s - base;
+    const kick = f.kick;
+    const cols = 64;
+    g.lineJoin = 'round';
+    for (let j = 0; j <= N; j++) {
+      const t = (j + frac) / N;
+      const id = base - j;
+      const yb = horizon + Math.pow(t, 1.7) * H * 0.42;
+      const amp = (0.03 + t * 0.3) * H * (1 + kick * 0.9);
+      const lift = kick * t * H * 0.03;
+      g.beginPath();
+      for (let i = 0; i <= cols; i++) {
+        const x = i / cols;
+        const valley = 0.25 + Math.pow(Math.abs(x - 0.5) * 2, 1.2) * 0.9;
+        const y = yb - height(x, id) * amp * valley - lift;
+        i ? g.lineTo(x * W, y) : g.moveTo(x * W, y);
+      }
+      g.lineTo(W, H + 5); g.lineTo(0, H + 5); g.closePath();
+      g.fillStyle = '#000'; g.fill();
+      // redraw only top edge
+      g.beginPath();
+      for (let i = 0; i <= cols; i++) {
+        const x = i / cols;
+        const valley = 0.25 + Math.pow(Math.abs(x - 0.5) * 2, 1.2) * 0.9;
+        const y = yb - height(x, id) * amp * valley - lift;
+        i ? g.lineTo(x * W, y) : g.moveTo(x * W, y);
+      }
+      const a = Math.min(1, 0.25 + t * 0.9);
+      g.strokeStyle = `hsla(${hue + t * 6},100%,${50 + kick * 25}%,${a})`;
+      g.lineWidth = m * (0.0015 + t * 0.003 + kick * 0.002);
+      g.shadowColor = `hsl(${hue},100%,50%)`;
+      g.shadowBlur = m * 0.01 * (0.5 + kick * 2);
+      g.stroke();
+      g.shadowBlur = 0;
+    }
+  });
+</script>

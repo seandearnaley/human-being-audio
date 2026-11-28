@@ -1,0 +1,132 @@
+/* Stage. Dark, quiet chrome so the picture is the only colour. One accent, for what is live. */
+:root {
+  --window: #0f0e14; --panel: #16151c; --raised: #1e1d27; --pressed: #2a2935; --line: #2a2935; --edge: #3a3948;
+  --ink: #eceaf4; --ink-2: #aeacbf; --ink-3: #8f8da3; --accent: #a8a4ff; --on-accent: #14131c;
+  --sans: "Inter Variable", system-ui, sans-serif; --mono: "Martian Mono Variable", ui-monospace, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--window); color: var(--ink); font: 13px/1.3 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+button:disabled { color: var(--ink-3); cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font: 11px var(--mono); color: var(--ink-2); }
+strong { font-weight: 600; }
+
+.app { height: 100%; display: flex; flex-direction: column; }
+
+/* Top bar: the window's own title bar. The traffic lights sit in its left padding. */
+.bar { height: 48px; flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 12px 0 88px; border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
+.set { position: relative; display: flex; align-items: center; gap: 2px; justify-self: start; -webkit-app-region: no-drag; }
+.set input { font-size: 14px; font-weight: 600; background: none; border: 0; border-radius: 6px; padding: 5px 6px; margin-left: -6px; field-sizing: content; min-width: 3ch; user-select: text; }
+.set input:hover, .set input:focus { background: var(--raised); outline: 0; }
+.set > button { width: 24px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--ink-2); }
+.set > button:hover, .set > button[aria-expanded="true"] { background: var(--raised); }
+.menu { position: absolute; top: 36px; left: -6px; z-index: 10; min-width: 220px; padding: 6px; background: var(--raised); border: 1px solid var(--edge); border-radius: 10px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.5); display: flex; flex-direction: column; }
+.menu button { height: 32px; padding: 0 10px; border-radius: 6px; text-align: left; }
+.menu button:hover { background: var(--pressed); }
+.menu button[aria-checked="true"] { font-weight: 600; }
+.menu button[aria-checked="true"]::after { content: ""; float: right; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: var(--accent); }
+.menu hr { width: 100%; border: 0; border-top: 1px solid var(--edge); margin: 6px 0; }
+.transport { display: flex; align-items: center; gap: 20px; font: 12px var(--mono); }
+.transport .position { min-width: 9ch; }
+.link { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.link i, .hit i, .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--edge); display: inline-block; }
+.link.on i, .hit.on i { background: var(--accent); }
+.bar nav { justify-self: end; display: flex; gap: 4px; -webkit-app-region: no-drag; }
+.bar nav button { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; }
+.bar nav button:hover:not(:disabled), .bar nav button[aria-pressed="true"] { background: var(--raised); }
+.dot { background: none; border: 1.5px solid currentColor; width: 9px; height: 9px; }
+.dot.live { background: var(--accent); border-color: var(--accent); }
+
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* The rail: drums, layers of pads, then the set's Cut and Look. */
+.rail { width: 320px; flex: none; padding: 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 22px; overflow-y: auto; }
+.drums { display: flex; align-items: center; gap: 14px; height: 24px; }
+.drums strong { margin-right: auto; }
+.hit { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.layer { display: flex; flex-direction: column; gap: 10px; }
+.layer-name { display: flex; align-items: center; gap: 8px; height: 24px; text-align: left; }
+.layer-name .number { font: 11px var(--mono); color: var(--ink-3); }
+.layer-name.on .number { color: var(--accent); }
+.layer-name .now { margin-left: auto; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pad { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--panel); outline: 2px solid transparent; outline-offset: 2px; }
+.pad img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pad span { position: absolute; left: 3px; bottom: 3px; padding: 1px 3px; border-radius: 3px; background: rgb(15 14 20 / 0.8); font: 9px var(--mono); }
+.pad.picked { outline-color: var(--ink); }
+.pad.playing { outline-color: var(--accent); }
+.pad.empty { border: 1px dashed var(--edge); }
+button.pad.empty:hover { border-color: var(--ink-3); }
+.pad.landing { outline: 2px dashed var(--accent); }
+.finish { margin-top: auto; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 8px; }
+.finish button { display: flex; height: 30px; align-items: center; text-align: left; }
+.finish button span { width: 48px; color: var(--ink-3); }
+
+/* The main column: the picture, the knobs (or what the agent made), the prompt. */
+.main { flex: 1; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.stage { flex: 1; min-height: 0; container-type: size; display: grid; place-items: center; }
+.screen { width: min(100cqw, 100cqh * 16 / 9); aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; display: block; }
+
+.knobs { flex: none; display: grid; grid-template-columns: 112px repeat(8, minmax(0, 1fr)); gap: 8px; height: 60px; }
+.knobs-of { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
+.knobs-of span { color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.knob { background: var(--panel); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+.knob > div:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.knob span { color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.knob code { color: var(--ink); }
+.knob .track { height: 3px; border-radius: 2px; background: var(--pressed); }
+.knob .track div { height: 3px; border-radius: 2px; background: var(--accent); }
+.knob.idle { visibility: hidden; }
+
+.making { flex: none; min-height: 60px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
+.making p { margin: 0; color: var(--ink-2); user-select: text; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 20px; min-height: 32px; }
+.row strong { font-size: 15px; }
+.actions { margin-left: auto; display: flex; gap: 8px; }
+.actions button { height: 32px; padding: 0 14px; border: 1px solid var(--edge); border-radius: 8px; }
+.actions button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.actions button.primary:disabled { opacity: 0.5; }
+.check { display: flex; align-items: center; gap: 6px; }
+.check svg { color: var(--accent); }
+.check.failed, .check.failed svg { color: #ffb4a8; }
+.working { color: var(--ink-2); font: 12px var(--mono); }
+.cut-frame { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
+
+.prompt { flex: none; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--accent); }
+.prompt:focus-within { border-color: var(--accent); }
+.prompt.busy { opacity: 0.6; }
+.prompt input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--ink); font-size: 15px; user-select: text; }
+input::placeholder { color: var(--ink-3); }
+
+/* Library */
+.library { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.library-bar { display: flex; gap: 12px; }
+.library-bar input { flex: 1; height: 36px; padding: 0 12px; background: var(--panel); border: 0; border-radius: 8px; font-size: 14px; user-select: text; }
+.tabs, .segments { display: flex; gap: 2px; padding: 2px; background: var(--panel); border-radius: 10px; }
+.tabs button { height: 32px; padding: 0 14px; border-radius: 8px; color: var(--ink-2); }
+.tabs button[aria-selected="true"] { background: var(--pressed); color: var(--ink); font-weight: 600; }
+.tiles { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px 16px; align-content: start; padding: 2px; }
+.tile { display: flex; flex-direction: column; gap: 8px; text-align: left; font-size: 14px; font-weight: 500; }
+.tile img, .no-thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--panel); display: block; }
+.tile.on img, .tile.on .no-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Export sheet */
+.scrim { position: fixed; inset: 48px 0 0 0; background: rgb(15 14 20 / 0.6); display: grid; place-items: center; }
+.sheet { width: 440px; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 80px rgb(0 0 0 / 0.5); display: flex; flex-direction: column; gap: 22px; }
+.sheet h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.sheet fieldset { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px; }
+.sheet legend, .pair span { padding: 0; margin-bottom: 8px; color: var(--ink-2); display: block; }
+.choice { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-weight: 500; }
+.choice.on { background: var(--raised); border-color: var(--accent); }
+.choice input { accent-color: var(--accent); margin: 0; }
+.choice code { margin-left: auto; }
+.pair { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
+.segments { background: var(--window); }
+.segments button { flex: 1; height: 40px; border-radius: 8px; font: 12px var(--mono); color: var(--ink-2); }
+.segments button[aria-pressed="true"] { background: var(--pressed); color: var(--ink); }
+.sheet .actions button { height: 44px; padding: 0 18px; border-radius: 10px; }
+.quiet { margin: 0; color: var(--ink-2); }
