@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { openSync, readSync, closeSync, statSync } from "node:fs";
+import { openSync, readSync, closeSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { PRODUCT_SLUGS } from "../lib/catalog.mjs";
@@ -34,6 +34,16 @@ function webpSize(src) {
   return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
 }
 
+// Duration in seconds from an MP4's movie header (mvhd), version 0 or 1.
+function mp4Seconds(src) {
+  const buf = readFileSync(file(src));
+  const i = buf.indexOf("mvhd");
+  assert.ok(i > 0, `${src} has no mvhd box`);
+  return buf[i + 4] === 1
+    ? Number(buf.readBigUInt64BE(i + 28)) / buf.readUInt32BE(i + 24)
+    : buf.readUInt32BE(i + 20) / buf.readUInt32BE(i + 16);
+}
+
 test("every product media entry points at real, correctly sized, budgeted files", () => {
   for (const [slug, media] of Object.entries(PRODUCT_MEDIA)) {
     assert.ok(PRODUCT_SLUGS.includes(slug), `Unknown product ${slug}`);
@@ -52,6 +62,8 @@ test("every product media entry points at real, correctly sized, budgeted files"
         assert.ok(statSync(file(src)).size <= VIDEO_BUDGET, `${src} is over budget`);
       }
       assert.equal(head(video.sources[1].src).toString("ascii", 4, 8), "ftyp");
+      const actual = mp4Seconds(video.sources[1].src);
+      assert.ok(Math.abs(actual - video.seconds) <= 1, `${slug} says ${video.seconds} s but the MP4 runs ${actual.toFixed(2)} s`);
       assert.deepEqual([...head(video.sources[0].src, 4)], [0x1a, 0x45, 0xdf, 0xa3]); // EBML
     }
     const alts = new Set();
@@ -69,7 +81,7 @@ test("every product media entry points at real, correctly sized, budgeted files"
 });
 
 test("every product with a demo ships a 30-60 s video and an eight-shot gallery", () => {
-  for (const slug of ["livecut-redux", "tract-form", "pole-field", "cutline", "torus-glide", "strike-body"]) {
+  for (const slug of ["livecut-redux", "tract-form", "pole-field", "cutline", "torus-glide", "strike-body", "lineage"]) {
     const { video, gallery } = PRODUCT_MEDIA[slug];
     assert.ok(video.seconds >= 30 && video.seconds <= 60, slug);
     assert.equal(gallery.length, 8, slug);
