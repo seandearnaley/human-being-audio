@@ -60,7 +60,7 @@ export const PRODUCT_MEDIA = {
         width: 2560,
         height: 1438,
         label: "Classic · Recut",
-        alt: "The Classic surface on CutProc11 in Studio mode, with Phrase and Cut controls, Recut and Attack Align, and the crusher and comb filter",
+        alt: "The Classic surface on CutProc11 in Studio mode, with Phrase and Cut controls, Recut and Attack Align counting the cuts it has aligned, and the crusher and comb filter",
       },
       {
         src: "/media/livecut-redux/gallery/07-classic-impact.webp",
