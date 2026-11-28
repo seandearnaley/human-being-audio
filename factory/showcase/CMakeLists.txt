@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(STUDIO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
-# Engine-only build for all 6 studio products (zero JUCE / Visage / Catch2 overhead)
+# Engine-only build for the studio products (zero JUCE / Visage / Catch2 overhead)
 set(LIVECUT_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(LIVECUT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TF_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
@@ -24,6 +24,8 @@ set(TG_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(TG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SB_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
 set(SB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(PV_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
+set(PV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${STUDIO_ROOT}/products/livecut-redux" livecut EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/tract-form" tract EXCLUDE_FROM_ALL)
@@ -31,6 +33,7 @@ add_subdirectory("${STUDIO_ROOT}/products/pole-field" pole EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/cutline" cutline EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/torus-glide" torus EXCLUDE_FROM_ALL)
 add_subdirectory("${STUDIO_ROOT}/products/strike-body" strikebody EXCLUDE_FROM_ALL)
+add_subdirectory("${STUDIO_ROOT}/products/prism-vein" prismvein EXCLUDE_FROM_ALL)
 
 add_executable(studio-showcase
     showcase_common.h
@@ -41,6 +44,7 @@ add_executable(studio-showcase
     clips_cutline.cpp
     clips_torus_glide.cpp
     clips_strike_body.cpp
+    clips_prism_vein.cpp
     render_showcase.cpp)
 target_link_libraries(studio-showcase PRIVATE
     LivecutEngine
@@ -49,6 +53,7 @@ target_link_libraries(studio-showcase PRIVATE
     cl_engine
     tg_engine
     sb_engine
+    pv_engine
     hba_core
     hba_dsp
     nlohmann_json::nlohmann_json

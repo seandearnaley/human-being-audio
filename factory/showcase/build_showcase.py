@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and encode all 36 Human Being Audio web showcase clips + waveform manifest.
+"""Build and encode the Human Being Audio web showcase clips + waveform manifest.
 
 Canonical developer commands:
     python3 factory/showcase/build_showcase.py [--keep-wav /path/to/dir]
@@ -138,7 +138,7 @@ def encode_clip(item: dict) -> tuple[str, dict]:
 
 def main() -> int:
     catalog_products = list(json.loads(STUDIO_CATALOG.read_text())["products"])
-    parser = argparse.ArgumentParser(description="Build Human Being Audio 36-clip web showcase.")
+    parser = argparse.ArgumentParser(description="Build the Human Being Audio web showcase clips.")
     parser.add_argument("--keep-wav", type=Path, default=None, help="Directory to keep rendered WAVs for ear checks")
     parser.add_argument(
         "--product",

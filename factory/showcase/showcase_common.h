@@ -145,5 +145,6 @@ void renderPoleFieldClips(const fs::path& repoRoot, const fs::path& outDir);
 void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir);
 void renderTorusGlideClips(const fs::path& repoRoot, const fs::path& outDir);
 void renderStrikeBodyClips(const fs::path& repoRoot, const fs::path& outDir);
+void renderPrismVeinClips(const fs::path& repoRoot, const fs::path& outDir);
 
 } // namespace hba::showcase

@@ -33,7 +33,7 @@ jobs:
             build-essential ca-certificates ccache clang-22 cmake git ninja-build
           /usr/bin/python3 design/studio/test_artwork.py
       - run: xvfb-run -a /usr/bin/python3 -m unittest discover -s factory/release
-      - name: Verify studio-showcase compiles against all 6 engines
+      - name: Verify studio-showcase compiles against the product engines
         env:
           CC: clang-22
           CXX: clang++-22

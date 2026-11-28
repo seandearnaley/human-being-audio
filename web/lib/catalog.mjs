@@ -205,7 +205,7 @@ const PRODUCT_DETAILS = {
     features: [
       [
         "Four engines & Zero-Latency Live mode",
-        "Switch between 4× COLA Chord Lattice, stereo sidechain Carrier Morph, 16-voice stereo Harmonic Comb and shimmering Glass Freeze—or flip to Live 0 ms for zero-latency tracking with real-time FFT visualization.",
+        "Switch between 4× COLA Chord Lattice, stereo sidechain Carrier Morph, 12-voice stereo Harmonic Comb and shimmering Glass Freeze—or flip to Live 0 ms for zero-latency tracking with real-time FFT visualization.",
       ],
       [
         "Bark Auto-Tame, Sub Shield & Transient Preserve",
