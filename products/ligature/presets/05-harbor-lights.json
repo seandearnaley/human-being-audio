@@ -1,0 +1,208 @@
+{
+    "format": 2,
+    "name": "Harbor Lights",
+    "category": "City Pop",
+    "bpm": 114.0,
+    "voiceLead": true,
+    "sections": [
+        {
+            "name": "Verse",
+            "key": {
+                "tonic": "F",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "Db",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "m7",
+                    "beats": 2.0
+                },
+                {
+                    "root": "Ab",
+                    "quality": "d9",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {}
+        },
+        {
+            "name": "Chorus",
+            "key": {
+                "tonic": "Ab",
+                "mode": "major"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "Db",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "d9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "m7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "m9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
+        },
+        {
+            "name": "Last Chorus",
+            "key": {
+                "tonic": "Bb",
+                "mode": "major"
+            },
+            "bars": 8,
+            "chords": [
+                {
+                    "root": "Eb",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "d9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "D",
+                    "quality": "m7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "G",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "d13",
+                    "beats": 4.0
+                },
+                {
+                    "root": "D",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "G",
+                    "quality": "m9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "C",
+                    "quality": "m9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "F",
+                    "quality": "sus4",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {
+                "126": "r32",
+                "127": "r64"
+            }
+        }
+    ],
+    "bridges": [
+        {
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "pedal",
+            "stutter": {}
+        },
+        {
+            "from": 1,
+            "to": 2,
+            "bars": 1,
+            "route": "dominant",
+            "stutter": {
+                "15": "r64"
+            }
+        },
+        {
+            "from": 2,
+            "to": 0,
+            "bars": 2,
+            "route": "dim7",
+            "stutter": {}
+        }
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Push",
+            "density": 0.65,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Garage",
+            "density": 0.75,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 4,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Hook",
+            "density": 0.65,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Counter",
+            "density": 0.7,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
+    },
+    "pins": []
+}

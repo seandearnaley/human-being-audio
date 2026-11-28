@@ -219,6 +219,31 @@ const PRODUCT_DETAILS = {
     credits:
       "Includes 28 factory presets, built-in Neuro/Break audition loop, Undo/Redo and A/B compare.",
   },
+  ligature: {
+    kind: "MIDI chord & bridge generator",
+    hue: 295,
+    bpm: 122,
+    form: "knot",
+    formLabel: "Knot",
+    alt: "Ligature’s song strip of a Verse and Chorus joined by a backdoor bridge, harmony lane with Roman numerals, function words and tension line, Melody, Chords, Arp and Bass part lanes over a stutter row, chord-neighbourhood ring inspector, and keyboard lens",
+    body: "Write up to four sections, each with its own key, length and chord progression, joined in a ring by short bridges that modulate between their keys. Ligature generates chords, bass, melody and arp parts, then lets you launch sections and fire bridges like clips, locked to your DAW’s transport and timed backwards so the next section lands on the grid.",
+    features: [
+      [
+        "Eight bridge routes & a theory lens",
+        "Modulate through common-tone, pivot-chord, backdoor, ii-V, Neapolitan, diminished-pivot, hexatonic-pole or stutter-slam bridges, and read every chord by its Roman numeral, a Home/Away/Pull/Colour function word, the tension line and a neighbourhood ring of in-key, borrowed and outside substitutes.",
+      ],
+      [
+        "Four generated parts with one-click mutation",
+        "Shape chords (Hold, Stabs, 2-Step, Push, Pulse), bass (Anchor, Garage, Offbeat, Rolling), a melody motif and an arp (Up 16ths, Pluck 8ths, Counter) by density, register and rate, then Nudge, Twist or Rewrite them, pin notes and add 1/32, 1/64 or gate stutter to any step.",
+      ],
+      [
+        "Live launching, followers & Drag MIDI",
+        "Launch sections onto a Bar, 2-bar or Phrase grid (a late launch squeezes the bridge to fit) or Hold a bridge’s first bar to build, play the section key’s own chords on white keys C4–B5, give each part its own track with follower instances, and drag a section, the whole song or your last performance out as MIDI.",
+      ],
+    ],
+    credits:
+      "Includes 24 factory songs from pop and garage to DnB and ambient, a Studio audition sound built on Torus Glide, Lineage, Strike Body and Datum, Undo/Redo and A/B compare.",
+  },
 };
 
 export const PRODUCT_SLUGS = Object.keys(studio.products);
@@ -241,6 +266,7 @@ export const SCULPTURE_FORMS = [
   { id: "strata", label: "Strata" },
   { id: "piston", label: "Piston" },
   { id: "lattice", label: "Lattice" },
+  { id: "knot", label: "Knot" },
 ];
 
 export const FIELD_GUIDE_CHAPTERS = [
@@ -391,6 +417,23 @@ export const FIELD_GUIDE_CHAPTERS = [
       "24-Band Bark Auto-Tame",
       "Unity-Sum Transient Shield",
       "Just-Intonation Harmonic Lattice",
+    ],
+  },
+  {
+    num: "Chapter 10",
+    slug: "ligature",
+    href: null,
+    status: "Planned",
+    live: false,
+    hue: PRODUCTS_BY_SLUG.ligature.hue,
+    title: "Voice-Led Modulation: Eight Bridge Routes & Backtimed Launch Scheduling",
+    summary:
+      "Voice each chord nearest to the one before so the voices barely move across a key change, compare eight modulation routes from common-tone pedals and pivot chords to Neapolitan, diminished and hexatonic-pole bridges, and schedule every bridge backwards from its landing so a late launch still lands on the phrase.",
+    topics: [
+      "Minimal-Motion Voice-Leading",
+      "Eight Modulation Route Families",
+      "Pivot Chords & Hexatonic Poles",
+      "Backtimed, Squeezable Bridge Scheduling",
     ],
   },
   {

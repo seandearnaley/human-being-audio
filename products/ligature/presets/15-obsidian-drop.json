@@ -1,0 +1,156 @@
+{
+    "format": 2,
+    "name": "Obsidian Drop",
+    "category": "DnB",
+    "bpm": 174.0,
+    "voiceLead": true,
+    "sections": [
+        {
+            "name": "Intro",
+            "key": {
+                "tonic": "C",
+                "mode": "minor"
+            },
+            "bars": 8,
+            "chords": [
+                {
+                    "root": "C",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Ab",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Bb",
+                    "quality": "add9",
+                    "beats": 4.0,
+                    "bass": "D"
+                },
+                {
+                    "root": "C",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Ab",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "G",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
+        },
+        {
+            "name": "Drop",
+            "key": {
+                "tonic": "F",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "F",
+                    "quality": "m11",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Db",
+                    "quality": "maj7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {
+                "60": "r32",
+                "61": "r32",
+                "62": "r64",
+                "63": "gate"
+            }
+        }
+    ],
+    "bridges": [
+        {
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "neapolitan",
+            "stutter": {}
+        },
+        {
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "dim7",
+            "stutter": {}
+        }
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Stabs",
+            "density": 0.5,
+            "register": 0,
+            "rate": 0.5,
+            "seedR": 2,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Rolling",
+            "density": 0.7,
+            "register": 0,
+            "rate": 0.5,
+            "seedR": 1,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Hook",
+            "density": 0.45,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 4,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Counter",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
+    },
+    "pins": []
+}

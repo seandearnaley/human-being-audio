@@ -9,6 +9,7 @@ import strikeBodyImage from "../../products/strike-body/press/screenshots/strike
 import lineageImage from "../../products/lineage/press/screenshots/lineage-interface.png";
 import datumImage from "../../products/datum/press/screenshots/datum-interface.png";
 import prismVeinImage from "../../products/prism-vein/press/screenshots/prism-vein-interface.png";
+import ligatureImage from "../../products/ligature/press/screenshots/ligature-interface.png";
 import { PLATFORMS, PRODUCTS, PRODUCTS_BY_SLUG, STUDIO } from "../lib/catalog.mjs";
 import { PRODUCT_MEDIA } from "../lib/media.mjs";
 import { readCatalog } from "../lib/releases.mjs";
@@ -28,6 +29,7 @@ const PRODUCT_IMAGES = {
   lineage: lineageImage,
   datum: datumImage,
   "prism-vein": prismVeinImage,
+  ligature: ligatureImage,
 };
 
 function Product({ product, release, unavailable }) {
@@ -239,10 +241,10 @@ export default async function Page() {
               <div className="faq__body">
                 Close your host and open the signed, notarized PKG. It installs
                 the Audio Unit (Audio Unit Music Effect for Livecut Redux, Pole
-                Field and Prism Vein, Audio Unit MIDI FX for Cutline) and VST3
-                in the system Audio Plug-Ins folder and the standalone in
-                Applications. All nine plugins require macOS 12 or later and
-                contain universal Apple Silicon and Intel binaries.
+                Field and Prism Vein, Audio Unit MIDI FX for Cutline and
+                Ligature) and VST3 in the system Audio Plug-Ins folder and the
+                standalone in Applications. All ten plugins require macOS 12 or
+                later and contain universal Apple Silicon and Intel binaries.
                 <p>
                   If Tract Form still shows the old publisher, quit your host.
                   In <code>~/Library/Audio/Plug-Ins</code>, check VST3 and Components for

@@ -1,0 +1,136 @@
+{
+    "format": 2,
+    "name": "Tape Weather",
+    "category": "Lo-fi",
+    "bpm": 84.0,
+    "voiceLead": true,
+    "sections": [
+        {
+            "name": "Rainy",
+            "key": {
+                "tonic": "C",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "C",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "G",
+                    "quality": "m7",
+                    "beats": 4.0,
+                    "bass": "Bb"
+                },
+                {
+                    "root": "Ab",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "G",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
+        },
+        {
+            "name": "Sunny",
+            "key": {
+                "tonic": "C",
+                "mode": "major"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "F",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "E",
+                    "quality": "m7",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "G",
+                    "quality": "d13",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
+        }
+    ],
+    "bridges": [
+        {
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "pedal",
+            "stutter": {}
+        },
+        {
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "backdoor",
+            "stutter": {}
+        }
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Push",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Garage",
+            "density": 0.45,
+            "register": 0,
+            "rate": 0.5,
+            "seedR": 2,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Answer",
+            "density": 0.4,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 4,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Off",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
+    },
+    "pins": []
+}

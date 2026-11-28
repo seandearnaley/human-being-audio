@@ -1,0 +1,148 @@
+{
+    "format": 2,
+    "name": "Concrete Minor",
+    "category": "Drill",
+    "bpm": 142.0,
+    "voiceLead": true,
+    "sections": [
+        {
+            "name": "Verse",
+            "key": {
+                "tonic": "F",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "F",
+                    "quality": "min",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Db",
+                    "quality": "maj7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Bb",
+                    "quality": "m7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "E",
+                    "quality": "dim7",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {
+                "62": "r64",
+                "63": "r64"
+            }
+        },
+        {
+            "name": "Hook",
+            "key": {
+                "tonic": "C",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "C",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "G",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Ab",
+                    "quality": "maj7",
+                    "beats": 4.0
+                },
+                {
+                    "root": "B",
+                    "quality": "dim7",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {
+                "60": "r64",
+                "61": "r64",
+                "62": "r64",
+                "63": "gate"
+            }
+        }
+    ],
+    "bridges": [
+        {
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "dim7",
+            "stutter": {
+                "28": "r64",
+                "29": "r64",
+                "30": "r64",
+                "31": "gate"
+            }
+        },
+        {
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "neapolitan",
+            "stutter": {}
+        }
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Hold",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Rolling",
+            "density": 0.75,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Hook",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 8,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Pluck 8ths",
+            "density": 0.55,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 4,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
+    },
+    "pins": []
+}

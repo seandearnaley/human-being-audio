@@ -1,6 +1,6 @@
 # Showcase Audio Clips
 
-All 54 clips (6 composed, automated musical examples per plugin) are rendered offline directly from the nine C++20 DSP engines in this repository at 48 kHz stereo and encoded to stripped VBR MP3 (`libmp3lame -q:a 2`) alongside precomputed 64-bar peak envelopes in `web/app/audioManifest.json`.
+All 60 clips (6 composed, automated musical examples per plugin) are rendered offline directly from the ten C++20 DSP engines in this repository at 48 kHz stereo and encoded to stripped VBR MP3 (`libmp3lame -q:a 2`) alongside precomputed 64-bar peak envelopes in `web/app/audioManifest.json`.
 
 - `livecut-redux/` — 6 clips driven through `LivecutEngine` (`CutProc11`, `Rush`, `Bounce`, `Tape` stops, `Filter`/`Suction`, and `Loops`/`Glitch`).
 - `tract-form/` — 6 clips rendered from `tf_engine` (`Dark Techstep Roller` and `Throat Wobble` over a stepper groove, `808 Sub Hammer`, `Talking Vowel Slap`, `West-Coast Buchla`, and one sustained `Cathedral Sub Drone`).
@@ -11,6 +11,7 @@ All 54 clips (6 composed, automated musical examples per plugin) are rendered of
 - `lineage/` — 6 clips rendered from `ln_engine` (`Velvet Analog Reese`, `Strata Velvet Loop`, `Reverse Riptide Strata`, `Neuro Formant Crawler`, `TZFM Mercury Whip`, and `Halftime Strata Ghost`).
 - `datum/` — 6 clips synthesized from `dt_engine` (`Neuro Core 172 Stepper`, `Twin-T 808 Halftime`, `Membrane Warehouse Piston`, `UKG Skipper Swing`, `Analog 909 Club Drive`, and `Scalpel F1 Context Groove`).
 - `prism-vein/` — 6 clips processed by `pv_engine` with real sources kept up front and no drums (`Iridescent Reese`, `Silk Pad Colour`, `Razor Comb Roller`, `Lush Saw Halo`, `Glass Freeze Pluck`, and `Soothe Growl Polish`).
+- `ligature/` — 6 clips rendered by `lg-render` from `lg_engine` through the Studio sound (Torus Glide, Lineage, Strike Body and Datum voices), five of them launching or holding a bridge into a new key (`Neon Pivot · Backdoor`, `Sunday Hands · Common Tone`, `Pole Star · Hexatonic Pole`, `Obsidian Drop · Neapolitan`, `Dub Pressure · Held Slam`, and `Honey Turnaround · Verse`).
 
 ## Regenerating
 
@@ -20,4 +21,4 @@ python3 factory/showcase/build_showcase.py
 
 Requires `cmake`, a C++20 compiler, `ffmpeg` with `libmp3lame`, and `CPM_SOURCE_CACHE` (defaults to `$HOME/.cache/CPM`).
 
-The showcase tool currently rebuilds the seven products with composition recipes. It preserves the existing Lineage and Datum manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.
+The showcase tool currently rebuilds the seven products with composition recipes. It preserves the existing Lineage, Datum and Ligature manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.

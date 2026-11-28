@@ -64,6 +64,13 @@ const FORM_GLYPHS = {
       <line x1="10.4" y1="10.0" x2="14.6" y2="12.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </>
   ),
+  knot: (
+    <>
+      <ellipse cx="8" cy="5.4" rx="2.5" ry="4" fill="none" strokeWidth="1.4" />
+      <ellipse cx="8" cy="5.4" rx="2.5" ry="4" fill="none" strokeWidth="1.4" transform="rotate(120 8 8)" />
+      <ellipse cx="8" cy="5.4" rx="2.5" ry="4" fill="none" strokeWidth="1.4" transform="rotate(240 8 8)" />
+    </>
+  ),
 };
 
 export default function Hero() {

@@ -1,0 +1,47 @@
+if(LG_BUILD_TESTS)
+    add_executable(lg_core_tests CoreTests.cpp)
+    hba_build_for_host_only(lg_core_tests)
+    target_compile_features(lg_core_tests PRIVATE cxx_std_20)
+    target_link_libraries(lg_core_tests PRIVATE lg_core Catch2::Catch2WithMain lg_warnings)
+    target_compile_definitions(lg_core_tests PRIVATE LG_PRESET_DIR="${PROJECT_SOURCE_DIR}/presets")
+    catch_discover_tests(lg_core_tests DISCOVERY_MODE PRE_TEST)
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/EngineTests.cpp")
+        add_executable(lg_engine_tests EngineTests.cpp)
+        hba_build_for_host_only(lg_engine_tests)
+        target_compile_features(lg_engine_tests PRIVATE cxx_std_20)
+        target_link_libraries(lg_engine_tests PRIVATE lg_engine lg_core Catch2::Catch2WithMain lg_warnings)
+        if(HBA_RTSAN)
+            hba_realtime_suite(lg_engine_tests "[engine]")
+        else()
+            catch_discover_tests(lg_engine_tests DISCOVERY_MODE PRE_TEST)
+        endif()
+    endif()
+
+    if(TARGET lg_voices)
+        add_executable(lg_voices_tests VoicesTests.cpp)
+        hba_build_for_host_only(lg_voices_tests)
+        target_compile_features(lg_voices_tests PRIVATE cxx_std_20)
+        target_link_libraries(lg_voices_tests PRIVATE lg_voices lg_engine lg_core Catch2::Catch2WithMain lg_warnings)
+        if(HBA_RTSAN)
+            # The timing check means nothing under the sanitizer; the rest runs with the real-time suite.
+            catch_discover_tests(lg_voices_tests TEST_SPEC "[voices]~[perf]" DISCOVERY_MODE PRE_TEST
+                PROPERTIES LABELS realtime)
+            if(TARGET realtime-engine)
+                add_dependencies(realtime-engine lg_voices_tests)
+            endif()
+        else()
+            catch_discover_tests(lg_voices_tests DISCOVERY_MODE PRE_TEST)
+        endif()
+    endif()
+
+    if(LG_BUILD_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugin/PluginTests.cpp")
+        add_subdirectory(plugin)
+    endif()
+
+    if(LG_BUILD_PLUGIN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME ligature-editor-renders
+            COMMAND /usr/bin/python3 "${PROJECT_SOURCE_DIR}/../../factory/release/standalone-linux.py"
+                    "$<TARGET_FILE:Ligature_Standalone>")
+    endif()
+endif()
