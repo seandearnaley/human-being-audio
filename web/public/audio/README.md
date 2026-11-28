@@ -10,7 +10,7 @@ All 54 clips (6 composed, automated musical examples per plugin) are rendered of
 - `strike-body/` — 6 clips synthesized from `sb_engine` (`Neuro Snare Roller`, `Dispersed Laser Kick`, `Studio Brass Pocket`, `Hyperpop Plastic Slap`, `Kirchhoff Anvil Ritual`, and `Chromatic Glass & Toms`).
 - `lineage/` — 6 clips rendered from `ln_engine` (`Velvet Analog Reese`, `Strata Velvet Loop`, `Reverse Riptide Strata`, `Neuro Formant Crawler`, `TZFM Mercury Whip`, and `Halftime Strata Ghost`).
 - `datum/` — 6 clips synthesized from `dt_engine` (`Neuro Core 172 Stepper`, `Twin-T 808 Halftime`, `Membrane Warehouse Piston`, `UKG Skipper Swing`, `Analog 909 Club Drive`, and `Scalpel F1 Context Groove`).
-- `prism-vein/` — 6 clips rendered from `pv_engine` (`Iridescent F Min9`, `Phrygian Razor Comb`, `Eb Maj9 Silk Progression`, `Sidechain Carrier Morph`, `Glass Halo Freeze`, and `Glitch Step Lattice`).
+- `prism-vein/` — 6 clips processed by `pv_engine` with real sources kept up front and no drums (`Iridescent Reese`, `Silk Pad Colour`, `Razor Comb Roller`, `Lush Saw Halo`, `Glass Freeze Pluck`, and `Soothe Growl Polish`).
 
 ## Regenerating
 
@@ -20,4 +20,4 @@ python3 factory/showcase/build_showcase.py
 
 Requires `cmake`, a C++20 compiler, `ffmpeg` with `libmp3lame`, and `CPM_SOURCE_CACHE` (defaults to `$HOME/.cache/CPM`).
 
-The showcase tool currently rebuilds the six products with composition recipes. It preserves the existing Lineage and Datum manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.
+The showcase tool currently rebuilds the seven products with composition recipes. It preserves the existing Lineage and Datum manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.
