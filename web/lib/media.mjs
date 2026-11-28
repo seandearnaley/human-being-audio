@@ -77,4 +77,78 @@ export const PRODUCT_MEDIA = {
       },
     ],
   },
+  "tract-form": {
+    video: {
+      title: "Tract Form in Ableton Live 12",
+      badge: "Watch it roll",
+      seconds: 39,
+      width: 1920,
+      height: 1080,
+      poster: "/media/tract-form/tract-form-demo-poster.webp",
+      sources: [
+        { src: "/media/tract-form/tract-form-demo.webm", type: 'video/webm; codecs="vp9, opus"' },
+        { src: "/media/tract-form/tract-form-demo.mp4", type: 'video/mp4; codecs="avc1.640029, mp4a.40.2"' },
+      ],
+      caption:
+        "Recorded live in Ableton Live 12 at 172 BPM: a MIDI clip plays the bassline while arrangement automation moves the macros, across three factory presets (Dark Techstep Roller, Throat Wobble and Speaking Pipe). The drums come from the studio’s own synthesized showcase drum kit.",
+    },
+    gallery: [
+      {
+        src: "/media/tract-form/gallery/01-live-session-roller.webp",
+        width: 2560,
+        height: 1440,
+        label: "In Live · Roller",
+        alt: "Tract Form in Ableton Live 12: a MIDI bassline clip with Tract, Warp, Coupling and Width automation lanes above a drum loop, with Dark Techstep Roller open",
+      },
+      {
+        src: "/media/tract-form/gallery/02-dark-techstep-roller.webp",
+        width: 2560,
+        height: 1522,
+        label: "Dark Techstep Roller",
+        alt: "Dark Techstep Roller: the master sine and sub, Reese A and B, a Pre tract from æ to u, Buchla fold, Comb sculpt, mid/side and output, with scope, goniometer and spectrum below",
+      },
+      {
+        src: "/media/tract-form/gallery/03-throat-wobble.webp",
+        width: 2560,
+        height: 1522,
+        label: "Throat Wobble",
+        alt: "Throat Wobble: a Post tract from i to æ after a Fold wavefolder, with the Morph lane moving the vowels in time",
+      },
+      {
+        src: "/media/tract-form/gallery/04-speaking-pipe.webp",
+        width: 2560,
+        height: 1522,
+        label: "Speaking Pipe",
+        alt: "Speaking Pipe: a Post tract from a to u over a Sine fold and Bell sculpt, its sub held mono beneath the growl",
+      },
+      {
+        src: "/media/tract-form/gallery/05-oscillator-flow.webp",
+        width: 1920,
+        height: 1080,
+        label: "Oscillator flow",
+        alt: "The oscillator flow up close: the master sine feeding Reese A and B and their feedback loop into the tract, with the sub lock line running beneath",
+      },
+      {
+        src: "/media/tract-form/gallery/06-movement-lanes.webp",
+        width: 1920,
+        height: 1080,
+        label: "Movement lanes",
+        alt: "The movement lanes up close: each lane’s target, rate, sync mode, phase and depth, with the Morph lane running",
+      },
+      {
+        src: "/media/tract-form/gallery/07-macros-and-output.webp",
+        width: 1920,
+        height: 1080,
+        label: "Macros & output",
+        alt: "The eight macros, Coupling, Beat, Reach, Tract, Warp, Sculpt, Motion and Width, above the fold, sculpt, mid/side and output stages",
+      },
+      {
+        src: "/media/tract-form/gallery/08-live-session-pipe.webp",
+        width: 2560,
+        height: 1440,
+        label: "In Live · Pipe",
+        alt: "Speaking Pipe in Ableton Live 12, with Morph, Drive and Coupling automation lanes moving the vowels and the growl over a drum loop",
+      },
+    ],
+  },
 };

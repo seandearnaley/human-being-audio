@@ -79,3 +79,20 @@ test("without JavaScript the demo and screenshots are plain links to the files",
   expect((await page.request.get("/media/livecut-redux/livecut-redux-demo.mp4")).ok()).toBe(true);
   await context.close();
 });
+
+test("every product with media shows its demo link and screenshot thumbnails", async ({ page }) => {
+  const { PRODUCT_MEDIA } = await import("../../lib/media.mjs");
+  const { PRODUCTS_BY_SLUG } = await import("../../lib/catalog.mjs");
+  await page.goto("/");
+  for (const [slug, media] of Object.entries(PRODUCT_MEDIA) as [string, any][]) {
+    const card = page.locator(`#${slug}`);
+    const name = PRODUCTS_BY_SLUG[slug].name;
+    const mp4 = media.video.sources.find((s: { src: string }) => s.src.endsWith(".mp4")).src;
+    await expect(card.getByRole("link", { name: new RegExp(`${name} demo video`) })).toHaveAttribute("href", mp4);
+    const thumbs = card.getByRole("list", { name: `${name} screenshots` }).getByRole("link");
+    await expect(thumbs).toHaveCount(media.gallery.length);
+    const poster = card.locator("img.studio-interface");
+    await poster.scrollIntoViewIfNeeded();
+    await expect.poll(() => poster.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  }
+});
