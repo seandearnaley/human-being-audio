@@ -68,8 +68,8 @@ test("every product media entry points at real, correctly sized, budgeted files"
   }
 });
 
-test("Livecut Redux and Tract Form ship a 30-60 s demo video and an eight-shot gallery", () => {
-  for (const slug of ["livecut-redux", "tract-form"]) {
+test("Livecut Redux, Tract Form and Pole Field ship a 30-60 s demo video and an eight-shot gallery", () => {
+  for (const slug of ["livecut-redux", "tract-form", "pole-field"]) {
     const { video, gallery } = PRODUCT_MEDIA[slug];
     assert.ok(video.seconds >= 30 && video.seconds <= 60, slug);
     assert.equal(gallery.length, 8, slug);

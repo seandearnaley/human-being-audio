@@ -115,7 +115,8 @@ test("all showcase decks decode, switch tracks, and play exclusively on request"
   );
   await expect(tractDeck).toHaveAttribute("data-playing", "true");
 
-  // Starting Pole Field automatically pauses Tract Form
+  // Starting Pole Field automatically pauses Tract Form; its deck opens on the long-note clip
+  await expect(poleDeck.locator(".showcase__title")).toHaveText("Ocean Halo Long Notes");
   await poleDeck.locator(".showcase__play").click();
   await expect(poleDeck).toHaveAttribute("data-playing", "true");
   await expect(tractDeck).toHaveAttribute("data-playing", "false");

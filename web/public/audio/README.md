@@ -4,7 +4,7 @@ All 54 clips (6 composed, automated musical examples per plugin) are rendered of
 
 - `livecut-redux/` — 6 clips driven through `LivecutEngine` (`CutProc11`, `Rush`, `Bounce`, `Tape` stops, `Filter`/`Suction`, and `Loops`/`Glitch`).
 - `tract-form/` — 6 clips rendered from `tf_engine` (`Dark Techstep Roller` and `Throat Wobble` over a stepper groove, `808 Sub Hammer`, `Talking Vowel Slap`, `West-Coast Buchla`, and one sustained `Cathedral Sub Drone`).
-- `pole-field/` — 6 clips processed by `pf_engine` (`Neuro Chew`, `Parallel Choir` cinema chords, `Amen Mangler`, `Razor Comb`, `Envelope Acid Wah`, and `Burg LPC Glass Chamber`).
+- `pole-field/` — 6 clips processed by `pf_engine` (`Ocean Phase Halo` long notes, `Parallel Choir` cinema chords, `Amen Mangler`, `Razor Comb`, `Envelope Acid Wah`, and `Burg LPC Glass Chamber`).
 - `cutline/` — 6 clips from the Cutline 3 drum grid, performance pad and MIDI Slicer, including Strike Body articulation and a Tract Form bass line.
 - `torus-glide/` — 6 clips rendered from `tg_engine` (`Sidewinder Neuro Riser`, `Neo-Riemannian Cinema`, `Phrygian Slide Table`, `Velvet Choir Cathedral`, `Risset Eternal Stutter`, and `Möbius Neuro Bass`).
 - `strike-body/` — 6 clips synthesized from `sb_engine` (`Neuro Snare Roller`, `Dispersed Laser Kick`, `Studio Brass Pocket`, `Hyperpop Plastic Slap`, `Kirchhoff Anvil Ritual`, and `Chromatic Glass & Toms`).

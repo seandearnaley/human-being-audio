@@ -13,7 +13,7 @@
 namespace hba::showcase {
 
 // ============================================================================
-// 3. POLE FIELD (6 clips: real basslines, film chords, drum breaks, LPC glass)
+// 3. POLE FIELD (6 clips: long-note movement, film chords, drum breaks, comb basslines, LPC glass)
 // ============================================================================
 std::vector<float> processWithPoleField(const fs::path& presetPath, double bpm, std::vector<float> audio,
                                         std::function<void(pf::Params&, double prog)> automate) {
@@ -76,37 +76,54 @@ std::vector<float> renderChordStem(double bpm, int bars, const std::vector<std::
     return out;
 }
 
+// Long held notes for movement demos: each event sounds its note plus the given intervals above it.
+static std::vector<float> renderHeldNotes(double bpm, int bars, const std::vector<NoteEvent>& notes,
+                                          const std::vector<int>& intervals, double cutoffHz, double roomWet) {
+    const int totalFrames = static_cast<int>(std::llround((4.0 * bars * 60.0 / bpm) * kSr));
+    std::vector<float> out(static_cast<std::size_t>(totalFrames) * 2u, 0.0f);
+    LushMpeSynth synth;
+    synth.globalCutoffHz = cutoffHz;
+    synth.resonance = 0.9;
+    synth.attackSec = 0.12;
+    synth.releaseSec = 0.6;
+    const double samplesPerBeat = 60.0 / bpm * kSr;
+    for (int i = 0; i < totalFrames; ++i) {
+        for (const auto& n : notes) {
+            const int on = static_cast<int>(std::llround(n.startBeat * samplesPerBeat));
+            const int off = static_cast<int>(std::llround((n.startBeat + n.durBeats) * samplesPerBeat));
+            if (i == on) {
+                synth.noteOn(1, n.note, n.vel);
+                for (int iv : intervals) synth.noteOn(1, n.note + iv, 0.9 * n.vel);
+            } else if (i == off) {
+                synth.noteOff(1, n.note);
+                for (int iv : intervals) synth.noteOff(1, n.note + iv);
+            }
+        }
+        float l = 0.0f, r = 0.0f;
+        synth.tick(l, r, static_cast<float>(roomWet));
+        out[static_cast<std::size_t>(i) * 2u] = l;
+        out[static_cast<std::size_t>(i) * 2u + 1u] = r;
+    }
+    return out;
+}
+
 void renderPoleFieldClips(const fs::path& repoRoot, const fs::path& outDir) {
     const fs::path pfDir = repoRoot / "products/pole-field/presets";
     const fs::path tfDir = repoRoot / "products/tract-form/presets";
 
-    // 1. Neuro Chew Bassline (Tract Form raw reese riff -> Pole Field Neuro Chew with figure-8 XY morph)
+    // 1. Ocean Halo Long Notes (held detuned saw fifths -> Ocean Phase Halo, its movement lanes doing the morphing)
     {
-        const std::vector<NoteEvent> riff = {
-            {0.00, 1.75, 29, 0.96f, 0.0f},  {2.00, 0.90, 32, 0.92f, -2.0f},
-            {3.00, 0.90, 30, 0.94f, -1.0f}, {4.00, 1.75, 29, 0.98f, 3.0f},
-            {6.00, 0.90, 36, 0.92f, -4.0f}, {7.00, 0.90, 30, 0.95f, -1.0f},
-            {8.00, 1.75, 29, 0.98f, 0.0f},  {10.00, 0.90, 34, 0.92f, 0.0f},
-            {11.00, 0.90, 32, 0.92f, -2.0f},{12.00, 3.60, 29, 1.00f, 0.0f},
+        const std::vector<NoteEvent> fifths = {
+            {0.0, 7.6, 41, 0.92f, 0.0f}, {8.0, 7.6, 37, 0.92f, 0.0f},
+            {16.0, 7.6, 39, 0.92f, 0.0f}, {24.0, 7.8, 36, 0.95f, 0.0f},
         };
-        auto rawBass = renderTractSequence(tfDir / "coupled-reese.json", 172.0, 4, riff,
-            [](tf::Params& p, tf::Engine&, double) {
-                p[tf::ParamId::tract] = 0.0f;
-                p[tf::ParamId::drive] = 0.36f;
-                p[tf::ParamId::coupling] = 0.72f;
-            });
-        auto wet = processWithPoleField(pfDir / "neuro-chew.json", 172.0, std::move(rawBass),
+        auto stem = renderHeldNotes(172.0, 8, fifths, {7}, 5000.0, 0.18);
+        auto wet = processWithPoleField(pfDir / "ocean-phase-halo.json", 172.0, std::move(stem),
             [](pf::Params& p, double t) {
-                p[pf::ParamId::morphX] = static_cast<float>(0.5 + 0.46 * std::sin(kTwoPi * t * 1.5));
-                p[pf::ParamId::morphY] = static_cast<float>(0.5 + 0.44 * std::cos(kTwoPi * t * 2.0));
-                p[pf::ParamId::morphZ] = lerpF(0.18f, 0.78f, t);
-                p[pf::ParamId::res] = lerpF(0.55f, 0.76f, t);
-                p[pf::ParamId::drive] = lerpF(0.35f, 0.68f, t);
-                p[pf::ParamId::subLock] = 1.0f;
-                p[pf::ParamId::mix] = 1.0f;
+                p[pf::ParamId::morphZ] = lerpF(0.28f, 0.62f, smoothStep(t));
             });
-        emitClip(outDir, "pole-field", "01-neuro-chew-bassline", "Neuro Chew Bassline", "14P Z-Plane", 172.0, "F Phrygian",
-                 "14-pole E-MU Morpheus talking cube chewing a live bassline with XY morph automation and mono Sub Lock",
+        emitClip(outDir, "pole-field", "01-ocean-halo-long-notes", "Ocean Halo Long Notes", "Movement Lanes", 172.0, "F Minor",
+                 "Long detuned saw fifths held two bars each while Ocean Phase Halo's four movement lanes sweep the 14-pole Z-plane filter",
                  std::move(wet), -13.0);
     }
 
