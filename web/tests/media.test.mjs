@@ -58,7 +58,8 @@ test("every product media entry points at real, correctly sized, budgeted files"
     for (const shot of gallery) {
       assert.ok(shot.src.startsWith(`/media/${slug}/gallery/`), shot.src);
       assert.deepEqual(webpSize(shot.src), [shot.width, shot.height], shot.src);
-      assert.ok(shot.width >= 2560, `${shot.src} should stay Retina-sharp at full width`);
+      // Full views stay Retina-sharp in the 1600 px lightbox; details are 1:1 crops of the interface.
+      assert.ok(shot.width >= (shot.detail ? 1920 : 2560), `${shot.src} is too small to stay sharp`);
       assert.ok(statSync(file(shot.src)).size <= IMAGE_BUDGET, shot.src);
       assert.ok(shot.label && shot.alt.length > 40, `${shot.src} needs a label and descriptive alt text`);
       assert.ok(!alts.has(shot.alt), `Duplicate alt text in ${slug}`);
@@ -67,8 +68,10 @@ test("every product media entry points at real, correctly sized, budgeted files"
   }
 });
 
-test("Livecut Redux ships its demo video and an eight-shot gallery", () => {
-  const { video, gallery } = PRODUCT_MEDIA["livecut-redux"];
-  assert.ok(video.seconds >= 30 && video.seconds <= 60);
-  assert.equal(gallery.length, 8);
+test("Livecut Redux and Tract Form ship a 30-60 s demo video and an eight-shot gallery", () => {
+  for (const slug of ["livecut-redux", "tract-form"]) {
+    const { video, gallery } = PRODUCT_MEDIA[slug];
+    assert.ok(video.seconds >= 30 && video.seconds <= 60, slug);
+    assert.equal(gallery.length, 8, slug);
+  }
 });
