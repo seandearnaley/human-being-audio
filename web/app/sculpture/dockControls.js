@@ -49,11 +49,9 @@ function envelope(f1, f2, f3) {
   return { line: `M${pts.join("L")}`, fill: `M2 99L${pts.join("L")}L98 99Z`, comb };
 }
 
-export function mountDockControls({ root, dock, pad, formPicker, cards, byId, stage, reducedMotion, signal }) {
+export function mountDockControls({ root, dock, pad, formPicker, cards, byId, stage, seedOf, reducedMotion, signal }) {
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
-  const seedOf = (p) =>
-    [...p.id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) / 2 ** 32;
   const cleanups = [];
 
   $("#stage")?.style.setProperty("--stage-hue", stage.hue);
@@ -186,7 +184,7 @@ export function mountDockControls({ root, dock, pad, formPicker, cards, byId, st
     const p = byId[id];
     if (!p || stage.pluginId === id) return;
     Object.assign(stage, { form: p.form, pluginId: id, hue: p.hue, bpm: p.bpm, seed: seedOf(p) });
-    $("#stage").style.setProperty("--stage-hue", p.hue);
+    $("#stage")?.style.setProperty("--stage-hue", p.hue);
     dock.style.setProperty("--hue", p.hue);
     const radio = $(`input[name="form"][value="${stage.form}"]`);
     if (radio) radio.checked = true;

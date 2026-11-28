@@ -378,10 +378,11 @@ Voicing voiceChord(const Chord& c, const std::vector<int>* previousLead, bool vo
         double bestScore = 1e9;
         std::vector<std::size_t> idx(pcs.size(), 0);
         std::vector<int> candidate(pcs.size());
+        std::vector<int> sorted(pcs.size());
         while (true) {
             for (std::size_t i = 0; i < pcs.size(); ++i)
                 candidate[i] = options[i][idx[i]];
-            std::vector<int> sorted = candidate;
+            std::copy(candidate.begin(), candidate.end(), sorted.begin());
             std::sort(sorted.begin(), sorted.end());
             if (sorted.back() - sorted.front() <= 15) {
                 double score = 0.0;

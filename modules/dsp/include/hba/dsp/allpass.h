@@ -24,7 +24,8 @@ struct AllpassPair {
             c = 0.0;
             return;
         }
-        const double f = std::clamp(hz, 20.0, 0.46 * sampleRate);
+        const double maxHz = 0.46 * sampleRate;
+        const double f = std::clamp(hz, std::min(20.0, maxHz), maxHz);
         const double t = std::tan(kPi * f / sampleRate);
         c = std::clamp((1.0 - t) / (1.0 + t), -0.985, 0.995);
     }

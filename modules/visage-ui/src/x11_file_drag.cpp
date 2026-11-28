@@ -15,7 +15,10 @@ void releasePointerForFileDrag(visage::Frame& source, const visage::MouseEvent& 
     const auto position = window->convertToNative(event.window_position);
     window->handleMouseUp(visage::kMouseButtonLeft, position.x, position.y,
                           event.button_state & ~visage::kMouseButtonLeft, event.modifiers);
-    auto* display = window->x11Connection()->display();
+    auto* conn = window->x11Connection();
+    auto* display = conn != nullptr ? conn->display() : nullptr;
+    if (display == nullptr)
+        return;
     XUngrabPointer(display, CurrentTime);
     XSync(display, False);
 }

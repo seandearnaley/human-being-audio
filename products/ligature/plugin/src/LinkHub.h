@@ -54,12 +54,11 @@ class LinkHub {
         return leader_ != nullptr;
     }
 
-    void publishSong(const void* who, const std::string& json, std::uint64_t revision) {
+    void publishSong(const void* who, const std::string& json, std::uint64_t /*revision*/ = 0) {
         const std::scoped_lock lock(songLock_);
         if (leader_ != who)
             return;
         songJson_ = json;
-        songRevision_ = revision;
         ++songGeneration_;
     }
 
@@ -99,7 +98,6 @@ class LinkHub {
     mutable std::mutex songLock_;
     const void* leader_ = nullptr;
     std::string songJson_;
-    std::uint64_t songRevision_ = 0;
     std::uint64_t songGeneration_ = 0;
 
     std::atomic<const void*> leaderAudio_{nullptr};

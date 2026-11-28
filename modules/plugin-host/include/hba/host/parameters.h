@@ -43,7 +43,7 @@ makeParameterLayout(const SpecRangeT& specs, MakeRangeFn&& makeRange, FormatFn&&
                 juce::AudioParameterFloatAttributes()
                     .withAutomatable(spec.automatable)
                     .withStringFromValueFunction(
-                        [&spec, formatValue](float real, int) { return toJuce(formatValue(spec, real)); })));
+                        [spec, formatValue](float real, int) { return toJuce(formatValue(spec, real)); })));
         }
     }
     return layout;

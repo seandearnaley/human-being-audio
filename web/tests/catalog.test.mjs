@@ -175,13 +175,22 @@ test("the CI credential only accompanies release API requests", async (t) => {
   assert.equal(release.downloads.length, 3);
 });
 
-test("Cutline describes the bank shipped with the plugin", async () => {
+test("every product’s catalog credits match the factory bank shipped in products/*/presets", async () => {
   const { readdir } = await import("node:fs/promises");
+  for (const product of PRODUCTS) {
+    const presetDir = new URL(`../../products/${product.slug}/presets/`, import.meta.url);
+    const presetCount = (await readdir(presetDir)).filter((name) => name.endsWith(".json")).length;
+    assert.ok(
+      product.credits.includes(`${presetCount} factory presets`) ||
+        product.credits.includes(`${presetCount} factory songs`),
+      `Preset count mismatch for ${product.slug}: disk has ${presetCount}, credits say "${product.credits}"`,
+    );
+  }
   const counts = await Promise.all(["patterns", "fills", "presets"].map(async (directory) =>
     (await readdir(new URL(`../../products/cutline/${directory}/`, import.meta.url))).filter(name => name.endsWith(".json")).length));
-  const product = PRODUCTS.find(({ slug }) => slug === "cutline");
+  const cutline = PRODUCTS.find(({ slug }) => slug === "cutline");
   const [patterns, fills, presets] = counts;
-  assert.ok(product.credits.includes(`${patterns} patterns`));
-  assert.ok(product.credits.includes(`${fills} fills`));
-  assert.ok(product.credits.includes(`${presets} factory presets`));
+  assert.ok(cutline.credits.includes(`${patterns} patterns`));
+  assert.ok(cutline.credits.includes(`${fills} fills`));
+  assert.ok(cutline.credits.includes(`${presets} factory presets`));
 });

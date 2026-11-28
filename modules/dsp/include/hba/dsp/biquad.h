@@ -22,7 +22,8 @@ struct BiquadCoefs {
     static BiquadCoefs lowpass(double hz, double q, double sampleRate) noexcept HBA_NONBLOCKING {
         if (!(sampleRate > 0.0) || !(q > 0.0) || !std::isfinite(hz) || !std::isfinite(q) || !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double alpha = std::sin(w0) / (2.0 * std::max(0.05, q));
@@ -34,7 +35,8 @@ struct BiquadCoefs {
     static BiquadCoefs highpass(double hz, double q, double sampleRate) noexcept HBA_NONBLOCKING {
         if (!(sampleRate > 0.0) || !(q > 0.0) || !std::isfinite(hz) || !std::isfinite(q) || !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double alpha = std::sin(w0) / (2.0 * std::max(0.05, q));
@@ -46,7 +48,8 @@ struct BiquadCoefs {
     static BiquadCoefs bandpass(double hz, double q, double sampleRate) noexcept HBA_NONBLOCKING {
         if (!(sampleRate > 0.0) || !(q > 0.0) || !std::isfinite(hz) || !std::isfinite(q) || !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double alpha = std::sin(w0) / (2.0 * std::max(0.05, q));
@@ -58,8 +61,9 @@ struct BiquadCoefs {
         if (!(sampleRate > 0.0) || !(q > 0.0) || !std::isfinite(hz) || !std::isfinite(q) || !std::isfinite(gainDb) ||
             !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
-        const double a = std::pow(10.0, gainDb / 40.0);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
+        const double a = std::pow(10.0, std::clamp(gainDb, -96.0, 96.0) / 40.0);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double alpha = std::sin(w0) / (2.0 * std::max(0.05, q));
@@ -69,11 +73,12 @@ struct BiquadCoefs {
     }
 
     static BiquadCoefs lowShelf(double hz, double slope, double gainDb, double sampleRate) noexcept HBA_NONBLOCKING {
-        if (!(sampleRate > 0.0) || !(slope > 0.0) || !std::isfinite(hz) || !std::isfinite(gainDb) ||
-            !std::isfinite(sampleRate))
+        if (!(sampleRate > 0.0) || !(slope > 0.0) || !std::isfinite(slope) || !std::isfinite(hz) ||
+            !std::isfinite(gainDb) || !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
-        const double a = std::pow(10.0, gainDb / 40.0);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
+        const double a = std::pow(10.0, std::clamp(gainDb, -96.0, 96.0) / 40.0);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double s = std::sin(w0);
@@ -87,11 +92,12 @@ struct BiquadCoefs {
     }
 
     static BiquadCoefs highShelf(double hz, double slope, double gainDb, double sampleRate) noexcept HBA_NONBLOCKING {
-        if (!(sampleRate > 0.0) || !(slope > 0.0) || !std::isfinite(hz) || !std::isfinite(gainDb) ||
-            !std::isfinite(sampleRate))
+        if (!(sampleRate > 0.0) || !(slope > 0.0) || !std::isfinite(slope) || !std::isfinite(hz) ||
+            !std::isfinite(gainDb) || !std::isfinite(sampleRate))
             return bypass();
-        const double f = std::clamp(hz, 10.0, 0.48 * sampleRate);
-        const double a = std::pow(10.0, gainDb / 40.0);
+        const double maxHz = 0.48 * sampleRate;
+        const double f = std::clamp(hz, std::min(10.0, maxHz), maxHz);
+        const double a = std::pow(10.0, std::clamp(gainDb, -96.0, 96.0) / 40.0);
         const double w0 = kTwoPi * f / sampleRate;
         const double c = std::cos(w0);
         const double s = std::sin(w0);

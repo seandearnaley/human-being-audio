@@ -269,6 +269,11 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
     const double fdnHpCoef = hba::dsp::onePoleCoef(1.0 / (hba::dsp::kTwoPi * 155.0), invSr);
 
     constexpr int kControlInterval = 32;
+    const double ctrlDt = invSr * kControlInterval;
+    const double ctrlCoef55ms = hba::dsp::onePoleCoef(0.055, ctrlDt);
+    const double ctrlCoef10ms = hba::dsp::onePoleCoef(0.010, ctrlDt);
+    const double ctrlCoef12ms = hba::dsp::onePoleCoef(0.012, ctrlDt);
+    const double ctrlCoef15ms = hba::dsp::onePoleCoef(0.015, ctrlDt);
     const int mpeThrottleSamples = std::max(64, static_cast<int>(sr * 0.0025));
 
     // Control variables cached per sub-block
@@ -282,6 +287,8 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
     double curSpace = targetSpaceBase;
     double curSubWarmth = baseSubWarmth;
     double curFilterHz = targetFilterBase;
+    double curFormantRatio = std::clamp(1.6 + std::log2(std::max(120.0, curFilterHz) / 120.0) * 0.68, 1.6, 6.2);
+    double curRevMix = std::pow(curSpace, 1.25) * 0.48;
     double curBellCenter = targetBellCenter;
     double curRissetGate = baseRissetGate;
     double curLane1Val = 0.0;
@@ -293,6 +300,8 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
     double targetDetuneCtEff = baseDetuneCt;
     double targetWidthEff = baseWidth;
     double voidShimmerAmt = 0.0;
+    double cachedDetuneCt = -1.0e9;
+    double cachedDetuneRatio = 1.0;
     int curActiveScene = 0;
     std::array<double, kVoiceCount> targetVoicePitches{};
     const double initQ = 0.707 + baseFilterRes * baseFilterRes * 7.5;
@@ -478,7 +487,7 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
             if (useKeySwitch && keySwitchScene_ >= 0 && mode != Mode::spiral) {
                 const double targetKS = static_cast<double>(keySwitchScene_) /
                                         static_cast<double>(mode == Mode::mobius ? kSceneCount : (kSceneCount - 1));
-                curMorph = morphSmooth_.step(targetKS, hba::dsp::onePoleCoef(0.055, invSr * kControlInterval));
+                curMorph = morphSmooth_.step(targetKS, ctrlCoef55ms);
             } else if (mode == Mode::mobius) {
                 const double mobCycle =
                     morphAuto ? (rawCycles + padMobiusOffset_ + baseMorph + static_cast<double>(modWheel_))
@@ -489,8 +498,7 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
                 mobiusCycleOffset_ = static_cast<int>(std::floor(dirMob));
                 prevMorphCycle_ = dirMob;
             } else {
-                curMorph = morphSmooth_.step(std::clamp(rawMorph, 0.0, 1.0),
-                                             hba::dsp::onePoleCoef(0.010, invSr * kControlInterval));
+                curMorph = morphSmooth_.step(std::clamp(rawMorph, 0.0, 1.0), ctrlCoef10ms);
             }
 
             curGravity = std::clamp(padGravTarget, 0.0, 1.0);
@@ -499,15 +507,15 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
             curDrive = driveSmooth_.step(
                 std::clamp(targetDriveBase + modDrive * 0.5 + padDriveAdd + static_cast<double>(aftertouch_) * 0.25,
                            0.0, 1.0),
-                hba::dsp::onePoleCoef(0.012, invSr * kControlInterval));
-            curSpace = spaceSmooth_.step(std::clamp(padSpaceTarget, 0.0, 1.0),
-                                         hba::dsp::onePoleCoef(0.015, invSr * kControlInterval));
+                ctrlCoef12ms);
+            curSpace = spaceSmooth_.step(std::clamp(padSpaceTarget, 0.0, 1.0), ctrlCoef15ms);
             curBellCenter = bellCenterSmooth_.step(
-                std::clamp(targetBellCenter * std::pow(2.0, modBell * 2.0 + padBellOct), 80.0, 3200.0),
-                hba::dsp::onePoleCoef(0.012, invSr * kControlInterval));
+                std::clamp(targetBellCenter * std::pow(2.0, modBell * 2.0 + padBellOct), 80.0, 3200.0), ctrlCoef12ms);
             const double filterModOct = modFilter * 3.0 + padFilterOct + (static_cast<double>(timbreCc_) - 0.5) * 2.0;
             curFilterHz = filterSmooth_.step(std::clamp(targetFilterBase * std::pow(2.0, filterModOct), 100.0, 18000.0),
-                                             hba::dsp::onePoleCoef(0.010, invSr * kControlInterval));
+                                             ctrlCoef10ms);
+            curFormantRatio = std::clamp(1.6 + std::log2(std::max(120.0, curFilterHz) / 120.0) * 0.68, 1.6, 6.2);
+            curRevMix = std::pow(curSpace, 1.25) * (0.48 + 0.20 * voidShimmerAmt);
             curRissetGate = std::clamp(padGateTarget, 0.0, 1.0);
 
             const double effFilterRes = std::clamp(baseFilterRes + padResAdd, 0.0, 0.94);
@@ -561,7 +569,11 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
         const double outGain = outputGainSmooth_.step(targetOutGain, smoothFast);
         const double effDetuneCt = detuneSmooth_.step(targetDetuneCtEff, smoothFast);
         const double effWidth = widthSmooth_.step(targetWidthEff, smoothFast);
-        const double detuneRatio = std::pow(2.0, (effDetuneCt * 0.5) / 1200.0);
+        if (std::abs(effDetuneCt - cachedDetuneCt) > 1.0e-9) {
+            cachedDetuneRatio = std::pow(2.0, (effDetuneCt * 0.5) / 1200.0);
+            cachedDetuneCt = effDetuneCt;
+        }
+        const double detuneRatio = cachedDetuneRatio;
 
         // Drain FDN reverb + chorus + oversampler + limiter lookahead buffers before sleeping
         const int tailDrainLimit = latencySamples() + static_cast<int>(spaceDrainSeconds(curSpace) * sr);
@@ -576,8 +588,7 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
             silentTailSamples_ = 0;
         }
 
-        // Musical formant center stays in natural vocal range (1.6 .. 6.2x) instead of whistling at high filterHz!
-        const double formantRatio = std::clamp(1.6 + std::log2(std::max(120.0, curFilterHz) / 120.0) * 0.68, 1.6, 6.2);
+        const double formantRatio = curFormantRatio;
         const double foldAmt = 0.2 + curDrive * 0.8;
         const double pw = 0.5 + 0.28 * std::sin(hba::dsp::kTwoPi * curLane2Phase);
 
@@ -775,7 +786,7 @@ void Engine::process(const Params& params, const Transport& transport, float* ou
                 const double revL = 0.58 * (tap[0] + tap[2]) + 0.24 * (tap[1] - tap[3]);
                 const double revR = 0.58 * (tap[1] + tap[3]) + 0.24 * (tap[2] - tap[0]);
                 const double chMix = curSpace * 0.42;
-                const double revMix = std::pow(curSpace, 1.25) * (0.48 + 0.20 * voidShimmerAmt);
+                const double revMix = curRevMix;
                 wetSpaceL = gatedBodyL * (1.0 - chMix * 0.28) + chL * chMix + revL * revMix;
                 wetSpaceR = gatedBodyR * (1.0 - chMix * 0.28) + chR * chMix + revR * revMix;
             }

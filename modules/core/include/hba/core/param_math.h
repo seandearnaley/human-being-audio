@@ -12,6 +12,8 @@ namespace hba::core {
 inline float clampParam(float real, float low, float high, float def, bool isContinuous) noexcept HBA_NONBLOCKING {
     if (!std::isfinite(real))
         return def;
+    if (!(low <= high))
+        return std::isfinite(def) ? def : low;
     const float clamped = std::clamp(real, low, high);
     return isContinuous ? clamped : std::round(clamped);
 }
@@ -27,7 +29,7 @@ inline float toNormalisedLogSkew(float real, float low, float high, float def, f
     if (isContinuous && skew == 0.0f && low > 0.0f && high > low)
         return std::clamp(std::log(value / low) / std::log(high / low), 0.0f, 1.0f);
     const float linear = std::clamp((value - low) / span, 0.0f, 1.0f);
-    if (!isContinuous || skew == 1.0f)
+    if (!isContinuous || !std::isfinite(skew) || skew <= 0.0f || skew == 1.0f)
         return linear;
     return std::pow(linear, 1.0f / skew);
 }
@@ -38,8 +40,10 @@ inline float fromNormalisedLogSkew(float norm, float low, float high, float def,
     float real = low;
     if (isContinuous && skew == 0.0f && low > 0.0f && high > low)
         real = low * std::pow(high / low, n);
-    else
-        real = low + (high - low) * ((!isContinuous || skew == 1.0f) ? n : std::pow(n, skew));
+    else {
+        const bool usePow = isContinuous && std::isfinite(skew) && skew > 0.0f && skew != 1.0f;
+        real = low + (high - low) * (usePow ? std::pow(n, skew) : n);
+    }
     return clampParam(real, low, high, def, isContinuous);
 }
 
@@ -52,7 +56,7 @@ inline float toNormalisedJuceSkew(float real, float low, float high, float def, 
     if (span <= 0.0f)
         return 0.0f;
     const float linear = std::clamp((value - low) / span, 0.0f, 1.0f);
-    if (!isContinuous || skew == 1.0f)
+    if (!isContinuous || !std::isfinite(skew) || skew <= 0.0f || skew == 1.0f)
         return linear;
     return std::pow(linear, skew);
 }
@@ -60,7 +64,8 @@ inline float toNormalisedJuceSkew(float real, float low, float high, float def, 
 inline float fromNormalisedJuceSkew(float norm, float low, float high, float def, float skew,
                                     bool isContinuous) noexcept HBA_NONBLOCKING {
     const float n = std::clamp(std::isfinite(norm) ? norm : 0.0f, 0.0f, 1.0f);
-    const float linear = (isContinuous && skew != 1.0f) ? std::pow(n, 1.0f / skew) : n;
+    const bool usePow = isContinuous && std::isfinite(skew) && skew > 0.0f && skew != 1.0f;
+    const float linear = usePow ? std::pow(n, 1.0f / skew) : n;
     return clampParam(low + linear * (high - low), low, high, def, isContinuous);
 }
 

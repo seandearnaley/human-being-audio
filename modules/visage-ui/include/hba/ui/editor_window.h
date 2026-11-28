@@ -5,6 +5,7 @@
 #include <hba/ui/theme.h>
 #include <visage/app.h>
 
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <utility>
@@ -95,10 +96,13 @@ template <typename ContextT> class StudioEditorWindow final : public visage::Eve
         context_.model.refreshVisuals();
         if (onBeforeLiveTick)
             onBeforeLiveTick();
-        // Controls may add or remove themselves while ticking, so walk a copy.
+        // Controls may add or remove themselves while ticking, so walk a copy
+        // and verify each control is still registered before invoking tick().
         const auto live = context_.live;
-        for (Live* frame : live)
-            frame->tick();
+        for (Live* frame : live) {
+            if (std::find(context_.live.begin(), context_.live.end(), frame) != context_.live.end())
+                frame->tick();
+        }
     }
 
     void attach(void* parentView, int width, int height) {

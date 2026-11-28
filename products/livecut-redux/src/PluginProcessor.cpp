@@ -428,6 +428,8 @@ bool LivecutAudioProcessor::isBusesLayoutSupported (const BusesLayout &layouts) 
 
 void LivecutAudioProcessor::handleMidiInput(const juce::MidiBuffer& midi) {
     for (const auto meta : midi) {
+        if (meta.numBytes <= 0 || meta.numBytes > 3)
+            continue;
         const auto msg = meta.getMessage();
         if (msg.isNoteOn()) {
             const int note = msg.getNoteNumber();

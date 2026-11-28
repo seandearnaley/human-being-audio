@@ -7,6 +7,7 @@
 
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oscillator.h>
+#include <hba/dsp/pitch.h>
 #include <hba/dsp/random.h>
 #include <hba/dsp/svf.h>
 
@@ -29,6 +30,9 @@ class SketchSynth {
         sr_ = sampleRate > 1000.0 ? sampleRate : 48000.0;
         delayL_.assign(static_cast<std::size_t>(sr_ * 2.0), 0.0f);
         delayR_.assign(delayL_.size(), 0.0f);
+        melodyCoefs_ = hba::dsp::SvfCoefs::make(4200.0, 0.5, sr_);
+        hatCoefs_ = hba::dsp::SvfCoefs::make(7500.0, 0.7, sr_);
+        clapCoefs_ = hba::dsp::SvfCoefs::make(1500.0, 0.8, sr_);
         reset();
     }
 
@@ -43,6 +47,10 @@ class SketchSynth {
     }
 
     void setTempo(double bpm) noexcept LG_NONBLOCKING {
+        if (delayL_.size() < 2) {
+            delaySamples_ = 1;
+            return;
+        }
         // A dotted-eighth echo on the melody and arp.
         const double seconds = 60.0 / std::clamp(bpm, 40.0, 240.0) * 0.75;
         delaySamples_ = std::clamp(static_cast<int>(seconds * sr_), 1, static_cast<int>(delayL_.size()) - 1);
@@ -67,10 +75,12 @@ class SketchSynth {
         v.role = role;
         v.pitch = pitch;
         v.velocity = std::clamp(velocity, 0.0f, 1.0f);
-        v.freq = 440.0 * std::pow(2.0, (pitch - 69) / 12.0);
+        v.freq = hba::dsp::midiToHz(static_cast<double>(pitch));
         v.pan = role == 0   ? (static_cast<double>((pitch * 7) % 11) / 10.0 - 0.5) * 0.5
                 : role == 3 ? ((counter_++ & 1u) != 0u ? 0.3 : -0.3)
                             : 0.0;
+        v.gainL = std::sqrt(0.5 - v.pan) * 1.41421356;
+        v.gainR = std::sqrt(0.5 + v.pan) * 1.41421356;
         const double vel = v.velocity;
         switch (role) {
         case 0: // chords: detuned saws and a triangle through a closing low-pass
@@ -146,15 +156,16 @@ class SketchSynth {
 
     // Adds `count` samples into left/right (which the caller has cleared or filled).
     void render(float* left, float* right, int count, float gain) noexcept LG_NONBLOCKING {
+        const std::size_t size = delayL_.size();
+        const bool hasEcho = size >= 2 && delaySamples_ > 0 && static_cast<std::size_t>(delaySamples_) < size;
         for (int i = 0; i < count; ++i) {
             double l = 0.0, r = 0.0, send = 0.0;
             for (auto& v : voices_) {
                 if (!v.active)
                     continue;
                 const double s = renderVoice(v);
-                const double pl = std::sqrt(0.5 - v.pan), pr = std::sqrt(0.5 + v.pan);
-                l += s * pl * 1.41421356;
-                r += s * pr * 1.41421356;
+                l += s * v.gainL;
+                r += s * v.gainR;
                 if (v.role >= 2)
                     send += s * 0.22;
             }
@@ -166,14 +177,15 @@ class SketchSynth {
                 r += s;
             }
             // Ping-pong echo.
-            const std::size_t size = delayL_.size();
-            const std::size_t readPos = (writePos_ + size - static_cast<std::size_t>(delaySamples_)) % size;
-            const double echoL = delayR_[readPos], echoR = delayL_[readPos];
-            delayL_[writePos_] = static_cast<float>(send + echoL * 0.32);
-            delayR_[writePos_] = static_cast<float>(echoR * 0.32);
-            writePos_ = (writePos_ + 1) % size;
-            l += echoL * 0.6;
-            r += echoR * 0.6;
+            if (hasEcho) {
+                const std::size_t readPos = (writePos_ + size - static_cast<std::size_t>(delaySamples_)) % size;
+                const double echoL = delayR_[readPos], echoR = delayL_[readPos];
+                delayL_[writePos_] = static_cast<float>(send + echoL * 0.32);
+                delayR_[writePos_] = static_cast<float>(echoR * 0.32);
+                writePos_ = (writePos_ + 1) % size;
+                l += echoL * 0.6;
+                r += echoR * 0.6;
+            }
 
             l = hba::dsp::softClip(l * gain);
             r = hba::dsp::softClip(r * gain);
@@ -196,6 +208,8 @@ class SketchSynth {
         double peak = 0.05, sustain = 0.6, attack = 0.01, decay = 0.01, release = 0.01;
         double cutoff = 1000.0, cutoffTarget = 1000.0, cutoffCoef = 0.001, q = 0.7;
         double pan = 0.0;
+        double gainL = 1.0;
+        double gainR = 1.0;
         hba::dsp::SvfState filter;
         std::uint32_t age = 0;
     };
@@ -256,7 +270,7 @@ class SketchSynth {
             advance(v.phase[1], inc * 2.0);
             break;
         }
-        const auto c = hba::dsp::SvfCoefs::make(v.cutoff, v.q, sr_);
+        const auto c = (v.role == 2) ? melodyCoefs_ : hba::dsp::SvfCoefs::make(v.cutoff, v.q, sr_);
         return v.filter.lowpass(c, x) * v.env;
     }
 
@@ -274,19 +288,17 @@ class SketchSynth {
             break;
         }
         case DrumKind::hat: {
-            const auto c = hba::dsp::SvfCoefs::make(7500.0, 0.7, sr_);
-            out = d.filter.highpass(c, noise_.nextBipolar()) * 0.09 * std::exp(-t / 0.014);
+            out = d.filter.highpass(hatCoefs_, noise_.nextBipolar()) * 0.09 * std::exp(-t / 0.014);
             if (t > 0.08)
                 d.active = false;
             break;
         }
         case DrumKind::clap: {
-            const auto c = hba::dsp::SvfCoefs::make(1500.0, 0.8, sr_);
             double env = 0.0;
             for (const double start : {0.0, 0.012, 0.024})
                 if (t >= start)
                     env += std::exp(-(t - start) / (start < 0.02 ? 0.006 : 0.05));
-            out = d.filter.bandpass(c, noise_.nextBipolar()) * 0.18 * env;
+            out = d.filter.bandpass(clapCoefs_, noise_.nextBipolar()) * 0.18 * env;
             if (t > 0.25)
                 d.active = false;
             break;
@@ -303,6 +315,9 @@ class SketchSynth {
     }
 
     double sr_ = 48000.0;
+    hba::dsp::SvfCoefs melodyCoefs_ = hba::dsp::SvfCoefs::make(4200.0, 0.5, 48000.0);
+    hba::dsp::SvfCoefs hatCoefs_ = hba::dsp::SvfCoefs::make(7500.0, 0.7, 48000.0);
+    hba::dsp::SvfCoefs clapCoefs_ = hba::dsp::SvfCoefs::make(1500.0, 0.8, 48000.0);
     std::array<Voice, kVoices> voices_{};
     std::array<Drum, kDrums> drums_{};
     std::vector<float> delayL_, delayR_;

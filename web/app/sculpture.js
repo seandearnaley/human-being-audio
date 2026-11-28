@@ -44,7 +44,7 @@ export function mountSculpture() {
     wake: () => {},
   };
 
-  cleanups.push(mountDockControls({ root, dock, pad, formPicker, cards, byId, stage, reducedMotion, signal }));
+  cleanups.push(mountDockControls({ root, dock, pad, formPicker, cards, byId, stage, seedOf, reducedMotion, signal }));
 
   const backendEl = $("[data-backend]");
   const enableScene = $("[data-enable-scene]");

@@ -1,4 +1,4 @@
-// Procedural Three.js / TSL sculpture forms shared across the 6 Human Being Audio plugins.
+// Procedural Three.js / TSL sculpture forms shared across the 10 Human Being Audio plugins.
 
 export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpers }) {
   const {

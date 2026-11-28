@@ -86,7 +86,10 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (metadata.numBytes != 3)
                 continue;
             const auto msg = metadata.getMessage();
-            const auto channel = static_cast<std::size_t>(msg.getChannel() - 1);
+            const int ch = msg.getChannel();
+            if (ch < 1 || ch > 16)
+                continue;
+            const auto channel = static_cast<std::size_t>(ch - 1);
             if (msg.isNoteOff()) {
                 auto& held = passedThrough_[channel];
                 const auto note = static_cast<std::size_t>(msg.getNoteNumber());
@@ -146,18 +149,22 @@ void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juc
     for (const auto metadata : midi) {
         if (metadata.numBytes == 3) {
             const auto msg = metadata.getMessage();
-            auto& held = passedThrough_[static_cast<std::size_t>(msg.getChannel() - 1)];
-            const auto note = static_cast<std::size_t>(msg.getNoteNumber());
-            if (msg.isNoteOn()) {
-                held.set(note);
-            } else if (msg.isNoteOff()) {
-                if (!held.test(note))
-                    continue;
-                held.reset(note);
-            } else if (msg.isSustainPedalOn()) {
-                sustainPassed_.set(static_cast<std::size_t>(msg.getChannel() - 1));
-            } else if (msg.isSustainPedalOff()) {
-                sustainPassed_.reset(static_cast<std::size_t>(msg.getChannel() - 1));
+            const int ch = msg.getChannel();
+            if (ch >= 1 && ch <= 16) {
+                const auto channel = static_cast<std::size_t>(ch - 1);
+                auto& held = passedThrough_[channel];
+                if (msg.isNoteOn()) {
+                    held.set(static_cast<std::size_t>(msg.getNoteNumber()));
+                } else if (msg.isNoteOff()) {
+                    const auto note = static_cast<std::size_t>(msg.getNoteNumber());
+                    if (!held.test(note))
+                        continue;
+                    held.reset(note);
+                } else if (msg.isSustainPedalOn()) {
+                    sustainPassed_.set(channel);
+                } else if (msg.isSustainPedalOff()) {
+                    sustainPassed_.reset(channel);
+                }
             }
         }
         bypassMidi_.addEvent(metadata.data, metadata.numBytes, metadata.samplePosition);

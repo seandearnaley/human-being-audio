@@ -75,8 +75,6 @@ class MidiExpressionParser {
             sink.onChannelPressure(static_cast<float>(message.getChannelPressureValue()) / 127.0f);
         } else if (message.isAftertouch()) {
             sink.onPolyAftertouch(message.getNoteNumber(), static_cast<float>(message.getAfterTouchValue()) / 127.0f);
-        } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
-            sink.onAllNotesOff();
         }
     }
 

@@ -122,7 +122,7 @@ class Engine {
     TripleBuffer<CompiledSong>& songBuffer() noexcept { return *songs_; }
 
     // Message thread, before playback: the studio voices. Not owned; must outlive the engine's use of it.
-    void setVoiceRenderer(VoiceRenderer* voices) noexcept { voices_ = voices; }
+    void setVoiceRenderer(VoiceRenderer* voices) noexcept;
 
     // Audio thread (the processor drains its command FIFO into this at the start of each block).
     void command(const Command& c) noexcept LG_NONBLOCKING;

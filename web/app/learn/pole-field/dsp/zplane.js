@@ -233,37 +233,6 @@ export function compareCartesianVsPolar(
   const p0 = stageZPoint({ poleHz: start.hz, poleQ: start.q, zeroHz: start.hz, zeroQ: 1 }, sampleRate);
   const p1 = stageZPoint({ poleHz: end.hz, poleQ: end.q, zeroHz: end.hz, zeroQ: 1 }, sampleRate);
 
-  const a1_0 = -2 * p0.poleR * Math.cos(p0.poleTheta);
-  const a2_0 = p0.poleR * p0.poleR;
-  const a1_1 = -2 * p1.poleR * Math.cos(p1.poleTheta);
-  const a2_1 = p1.poleR * p1.poleR;
-
-  const a1 = a1_0 + (a1_1 - a1_0) * tc;
-  const a2 = a2_0 + (a2_1 - a2_0) * tc;
-
-  const disc = a1 * a1 - 4 * a2;
-  let dfR;
-  let dfTheta;
-  let dfHz;
-  let dfQ;
-  if (disc < 0) {
-    const re = -0.5 * a1;
-    const im = 0.5 * Math.sqrt(-disc);
-    dfR = Math.hypot(re, im);
-    dfTheta = Math.atan2(im, re);
-    const hzQ = zPointToHzQ(Math.min(dfR, 0.998), dfTheta, sampleRate);
-    dfHz = hzQ.hz;
-    dfQ = hzQ.q;
-  } else {
-    dfR = Math.max(
-      Math.abs(-0.5 * a1 + 0.5 * Math.sqrt(disc)),
-      Math.abs(-0.5 * a1 - 0.5 * Math.sqrt(disc)),
-    );
-    dfTheta = 0;
-    dfHz = 20;
-    dfQ = 0.5;
-  }
-
   const x0 = p0.poleR * Math.cos(p0.poleTheta);
   const y0 = p0.poleR * Math.sin(p0.poleTheta);
   const x1 = p1.poleR * Math.cos(p1.poleTheta);
@@ -279,7 +248,6 @@ export function compareCartesianVsPolar(
   const polarPt = stageZPoint({ poleHz: polarHz, poleQ: polarQ, zeroHz: polarHz, zeroQ: 1 }, sampleRate);
 
   return {
-    directForm: { r: dfR, theta: dfTheta, hz: dfHz, q: dfQ, realAxisCollapse: disc >= 0 },
     cartesian: { r: cartR, theta: cartTheta, hz: cartHzQ.hz, q: cartHzQ.q },
     polar: { r: polarPt.poleR, theta: polarPt.poleTheta, hz: polarHz, q: polarQ },
   };

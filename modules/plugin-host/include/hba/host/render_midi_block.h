@@ -13,9 +13,14 @@ template <typename Render, typename Handle>
 void renderMidiBlock(juce::AudioBuffer<float>& bus, const juce::MidiBuffer& midi, std::span<float> monoScratch,
                      int maxFrames, Render render, Handle handle) {
     const int frames = bus.getNumSamples();
-    const bool mono = bus.getNumChannels() == 1;
+    const int channels = bus.getNumChannels();
+    if (frames <= 0 || channels <= 0)
+        return;
+    const bool mono = channels == 1;
     const int capacity = mono ? std::min(maxFrames, static_cast<int>(monoScratch.size())) : maxFrames;
     jassert(capacity > 0);
+    if (capacity <= 0)
+        return;
     int offset = 0;
     const auto renderUntil = [&](int end) {
         while (offset < end) {

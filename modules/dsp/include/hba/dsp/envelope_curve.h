@@ -38,7 +38,8 @@ struct EnvelopeCurve {
     friend bool operator==(const EnvelopeCurve& a, const EnvelopeCurve& b) noexcept HBA_NONBLOCKING {
         if (a.count != b.count)
             return false;
-        for (int i = 0; i < a.count; ++i) {
+        const int n = std::clamp(a.count, 0, kMaxEnvNodes);
+        for (int i = 0; i < n; ++i) {
             if (!(a.nodes[static_cast<std::size_t>(i)] == b.nodes[static_cast<std::size_t>(i)]))
                 return false;
         }
@@ -85,7 +86,7 @@ inline double evalSegmentY(const EnvNode& a, const EnvNode& b, double t) noexcep
 } // namespace detail
 
 inline double evaluateEnvelope(const EnvelopeCurve& c, double t) noexcept HBA_NONBLOCKING {
-    if (c.count <= 0)
+    if (c.count <= 0 || !std::isfinite(t))
         return 0.0;
     const double tc = std::clamp(t, 0.0, 1.0);
     if (c.count == 1 || tc <= static_cast<double>(c.nodes[0].t))
@@ -195,11 +196,14 @@ inline void sanitizeEnvelope(EnvelopeCurve& c) noexcept HBA_NONBLOCKING {
 
 inline int insertEnvelopeNode(EnvelopeCurve& c, float t, float y, float tension = -0.35f,
                               EnvSegment seg = EnvSegment::exp) noexcept HBA_NONBLOCKING {
+    if (c.count < 2)
+        sanitizeEnvelope(c);
     if (c.count >= kMaxEnvNodes)
         return -1;
-    const float tc = std::clamp(t, 0.005f, 0.995f);
-    const float yc = std::clamp(y, 0.0f, 1.0f);
-    c.nodes[static_cast<std::size_t>(c.count)] = {tc, yc, std::clamp(tension, -1.0f, 1.0f), seg};
+    const float tc = std::isfinite(t) ? std::clamp(t, 0.005f, 0.995f) : 0.5f;
+    const float yc = std::isfinite(y) ? std::clamp(y, 0.0f, 1.0f) : 0.5f;
+    const float tens = std::isfinite(tension) ? std::clamp(tension, -1.0f, 1.0f) : 0.0f;
+    c.nodes[static_cast<std::size_t>(c.count)] = {tc, yc, tens, seg};
     ++c.count;
     sanitizeEnvelope(c);
     int best = 0;
@@ -215,18 +219,22 @@ inline int insertEnvelopeNode(EnvelopeCurve& c, float t, float y, float tension 
 }
 
 inline void moveEnvelopeNode(EnvelopeCurve& c, int index, float t, float y) noexcept HBA_NONBLOCKING {
-    if (index < 0 || index >= c.count)
+    const int count = std::min(c.count, kMaxEnvNodes);
+    if (index < 0 || index >= count)
         return;
     auto& n = c.nodes[static_cast<std::size_t>(index)];
-    n.y = std::clamp(y, 0.0f, 1.0f);
+    n.y = std::isfinite(y) ? std::clamp(y, 0.0f, 1.0f) : n.y;
     if (index == 0) {
         n.t = 0.0f;
-    } else if (index == c.count - 1) {
+    } else if (index == count - 1) {
         n.t = 1.0f;
     } else {
-        const float lo = c.nodes[static_cast<std::size_t>(index - 1)].t + 0.004f;
-        const float hi = c.nodes[static_cast<std::size_t>(index + 1)].t - 0.004f;
-        n.t = std::clamp(t, lo, std::max(lo, hi));
+        const float prevT = c.nodes[static_cast<std::size_t>(index - 1)].t;
+        const float nextT = c.nodes[static_cast<std::size_t>(index + 1)].t;
+        const float lo = prevT + 0.004f;
+        const float hi = nextT - 0.004f;
+        const float safeT = std::isfinite(t) ? t : n.t;
+        n.t = lo <= hi ? std::clamp(safeT, lo, hi) : 0.5f * (prevT + nextT);
     }
 }
 

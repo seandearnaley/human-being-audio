@@ -45,7 +45,8 @@ void PluginProcessor::prepareEngine() {
 }
 
 void PluginProcessor::parameterChanged(const juce::String&, float) {
-    if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+    if (const auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+        mm != nullptr && mm->isThisTheMessageThread())
         handleAsyncUpdate();
     else
         triggerAsyncUpdate();

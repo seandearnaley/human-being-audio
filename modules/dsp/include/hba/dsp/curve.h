@@ -40,7 +40,8 @@ struct Curve {
     friend bool operator==(const Curve& a, const Curve& b) noexcept HBA_NONBLOCKING {
         if (a.count != b.count)
             return false;
-        for (int i = 0; i < a.count; ++i) {
+        const int n = std::clamp(a.count, 0, kMaxCurvePoints);
+        for (int i = 0; i < n; ++i) {
             if (!(a.points[static_cast<std::size_t>(i)] == b.points[static_cast<std::size_t>(i)]))
                 return false;
         }
@@ -69,13 +70,14 @@ inline float segmentShape(Segment segment, float tension, float t) noexcept HBA_
 
 // The curve's value in -1..1 at `phase` (any real number; it wraps).
 inline float evaluate(const Curve& curve, double phase) noexcept HBA_NONBLOCKING {
-    if (curve.count <= 0)
+    const int count = std::min(curve.count, kMaxCurvePoints);
+    if (count <= 0 || !std::isfinite(phase))
         return 0.0f;
-    if (curve.count == 1)
+    if (count == 1)
         return curve.points[0].y;
 
     const auto x = static_cast<float>(phase - std::floor(phase));
-    const auto last = static_cast<std::size_t>(curve.count - 1);
+    const auto last = static_cast<std::size_t>(count - 1);
 
     // The segment that contains x: from point i to point i+1, wrapping at the ends.
     std::size_t from = last;
@@ -107,10 +109,11 @@ inline float evaluate(const Curve& curve, double phase) noexcept HBA_NONBLOCKING
 
 // Adds a point and returns its index, or -1 when the curve is full.
 inline int addPoint(Curve& curve, CurvePoint point) noexcept HBA_NONBLOCKING {
-    if (curve.count >= kMaxCurvePoints)
+    if (curve.count < 0 || curve.count >= kMaxCurvePoints)
         return -1;
-    point.x = std::clamp(point.x, 0.0f, 0.9999f);
-    point.y = std::clamp(point.y, -1.0f, 1.0f);
+    point.x = std::isfinite(point.x) ? std::clamp(point.x, 0.0f, 0.9999f) : 0.0f;
+    point.y = std::isfinite(point.y) ? std::clamp(point.y, -1.0f, 1.0f) : 0.0f;
+    point.tension = std::isfinite(point.tension) ? std::clamp(point.tension, -1.0f, 1.0f) : 0.0f;
     int index = 0;
     while (index < curve.count && curve.points[static_cast<std::size_t>(index)].x <= point.x)
         ++index;
@@ -122,22 +125,28 @@ inline int addPoint(Curve& curve, CurvePoint point) noexcept HBA_NONBLOCKING {
 }
 
 inline void removePoint(Curve& curve, int index) noexcept HBA_NONBLOCKING {
-    if (index < 0 || index >= curve.count || curve.count <= 1)
+    const int count = std::min(curve.count, kMaxCurvePoints);
+    if (index < 0 || index >= count || count <= 1)
         return;
-    for (int i = index; i < curve.count - 1; ++i)
+    for (int i = index; i < count - 1; ++i)
         curve.points[static_cast<std::size_t>(i)] = curve.points[static_cast<std::size_t>(i + 1)];
-    --curve.count;
+    curve.count = count - 1;
 }
 
 // Moves a point, keeping it between its neighbours. Returns its clamped position.
 inline CurvePoint movePoint(Curve& curve, int index, float x, float y) noexcept HBA_NONBLOCKING {
-    if (index < 0 || index >= curve.count)
+    const int count = std::min(curve.count, kMaxCurvePoints);
+    if (index < 0 || index >= count)
         return {};
     const auto i = static_cast<std::size_t>(index);
-    const float low = index > 0 ? curve.points[i - 1].x + 1.0e-4f : 0.0f;
-    const float high = index < curve.count - 1 ? curve.points[i + 1].x - 1.0e-4f : 0.9999f;
-    curve.points[i].x = std::clamp(x, low, std::max(low, high));
-    curve.points[i].y = std::clamp(y, -1.0f, 1.0f);
+    const float prevX = index > 0 ? curve.points[i - 1].x : 0.0f;
+    const float nextX = index < count - 1 ? curve.points[i + 1].x : 0.9999f;
+    const float low = index > 0 ? prevX + 1.0e-4f : 0.0f;
+    const float high = index < count - 1 ? nextX - 1.0e-4f : 0.9999f;
+    const float safeX = std::isfinite(x) ? x : curve.points[i].x;
+    const float safeY = std::isfinite(y) ? y : curve.points[i].y;
+    curve.points[i].x = low <= high ? std::clamp(safeX, low, high) : 0.5f * (prevX + nextX);
+    curve.points[i].y = std::clamp(safeY, -1.0f, 1.0f);
     return curve.points[i];
 }
 

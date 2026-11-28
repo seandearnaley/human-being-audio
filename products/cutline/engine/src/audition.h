@@ -72,10 +72,11 @@ class AuditionSynth {
         for (auto& v : voices_)
             v.reset();
         kit_.reset();
-        drumMode_ = true;
         slide_ = 0.56;
+        slideCutoff_ = slideToCutoff(slide_);
         drive_ = 1.35;
         pressure_ = 0.22;
+        pressureQ_ = pressureToQ(pressure_);
         pitchScoopSt_ = 0.0;
         gainSmooth_.snap(0.0);
         ageCounter_ = 0;
@@ -83,7 +84,6 @@ class AuditionSynth {
 
     void triggerDrumLane(int lane, int velocity) noexcept CL_NONBLOCKING {
         const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
-        drumMode_ = true;
         kit_.trigger(std::clamp(lane, 0, kDrumLaneCount - 1), v, fs_);
     }
 
@@ -122,7 +122,6 @@ class AuditionSynth {
             return;
         }
 
-        drumMode_ = false;
         const int clampedNote = std::clamp(note, 12, 120);
         const double v = static_cast<double>(std::clamp(velocity, 1, 127)) / 127.0;
 
@@ -155,8 +154,8 @@ class AuditionSynth {
         voice.gate = true;
         voice.stabEnv = 1.0;
         voice.age = ++ageCounter_;
-        voice.cutoffSmooth.snap(slideToCutoff(slide_));
-        voice.qSmooth.snap(pressureToQ(pressure_));
+        voice.cutoffSmooth.snap(slideCutoff_);
+        voice.qSmooth.snap(pressureQ_);
     }
 
     void noteOff(int note) noexcept CL_NONBLOCKING {
@@ -172,13 +171,23 @@ class AuditionSynth {
             v.gate = false;
     }
 
-    void setBrightness(double norm01) noexcept CL_NONBLOCKING { slide_ = std::clamp(norm01, 0.0, 1.0); }
+    void setBrightness(double norm01) noexcept CL_NONBLOCKING {
+        slide_ = std::clamp(norm01, 0.0, 1.0);
+        slideCutoff_ = slideToCutoff(slide_);
+    }
     void setDrive(double norm01) noexcept CL_NONBLOCKING { drive_ = 1.0 + 1.8 * std::clamp(norm01, 0.0, 1.0); }
-    void setPressure(double norm01) noexcept CL_NONBLOCKING { pressure_ = std::clamp(norm01, 0.0, 1.0); }
+    void setPressure(double norm01) noexcept CL_NONBLOCKING {
+        pressure_ = std::clamp(norm01, 0.0, 1.0);
+        pressureQ_ = pressureToQ(pressure_);
+    }
     void setPitchScoop(double semitones) noexcept CL_NONBLOCKING { pitchScoopSt_ = std::clamp(semitones, -12.0, 12.0); }
 
     void renderSample(float gainDb, bool enabled, float& outL, float& outR) noexcept CL_NONBLOCKING {
         const double targetGain = enabled ? hba::dsp::dbToGain(static_cast<double>(gainDb)) : 0.0;
+        renderSampleLinear(targetGain, outL, outR);
+    }
+
+    void renderSampleLinear(double targetGain, float& outL, float& outR) noexcept CL_NONBLOCKING {
         const double g = gainSmooth_.step(targetGain, gainCoef_);
 
         bool anyVoice = kit_.active();
@@ -232,9 +241,9 @@ class AuditionSynth {
             const double tri = 1.0 - 4.0 * std::abs(v.phase - 0.5);
             const double osc = 0.38 * (sawL + sawR) + 0.34 * tri;
 
-            const double baseCut = v.cutoffSmooth.step(slideToCutoff(slide_), cutoffCoef_);
+            const double baseCut = v.cutoffSmooth.step(slideCutoff_, cutoffCoef_);
             const double envCut = std::clamp(baseCut * (0.42 + (1.1 + 1.2 * v.vel) * v.stabEnv), 160.0, 0.40 * fs_);
-            const double q = v.qSmooth.step(pressureToQ(pressure_), qCoef_);
+            const double q = v.qSmooth.step(pressureQ_, qCoef_);
             const auto coefs = hba::dsp::SvfCoefs::make(envCut, q, fs_);
             const double body = v.filter.lowpass(coefs, v.shaper.process(osc * drive_));
 
@@ -530,14 +539,15 @@ class AuditionSynth {
     double crashDecay_ = 0.9999;
 
     double slide_ = 0.56;
+    double slideCutoff_ = 320.0 * std::pow(18.0, 0.56);
     double drive_ = 1.35;
     double pressure_ = 0.22;
+    double pressureQ_ = 0.85 + 2.2 * 0.22;
     double pitchScoopSt_ = 0.0;
 
     std::array<Voice, kNumVoices> voices_{};
     hba::dsp::Smoother gainSmooth_{};
     DrumKit kit_{};
-    bool drumMode_ = true;
     std::uint64_t ageCounter_ = 0;
     hba::dsp::Lcg32 noise_{0x12345678u};
 

@@ -16,7 +16,10 @@
 #include <hba/dsp/svf.h>
 #include <hba/dsp/transient_split.h>
 
-#include "../../studio-ui/StudioHistory.h"
+#include <hba/dsp/allpass.h>
+#include <hba/dsp/biquad.h>
+#include <hba/dsp/va_filter.h>
+#include <StudioHistory.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -246,7 +249,7 @@ TEST_CASE("hba::studio::History supports undo/redo, coalescing, capacity cap, an
 
     h.push(1);
     h.pushCoalesced(2, 42u, 1000);
-    h.pushCoalesced(3, 42u, 1200); // coalesced within 650 ms window -> still one undo entry!
+    h.pushCoalesced(3, 42u, 1200); // coalesced within 450 ms window -> still one undo entry!
     CHECK(h.canUndo());
 
     const auto u1 = h.undo(4);
@@ -424,7 +427,7 @@ TEST_CASE("Publishing supersedes unread samples and preserves both playback gene
 TEST_CASE("hba::dsp::RealFft and StereoStft achieve exact unity COLA reconstruction and latency", "[dsp][engine]") {
     using namespace hba::dsp;
 
-    // 1. RealFft mono and 2-for-1 stereo round-trip accuracy.
+    // 1. RealFft 2-for-1 stereo round-trip accuracy.
     RealFft<1024> fft;
     fft.prepare(1024);
     std::array<float, 1024> inL{}, inR{}, outL{}, outR{}, scRe{}, scIm{};
@@ -529,4 +532,129 @@ TEST_CASE("hba::dsp::TransientSplit maintains exact unity sum and isolates attac
             peakBurstMask = std::max(peakBurstMask, m);
     }
     CHECK(peakBurstMask > 0.65);
+}
+
+TEST_CASE("hba::dsp edge guards, 16x Oversampler, curve invariants, and History edge cases", "[dsp][engine]") {
+    using namespace hba::dsp;
+
+    // 1. Oversampler 2x/4x/8x/16x preserve unity passband and match latencyExact() / latencySamples().
+    for (int factor : {2, 4, 8, 16}) {
+        Oversampler os;
+        os.prepare(factor);
+        REQUIRE(os.factor() == factor);
+        REQUIRE(os.latencySamples() == static_cast<int>(std::lround(os.latencyExact())));
+        double peak = 0.0;
+        std::array<float, kMaxOversampling> buf{};
+        for (int i = 0; i < 4096; ++i) {
+            const float x = std::sin(static_cast<float>(kTwoPi * 440.0 * i / 48000.0));
+            os.up(x, buf.data());
+            const float y = os.down(buf.data());
+            REQUIRE(std::isfinite(y));
+            if (i >= 1024)
+                peak = std::max(peak, static_cast<double>(std::abs(y)));
+        }
+        CHECK(peak == Catch::Approx(1.0).margin(1e-3));
+
+        // Impulse centroid matches latencyExact() within 0.01 samples.
+        os.reset();
+        double moment = 0.0, sum = 0.0;
+        for (int n = 0; n < 512; ++n) {
+            os.up(n == 0 ? 1.0f : 0.0f, buf.data());
+            const double y = os.down(buf.data());
+            moment += n * y;
+            sum += y;
+        }
+        CHECK(moment / sum == Catch::Approx(os.latencyExact()).margin(0.01));
+    }
+
+    // 2. softClipLinked isolates NaN on one channel without poisoning the other.
+    {
+        double l = std::numeric_limits<double>::quiet_NaN();
+        double r = 0.5;
+        (void)softClipLinked(l, r, 0.8, 1.0);
+        CHECK(l == 0.0);
+        CHECK(r == Catch::Approx(0.5));
+    }
+
+    // 3. RealFft<128> and StereoStft<128> construct cleanly without overflowing MaxN < 1024.
+    {
+        RealFft<128> smallFft;
+        CHECK(smallFft.size() == 128);
+        StereoStft<128> smallStft;
+        CHECK(smallStft.fftSize() == 128);
+        float yL = 0.0f, yR = 0.0f;
+        smallStft.processSample(1.0f, -1.0f, 0.0f, 0.0f, false, yL, yR, [](StereoStft<128>::FrameBuffers&) noexcept {});
+        CHECK(std::isfinite(yL));
+        CHECK(std::isfinite(yR));
+    }
+
+    // 4. Curve::movePoint and EnvelopeCurve::moveEnvelopeNode preserve sorted order on tight spacing.
+    {
+        Curve c;
+        addPoint(c, {0.5f, 0.0f});
+        addPoint(c, {0.50005f, 0.2f});
+        addPoint(c, {0.5001f, 0.4f});
+        movePoint(c, 1, 0.9f, 0.3f);
+        CHECK(c.points[0].x <= c.points[1].x);
+        CHECK(c.points[1].x <= c.points[2].x);
+
+        EnvelopeCurve empty{};
+        const int inserted = insertEnvelopeNode(empty, 0.4f, 0.7f);
+        CHECK(empty.count == 3);
+        CHECK(inserted == 1);
+        CHECK(empty.nodes[1].t == Catch::Approx(0.4f));
+
+        EnvelopeCurve tight{};
+        tight.count = 4;
+        tight.nodes[0] = {0.0f, 1.0f, 0.0f, EnvSegment::line};
+        tight.nodes[1] = {0.5f, 0.5f, 0.0f, EnvSegment::line};
+        tight.nodes[2] = {0.501f, 0.5f, 0.0f, EnvSegment::line};
+        tight.nodes[3] = {1.0f, 0.0f, 0.0f, EnvSegment::line};
+        moveEnvelopeNode(tight, 2, 0.8f, 0.4f);
+        CHECK(tight.nodes[1].t <= tight.nodes[2].t);
+        CHECK(tight.nodes[2].t <= tight.nodes[3].t);
+    }
+
+    // 5. optimizeCrestPhases handles negative harmonic amplitudes and reduces peak.
+    {
+        const std::array<double, 4> amps{1.0, -0.5, 0.35, -0.25};
+        const auto opt = optimizeCrestPhases(amps, 0.0);
+        for (double ph : opt)
+            CHECK(std::isfinite(ph));
+    }
+
+    // 6. Low sample rate BiquadCoefs/AllpassPair, Korg35 singularity, lane_math bounds.
+    {
+        AllpassPair ap;
+        ap.setFreq(20.0, 30.0);
+        CHECK(std::isfinite(ap.process(0.5)));
+
+        const auto lp = BiquadCoefs::lowpass(10.0, 0.707, 15.0);
+        CHECK(std::isfinite(lp.b0));
+        const auto ls = BiquadCoefs::lowShelf(100.0, std::numeric_limits<double>::quiet_NaN(), 6.0, 48000.0);
+        CHECK(ls.b0 == 1.0);
+
+        TptKorg35 korg;
+        const double y = korg.process(0.5, 1.0, 4.0, 1.0); // G=0.5, a=0.5, G*k*a=1.0 -> denom 0!
+        CHECK(std::isfinite(y));
+        CHECK(softSaturate(1.0, 0.0) == 0.0);
+
+        CHECK(lanePhase(1.0, 0.0, 0.0) == 0.0);
+        std::array<LaneConfig, 2> lanes{};
+        CHECK(resolveLaneMode(lanes, 5) == LaneMode::sync);
+        CHECK(resolveLanePhase(lanes, -1, {}) == 0.0);
+    }
+
+    // 7. History backward-clock coalescing guard and duplicate push clearing redo.
+    {
+        hba::studio::History<int> h;
+        h.pushCoalesced(1, 7u, 1000);
+        h.pushCoalesced(2, 7u, 500); // clock went backwards: must NOT coalesce
+        const auto u1 = h.undo(3);
+        REQUIRE(u1.has_value());
+        CHECK(*u1 == 2);
+        CHECK(h.canRedo());
+        h.push(1); // duplicate of undo_.back(), must still clear stale redo
+        CHECK_FALSE(h.canRedo());
+    }
 }

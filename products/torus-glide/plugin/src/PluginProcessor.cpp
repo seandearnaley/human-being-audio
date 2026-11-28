@@ -57,15 +57,17 @@ void PluginProcessor::prepareEngine() {
 
 void PluginProcessor::parameterChanged(const juce::String& id, float value) {
     resampler.invalidate();
+    const auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    const bool onMessageThread = mm != nullptr && mm->isThisTheMessageThread();
     if (id == kQualityId) {
         pendingPrepare_.store(true, std::memory_order_release);
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+        if (onMessageThread)
             handleAsyncUpdate();
         else
             triggerAsyncUpdate();
     } else if (id == kVoicingPackId && !restoringState_.load(std::memory_order_relaxed)) {
         pendingPack_.store(static_cast<int>(std::lround(value)), std::memory_order_release);
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+        if (onMessageThread)
             handleAsyncUpdate();
         else
             triggerAsyncUpdate();

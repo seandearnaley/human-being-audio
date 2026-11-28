@@ -14,6 +14,12 @@
 namespace hba::host {
 
 template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int SpectrumBands> class StereoAnalyzerBase {
+    static_assert(NumChannels >= 1, "NumChannels must be >= 1");
+    static_assert(QueueSize >= 1, "QueueSize must be >= 1");
+    static_assert(HistorySize >= 1 && (HistorySize & (HistorySize - 1)) == 0, "HistorySize must be a power of 2");
+    static_assert(FftOrder >= 2, "FftOrder must be >= 2");
+    static_assert(SpectrumBands >= 1, "SpectrumBands must be >= 1");
+
   public:
     static constexpr int kNumChannels = NumChannels;
     static constexpr int kQueueSize = QueueSize;
@@ -35,6 +41,10 @@ template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int Spe
         fftBufferL_.assign(static_cast<std::size_t>(kFftSize) * 2u, 0.0f);
         fftBufferR_.assign(static_cast<std::size_t>(kFftSize) * 2u, 0.0f);
         spectrum_.fill(kFloorDb);
+        for (int idx = 0; idx <= kSpectrumBands; ++idx) {
+            bandEdgeHz_[static_cast<std::size_t>(idx)] =
+                20.0 * std::pow(1000.0, static_cast<double>(idx) / static_cast<double>(kSpectrumBands));
+        }
     }
 
     static float linearToDb(float linear) noexcept { return linear > 1.0e-5f ? 20.0f * std::log10(linear) : kFloorDb; }
@@ -43,13 +53,16 @@ template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int Spe
     void pushChannels(const std::array<const float*, NumChannels>& sources, int numSamples, int fallbackSumChannel = -1,
                       int sumLeftCh = 0, int sumRightCh = 1) noexcept {
         const auto scope = queue_.write(std::min(numSamples, queue_.getFreeSpace()));
+        const bool canSum = sumLeftCh >= 0 && sumLeftCh < NumChannels && sumRightCh >= 0 && sumRightCh < NumChannels;
         for (int ch = 0; ch < NumChannels; ++ch) {
             auto* dst = queued_[static_cast<std::size_t>(ch)].data();
             const float* src = sources[static_cast<std::size_t>(ch)];
             if (src == nullptr) {
-                const float* l = sources[static_cast<std::size_t>(sumLeftCh)];
-                const float* r = sources[static_cast<std::size_t>(sumRightCh)];
-                if (ch == fallbackSumChannel && l != nullptr && r != nullptr) {
+                const float* l =
+                    (ch == fallbackSumChannel && canSum) ? sources[static_cast<std::size_t>(sumLeftCh)] : nullptr;
+                const float* r =
+                    (ch == fallbackSumChannel && canSum) ? sources[static_cast<std::size_t>(sumRightCh)] : nullptr;
+                if (l != nullptr && r != nullptr) {
                     for (int i = 0; i < scope.blockSize1; ++i)
                         dst[scope.startIndex1 + i] = 0.5f * (l[i] + r[i]);
                     for (int i = 0; i < scope.blockSize2; ++i)
@@ -97,7 +110,8 @@ template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int Spe
             gonioR[static_cast<std::size_t>(i)] = history(rightCh, ago);
         }
         double sumLR = 0.0, sumL = 0.0, sumR = 0.0;
-        for (int ago = 0; ago < 4096; ++ago) {
+        const int corrSamples = std::min(4096, kHistorySize);
+        for (int ago = 0; ago < corrSamples; ++ago) {
             const double l = history(leftCh, ago);
             const double r = history(rightCh, ago);
             sumLR += l * r;
@@ -134,16 +148,14 @@ template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int Spe
             return std::sqrt(0.5f * (l * l + r * r));
         };
 
+        const double invBinHz = 1.0 / binHz;
         for (int band = 0; band < SpectrumBands; ++band) {
-            const auto edge = [&](int idx) {
-                return 20.0 * std::pow(1000.0, static_cast<double>(idx) / static_cast<double>(SpectrumBands)) / binHz;
-            };
-            const double low = edge(band);
-            const double high = edge(band + 1);
+            const double low = bandEdgeHz_[static_cast<std::size_t>(band)] * invBinHz;
+            const double high = bandEdgeHz_[static_cast<std::size_t>(band + 1)] * invBinHz;
             float magnitude = 0.0f;
             if (high - low < 1.0) {
                 const double centre = 0.5 * (low + high);
-                const int bin = std::clamp(static_cast<int>(centre), 0, lastBin - 1);
+                const int bin = std::clamp(static_cast<int>(centre), 0, std::max(0, lastBin - 1));
                 const auto fraction = static_cast<float>(std::clamp(centre - static_cast<double>(bin), 0.0, 1.0));
                 magnitude = binMag(bin) * (1.0f - fraction) + binMag(bin + 1) * fraction;
             } else {
@@ -177,6 +189,7 @@ template <int NumChannels, int QueueSize, int HistorySize, int FftOrder, int Spe
     juce::dsp::WindowingFunction<float> window_;
     std::vector<float> fftBufferL_;
     std::vector<float> fftBufferR_;
+    std::array<double, static_cast<std::size_t>(SpectrumBands) + 1u> bandEdgeHz_{};
     std::array<float, static_cast<std::size_t>(SpectrumBands)> spectrum_{};
     float peakLeftDb_ = kFloorDb;
     float peakRightDb_ = kFloorDb;

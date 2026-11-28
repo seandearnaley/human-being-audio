@@ -106,6 +106,17 @@ class NativeQualityTests(unittest.TestCase):
         self.assertEqual(mac_plan["jobs"], ["macos"])
         self.assertEqual(mac_plan["macos"], ["tract-form", "pole-field", "future-instrument"])
 
+    def test_showcase_engine_changes_trigger_factory_without_rebuilding_on_ui_only_edits(self):
+        products = ["cutline", "livecut-redux", "datum"]
+        engine_plan = native.plan_checks(products, ["products/cutline/engine/src/engine.cpp"])
+        self.assertIn("factory", engine_plan["jobs"])
+        livecut_engine_plan = native.plan_checks(products, ["products/livecut-redux/src/engine/Cutter.cpp"])
+        self.assertIn("factory", livecut_engine_plan["jobs"])
+        ui_plan = native.plan_checks(products, ["products/cutline/ui/src/Grid.cpp"])
+        self.assertNotIn("factory", ui_plan["jobs"])
+        datum_plan = native.plan_checks(products, ["products/datum/engine/src/engine.cpp"])
+        self.assertNotIn("factory", datum_plan["jobs"])
+
     def test_unreachable_or_zero_base_falls_back_to_full_build(self):
         self.assertIsNone(native.changed_files(""))
         self.assertIsNone(native.changed_files("0" * 40))

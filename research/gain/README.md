@@ -4,7 +4,7 @@ Livecut's Rush procedure and resonator use the same double-precision amplitude c
 
 The offline study renders three seconds of stereo audio from each engine at 44.1 and 48 kHz, with blocks of 64 and 257 frames. Livecut processes a generated drum loop through the Rush pad. Tract Form plays MIDI note 29 with a −3 dB mid gain. The inputs, transport and seed are fixed. Generated audio stays in the build directory.
 
-To compare a prospective change with a reference checkout, use the same compiler, architecture and optimization mode for both. Initialize Livecut’s submodules in both checkouts. From the candidate repository run the following for each checkout, changing the two paths.
+To compare a prospective change with a reference checkout, use the same compiler, architecture and optimization mode for both. Pass `-DCPM_SOURCE_CACHE="$HOME/.cache/CPM"` to reuse cached dependencies across checkouts. From the candidate repository run the following for each checkout, changing the two paths.
 
 ```sh
 cmake -S research/gain -B /tmp/gain-reference -G Ninja \

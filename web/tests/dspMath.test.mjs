@@ -12,6 +12,14 @@ import {
   stageZPoint,
   zPointToHzQ,
 } from "../app/learn/pole-field/dspMath.js";
+import {
+  WORKLET_SHAPER_SOURCE,
+  buchlaAd1,
+  buchlaEval,
+  hardClipAd1,
+  hardClipEval,
+  tanhAd1,
+} from "../app/learn/pole-field/dsp/adaa.js";
 
 test("all factory cube corners resolve to strictly stable Z-plane poles inside |z| < 1", () => {
   for (let c = 0; c < FACTORY_CUBES.length; c++) {
@@ -54,6 +62,22 @@ test("log-polar interpolation preserves resonance while Cartesian collapses Q at
 test("ADAA reduces worst inharmonic aliasing peak on driven Buchla wavefolder", () => {
   const res = evaluateAdaaSpectrum(6.0, 2130, "buchla");
   assert.ok(res.reductionDb > 6, `expected strong ADAA alias suppression, got ${res.reductionDb} dB`);
+});
+
+test("WORKLET_SHAPER_SOURCE is self-contained with unminified canonical ADAA2 identifiers", () => {
+  const fns = new Function(
+    `${WORKLET_SHAPER_SOURCE}\nreturn { tanhAd1, tanhAd2, hardClipEval, hardClipAd1, hardClipAd2, buchlaEval, buchlaAd1, buchlaAd2 };`,
+  )();
+  for (const x of [-4.2, -1.3, -0.02, 0.0, 0.02, 1.3, 4.2, 16.0]) {
+    assert.ok(Math.abs(fns.buchlaEval(x) - buchlaEval(x)) < 1e-12);
+    assert.ok(Math.abs(fns.buchlaAd1(x) - buchlaAd1(x)) < 1e-12);
+    assert.ok(Number.isFinite(fns.buchlaAd2(x)));
+    assert.ok(Math.abs(fns.hardClipEval(x) - hardClipEval(x)) < 1e-12);
+    assert.ok(Math.abs(fns.hardClipAd1(x) - hardClipAd1(x)) < 1e-12);
+    assert.ok(Number.isFinite(fns.hardClipAd2(x)));
+    assert.ok(Math.abs(fns.tanhAd1(x) - tanhAd1(x)) < 1e-12);
+    assert.ok(Number.isFinite(fns.tanhAd2(x)));
+  }
 });
 
 test("14th-order Burg LPC extracts 7 sorted, strictly stable formant dipole stages", () => {

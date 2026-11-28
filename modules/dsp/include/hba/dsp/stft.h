@@ -18,11 +18,14 @@ namespace hba::dsp {
 // All twiddle and bit-reversal tables are computed once in prepare(); forward/inverse
 // transforms are strictly zero-allocation and [[clang::nonblocking]].
 template <int MaxN = 2048> class RealFft {
-    static_assert((MaxN & (MaxN - 1)) == 0 && MaxN >= 64, "MaxN must be a power of 2 >= 64");
+    static_assert((MaxN & (MaxN - 1)) == 0 && MaxN >= 64 && MaxN <= 65536, "MaxN must be a power of 2 in [64, 65536]");
 
   public:
     static constexpr int kMaxSize = MaxN;
     static constexpr int kMaxBins = MaxN / 2 + 1;
+    static constexpr int kDefaultSize = MaxN < 1024 ? MaxN : 1024;
+
+    RealFft() noexcept HBA_NONBLOCKING { prepare(kDefaultSize); }
 
     void prepare(int fftSize) noexcept HBA_NONBLOCKING {
         int n = 64;
@@ -185,9 +188,9 @@ template <int MaxN = 2048> class RealFft {
     }
 
   private:
-    int size_ = 1024;
-    int half_ = 512;
-    float invSize_ = 1.0f / 1024.0f;
+    int size_ = kDefaultSize;
+    int half_ = kDefaultSize / 2;
+    float invSize_ = 1.0f / static_cast<float>(kDefaultSize);
     std::array<std::uint16_t, MaxN> bitRev_{};
     std::array<float, MaxN / 2> twiddleRe_{};
     std::array<float, MaxN / 2> twiddleIm_{};
@@ -200,6 +203,9 @@ template <int MaxN = 2048> class StereoStft {
   public:
     static constexpr int kMaxSize = MaxN;
     static constexpr int kMaxBins = MaxN / 2 + 1;
+    static constexpr int kDefaultSize = MaxN < 1024 ? MaxN : 1024;
+
+    StereoStft() noexcept HBA_NONBLOCKING { prepare(kDefaultSize); }
 
     struct FrameBuffers {
         float* reL = nullptr;
@@ -318,9 +324,9 @@ template <int MaxN = 2048> class StereoStft {
 
   private:
     RealFft<MaxN> fft_{};
-    int size_ = 1024;
-    int hop_ = 256;
-    int mask_ = 1023;
+    int size_ = kDefaultSize;
+    int hop_ = kDefaultSize / 4;
+    int mask_ = kDefaultSize - 1;
     int pos_ = 0;
     int hopCounter_ = 0;
 

@@ -20,8 +20,10 @@ export function usePoleFieldAudio() {
   const audioCtxRef = useRef(null);
   const workletRef = useRef(null);
   const audioInitPromiseRef = useRef(null);
+  const unmountedRef = useRef(false);
 
   const ensureAudioEngine = useCallback(async () => {
+    if (unmountedRef.current) return null;
     if (workletRef.current && audioCtxRef.current) {
       if (audioCtxRef.current.state === "suspended") {
         await audioCtxRef.current.resume();
@@ -57,6 +59,10 @@ export function usePoleFieldAudio() {
         throw err;
       } finally {
         URL.revokeObjectURL(url);
+      }
+      if (unmountedRef.current) {
+        ctx.close().catch(() => {});
+        return null;
       }
       const node = new AudioWorkletNode(ctx, "pole-field-bench", {
         numberOfInputs: 0,
@@ -115,9 +121,13 @@ export function usePoleFieldAudio() {
   );
 
   useEffect(() => {
+    unmountedRef.current = false;
     return () => {
+      unmountedRef.current = true;
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+        workletRef.current = null;
       }
     };
   }, []);

@@ -226,6 +226,12 @@ struct Engine::Impl {
             const auto& kc = song->keyChords[static_cast<std::size_t>(keySection())];
             const int count = kc.count[static_cast<std::size_t>(degree)];
             const int lift = e.note >= 72 ? 12 : 0;
+            // Release any previously held notes on this key before overwriting (handles duplicate note-on without
+            // note-off).
+            for (int k = 0; k < heldCount; ++k)
+                if (!heldByOtherKey(e.note, k == 0, held[static_cast<std::size_t>(k)]))
+                    heldNoteOff(k == 0 ? static_cast<int>(Role::bass) : static_cast<int>(Role::chords),
+                                held[static_cast<std::size_t>(k)], offset);
             heldCount = 0;
             for (int k = 0; k < count && k < 6; ++k) {
                 const int role = k == 0 ? static_cast<int>(Role::bass) : static_cast<int>(Role::chords);
@@ -704,16 +710,33 @@ struct Engine::Impl {
             }
         }
         synthCount = 0;
+        const float monoScale = (left == right) ? 0.5f : 1.0f;
         float peak = 0.0f;
         for (int i = 0; i < n; ++i)
             peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
-        tele.peak = peak;
+        tele.peak = peak * monoScale;
+    }
+
+    void fillSoundingTelemetry() noexcept LG_NONBLOCKING {
+        for (auto& s : tele.sounding)
+            s = {0, 0};
+        for (int i = 0; i < soundingCount; ++i) {
+            const auto& s = sounding[static_cast<std::size_t>(i)];
+            if (s.role < kRoleCount)
+                tele.sounding[s.role][s.pitch >> 6u] |= (std::uint64_t{1} << (s.pitch & 63u));
+        }
     }
 };
 
 Engine::Engine() : songs_(std::make_unique<TripleBuffer<CompiledSong>>()), impl_(std::make_unique<Impl>()) {}
 
 Engine::~Engine() = default;
+
+void Engine::setVoiceRenderer(VoiceRenderer* voices) noexcept {
+    voices_ = voices;
+    if (voices == nullptr && impl_ != nullptr)
+        impl_->voices = nullptr;
+}
 
 void Engine::prepare(double sampleRate, int maxBlockSize) {
     impl_->sampleRate = sampleRate > 1000.0 ? sampleRate : 48000.0;
@@ -802,13 +825,18 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
     if (hostPlaying)
         m.previewPlaying = false;
     // Preview commands are handled before the clock is read: they decide whether there is a clock.
+    // Compact remaining commands in place instead of overwriting consumed entries with CommandKind::release
+    // (which would unintentionally cancel a bridge hold in the same block).
+    int keptPending = 0;
     for (int i = 0; i < m.pendingCount; ++i) {
-        const auto& c = m.pending[static_cast<std::size_t>(i)];
+        const auto c = m.pending[static_cast<std::size_t>(i)];
         if (c.kind == CommandKind::previewStop || (c.kind == CommandKind::previewPlay && !hostPlaying)) {
             m.apply(c, 0.0, false);
-            m.pending[static_cast<std::size_t>(i)].kind = CommandKind::release; // consumed (a release is harmless)
+        } else {
+            m.pending[static_cast<std::size_t>(keptPending++)] = c;
         }
     }
+    m.pendingCount = keptPending;
 
     const bool playing = (hostPlaying || m.previewPlaying) && m.hasSong();
     const double bpm = std::clamp(hostPlaying ? host.bpm : static_cast<double>(m.song->bpm), 20.0, 400.0);
@@ -853,8 +881,7 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
         m.tele.performance = m.perf;
         m.tele.songRevision = m.song->revision;
         m.tele.barsToStart = m.tele.barsToLand = -1;
-        for (auto& s : m.tele.sounding)
-            s = {0, 0};
+        m.fillSoundingTelemetry();
         return;
     }
 
@@ -936,13 +963,7 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
     } else {
         t.barsToStart = t.barsToLand = -1;
     }
-    for (auto& s : t.sounding)
-        s = {0, 0};
-    for (int i = 0; i < m.soundingCount; ++i) {
-        const auto& s = m.sounding[static_cast<std::size_t>(i)];
-        if (s.role < kRoleCount)
-            t.sounding[s.role][s.pitch >> 6u] |= (std::uint64_t{1} << (s.pitch & 63u));
-    }
+    m.fillSoundingTelemetry();
 }
 
 void Engine::releaseAll(MidiOutBuffer& out) noexcept LG_NONBLOCKING {

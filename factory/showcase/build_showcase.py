@@ -25,6 +25,15 @@ BUILD_DIR = SHOWCASE_DIR / "build"
 WEB_AUDIO_DIR = REPO_ROOT / "web" / "public" / "audio"
 WEB_MANIFEST = REPO_ROOT / "web" / "app" / "audioManifest.json"
 STUDIO_CATALOG = REPO_ROOT / "studio.json"
+SHOWCASE_PRODUCTS = (
+    "livecut-redux",
+    "tract-form",
+    "pole-field",
+    "cutline",
+    "torus-glide",
+    "strike-body",
+    "prism-vein",
+)
 PEAK_BARS = 64
 
 
@@ -153,6 +162,9 @@ def main() -> int:
         help="Parallel ffmpeg worker count",
     )
     args = parser.parse_args()
+    if args.product and args.product not in SHOWCASE_PRODUCTS:
+        supported = ", ".join(SHOWCASE_PRODUCTS)
+        raise ValueError(f"No showcase recipe for {args.product} (supported: {supported})")
 
     cpm_cache = os.environ.get("CPM_SOURCE_CACHE", str(Path.home() / ".cache" / "CPM"))
     cmake_cmd = [
@@ -178,7 +190,10 @@ def main() -> int:
         wav_dir = Path(tmp_ctx.name)
 
     try:
-        run([str(BUILD_DIR / "studio-showcase"), str(REPO_ROOT), str(wav_dir)])
+        render_cmd = [str(BUILD_DIR / "studio-showcase"), str(REPO_ROOT), str(wav_dir)]
+        if args.product:
+            render_cmd.append(args.product)
+        run(render_cmd)
         raw_items = json.loads((wav_dir / "raw-manifest.json").read_text())
         if args.product:
             raw_items = [item for item in raw_items if item["product"] == args.product]

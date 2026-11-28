@@ -112,7 +112,7 @@ public:
   void prepare(double sampleRate) noexcept HBA_NONBLOCKING {
       constexpr std::array<double, kSections> kPolesI{5.329948, 36.696142, 125.916857, 483.671421};
       constexpr std::array<double, kSections> kPolesQ{17.863367, 68.616706, 235.447093, 1621.028894};
-      const double sr = std::max(sampleRate, 8000.0);
+      const double sr = std::isfinite(sampleRate) ? std::max(sampleRate, 8000.0) : 48000.0;
       for (std::size_t i = 0; i < kSections; ++i) {
           const double gI = std::tan(kPi * std::min(kPolesI[i], 0.45 * sr) / sr);
           const double gQ = std::tan(kPi * std::min(kPolesQ[i], 0.45 * sr) / sr);

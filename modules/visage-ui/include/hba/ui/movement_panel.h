@@ -103,8 +103,12 @@ template <typename ParamFrameT, typename ParamIdT> class StudioFollowChip final 
 
   private:
     void paint(visage::Canvas& canvas) override {
-        const int choice = static_cast<int>(this->value() + 0.5f);
-        const std::string label(this->spec().choices[static_cast<std::size_t>(choice == lane_ + 1 ? 0 : choice)]);
+        const auto& choices = this->spec().choices;
+        if (choices.empty())
+            return;
+        const int rawChoice = static_cast<int>(this->value() + 0.5f);
+        const int choice = std::clamp(rawChoice == lane_ + 1 ? 0 : rawChoice, 0, static_cast<int>(choices.size()) - 1);
+        const std::string label(choices[static_cast<std::size_t>(choice)]);
         drawChip(canvas, this->context_.scale, label, this->width(), this->height(),
                  this->active() ? colour::text : this->accent_);
     }
@@ -308,9 +312,9 @@ template <typename Traits> class StudioCurveEditor final : public visage::Frame 
     }
 
     void showMenu(int index) {
-        if (index < 0)
-            return;
         const hba::dsp::Curve curve = editableCurve();
+        if (index < 0 || index >= curve.count)
+            return;
         const hba::dsp::Segment current = curve.points[static_cast<std::size_t>(index)].segment;
         constexpr int kRemove = 3;
         visage::PopupMenu menu;
@@ -422,14 +426,16 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         }
         if constexpr (Traits::kHasEnvLane) {
             const float envLvl = Traits::envLevel(this->context_.model);
-            const float envTail = Traits::envHistory(this->context_.model).back();
+            const auto envHist = Traits::envHistory(this->context_.model);
+            const float envTail = envHist.empty() ? 0.0f : envHist.back();
             liveChanged =
                 liveChanged || std::abs(envLvl - drawnEnv_) > 1.0e-3f || std::abs(envTail - drawnEnvTail_) > 1.0e-3f;
         }
         if (changed || liveChanged) {
             if constexpr (Traits::kHasEnvLane) {
                 drawnEnv_ = Traits::envLevel(this->context_.model);
-                drawnEnvTail_ = Traits::envHistory(this->context_.model).back();
+                const auto envHist = Traits::envHistory(this->context_.model);
+                drawnEnvTail_ = envHist.empty() ? 0.0f : envHist.back();
             }
             this->redraw();
             editor_->redraw();
@@ -448,7 +454,8 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
         }
         if constexpr (Traits::kHasEnvLane) {
             drawnEnv_ = Traits::envLevel(this->context_.model);
-            drawnEnvTail_ = Traits::envHistory(this->context_.model).back();
+            const auto envHist = Traits::envHistory(this->context_.model);
+            drawnEnvTail_ = envHist.empty() ? 0.0f : envHist.back();
         }
 
         const Params params = Traits::paramsOf(this->context_.model);
@@ -492,11 +499,11 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
                     const unsigned hue =
                         Traits::following(params, lane) ? colour::withAlpha(base, detail::kMoveFollowerAlpha) : base;
                     const auto hist = Traits::envHistory(this->context_.model);
-                    std::vector<float> scaledEnv(hist.size());
+                    scaledEnv_.resize(hist.size());
                     for (std::size_t i = 0; i < hist.size(); ++i)
-                        scaledEnv[i] = std::clamp(hist[i] * ampScale, -1.0f, 1.0f);
-                    drawCurve(canvas, scale, scaledEnv, left, top + inset, plotWidth, height - 2.0f * inset, hue, -1.0f,
-                              1.0f, on ? 0.16f : 0.0f);
+                        scaledEnv_[i] = std::clamp(hist[i] * ampScale, -1.0f, 1.0f);
+                    drawCurve(canvas, scale, scaledEnv_, left, top + inset, plotWidth, height - 2.0f * inset, hue,
+                              -1.0f, 1.0f, on ? 0.16f : 0.0f);
                     if (on) {
                         const float val = std::clamp(Traits::envLevel(this->context_.model) * ampScale, -1.0f, 1.0f);
                         const float y = top + inset + (height - 2.0f * inset) * (1.0f - (val + 1.0f) * 0.5f);
@@ -805,6 +812,7 @@ template <typename Traits> class StudioMovementPanel final : public Traits::Pane
     std::array<LaneControls, static_cast<std::size_t>(kLaneCount)> lanes_{};
     CurveEditor* editor_ = nullptr;
     std::vector<float> values_;
+    std::vector<float> scaledEnv_;
     int selected_ = 0;
     int hovered_ = -1;
     double drawnPpq_ = -1.0;

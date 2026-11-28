@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { PRODUCTS_BY_SLUG } from "../../../lib/catalog.mjs";
 import { REPO } from "./components/GuidePrimitives";
 import Lab1UnitCircle from "./components/Lab1UnitCircle";
 import Lab2MorphStability from "./components/Lab2MorphStability";
@@ -9,6 +10,8 @@ import Lab3MorphCube from "./components/Lab3MorphCube";
 import Lab4AdaaDrive from "./components/Lab4AdaaDrive";
 import Lab5BurgImprint from "./components/Lab5BurgImprint";
 import { usePoleFieldAudio } from "./components/usePoleFieldAudio";
+
+const POLE_FIELD_HUE = PRODUCTS_BY_SLUG["pole-field"].hue;
 
 export default function PoleFieldGuide() {
   const [depth, setDepth] = useState("both"); // "musician" | "both" | "engineer"
@@ -27,7 +30,7 @@ export default function PoleFieldGuide() {
   };
 
   return (
-    <main id="main" className="fg-main" style={{ "--hue": 318 }}>
+    <main id="main" className="fg-main" style={{ "--hue": POLE_FIELD_HUE }}>
       {/* Hero */}
       <section className="fg-hero">
         <div className="wrap fg-hero__grid">
@@ -44,7 +47,7 @@ export default function PoleFieldGuide() {
             </p>
           </div>
           <aside className="fg-manifesto" aria-label="How to read this guide">
-            <p className="fg-eyebrow" style={{ color: "oklch(0.82 0.14 318)" }}>
+            <p className="fg-eyebrow" style={{ color: `oklch(0.82 0.14 ${POLE_FIELD_HUE})` }}>
               Two Layers · One Instrument
             </p>
             <p>
@@ -88,7 +91,13 @@ export default function PoleFieldGuide() {
             onClick={() => (activeAudioLab ? stopAllAudio() : toggleLabAudio("lab3"))}
           >
             <span className="fg-led" aria-hidden="true" />
-            <span>{activeAudioLab ? `Stop Audio (${audioStatus})` : "Audition Pole Field"}</span>
+            <span aria-live="polite">
+              {activeAudioLab
+                ? `Stop Audio (${audioStatus})`
+                : audioStatus !== "Idle"
+                  ? `Audition Pole Field (${audioStatus})`
+                  : "Audition Pole Field"}
+            </span>
           </button>
         </div>
       </div>
@@ -103,7 +112,7 @@ export default function PoleFieldGuide() {
         {/* Closing Copyleft & Studio Download CTA */}
         <section className="fg-chapter" style={{ borderBlockEnd: 0 }}>
           <div className="fg-cta">
-            <p className="fg-eyebrow" style={{ color: "oklch(0.82 0.14 318)" }}>
+            <p className="fg-eyebrow" style={{ color: `oklch(0.82 0.14 ${POLE_FIELD_HUE})` }}>
               Open Copyleft Craft · Built by Sean Dearnaley
             </p>
             <h2 style={{ fontSize: "var(--step-2)" }}>
@@ -115,13 +124,13 @@ export default function PoleFieldGuide() {
                   Everything you just played with runs straight inside{" "}
                   <strong>Pole Field</strong> as a zero-allocation{" "}
                   <code>[[clang::nonblocking]]</code> C++20 VST3, AU, and Standalone morphing
-                  filterbank with a 60fps Visage GPU interface, 12 morph cubes, 42 presets,
+                  filterbank with a 60fps Visage GPU interface, 12 morph cubes, 46 presets,
                   audio-rate FM, and 4 drawable modulation lanes.
                 </p>
                 <div className="fg-chips">
-                  <a className="fg-cta__btn" href="/#pole-field">
+                  <Link className="fg-cta__btn" href="/#pole-field">
                     Download Signed macOS / Win / Linux Build
-                  </a>
+                  </Link>
                   <a
                     className="fg-cta__btn fg-cta__btn--ghost"
                     href={`${REPO}/tree/main/products/pole-field`}

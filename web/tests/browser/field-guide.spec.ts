@@ -34,7 +34,7 @@ test("navigate to Field Guides hub and open Pole Field interactive masterclass",
   await poleSlider.fill("1850");
   await expect(poleSlider).toHaveAttribute("aria-valuetext", "1850 Hz");
 
-  // Lab 3: one-click Producer Recipe updates cube & topology
+  // Lab 3: one-click Producer Recipe updates cube & topology, and XY Morph Pad responds to keyboard arrows
   await page.getByRole("button", { name: "Hollow Phase Razor" }).click();
   await expect(page.getByRole("button", { name: "Phase Razor", exact: true })).toHaveAttribute(
     "aria-pressed",
@@ -44,6 +44,19 @@ test("navigate to Field Guides hub and open Pole Field interactive masterclass",
     "aria-pressed",
     "true",
   );
+  const morphPad = page.getByRole("slider", { name: /Interactive 2D XY morph pad/i });
+  await morphPad.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#l3-x")).toHaveAttribute("aria-valuetext", "73%");
+
+  // Lab 4: AudioWorklet ADAA2 tone starts cleanly without minification/scope ReferenceErrors
+  const adaaPlay = page.getByRole("button", { name: /Hear Aliasing A\/B/i });
+  await adaaPlay.click();
+  await expect(page.getByRole("button", { name: /Stop Tone/i })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: /Stop Tone/i }).click();
 
   // Lab 5: live Burg LPC extraction switches targets without error
   await page.getByRole("button", { name: "Glass Bell" }).click();

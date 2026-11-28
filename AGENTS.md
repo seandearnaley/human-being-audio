@@ -2,12 +2,12 @@
 
 ## Repository Structure
 - `studio.json`: canonical catalog of studio products, bundle IDs, plugin codes, and release metadata.
-- `cmake/`: shared build infrastructure (`CPM.cmake`, `StudioDependencies.cmake`, `StudioHelpers.cmake`, `StudioProduct.cmake`, `native-presets.json`, `windows-release.ps1`, `ubuntu-26.04-packages.txt`).
+- `cmake/`: shared build infrastructure (`CPM.cmake`, `StudioDependencies.cmake`, `StudioHelpers.cmake`, `StudioProduct.cmake`, `StudioQuality.cmake`, `RunTidy.cmake`, `native-presets.json`, `windows-release.ps1`, `ubuntu-26.04-packages.txt`).
 - `modules/`: shared studio C++ libraries consumed by products:
-  - `modules/dsp` (`hba_dsp`): header-only real-time DSP primitives (`adaa.h`, `allpass.h`, `biquad.h`, `control.h`, `crossover.h`, `curve.h`, `denormals.h`, `gain.h`, `lane_math.h`, `limiter.h`, `oscillator.h`, `oversampling.h`, `pitch.h`, `random.h`, `stft.h`, `svf.h`, `transient_split.h`, plus `third_party/hiir`). All audio-path functions are zero-allocation and `[[clang::nonblocking]]` compatible.
+  - `modules/dsp` (`hba_dsp`): header-only real-time DSP primitives (`adaa.h`, `allpass.h`, `biquad.h`, `control.h`, `crossover.h`, `curve.h`, `denormals.h`, `envelope_curve.h`, `gain.h`, `harmonic_phase.h`, `lane_math.h`, `limiter.h`, `nonblocking.h`, `oscillator.h`, `oversampling.h`, `pitch.h`, `random.h`, `sample_exchange.h`, `stft.h`, `svf.h`, `transient_split.h`, `unison.h`, `va_filter.h`, plus `third_party/hiir`). All audio-path functions are zero-allocation and `[[clang::nonblocking]]` compatible.
   - `modules/core` (`hba_core`): shared serialization, binary export & math primitives (`preset_json.h`, `wav.h`, `smf.h`, `param_math.h`, `note_name.h`).
   - `modules/visage-ui` (`hba_visage_ui`): single embedded Inter font bundle (`hba::ui::fonts`), studio dark-chrome design tokens & drawing primitives (`theme.h`), shared Visage window/timer host (`editor_window.h`), parameter controls & stereo output meter (`controls.h`), TopBar wordmark/preset/AB helpers (`top_bar.h`), and interactive modulation-curve gesture editor & 4-lane movement panel (`movement_edit.h`, `movement_panel.h`).
-  - `modules/plugin-host` (`hba_plugin_host`): JUCE host bridge helpers — `StateMailbox<T>`, `TelemetryChannel<T>`, `VisageSurface`, `StudioPluginEditor`, `MidiExpressionParser`, `parameters.h` (`makeParameterLayout`, `ParameterSnapshotter`), `CurveStore<N>`, `OfflineWavWorker` / `writeTempMidiFile`, `preset_bank.h`, and `StereoAnalyzerBase`.
+  - `modules/plugin-host` (`hba_plugin_host`): JUCE host bridge helpers — `StateMailbox<T>`, `TelemetryChannel<T>`, `VisageSurface`, `StudioPluginEditor`, `MidiExpressionParser`, `parameters.h` (`makeParameterLayout`, `ParameterSnapshotter`), `render_midi_block.h`, `accessible_controls.h`, `CurveStore<N>`, `OfflineWavWorker` / `writeTempMidiFile`, `preset_bank.h`, and `StereoAnalyzerBase`.
   - `modules/studio-ui` (`hba_studio_ui`): `StudioAbout.h` and `StudioHistory.h` (coalesced Undo/Redo + A/B compare).
 - `products/`:
   - `tract-form` — Sub-locked neuro bass synthesizer (JUCE 9 + Visage 1.0)
@@ -19,7 +19,8 @@
   - `datum` — Kick synthesizer with transient import and sidechain alignment (JUCE 9 + Visage 1.0)
   - `lineage` — Reese synthesizer with stereo print generation and stacking (JUCE 9 + Visage 1.0)
   - `prism-vein` — Spectral color bass resonator, chord vocoder & Bark auto-tame FX (JUCE 9 + Visage 1.0)
-- `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), and CI/quality tooling (`factory/quality/`).
+  - `ligature` — Chord, bass, arp, melody & harmonic bridge generator (JUCE 9 + Visage 1.0)
+- `factory/`: Python release packaging (`factory/release/`), verification (`verify_product.py`, `verify_recall.py`), CI/quality tooling (`factory/quality/`), and offline audio demo renderer (`factory/showcase/`).
 - `web/`: Next.js + React website (`https://humanbeingaudio.com`).
 
 ## Real-Time Audio Safety & Compiler Rules

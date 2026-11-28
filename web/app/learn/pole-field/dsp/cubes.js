@@ -1,4 +1,4 @@
-// Exact 8-corner factory cube definitions mirrored from products/pole-field/core/src/cubes.cpp.
+// Exact 8-corner factory cube definitions mirrored from products/pole-field/core/src/factory_cubes_data.cpp.
 
 export const SAMPLE_RATE = 48000;
 export const NUM_STAGES = 7;

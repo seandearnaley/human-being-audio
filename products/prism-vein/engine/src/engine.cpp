@@ -52,6 +52,12 @@ inline constexpr std::array<double, 12> kJustRatios{
     15.0 / 8.0,  // 11: M7
 };
 
+inline void wrapPhase(float& phase) noexcept PV_NONBLOCKING {
+    constexpr float kTwoPiF = 6.2831853071795864769f;
+    if (phase >= kTwoPiF || phase < 0.0f)
+        phase -= kTwoPiF * std::floor(phase / kTwoPiF);
+}
+
 inline void rotateQuadPhase(int k, float inRe, float inIm, float& outRe, float& outIm) noexcept PV_NONBLOCKING {
     switch (k & 3) {
     case 1:
@@ -124,6 +130,11 @@ void Engine::prepare(double sampleRate, int maxBlockSize) {
     dcL_.prepare(12.0, sampleRate_);
     dcR_.prepare(12.0, sampleRate_);
 
+    demoSnareCoefs_ = hba::dsp::SvfCoefs::make(1850.0, 1.4, sampleRate_);
+    demoKickDecay_ = std::exp(-invSr_ / 0.055);
+    demoSnareDecay_ = std::exp(-invSr_ / 0.068);
+    demoHatDecay_ = std::exp(-invSr_ / 0.018);
+
     // Precompute log-frequency bin ranges (32 Hz .. 18.5 kHz) for the 96-column stage visualizer.
     const double minHz = 32.0;
     const double maxHz = std::min(18500.0, 0.47 * sampleRate_);
@@ -194,6 +205,8 @@ void Engine::reset() noexcept PV_NONBLOCKING {
         v.lpL = v.lpR = 0.0;
         v.dcInL = v.dcOutL = 0.0;
         v.dcInR = v.dcOutR = 0.0;
+        v.cachedFbFreq = -1.0;
+        v.cachedFbT60 = -1.0;
         v.weight = 0.0f;
     }
 
@@ -615,8 +628,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                     buf_->workCarrImR[ku] = fb.scImR[k];
                 } else {
                     buf_->internalCarrPhase[ku] += hopPhaseStep * static_cast<float>(k);
-                    if (buf_->internalCarrPhase[ku] > 6.2831853f)
-                        buf_->internalCarrPhase[ku] -= 6.2831853f;
+                    wrapPhase(buf_->internalCarrPhase[ku]);
                     const float cs = std::cos(buf_->internalCarrPhase[ku]);
                     const float sn = std::sin(buf_->internalCarrPhase[ku]);
                     buf_->workCarrReL[ku] = buf_->maskL[ku] * cs;
@@ -748,8 +760,7 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 rotateQuadPhase(k, buf_->tailReR[ku], buf_->tailImR[ku], rotReR, rotImR);
 
                 buf_->internalCarrPhase[ku] += hopPhaseStep * static_cast<float>(k);
-                if (buf_->internalCarrPhase[ku] > 6.2831853f)
-                    buf_->internalCarrPhase[ku] -= 6.2831853f;
+                wrapPhase(buf_->internalCarrPhase[ku]);
                 const float pullAmpL = buf_->envMain[ku] * buf_->maskL[ku] * pullBlend * 0.65f;
                 const float pullAmpR = buf_->envMain[ku] * buf_->maskR[ku] * pullBlend * 0.65f;
                 const float cs = std::cos(buf_->internalCarrPhase[ku]);
@@ -801,10 +812,8 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
                 hopPhaseStep * (static_cast<float>(k) + 0.03f * std::sin(static_cast<float>(k) * 0.37f));
             buf_->freezePhaseR[ku] +=
                 hopPhaseStep * (static_cast<float>(k) - 0.03f * std::cos(static_cast<float>(k) * 0.41f));
-            if (buf_->freezePhaseL[ku] > 6.2831853f)
-                buf_->freezePhaseL[ku] -= 6.2831853f;
-            if (buf_->freezePhaseR[ku] > 6.2831853f)
-                buf_->freezePhaseR[ku] -= 6.2831853f;
+            wrapPhase(buf_->freezePhaseL[ku]);
+            wrapPhase(buf_->freezePhaseR[ku]);
 
             float mL = buf_->freezeMagL[ku] * buf_->maskL[ku];
             float mR = buf_->freezeMagR[ku] * buf_->maskR[ku];
@@ -935,16 +944,16 @@ void Engine::processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, 
     }
 }
 
-void Engine::processCombSample(double inL, double inR, double decayAmt, double tiltAmt, double fanAmt, double qSharp,
-                               double& outL, double& outR) noexcept PV_NONBLOCKING {
+void Engine::processCombSample(double inL, double inR, const CombBlockParams& cb, double& outL,
+                               double& outR) noexcept PV_NONBLOCKING {
     const double monoIn = 0.5 * (inL + inR);
     const double sideIn = 0.5 * (inL - inR);
-    const double t60 = 0.04 + std::pow(std::clamp(decayAmt, 0.0, 1.0), 1.5) * 1.60;
-    const double dampCutoff = 1400.0 * std::pow(10.0, std::clamp(tiltAmt, -1.0, 1.0) * 0.58 + 0.42);
-    const double dampCoef =
-        hba::dsp::onePoleCoef(1.0 / (hba::dsp::kTwoPi * std::clamp(dampCutoff, 450.0, 18000.0)), invSr_);
+    const double t60 = cb.t60;
+    const double dampCoef = cb.dampCoef;
+    const double fanAmt = cb.fanAmt;
     const double dcR = 0.9965;
-    const double excGain = 0.46 + 0.36 * qSharp;
+    const double excGain = cb.excGain;
+    constexpr double kLog001 = -6.907755278982137;
 
     double sumL = 0.0;
     double sumR = 0.0;
@@ -961,7 +970,12 @@ void Engine::processCombSample(double inL, double inR, double decayAmt, double t
         const double delayL = std::clamp(sampleRate_ / (f * stereoDet), 2.0, static_cast<double>(kCombBufSize - 4));
         const double delayR = std::clamp(sampleRate_ / (f / stereoDet), 2.0, static_cast<double>(kCombBufSize - 4));
 
-        const double fb = std::clamp(std::pow(0.001, 1.0 / std::max(f * t60, 0.25)), 0.35, 0.965);
+        if (std::abs(f - voice.cachedFbFreq) > 1.0e-6 || std::abs(t60 - voice.cachedFbT60) > 1.0e-6) {
+            voice.cachedFb = std::clamp(std::exp(kLog001 / std::max(f * t60, 0.25)), 0.35, 0.965);
+            voice.cachedFbFreq = f;
+            voice.cachedFbT60 = t60;
+        }
+        const double fb = voice.cachedFb;
         const double polR = (fanAmt > 0.35 && (v & 1) != 0) ? (1.0 - 0.55 * (fanAmt - 0.35)) : 1.0;
 
         const auto readInterp = [&](const std::array<float, kCombBufSize>& buf, double dSamples) noexcept {
@@ -1109,19 +1123,18 @@ void Engine::synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLO
         const double kHz = 46.0 + 210.0 * demoKickEnv_ * demoKickEnv_;
         demoKickPhase_ += hba::dsp::kTwoPi * kHz * invSr_;
         kick = std::sin(demoKickPhase_) * demoKickEnv_ * 0.58;
-        demoKickEnv_ *= std::exp(-invSr_ / 0.055);
+        demoKickEnv_ *= demoKickDecay_;
     }
     const double wn = demoRng_.nextBipolar();
     double snare = 0.0;
     if (demoSnareEnv_ > 1.0e-4) {
-        const auto snCoefs = hba::dsp::SvfCoefs::make(1850.0, 1.4, sampleRate_);
-        snare = demoSnareFilter_.bandpass(snCoefs, wn) * demoSnareEnv_ * 0.72;
-        demoSnareEnv_ *= std::exp(-invSr_ / 0.068);
+        snare = demoSnareFilter_.bandpass(demoSnareCoefs_, wn) * demoSnareEnv_ * 0.72;
+        demoSnareEnv_ *= demoSnareDecay_;
     }
     double hat = 0.0;
     if (demoHatEnv_ > 1.0e-4) {
         hat = wn * demoHatEnv_ * 0.16;
-        demoHatEnv_ *= std::exp(-invSr_ / 0.018);
+        demoHatEnv_ *= demoHatDecay_;
     }
 
     outL = (fL * 0.34 + sub * 0.35 + kick + snare + hat) * 0.58;
@@ -1252,6 +1265,13 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
     const double tiltComb = std::clamp(static_cast<double>(p.real(ParamId::tilt)) + modTilt, -1.0, 1.0);
     const double fanComb = std::clamp(static_cast<double>(p.real(ParamId::stereoFan)) + modFan * 0.5, 0.0, 1.0);
     const double qSharp = static_cast<double>(p.real(ParamId::qSharpness));
+    const double combDampCutoff = 1400.0 * std::pow(10.0, tiltComb * 0.58 + 0.42);
+    const CombBlockParams combParams{
+        0.04 + std::pow(decayComb, 1.5) * 1.60,
+        hba::dsp::onePoleCoef(1.0 / (hba::dsp::kTwoPi * std::clamp(combDampCutoff, 450.0, 18000.0)), invSr_),
+        fanComb,
+        0.46 + 0.36 * qSharp,
+    };
     const double liveTameAmt = std::clamp(static_cast<double>(p.real(ParamId::tame)) + modTame * 0.5, 0.0, 1.0);
     const double tameFocusHz = static_cast<double>(p.real(ParamId::tameFocusHz));
     const double liveTameCutDb = 10.0 * liveTameAmt * std::clamp(liveTameEnv_ * 2.2, 0.0, 1.0);
@@ -1368,7 +1388,7 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             double combOutR = 0.0;
             if (runComb) {
                 double cL = 0.0, cR = 0.0;
-                processCombSample(bodyL, bodyR, decayComb, tiltComb, fanComb, qSharp, cL, cR);
+                processCombSample(bodyL, bodyR, combParams, cL, cR);
                 const double pk = std::max(std::abs(cL), std::abs(cR));
                 liveTameEnv_ += 0.002 * (pk - liveTameEnv_);
                 cL = liveTameL_.process(liveTameCoefs, cL);
@@ -1390,7 +1410,7 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
         } else {
             // Exact 0-sample latency Harmonic Comb mode with zero-latency real FFT telemetry!
             double cL = 0.0, cR = 0.0;
-            processCombSample(bodyL, bodyR, decayComb, tiltComb, fanComb, qSharp, cL, cR);
+            processCombSample(bodyL, bodyR, combParams, cL, cR);
             const double pk = std::max(std::abs(cL), std::abs(cR));
             liveTameEnv_ += 0.002 * (pk - liveTameEnv_);
             wetBodyL = liveTameL_.process(liveTameCoefs, cL);
@@ -1410,15 +1430,16 @@ void Engine::process(const float* inL, const float* inR, const float* sidechainL
             osL_.up(static_cast<float>(midHighL), osBufL.data());
             osR_.up(static_cast<float>(midHighR), osBufR.data());
             for (int os = 0; os < preparedOsFactor_; ++os) {
-                double dry = 0.0;
+                double dryL = 0.0;
+                double dryR = 0.0;
                 const double sL = shaperL_.process(static_cast<double>(osBufL[static_cast<std::size_t>(os)]), driveGain,
-                                                   0.06 * gritAmt, shaperModel, shaperModel, 1.0, dry);
+                                                   0.06 * gritAmt, shaperModel, shaperModel, 1.0, dryL);
                 const double sR = shaperR_.process(static_cast<double>(osBufR[static_cast<std::size_t>(os)]), driveGain,
-                                                   0.06 * gritAmt, shaperModel, shaperModel, 1.0, dry);
+                                                   0.06 * gritAmt, shaperModel, shaperModel, 1.0, dryR);
                 osBufL[static_cast<std::size_t>(os)] =
-                    static_cast<float>(dry * (1.0 - gritAmt) + sL * invComp * gritAmt);
+                    static_cast<float>(dryL * (1.0 - gritAmt) + sL * invComp * gritAmt);
                 osBufR[static_cast<std::size_t>(os)] =
-                    static_cast<float>(dry * (1.0 - gritAmt) + sR * invComp * gritAmt);
+                    static_cast<float>(dryR * (1.0 - gritAmt) + sR * invComp * gritAmt);
             }
             midHighL = static_cast<double>(osL_.down(osBufL.data()));
             midHighR = static_cast<double>(osR_.down(osBufR.data()));

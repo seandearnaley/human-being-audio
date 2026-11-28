@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
         done += n;
     }
 
-    // Peak-calibrate to -3.0 dBFS with clean 15 ms tail fade-out (matching web/public/audio/README.md)
+    // Peak-calibrate to -3.0 dBFS with clean 15 ms tail fade-out (matching factory/showcase/README.md)
     const float gain = 0.70794578f / peak;
     const int fadeFrames = static_cast<int>(std::llround(0.015 * sr));
     for (int i = 0; i < totalFrames; ++i) {

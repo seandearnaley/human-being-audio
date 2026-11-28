@@ -407,7 +407,7 @@ template <typename ParamFrameT, typename ParamKindT> class StandardRow final : p
     }
 
     void tick() override {
-        if (modProvider_) {
+        if (modProvider_ && bar_ && this->spec().kind != ParamKindT::toggle) {
             const float live = std::clamp(modProvider_(), 0.0f, 1.0f);
             if (std::abs(live - drawnMod_) > 0.002f)
                 this->redraw();

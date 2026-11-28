@@ -550,6 +550,9 @@ export async function startStage({ root, stage, reducedMotion, backendEl, signal
       if (Array.isArray(obj.material)) obj.material.forEach((m) => m?.dispose?.());
       else obj.material?.dispose?.();
     });
+    glow?.dispose?.();
+    scenePass?.dispose?.();
+    pipeline?.dispose?.();
     envTarget.dispose();
     renderer.dispose();
   };

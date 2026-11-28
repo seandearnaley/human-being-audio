@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 
 namespace lg {
@@ -66,8 +67,13 @@ StutterCells parseStutter(const json& j) {
         if (!it.value().is_string())
             continue;
         const int cell = indexIn(kStutterNames, it.value().get<std::string>(), 0);
-        if (cell > 0)
-            cells[std::atoi(it.key().c_str())] = static_cast<Stutter>(cell);
+        if (cell <= 0)
+            continue;
+        const auto& key = it.key();
+        int step = -1;
+        const auto [ptr, ec] = std::from_chars(key.data(), key.data() + key.size(), step);
+        if (ec == std::errc{} && ptr == key.data() + key.size() && step >= 0)
+            cells[step] = static_cast<Stutter>(cell);
     }
     return cells;
 }
@@ -132,7 +138,8 @@ void fitChords(Section& s) {
     for (auto c : s.chords) {
         if (at >= total - 1e-4f)
             break;
-        c.beats = std::max(0.25f, std::round(c.beats * 4.0f) / 4.0f);
+        const float rawBeats = std::isfinite(c.beats) ? c.beats : 4.0f;
+        c.beats = std::max(0.25f, std::round(rawBeats * 4.0f) / 4.0f);
         c.beats = std::min(c.beats, total - at);
         at += c.beats;
         out.push_back(c);
@@ -249,16 +256,19 @@ void normalise(Song& song) {
     for (int r = 0; r < kRoleCount; ++r) {
         auto& p = song.parts[static_cast<std::size_t>(r)];
         p.style = std::clamp(p.style, 0, static_cast<int>(styleNames(static_cast<Role>(r)).size()) - 1);
-        p.density = std::clamp(p.density, 0.0f, 1.0f);
+        p.density = std::clamp(std::isfinite(p.density) ? p.density : 0.5f, 0.0f, 1.0f);
         p.reg = std::clamp(p.reg, -1, 1);
-        p.rate = p.rate < 0.75f ? 0.5f : (p.rate > 1.5f ? 2.0f : 1.0f);
+        const float rate = std::isfinite(p.rate) ? p.rate : 1.0f;
+        p.rate = rate < 0.75f ? 0.5f : (rate > 1.5f ? 2.0f : 1.0f);
     }
     song.bpm = std::clamp(std::isfinite(song.bpm) ? song.bpm : 122.0, 40.0, 220.0);
     const auto validItem = [&](ItemRef r) {
         const auto count = r.isBridge() ? song.bridges.size() : song.sections.size();
         return r.index >= 0 && static_cast<std::size_t>(r.index) < count;
     };
-    std::erase_if(song.pins, [&](const Pin& p) { return !validItem(p.item) || p.pitch < 0 || p.pitch > 127; });
+    std::erase_if(song.pins, [&](const Pin& p) {
+        return !validItem(p.item) || p.pitch < 0 || p.pitch > 127 || !std::isfinite(p.start) || !std::isfinite(p.dur);
+    });
 }
 
 std::vector<ItemRef> stripOrder(const Song& song) {

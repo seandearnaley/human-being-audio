@@ -89,11 +89,9 @@ built between 0.2.0 and the pad:
 Requirements: CMake 3.25+, and a recent Xcode (macOS) or Visual Studio (Windows).
 
 ```sh
-git clone --recurse-submodules https://github.com/seandearnaley/human-being-audio.git
+git clone https://github.com/seandearnaley/human-being-audio.git
 cd human-being-audio/products/livecut-redux
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
-ctest --test-dir build --build-config Release --output-on-failure
+cmake --workflow --preset check
 ```
 
 The plugins end up in `build/Livecut_artefacts/Release/{VST3,AU,Standalone}`,
@@ -127,9 +125,7 @@ otherwise list it twice. Anything else called Livecut, such as the original
 - Livecut-GUI 0.1, a JUCE 6 fork, exposed every parameter in a GUI.
 - **Sean Dearnaley** wrote Livecut Redux, this project's ground-up rewrite,
   published by **Human Being Audio**.
-- The editor is set in [Bricolage Grotesque](https://github.com/ateliertriay/bricolage)
-  by Mathieu Triay, under the SIL Open Font License
-  ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)).
+- The editor is set in [Inter](https://rsms.me/inter/) via the shared studio font bundle ([modules/visage-ui](../../modules/visage-ui)).
 
 ## License
 

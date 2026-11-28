@@ -31,8 +31,13 @@ inline double softClip(double x, double knee = kSoftClipKnee, double bound = 1.0
 // Linked stereo soft clip using a single gain derived from max(|L|, |R|).
 inline double softClipLinked(double& left, double& right, double knee = kSoftClipKnee,
                              double bound = 1.0) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(left))
+        left = 0.0;
+    if (!std::isfinite(right))
+        right = 0.0;
     const double peak = std::max(std::abs(left), std::abs(right));
-    if (peak <= knee) return 1.0;
+    if (peak <= knee)
+        return 1.0;
     const double gain = softClip(peak, knee, bound) / peak;
     left *= gain;
     right *= gain;
@@ -68,7 +73,7 @@ class SoftClipAdaa1 {
         const double x0 = prevX_;
         prevX_ = x;
         const double safeBound = std::isfinite(bound) ? std::max(bound, 1.0e-9) : 1.0;
-        const double k = std::clamp(kneeRatio, 0.0, 1.0);
+        const double k = std::isfinite(kneeRatio) ? std::clamp(kneeRatio, 0.0, 1.0) : kSoftClipKnee;
         const double knee = k * safeBound;
         if (std::abs(x) <= knee && std::abs(x0) <= knee)
             return 0.5 * (x + x0);
@@ -105,11 +110,12 @@ public:
             }
             return sum;
         };
+        const double invI0Beta = 1.0 / bessel(beta);
         const auto h = [&](int t) {
             const double x = (t - centre) / kPhases;
             const double sinc = x == 0.0 ? 1.0 : std::sin(kPi * x) / (kPi * x);
             const double r = (t - centre) / centre;
-            return sinc * bessel(beta * std::sqrt(std::max(0.0, 1.0 - r * r))) / bessel(beta);
+            return sinc * bessel(beta * std::sqrt(std::max(0.0, 1.0 - r * r))) * invI0Beta;
         };
         for (int r = 1; r < kPhases; ++r)
             for (int j = 0; j < kWidth; ++j) {
@@ -213,13 +219,14 @@ public:
     static constexpr std::size_t kMaxDelayed = 4;
 
     void prepare(double sampleRate, double releaseSeconds = kReleaseSeconds) {
-        const double sr = std::max(sampleRate, 1.0);
+        const double sr = std::isfinite(sampleRate) ? std::max(sampleRate, 1.0) : 48000.0;
+        const double rel = std::isfinite(releaseSeconds) ? std::max(releaseSeconds, 1.0e-6) : kReleaseSeconds;
         lookahead_ = std::max(1, static_cast<int>(std::lround(kLookaheadSeconds * sr)));
         delay_ = lookahead_ - 1 + TruePeakDetector::kDelay;
         for (auto& d : delays_) d.prepare(delay_);
         hold_.prepare(lookahead_);
         box_.assign(static_cast<std::size_t>(lookahead_), 1.0);
-        releaseCoef_ = onePoleCoef(std::max(releaseSeconds, 1.0e-6), 1.0 / sr);
+        releaseCoef_ = onePoleCoef(rel, 1.0 / sr);
         reset();
     }
     void reset() noexcept HBA_NONBLOCKING {
@@ -269,7 +276,8 @@ public:
         }
         const double smooth = std::clamp(boxSum_ / lookahead_, 0.0, 1.0);
 
-        gain_ = 1.0 - amount * (1.0 - smooth);
+        const double safeAmount = std::isfinite(amount) ? std::clamp(amount, 0.0, 1.0) : 1.0;
+        gain_ = 1.0 - safeAmount * (1.0 - smooth);
         left = delays_[0].process(left) * gain_;
         right = delays_[1].process(right) * gain_;
         for (std::size_t i = 0; i < N; ++i) delayed[i] = delays_[2 + i].process(delayed[i]);
