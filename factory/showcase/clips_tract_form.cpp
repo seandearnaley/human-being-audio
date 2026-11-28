@@ -11,7 +11,7 @@
 namespace hba::showcase {
 
 // ============================================================================
-// 2. TRACT FORM (6 clips: 5 composed riffs + 1 evolving cinema sub drone)
+// 2. TRACT FORM (6 clips: 5 composed riffs, two over a drum groove, + 1 evolving cinema sub drone)
 // ============================================================================
 std::vector<float> renderTractSequence(const fs::path& presetPath, double bpm, int bars,
                                        const std::vector<NoteEvent>& notes,
@@ -71,58 +71,76 @@ std::vector<float> renderTractSequence(const fs::path& presetPath, double bpm, i
     return out;
 }
 
+// Puts a showcase-kit stepper groove about 5 LU under a bass render, ducking the bass for 250 ms after each
+// kick so the sub and the kick take turns, as they would in a mix.
+static std::vector<float> withStepperDrums(std::vector<float> bass, double bpm, int bars) {
+    BreakPattern pat = stepperBreak(bpm);
+    pat.withSub = false;
+    pat.withDubStabs = false;
+    const auto drums = renderBreakStem(pat, bars);
+    const double samplesPerBeat = 60.0 / bpm * kSr;
+    std::vector<double> kicks;
+    for (int bar = 0; bar < bars; ++bar)
+        for (const auto& hit : pat.hits)
+            if (hit.note == 36) kicks.push_back((4.0 * bar + hit.beat) * samplesPerBeat);
+    const std::size_t frames = std::min(bass.size(), drums.size()) / 2u;
+    for (std::size_t i = 0; i < frames; ++i) {
+        double duck = 1.0;
+        for (const double k : kicks) {
+            const double dt = (static_cast<double>(i) - k) / kSr;
+            if (dt >= 0.0 && dt < 0.25) duck = std::min(duck, 1.0 - 0.45 * std::exp(-dt / 0.07));
+        }
+        for (std::size_t c = 0; c < 2u; ++c)
+            bass[i * 2u + c] = static_cast<float>(bass[i * 2u + c] * duck + drums[i * 2u + c] * 0.4);
+    }
+    return bass;
+}
+
 void renderTractFormClips(const fs::path& repoRoot, const fs::path& outDir) {
     const fs::path pDir = repoRoot / "products/tract-form/presets";
 
-    // 1. Neuro Drop Riff (172 BPM, F Phrygian, syncopated 4-bar neurofunk bassline)
+    // 1. Techstep Roller (172 BPM, F Minor, rolling reese line over a stepper groove)
     {
-        const std::vector<NoteEvent> riff = {
-            {0.00, 1.40, 29, 0.98f, 0.0f},  {1.50, 0.90, 32, 0.92f, -2.0f},
-            {2.50, 0.70, 30, 0.95f, 0.0f},  {3.25, 0.65, 29, 0.88f, 0.0f},
-            {4.00, 1.40, 29, 1.00f, 3.0f},  {5.50, 0.85, 36, 0.95f, -4.0f},
-            {6.50, 0.90, 30, 0.94f, -1.0f}, {7.50, 0.45, 29, 0.85f, 0.0f},
-            {8.00, 1.40, 29, 0.98f, 0.0f},  {9.50, 0.70, 34, 0.92f, 0.0f},
-            {10.25, 0.70, 32, 0.90f, 0.0f}, {11.00, 0.90, 30, 0.96f, -1.0f},
-            {12.00, 1.65, 29, 1.00f, 0.0f}, {13.75, 0.70, 37, 0.95f, -5.0f},
-            {14.50, 1.35, 30, 0.98f, -1.0f},
+        const std::vector<NoteEvent> roller = {
+            {0.00, 1.45, 29, 1.00f, 0.0f},  {1.75, 0.70, 29, 0.85f, 0.0f},
+            {2.50, 0.95, 32, 0.92f, 0.0f},  {3.50, 0.45, 31, 0.86f, 0.0f},
+            {4.00, 1.45, 29, 1.00f, 0.0f},  {5.75, 0.70, 36, 0.90f, 0.0f},
+            {6.50, 0.95, 34, 0.92f, -2.0f}, {7.50, 0.45, 32, 0.86f, 0.0f},
+            {8.00, 1.45, 29, 1.00f, 0.0f},  {9.75, 0.70, 39, 0.90f, 0.0f},
+            {10.50, 0.95, 37, 0.92f, -1.0f},{11.50, 0.45, 36, 0.86f, 0.0f},
+            {12.00, 1.45, 29, 1.00f, 0.0f}, {13.75, 0.70, 32, 0.90f, 0.0f},
+            {14.50, 0.70, 34, 0.92f, 0.0f}, {15.25, 0.70, 36, 0.95f, -7.0f},
         };
-        auto audio = renderTractSequence(pDir / "coupled-reese.json", 172.0, 4, riff,
-            [](tf::Params& p, tf::Engine& e, double t) {
-                p[tf::ParamId::tract] = lerpF(0.32f, 0.82f, 0.5 + 0.5 * std::sin(kTwoPi * t * 2.0));
-                p[tf::ParamId::drive] = lerpF(0.30f, 0.58f, t);
-                p[tf::ParamId::sculpt] = lerpF(3.5f, 9.0f, smoothStep(t));
-                e.setModWheel(static_cast<float>(0.3 + 0.6 * t));
+        auto audio = renderTractSequence(pDir / "dark-techstep-roller.json", 172.0, 4, roller,
+            [](tf::Params& p, tf::Engine&, double t) {
+                p[tf::ParamId::tract] = lerpF(0.35f, 0.70f, 0.5 - 0.5 * std::cos(kTwoPi * t));
             });
-        emitClip(outDir, "tract-form", "01-neuro-drop-riff", "Neuro Drop Riff", "172 DnB", 172.0, "F Phrygian",
-                 "Coupled Reese playing a syncopated 4-bar F Phrygian neuro bassline with vowel tract & sculpt automation",
-                 std::move(audio), -13.0);
+        emitClip(outDir, "tract-form", "01-techstep-roller", "Techstep Roller", "172 DnB", 172.0, "F Minor",
+                 "Dark Techstep Roller rolling a 4-bar F minor reese line over a stepper groove, sub ducked under the kicks",
+                 withStepperDrums(std::move(audio), 172.0, 4), -13.0);
     }
 
-    // 2. Acid Snap Sequence (140 BPM, D Minor, funky 16th-note octave glides)
+    // 2. Throat Wobble (172 BPM, F Phrygian, syncopated neuro line that leaves the snares clear)
     {
-        const std::vector<NoteEvent> acid = {
-            {0.00, 0.45, 38, 0.95f, 0.0f},  {0.75, 0.40, 50, 0.88f, 0.0f},
-            {1.25, 0.45, 41, 0.90f, 0.0f},  {1.75, 0.65, 45, 0.96f, -2.0f},
-            {2.50, 0.40, 38, 0.88f, 0.0f},  {3.00, 0.45, 48, 0.92f, 2.0f},
-            {3.50, 0.40, 45, 0.86f, 0.0f},  {4.00, 0.45, 38, 0.98f, 0.0f},
-            {4.75, 0.40, 53, 0.94f, -3.0f}, {5.25, 0.45, 50, 0.90f, 0.0f},
-            {5.75, 0.65, 45, 0.96f, 0.0f},  {6.50, 0.40, 41, 0.90f, 0.0f},
-            {7.00, 0.85, 43, 0.96f, -5.0f}, {8.00, 0.45, 38, 1.00f, 0.0f},
-            {8.75, 0.40, 50, 0.92f, 0.0f},  {9.25, 0.45, 46, 0.95f, -1.0f},
-            {9.75, 0.65, 45, 0.94f, 0.0f},  {10.50, 0.45, 53, 0.98f, 0.0f},
-            {11.00, 0.85, 50, 0.94f, -5.0f},{12.00, 0.45, 38, 1.00f, 0.0f},
-            {12.75, 0.40, 50, 0.92f, 0.0f}, {13.25, 0.65, 41, 0.94f, 0.0f},
-            {14.00, 0.65, 40, 0.95f, 0.0f}, {14.75, 1.15, 38, 1.00f, 0.0f},
+        const std::vector<NoteEvent> talker = {
+            {0.00, 0.70, 29, 1.00f, 0.0f},  {0.75, 0.20, 29, 0.80f, 0.0f},
+            {1.25, 0.45, 32, 0.92f, 0.0f},  {1.75, 0.20, 29, 0.80f, 0.0f},
+            {2.00, 0.95, 29, 0.98f, 0.0f},  {3.25, 0.45, 36, 0.90f, 0.0f},
+            {3.75, 0.20, 34, 0.82f, 0.0f},  {4.00, 0.70, 29, 1.00f, 0.0f},
+            {4.75, 0.20, 29, 0.80f, 0.0f},  {5.25, 0.45, 30, 0.92f, 0.0f},
+            {5.75, 0.20, 29, 0.80f, 0.0f},  {6.00, 1.20, 29, 0.98f, -2.0f},
+            {7.50, 0.45, 32, 0.90f, 0.0f},  {8.00, 0.70, 29, 1.00f, 0.0f},
+            {8.75, 0.20, 29, 0.80f, 0.0f},  {9.25, 0.45, 32, 0.92f, 0.0f},
+            {9.75, 0.20, 29, 0.80f, 0.0f},  {10.00, 0.95, 29, 0.98f, 0.0f},
+            {11.25, 0.45, 37, 0.90f, 0.0f}, {11.75, 0.20, 36, 0.82f, 0.0f},
+            {12.00, 0.70, 29, 1.00f, 0.0f}, {12.75, 0.20, 29, 0.80f, 0.0f},
+            {13.25, 0.45, 30, 0.92f, 0.0f}, {13.75, 0.20, 32, 0.80f, 0.0f},
+            {14.00, 1.70, 29, 1.00f, -5.0f},
         };
-        auto audio = renderTractSequence(pDir / "acid-snap.json", 140.0, 4, acid,
-            [](tf::Params& p, tf::Engine&, double t) {
-                p[tf::ParamId::tractShift] = lerpF(-4.0f, 7.5f, t);
-                p[tf::ParamId::drive] = lerpF(0.24f, 0.62f, t);
-                p[tf::ParamId::morph] = lerpF(0.15f, 0.88f, 0.5 - 0.5 * std::cos(kTwoPi * t));
-            });
-        emitClip(outDir, "tract-form", "02-acid-snap-sequence", "Acid Snap Sequence", "Acid / Electro", 140.0, "D Minor",
-                 "Funky 16th-note octave leaps with rising formant shift and ADAA2 wavefold bite",
-                 std::move(audio), -13.2);
+        auto audio = renderTractSequence(pDir / "throat-wobble.json", 172.0, 4, talker, nullptr);
+        emitClip(outDir, "tract-form", "02-throat-wobble", "Throat Wobble", "172 Neuro", 172.0, "F Phrygian",
+                 "Throat Wobble's tempo-locked vowel lanes talking through a syncopated neuro line over a stepper groove",
+                 withStepperDrums(std::move(audio), 172.0, 4), -13.0);
     }
 
     // 3. 808 Sub Hammer (138 BPM, E Minor, cavernous halftime weight + sub slides)
