@@ -10,8 +10,10 @@ import lineageImage from "../../products/lineage/press/screenshots/lineage-inter
 import datumImage from "../../products/datum/press/screenshots/datum-interface.png";
 import prismVeinImage from "../../products/prism-vein/press/screenshots/prism-vein-interface.png";
 import { PLATFORMS, PRODUCTS, PRODUCTS_BY_SLUG, STUDIO } from "../lib/catalog.mjs";
+import { PRODUCT_MEDIA } from "../lib/media.mjs";
 import { readCatalog } from "../lib/releases.mjs";
 import Hero from "./Hero";
+import { ProductGallery, ProductVideo } from "./ProductMedia";
 import ShowcasePlayer from "./ShowcasePlayer";
 
 export const revalidate = 60;
@@ -30,6 +32,7 @@ const PRODUCT_IMAGES = {
 
 function Product({ product, release, unavailable }) {
   const { slug } = product;
+  const media = PRODUCT_MEDIA[slug];
   return (
     <article
       id={slug}
@@ -45,12 +48,17 @@ function Product({ product, release, unavailable }) {
         <p className="mono muted">{product.kind}</p>
         <h3>{product.name}</h3>
         <p>{product.body}</p>
-        <Image
-          src={PRODUCT_IMAGES[slug]}
-          alt={product.alt}
-          sizes="(max-width: 800px) 93vw, (max-width: 1152px) 92vw, 760px"
-          className="studio-interface"
-        />
+        {media?.video ? (
+          <ProductVideo slug={slug} name={product.name} video={media.video} posterAlt={product.alt} />
+        ) : (
+          <Image
+            src={PRODUCT_IMAGES[slug]}
+            alt={product.alt}
+            sizes="(max-width: 800px) 93vw, (max-width: 1152px) 92vw, 760px"
+            className="studio-interface"
+          />
+        )}
+        {media?.gallery && <ProductGallery name={product.name} items={media.gallery} />}
         <ShowcasePlayer slug={slug} productName={product.name} hue={product.hue} />
         <p className="studio-facts">{product.credits}</p>
         <p className="mono studio-facts">
