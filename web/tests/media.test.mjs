@@ -81,7 +81,7 @@ test("every product media entry points at real, correctly sized, budgeted files"
 });
 
 test("every product with a demo ships a 30-60 s video and an eight-shot gallery", () => {
-  for (const slug of ["livecut-redux", "tract-form", "pole-field", "cutline", "torus-glide", "strike-body", "lineage", "datum"]) {
+  for (const slug of ["livecut-redux", "tract-form", "pole-field", "cutline", "torus-glide", "strike-body", "lineage", "datum", "prism-vein"]) {
     const { video, gallery } = PRODUCT_MEDIA[slug];
     assert.ok(video.seconds >= 30 && video.seconds <= 60, slug);
     assert.equal(gallery.length, 8, slug);
