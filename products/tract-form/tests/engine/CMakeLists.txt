@@ -19,5 +19,6 @@ target_compile_definitions(tf_engine_tests PRIVATE TF_PRESETS_DIR="${PROJECT_SOU
 if(HBA_RTSAN)
     hba_realtime_suite(tf_engine_tests "[engine]~[benchmark]")
 else()
-    catch_discover_tests(tf_engine_tests DISCOVERY_MODE PRE_TEST)
+    catch_discover_tests(tf_engine_tests TEST_SPEC "~[benchmark]" DISCOVERY_MODE PRE_TEST)
+    catch_discover_tests(tf_engine_tests TEST_SPEC "[benchmark]" DISCOVERY_MODE PRE_TEST PROPERTIES RUN_SERIAL TRUE)
 endif()
