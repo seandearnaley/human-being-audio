@@ -25,6 +25,18 @@ TEST_CASE("a preset survives a round trip") {
     }
 }
 
+TEST_CASE("a 1.x preset's single Shape sets both voices") {
+    const auto parsed = parsePreset(R"({"name":"Old","category":"Reese","oscShape":0.45,"coupling":0.3})");
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->params[ParamId::aShape] == Approx(0.45f));
+    CHECK(parsed->params[ParamId::bShape] == Approx(0.45f));
+    // A preset that names the voices' Shape keeps them.
+    const auto both = parsePreset(R"({"name":"New","oscShape":0.45,"aShape":0.1,"bShape":0.9})");
+    REQUIRE(both.has_value());
+    CHECK(both->params[ParamId::aShape] == Approx(0.1f));
+    CHECK(both->params[ParamId::bShape] == Approx(0.9f));
+}
+
 TEST_CASE("missing keys take defaults") {
     const auto parsed = parsePreset(R"({"name":"Sparse","coupling":0.1,"vowelB":"i","phaseReset":false})");
     REQUIRE(parsed.has_value());

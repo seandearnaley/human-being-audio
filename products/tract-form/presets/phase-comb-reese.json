@@ -1,7 +1,7 @@
 {
     "name": "Phase Comb Reese",
     "category": "Reese",
-    "coupling": 0.68,
+    "coupling": 0.34,
     "beat": 0.42,
     "tract": 0.52,
     "warp": 0.44,
@@ -54,7 +54,7 @@
     "lane4Phase": 270.0,
     "lane4Depth": 0.38,
     "lane4Shape": "Sine",
-    "reach": 56.0,
+    "reach": 41.7,
     "weight": 0.68,
     "fit": 0.0,
     "beatLock": false,
@@ -75,7 +75,6 @@
     "lane4Target": "Beat",
     "lane4Follow": "Own",
     "lane4Ratio": "×1",
-    "oscShape": 0.24,
     "punchAmt": 0.0,
     "punchMs": 32.0,
     "tractShift": -2.0,
@@ -99,5 +98,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.24,
+    "bShape": 0.24,
+    "aModel": "Saw",
+    "bModel": "Saw",
+    "stack": "2",
+    "spread": 0.6,
+    "filterType": "Ladder",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

@@ -15,6 +15,12 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
         foldMix = std::min(1.0, foldMix + foldMixStep);
     if (sculptXfadeMix < 1.0)
         sculptXfadeMix = std::min(1.0, sculptXfadeMix + foldMixStep);
+    if (filterMix < 1.0)
+        filterMix = std::min(1.0, filterMix + foldMixStep);
+    if (stackA.mix < 1.0)
+        stackA.mix = std::min(1.0, stackA.mix + foldMixStep);
+    if (stackB.mix < 1.0)
+        stackB.mix = std::min(1.0, stackB.mix + foldMixStep);
 
     phaseMaster += os[incMaster].value;
     phaseA += os[incA].value;
@@ -43,40 +49,31 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
     const double fbRaw = 0.5 * (feedback.read(os[fbDelay].value) + feedback.read(fbTap2));
     const double fb = os[fbGain].value * std::tanh(feedbackDc.process(fbRaw));
 
-    // Clean Nyquist-guarded Bessel-windowed analog sawtooth carrier:
-    // blends pure PM sine with single-term phase-warped sawtooth `sin(rad + k*sin(rad))`
-    // (dropping the harsh nested 2nd-harmonic self-PM term and float phase quantization).
-    // Under Beat Lock, warps against `phiLock` so every harmonic beats at one exact delta.
-    const double shp = os[oscShape_].value;
-    const auto shapeOsc = [shp](double phi, double phiLock, double mod, double inc,
-                                bool locked) noexcept TF_NONBLOCKING -> double {
-        const double rad = phi + mod;
-        const double s1 = std::sin(rad);
-        if (shp <= 1.0e-5)
-            return s1;
-        const double nyqGuard = std::clamp((0.36 - 4.0 * inc) / 0.10, 0.0, 1.0);
-        if (locked) {
-            const double warp = 0.88 * shp * nyqGuard;
-            return std::sin(phi + warp * std::sin(phiLock) + mod);
-        }
-        const double warp = 0.85 * shp * nyqGuard;
-        const double rich = std::sin(rad + warp * s1);
-        return (1.0 - shp) * s1 + shp * rich;
-    };
-
     const double phiA = kTwoPi * frac(phaseA + os[offA].value);
     const double phiB = kTwoPi * frac(phaseB + os[offB].value);
     const double phiLockA = kTwoPi * frac(phaseLockA + os[offA].value);
     const double phiLockB = kTwoPi * frac(phaseLockB + os[offB].value);
     const double modA = os[pmA].value * master + fb;
     const double modB = os[pmB].value * master + fb;
-    const double a = shapeOsc(phiA, phiLockA, modA, os[incA].value, beatLockOn);
-    const double b = shapeOsc(phiB, phiLockB, modB, os[incB].value, beatLockOn);
+    double a = renderVoice(stackA, os[shapeA].value, phiA, phiLockA, modA, os[incA].value, os[offA].value);
+    double b = renderVoice(stackB, os[shapeB].value, phiB, phiLockB, modB, os[incB].value, os[offB].value);
     const double lockA = std::sin(phiLockA + modA);
     const double lockB = std::sin(phiLockB + modB);
 
     feedback.write(static_cast<float>(feedbackLp.process(ReachCoefs::make(os[loopG].value), 0.5 * (lockA + lockB))));
-    const ReachCoefs reach = ReachCoefs::make(os[reachG].value);
+
+    // The filter in the Pre position, before Tract and Fold (crossfaded with the Post position).
+    const FilterControls fc{os[reachG].value, os[filterResO].value, os[filterDriveG].value};
+    const double filterPost = os[filterPost_].value;
+    if (filterPost < 1.0 - 1.0e-5) {
+        const double pa = filterPreA.process(filterFrom, filterTo, filterMix, fc, a);
+        const double pb = filterPreB.process(filterFrom, filterTo, filterMix, fc, b);
+        a = (1.0 - filterPost) * pa + filterPost * a;
+        b = (1.0 - filterPost) * pb + filterPost * b;
+    } else {
+        filterPreA.reset();
+        filterPreB.reset();
+    }
 
     // Pre/Post-Fold Tract with click-free crossfade; fold runs at local 16x rate.
     const double tractAmount = os[tractAmt].value;
@@ -125,8 +122,31 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
 
     // Reach, Weight, and Stereo Sculpt (with click-free mode crossfade).
     const WeightMix mix{os[weightG].value, os[weightDry].value, os[weightOne].value, os[weightTwo].value};
-    const double preScA = weightA.process(mix, reachA.process(reach, ya));
-    const double preScB = weightB.process(mix, reachB.process(reach, yb));
+    // The filter in the Post position, after Fold. In the Pre position a Clean
+    // low-pass two octaves above Reach keeps the fold's harmonics bounded.
+    double filtA = ya, filtB = yb;
+    if (filterPost > 1.0e-5) {
+        const double pa = filterPostA.process(filterFrom, filterTo, filterMix, fc, ya);
+        const double pb = filterPostB.process(filterFrom, filterTo, filterMix, fc, yb);
+        if (filterPost < 1.0 - 1.0e-5) {
+            const ReachCoefs top = ReachCoefs::make(os[topG].value);
+            filtA = filterPost * pa + (1.0 - filterPost) * topA.process(top, ya);
+            filtB = filterPost * pb + (1.0 - filterPost) * topB.process(top, yb);
+        } else {
+            filtA = pa;
+            filtB = pb;
+            topA.reset();
+            topB.reset();
+        }
+    } else {
+        filterPostA.reset();
+        filterPostB.reset();
+        const ReachCoefs top = ReachCoefs::make(os[topG].value);
+        filtA = topA.process(top, ya);
+        filtB = topB.process(top, yb);
+    }
+    const double preScA = weightA.process(mix, filtA);
+    const double preScB = weightB.process(mix, filtB);
     const auto curSlot = static_cast<std::size_t>(sculptSlot);
     const auto prevSlot = static_cast<std::size_t>(sculptSlot ^ 1);
     ya = sculptA[curSlot].process(sculptCoefsA, preScA, sculptModeCur);
@@ -152,6 +172,53 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
     bufSub[idx] = sub;
     bufL[idx] = static_cast<float>(l);
     bufR[idx] = static_cast<float>(r);
+}
+
+// One reese voice: its model at the centre phase plus the stack's side voices,
+// every one phase-modulated by the same `mod` (radians) and offset by the same
+// `offset` (cycles). The centre keeps the engine's own phase, so a stack of one
+// is the voice exactly as it was.
+double Engine::Impl::renderVoice(VoiceStack& v, double shape, double phi, double phiLock, double mod, double inc,
+                                 double offset) noexcept TF_NONBLOCKING {
+    const double modCycles = mod / kTwoPi;
+    const auto model = [&](VoiceModel m, double ph, double phLock, double t, double dt, double step,
+                           bool locked) noexcept TF_NONBLOCKING -> double {
+        return m == VoiceModel::sine ? warpedSine(shape, ph, phLock, mod, step, locked)
+                                     : modelSample(m, v.shape, t, dt);
+    };
+    const auto sample = [&](std::size_t j, double ph, double phLock, double step,
+                            bool locked) noexcept TF_NONBLOCKING -> double {
+        const double t = frac(ph / kTwoPi + modCycles);
+        const double dt = v.fresh ? 0.0 : wrapHalf(t - v.lastT[j]);
+        v.lastT[j] = t;
+        const double now = model(v.to, ph, phLock, t, dt, step, locked);
+        if (v.mix >= 1.0 || v.from == v.to)
+            return now;
+        return v.mix * now + (1.0 - v.mix) * model(v.from, ph, phLock, t, dt, step, locked);
+    };
+    double out = os[stackGain0].value * sample(0, phi, phiLock, inc, beatLockOn);
+    for (std::size_t j = 1; j < v.phase.size(); ++j) {
+        const double step = inc * stackMul[j] + stackAdd[j];
+        v.phase[j] += step;
+        v.phase[j] -= std::floor(v.phase[j]);
+        const double ph = kTwoPi * frac(v.phase[j] + offset);
+        const double gain = os[stackGain0 + j].value;
+        if (gain == 0.0) {
+            v.lastT[j] = frac(ph / kTwoPi + modCycles);
+            continue;
+        }
+        out += gain * sample(j, ph, ph, step, false);
+    }
+    v.fresh = false;
+    return out;
+}
+
+// Side voices restart at the same spread-out phases every time (voice B's
+// interleaved with A's), so a note sounds the same however many came before it.
+void Engine::Impl::resetStacks() noexcept TF_NONBLOCKING {
+    hba::dsp::unisonSpreadPhases(0.0, stackA.phase);
+    hba::dsp::unisonSpreadPhases(0.5, stackB.phase);
+    stackA.fresh = stackB.fresh = true;
 }
 
 void Engine::Impl::goIdle() noexcept TF_NONBLOCKING {

@@ -1,7 +1,7 @@
 {
     "name": "Braided Cable",
     "category": "Reese",
-    "coupling": 0.85,
+    "coupling": 0.425,
     "beat": 0.625,
     "tract": 0.7,
     "warp": 0.0,
@@ -54,7 +54,7 @@
     "lane4Phase": 270.0,
     "lane4Depth": 0.38,
     "lane4Shape": "Sine",
-    "reach": 20.0,
+    "reach": 14.7,
     "weight": 0.55,
     "fit": 0.0,
     "beatLock": true,
@@ -75,7 +75,6 @@
     "lane4Target": "Beat",
     "lane4Follow": "Own",
     "lane4Ratio": "×1",
-    "oscShape": 0.24,
     "punchAmt": 0.0,
     "punchMs": 32.0,
     "tractShift": 0.0,
@@ -113,5 +112,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.24,
+    "bShape": 0.24,
+    "aModel": "Saw",
+    "bModel": "Saw",
+    "stack": "2",
+    "spread": 0.6,
+    "filterType": "Ladder",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

@@ -28,7 +28,6 @@ enum class ParamId : std::uint8_t {
     glide,
     phaseReset,
     beatLock,
-    oscShape,
     punchAmt,
     punchMs,
     aDetune,
@@ -39,6 +38,12 @@ enum class ParamId : std::uint8_t {
     bPhase,
     aPm,
     bPm,
+    aModel,
+    bModel,
+    aShape,
+    bShape,
+    stack,
+    spread,
     fbTime,
     fbAmount,
     vowelA,
@@ -51,6 +56,10 @@ enum class ParamId : std::uint8_t {
     drive,
     asym,
     weight,
+    filterType,
+    filterRes,
+    filterDrive,
+    filterPos,
     sculptDepth,
     sculptCount,
     sculptSpread,
@@ -127,8 +136,22 @@ enum class LaneField : std::uint8_t { on, rate, phase, depth, shape, target, fol
 inline constexpr int kLaneFieldCount = 10;
 
 // What a lane moves. Order matches choices::laneTarget.
-enum class LaneTarget : std::uint8_t { phase, morph, drive, beat, coupling, reach, weight, sculpt, fit, width, shift };
-inline constexpr int kLaneTargetCount = 11;
+enum class LaneTarget : std::uint8_t {
+    phase,
+    morph,
+    drive,
+    beat,
+    coupling,
+    reach,
+    weight,
+    sculpt,
+    fit,
+    width,
+    shift,
+    shape,
+    res
+};
+inline constexpr int kLaneTargetCount = 13;
 
 constexpr ParamId laneParam(int lane, LaneField field) {
     return static_cast<ParamId>(static_cast<int>(ParamId::lane1On) + lane * kLaneFieldCount + static_cast<int>(field));
@@ -164,6 +187,12 @@ inline constexpr std::array<std::string_view, 9> beatLock {
 };
 inline constexpr std::array<std::string_view, 6> vowel { "a", "æ", "e", "i", "o", "u" };
 inline constexpr std::array<std::string_view, 2> tractPos{"Pre", "Post"};
+// What each reese voice plays: today's warped sine, a PolyBLEP saw or pulse, or Casio-style
+// resonant phase distortion.
+inline constexpr std::array<std::string_view, 4> voiceModel{"Sine", "Saw", "Pulse", "PD"};
+inline constexpr std::array<std::string_view, 7> stack{"1", "2", "3", "4", "5", "6", "7"};
+// Clean is Reach's original 24 dB/oct Butterworth, which ignores Resonance and Drive.
+inline constexpr std::array<std::string_view, 5> filterType{"Clean", "Ladder", "MS-20", "Low-pass", "Notch"};
 inline constexpr std::array<std::string_view, 5> foldType { "Fold", "Sine", "Tube", "Buchla", "Clip" };
 inline constexpr std::array<std::string_view, 6> sculptCount { "1", "2", "3", "4", "5", "6" };
 inline constexpr std::array<std::string_view, 3> sculptMode{"Bell", "Phaser", "Comb"};
@@ -186,8 +215,9 @@ inline constexpr auto& laneRate = hba::dsp::kLaneRateLabels;
 inline constexpr std::array<std::string_view, 7> laneShape {
     "Sine", "Triangle", "Ramp up", "Ramp down", "Square", "Steps", "Custom"
 };
-inline constexpr std::array<std::string_view, 11> laneTarget{"Phase",  "Morph",  "Drive", "Beat",  "Coupling", "Reach",
-                                                             "Weight", "Sculpt", "Fit",   "Width", "Shift"};
+inline constexpr std::array<std::string_view, 13> laneTarget{"Phase", "Morph",  "Drive",  "Beat", "Coupling",
+                                                             "Reach", "Weight", "Sculpt", "Fit",  "Width",
+                                                             "Shift", "Shape",  "Res"};
 // A lane plays its own shape, or follows another lane's shape at a ratio of its rate.
 inline constexpr auto& laneFollow = hba::dsp::kLaneFollowLabels;
 inline constexpr auto& laneRatio = hba::dsp::kLaneRatioLabels;
@@ -208,6 +238,8 @@ using hba::dsp::kLaneRatios;
 enum class TractPos : std::uint8_t { pre, post };
 enum class SculptMode : std::uint8_t { bell, phaser, comb };
 enum class FoldType : std::uint8_t { fold, sine, tube, buchla, clip };
+enum class VoiceModel : std::uint8_t { sine, saw, pulse, pd };
+enum class FilterType : std::uint8_t { clean, ladder, ms20, lowpass, notch };
 enum class PlayMode : std::uint8_t { mono, legato };
 enum class GlideMode : std::uint8_t { always, legato };
 enum class LaneShape : std::uint8_t { sine, triangle, rampUp, rampDown, square, steps, custom };
@@ -274,7 +306,6 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::ranged("glide", "Glide", 0.0f, 500.0f, 12.5f, Unit::ms, 3.0f),
     detail::toggle("phaseReset", "Phase reset", true),
     detail::toggle("beatLock", "Beat lock", false),
-    detail::amount("oscShape", "Shape", 0.16f),
     detail::ranged("punchAmt", "Punch", 0.0f, 24.0f, 0.0f, Unit::semitones),
     detail::ranged("punchMs", "Punch time", 5.0f, 180.0f, 32.0f, Unit::ms, 2.0f, false),
     detail::ranged("aDetune", "A detune", -50.0f, 50.0f, 19.0f, Unit::cents),
@@ -285,6 +316,12 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::ranged("bPhase", "B phase", 0.0f, 360.0f, 180.0f, Unit::degrees),
     detail::bipolar("aPm", "A PM", 0.62f),
     detail::bipolar("bPm", "B PM", -0.48f),
+    detail::choice("aModel", "A model", choices::voiceModel, 0, false),
+    detail::choice("bModel", "B model", choices::voiceModel, 0, false),
+    detail::amount("aShape", "A shape", 0.16f),
+    detail::amount("bShape", "B shape", 0.16f),
+    detail::choice("stack", "Stack", choices::stack, 0, false),
+    detail::amount("spread", "Spread", 0.35f, false),
     detail::choice("fbTime", "Feedback time", choices::fbTime, 2),
     detail::amount("fbAmount", "Feedback", 0.49f),
     detail::choice("vowelA", "Vowel A", choices::vowel, 1),
@@ -297,6 +334,10 @@ inline constexpr std::array<ParamSpec, kParamCount> kParams{{
     detail::amount("drive", "Drive", 0.42f),
     detail::amount("asym", "Asym", 0.18f),
     detail::amount("weight", "Weight", 0.3f),
+    detail::choice("filterType", "Filter", choices::filterType, 0, false),
+    detail::amount("filterRes", "Resonance", 0.25f),
+    detail::amount("filterDrive", "Filter drive", 0.0f),
+    detail::choice("filterPos", "Filter pos", choices::tractPos, 1, false),
     detail::bipolar("sculptDepth", "Sculpt depth", -0.5f),
     detail::choice("sculptCount", "Sculpt bands", choices::sculptCount, 2),
     detail::ranged("sculptSpread", "Sculpt spread", 1.2f, 4.0f, 2.0f, Unit::ratio, 0.0f),
@@ -366,6 +407,9 @@ static_assert(spec(ParamId::weight).key == "weight" && spec(ParamId::width).key 
 static_assert(spec(ParamId::sculpt).key == "sculpt" && spec(ParamId::sculptMode).key == "sculptMode", "kParams order");
 static_assert(static_cast<int>(ParamId::width) == 7, "the eight macros are the first eight parameters");
 static_assert(spec(ParamId::fit).key == "fit" && spec(ParamId::glide).key == "glide", "kParams order");
+static_assert(spec(ParamId::aModel).key == "aModel" && spec(ParamId::spread).key == "spread", "kParams order");
+static_assert(spec(ParamId::filterType).key == "filterType" && spec(ParamId::filterPos).key == "filterPos",
+              "kParams order");
 static_assert(spec(ParamId::subWarmth).key == "subWarmth" && spec(ParamId::ampRelease).key == "ampRelease",
               "kParams order");
 static_assert(kFbCycles.size() == choices::fbTime.size());

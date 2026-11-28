@@ -1,7 +1,7 @@
 {
     "name": "Hollow Ladder",
     "category": "Reese",
-    "coupling": 0.6,
+    "coupling": 0.3,
     "beat": 0.6,
     "tract": 0.2,
     "warp": 0.2,
@@ -54,7 +54,7 @@
     "lane4Phase": 0.0,
     "lane4Depth": 0.5,
     "lane4Shape": "Sine",
-    "reach": 24.0,
+    "reach": 13.1,
     "weight": 0.6,
     "fit": 0.0,
     "beatLock": false,
@@ -75,7 +75,6 @@
     "lane4Target": "Beat",
     "lane4Follow": "Own",
     "lane4Ratio": "×1",
-    "oscShape": 0.18,
     "punchAmt": 0.0,
     "punchMs": 32.0,
     "tractShift": 0.0,
@@ -99,5 +98,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.18,
+    "bShape": 0.18,
+    "aModel": "Saw",
+    "bModel": "Saw",
+    "stack": "2",
+    "spread": 0.6,
+    "filterType": "Ladder",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

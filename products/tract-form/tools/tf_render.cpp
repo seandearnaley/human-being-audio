@@ -166,8 +166,9 @@ int main(int argc, char** argv) {
         q.steadyEnd = static_cast<std::size_t>(stats.heldSamples);
         q.f0 = 440.0 * std::exp2((request.note - 69) / 12.0);
         q.tiltUpperHz = 0.8 * request.params[tf::ParamId::reach] * q.f0;
-        const auto offsets = tf::voiceOffsetsHz(request.params, q.f0, request.bpm);
-        q.harmonicToleranceHz = tf::analysis::harmonicToleranceHz(offsets.a, offsets.b);
+        const auto spread = tf::harmonicSpreadHz(request.params, q.f0, request.bpm);
+        q.harmonicToleranceHz = tf::analysis::harmonicToleranceHz(spread.flatHz, spread.flatHz);
+        q.perHarmonicHz = spread.perHarmonicHz;
         auto m = tf::analysis::computeMetrics(tf::analysis::deinterleave(audio), q);
         std::string json = tf::analysis::toJson(m);
         char extra[256];
