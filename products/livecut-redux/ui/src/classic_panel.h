@@ -7,6 +7,7 @@
 #include <visage/ui.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace lc::ui {
@@ -38,6 +39,8 @@ class ClassicPanel final : public visage::Frame, public Live {
     bool lastCrusher_ = false;
     bool lastComb_ = false;
     bool lastCanApply_ = false;
+    // The telemetry lines draw() last painted.
+    std::string paintedTransform_, paintedFracture_, paintedResonator_, paintedSpectral_, paintedHold_, paintedCapture_;
 
     // Navigation & global mode strip
     SegmentedBar tabs_;

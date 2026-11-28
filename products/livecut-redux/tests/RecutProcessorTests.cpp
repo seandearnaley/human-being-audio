@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "PluginModel.h"
 #include "PluginProcessor.h"
 #include "ProcessorTestSupport.h"
 #include "HostSync.h"
+#include "lc/ui/editor.h"
+#include <hba/ui/theme.h>
+#include <visage/ui.h>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include "engine/AllocationCounter.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -17,10 +22,11 @@ struct RecutHead final : juce::AudioPlayHead
     juce::Optional<PositionInfo> getPosition() const override { return available ? juce::Optional<PositionInfo> { info } : juce::Optional<PositionInfo> {}; }
     PositionInfo info;
     bool available = true;
+    double bpm = 120.0;
     void at (double beats, bool running = true)
     {
         info.setIsPlaying (running);
-        info.setBpm (120.0);
+        info.setBpm(bpm);
         info.setTimeSignature (TimeSignature { 4, 4 });
         info.setPpqPosition (beats);
         info.setPpqPositionOfLastBarStart (std::floor (beats / 4.0) * 4.0);
@@ -900,4 +906,122 @@ TEST_CASE ("Deferred host latency restarts converge without changing the release
         CHECK (exact);
     }
     processor.removeListener (&host);
+}
+
+namespace {
+// Livecut Redux in Live: the factory "Syncopated Reverse" (CutProc11, 1/8, Attack Align, Studio) on a
+// break at 172 BPM in 512-frame buffers, with Reverse Chance automated. Studio arrives either from a
+// saved set, before preparation, or from Apply on a stopped transport after the default Live mode.
+struct HostSession {
+    static constexpr double rate = 48000.0, bpm = 172.0;
+    static constexpr int block = 512;
+    LivecutAudioProcessor processor;
+    RecutHead head;
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buffer{2, block};
+    std::int64_t played = 0;
+    std::uint32_t noise = 1;
+
+    explicit HostSession(bool restoredStudio) {
+        head.bpm = bpm;
+        head.at(0.0, false);
+        processor.setPlayHead(&head);
+        if (restoredStudio)
+            loadPreset();
+        processor.prepareToPlay(rate, block);
+        buffer.clear();
+        processor.processBlock(buffer, midi); // stopped evidence
+        if (!restoredStudio) {
+            loadPreset();
+            processor.applyRequestedMode();
+        }
+    }
+
+    void loadPreset() {
+        int preset = -1;
+        for (int i = 0; i < processor.getNumPrograms(); ++i)
+            if (processor.getProgramName(i) == "Syncopated Reverse")
+                preset = i;
+        REQUIRE(preset >= 0);
+        processor.setCurrentProgram(preset);
+    }
+
+    // A decaying noise hit on every eighth note, accented on the beat.
+    float drum(std::int64_t frame) {
+        const auto eighth = rate * 60.0 / bpm / 2.0;
+        const auto hit = static_cast<std::int64_t>(std::floor(static_cast<double>(frame) / eighth));
+        const auto age = static_cast<double>(frame) - static_cast<double>(hit) * eighth;
+        noise = noise * 1664525u + 1013904223u;
+        const auto white = static_cast<float>(noise >> 8) / static_cast<float>(1u << 24) * 2.0f - 1.0f;
+        return (hit % 2 == 0 ? .8f : .4f) * static_cast<float>(std::exp(-age / (.03 * rate))) * white;
+    }
+
+    void play(double seconds) {
+        const auto end = played + static_cast<std::int64_t>(seconds * rate);
+        for (; played < end; played += block) {
+            // Automation sweeps Reverse Chance between 30% and 60% over each 8 s.
+            const auto sweep = static_cast<double>(played % static_cast<std::int64_t>(8.0 * rate)) / (8.0 * rate);
+            setRecut(processor, "reverseChance", static_cast<float>(.3 + .3 * sweep));
+            head.at(static_cast<double>(played) * bpm / 60.0 / rate);
+            for (int i = 0; i < block; ++i) {
+                const auto sample = drum(played + i);
+                buffer.setSample(0, i, sample);
+                buffer.setSample(1, i, sample);
+            }
+            processor.processBlock(buffer, midi);
+        }
+    }
+};
+} // namespace
+
+TEST_CASE("Syncopated Reverse aligns and reverses cuts in Studio in a playing host",
+          "[processor][recut][selection][host]") {
+    const auto restoredStudio = GENERATE(false, true);
+    juce::ScopedJuceInitialiser_GUI gui;
+    HostSession session(restoredStudio);
+    auto& processor = session.processor;
+    REQUIRE(processor.activeMode() == livecut::ProcessingMode::studio);
+    REQUIRE(processor.modeState() == LivecutAudioProcessor::ModeState::active);
+    session.play(18.0);
+    const auto& engine = processor.getCutter().transformStats();
+    const auto& display = processor.getDisplayState();
+    INFO("engine eligible " << engine.eligible << " aligned " << engine.attackAligned << " reversed " << engine.reversed
+                            << " ineligible " << engine.ineligible);
+    INFO(processor.transformStatusText());
+    CHECK(engine.attackAligned > 0);
+    CHECK(engine.reversed > 0);
+    CHECK(display.attackApplied.load() == engine.attackAligned);
+    CHECK(display.reverseApplied.load() == engine.reversed);
+    CHECK(display.transformEligible.load() == engine.eligible);
+}
+
+TEST_CASE("The Classic panel repaints the Recut status as its counters move", "[processor][recut][ui]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    HostSession session(true);
+    livecut::PluginModel model(session.processor);
+    // Declared before the editor, whose frames point at it until they are destroyed.
+    std::vector<visage::Frame*> repaints;
+    visage::FrameEventHandler events;
+    events.request_redraw = [&](visage::Frame* frame) { repaints.push_back(frame); };
+    lc::ui::Editor editor(model);
+    auto& root = editor.rootFrame();
+    // The editor places the top bar, phrase tape, Pad panel and then the Classic panel.
+    REQUIRE(root.children().size() == 4);
+    auto* classic = root.children()[3];
+    auto* live = dynamic_cast<hba::ui::Live*>(classic);
+    REQUIRE(live != nullptr);
+    REQUIRE(classic->isVisible());
+    // The editor's first frame paints everything; after that only ticks ask for paint.
+    model.refreshVisuals();
+    live->tick();
+    root.setEventHandler(&events);
+    const auto painted = model.visuals().transformStatus;
+
+    session.play(6.0);
+    model.refreshVisuals();
+    live->tick();
+    REQUIRE(session.processor.getCutter().transformStats().attackAligned > 0);
+    REQUIRE(model.visuals().transformStatus != painted);
+    CHECK(std::ranges::find(repaints, classic) != repaints.end());
+    root.setEventHandler(nullptr);
 }
