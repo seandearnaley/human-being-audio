@@ -163,7 +163,7 @@ void renderPrismVeinClips(const fs::path& repoRoot, const fs::path& outDir) {
     // 2. Silk Pad Colour (saw chord pad, the lattice following the same chords)
     {
         const std::vector<Chord> silk = {
-            {51, 55, 58, 62, 65}, {48, 55, 58, 62, 63}, {44, 51, 55, 58, 60}, {46, 53, 55, 58, 62}};
+            {51, 55, 58, 62, 65}, {48, 55, 58, 62, 63}, {44, 51, 55, 58, 60}, {46, 53, 55, 60, 62}};
         std::vector<HeldGroup> groups;
         for (int k = 0; k < 4; ++k)
             groups.push_back({8.0 * k, 7.7, silk[static_cast<std::size_t>(k)], 0.84});
@@ -199,7 +199,7 @@ void renderPrismVeinClips(const fs::path& repoRoot, const fs::path& outDir) {
             sourceForward(0.5f, 0.66f),
             [](pv::Params& p, double t) { p.set(pv::ParamId::decay, lerpF(0.35f, 0.7f, t)); });
         emitClip(outDir, "prism-vein", "03-razor-comb-roller", "Razor Comb Roller", "Harmonic Comb", bpm, "F Phrygian",
-                 "A rolling reese bassline through the 16-voice Harmonic Comb tuned to Phrygian intervals, its decay opening up",
+                 "A rolling reese bassline through the 12-voice Harmonic Comb tuned to Phrygian intervals, its decay opening up",
                  std::move(wet), -13.0);
     }
 
@@ -218,8 +218,8 @@ void renderPrismVeinClips(const fs::path& repoRoot, const fs::path& outDir) {
                  std::move(wet), -13.4);
     }
 
-    // 5. Glass Freeze Pluck (a plucked arpeggio with a Glass Freeze halo behind it; every chord sits inside
-    //    the preset's F min9 keys so the halo never clashes with the pluck)
+    // 5. Glass Freeze Pluck (a plucked arpeggio with a Glass Freeze halo behind it; the arpeggio's chords are
+    //    held as MIDI so the frozen halo follows the harmony)
     {
         const std::vector<Chord> arps = {{65, 68, 72, 75, 77, 75, 72, 68},  // F min7
                                          {61, 65, 68, 72, 73, 72, 68, 65},  // Db maj7
@@ -232,7 +232,8 @@ void renderPrismVeinClips(const fs::path& repoRoot, const fs::path& outDir) {
                                   {arps[static_cast<std::size_t>(bar / 2)][static_cast<std::size_t>(s)]},
                                   s % 2 == 0 ? 0.9 : 0.72});
         auto pl = renderSynthGroups(bpm, 8, plucks, 3800.0, 0.004, 0.22, 0.2);
-        auto wet = processWithPrismVein(pvDir / "22-glass-halo-freeze.json", bpm, pl, {}, 8.0,
+        const std::vector<Chord> held = {{65, 68, 72, 75}, {61, 65, 68, 72}, {63, 67, 70, 72}, {60, 63, 67, 70}};
+        auto wet = processWithPrismVein(pvDir / "22-glass-halo-freeze.json", bpm, pl, held, 8.0,
             sourceForward(0.42f, 0.78f), nullptr);
         emitClip(outDir, "prism-vein", "05-glass-freeze-pluck", "Glass Freeze Pluck", "Glass Freeze", bpm, "F Minor",
                  "A plucked arpeggio over F min7, Db maj7, Eb 6 and C min7, kept dry and clear while Glass Freeze holds a halo of its harmonics behind it",
