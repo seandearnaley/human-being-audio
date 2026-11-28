@@ -14,6 +14,7 @@
 #include <hba/dsp/pitch.h>
 #include <hba/dsp/sample_exchange.h>
 #include <hba/dsp/svf.h>
+#include <hba/dsp/unison.h>
 
 #include <algorithm>
 #include <array>
@@ -52,7 +53,17 @@ constexpr double kPrintXfadeSec = 0.015;
 constexpr double kPi = hba::dsp::kPi;
 constexpr double kTwoPi = hba::dsp::kTwoPi;
 
-constexpr std::array<double, kNumVoices> kDetuneOffsets{-1.0, -0.618, -0.275, 0.0, 0.275, 0.618, 1.0};
+// The shared symmetric stack, reordered from centre-out to Lineage's voice
+// order: flattest to sharpest, so voices 3 - k and 3 + k form ring k of the
+// Unison weights.
+static_assert(kNumVoices == hba::dsp::kMaxUnison);
+constexpr auto kDetuneOffsets = [] {
+    auto offsets = hba::dsp::kSymmetricOffsets;
+    std::sort(offsets.begin(), offsets.end());
+    return offsets;
+}();
+static_assert(kDetuneOffsets[3] == 0.0 && kDetuneOffsets[2] == -kDetuneOffsets[4] &&
+              kDetuneOffsets[1] == -kDetuneOffsets[5] && kDetuneOffsets[0] == -kDetuneOffsets[6]);
 constexpr std::array<double, kNumVoices> kVoicePan{-0.92, 0.76, -0.48, 0.0, 0.48, -0.76, 0.92};
 constexpr std::array<double, kNumVoices> kInitPhases{0.0, 0.371, 0.719, 0.143, 0.583, 0.867, 0.241};
 
