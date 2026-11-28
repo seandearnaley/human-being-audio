@@ -63,16 +63,19 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
     feedback.write(static_cast<float>(feedbackLp.process(ReachCoefs::make(os[loopG].value), 0.5 * (lockA + lockB))));
 
     // The filter in the Pre position, before Tract and Fold (crossfaded with the Post position).
-    const FilterControls fc{os[reachG].value, os[filterResO].value, os[filterDriveG].value};
+    const FilterControls fc =
+        filterControls(os[reachG].value, os[filterResO].value, os[filterDriveG].value, filterFrom, filterTo);
     const double filterPost = os[filterPost_].value;
     if (filterPost < 1.0 - 1.0e-5) {
         const double pa = filterPreA.process(filterFrom, filterTo, filterMix, fc, a);
         const double pb = filterPreB.process(filterFrom, filterTo, filterMix, fc, b);
         a = (1.0 - filterPost) * pa + filterPost * a;
         b = (1.0 - filterPost) * pb + filterPost * b;
-    } else {
+        preActive = true;
+    } else if (preActive) {
         filterPreA.reset();
         filterPreB.reset();
+        preActive = false;
     }
 
     // Pre/Post-Fold Tract with click-free crossfade; fold runs at local 16x rate.
@@ -132,11 +135,15 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
             const ReachCoefs top = ReachCoefs::make(os[topG].value);
             filtA = filterPost * pa + (1.0 - filterPost) * topA.process(top, ya);
             filtB = filterPost * pb + (1.0 - filterPost) * topB.process(top, yb);
+            topActive = true;
         } else {
             filtA = pa;
             filtB = pb;
-            topA.reset();
-            topB.reset();
+            if (topActive) {
+                topA.reset();
+                topB.reset();
+                topActive = false;
+            }
         }
     } else {
         filterPostA.reset();
@@ -144,6 +151,7 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
         const ReachCoefs top = ReachCoefs::make(os[topG].value);
         filtA = topA.process(top, ya);
         filtB = topB.process(top, yb);
+        topActive = true;
     }
     const double preScA = weightA.process(mix, filtA);
     const double preScB = weightB.process(mix, filtB);
@@ -181,6 +189,12 @@ void Engine::Impl::oversampledSample(int j) noexcept TF_NONBLOCKING {
 double Engine::Impl::renderVoice(VoiceStack& v, double shape, double phi, double phiLock, double mod, double inc,
                                  double offset) noexcept TF_NONBLOCKING {
     const double modCycles = mod / kTwoPi;
+    // A pure Sine voice needs no phase bookkeeping for PolyBLEP.
+    const bool sineOnly = v.to == VoiceModel::sine && (v.mix >= 1.0 || v.from == VoiceModel::sine);
+    if (sineOnly && stackEnd == 1) {
+        v.live[0] = false;
+        return os[stackGain0].value * warpedSine(shape, phi, phiLock, mod, inc, beatLockOn);
+    }
     const auto model = [&](VoiceModel m, double ph, double phLock, double t, double dt, double step,
                            bool locked) noexcept TF_NONBLOCKING -> double {
         return m == VoiceModel::sine ? warpedSine(shape, ph, phLock, mod, step, locked)
@@ -188,28 +202,32 @@ double Engine::Impl::renderVoice(VoiceStack& v, double shape, double phi, double
     };
     const auto sample = [&](std::size_t j, double ph, double phLock, double step,
                             bool locked) noexcept TF_NONBLOCKING -> double {
+        if (sineOnly) {
+            v.live[j] = false;
+            return warpedSine(shape, ph, phLock, mod, step, locked);
+        }
         const double t = frac(ph / kTwoPi + modCycles);
-        const double dt = v.fresh ? 0.0 : wrapHalf(t - v.lastT[j]);
+        const double dt = v.live[j] ? wrapHalf(t - v.lastT[j]) : 0.0;
         v.lastT[j] = t;
+        v.live[j] = true;
         const double now = model(v.to, ph, phLock, t, dt, step, locked);
         if (v.mix >= 1.0 || v.from == v.to)
             return now;
         return v.mix * now + (1.0 - v.mix) * model(v.from, ph, phLock, t, dt, step, locked);
     };
     double out = os[stackGain0].value * sample(0, phi, phiLock, inc, beatLockOn);
-    for (std::size_t j = 1; j < v.phase.size(); ++j) {
+    for (std::size_t j = 1; j < stackEnd; ++j) {
+        const double gain = os[stackGain0 + j].value;
+        if (gain == 0.0) {
+            v.live[j] = false;
+            continue;
+        }
         const double step = inc * stackMul[j] + stackAdd[j];
         v.phase[j] += step;
         v.phase[j] -= std::floor(v.phase[j]);
         const double ph = kTwoPi * frac(v.phase[j] + offset);
-        const double gain = os[stackGain0 + j].value;
-        if (gain == 0.0) {
-            v.lastT[j] = frac(ph / kTwoPi + modCycles);
-            continue;
-        }
         out += gain * sample(j, ph, ph, step, false);
     }
-    v.fresh = false;
     return out;
 }
 
@@ -218,7 +236,8 @@ double Engine::Impl::renderVoice(VoiceStack& v, double shape, double phi, double
 void Engine::Impl::resetStacks() noexcept TF_NONBLOCKING {
     hba::dsp::unisonSpreadPhases(0.0, stackA.phase);
     hba::dsp::unisonSpreadPhases(0.5, stackB.phase);
-    stackA.fresh = stackB.fresh = true;
+    stackA.live.fill(false);
+    stackB.live.fill(false);
 }
 
 void Engine::Impl::goIdle() noexcept TF_NONBLOCKING {
