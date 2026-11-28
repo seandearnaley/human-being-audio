@@ -87,10 +87,12 @@ test("every product with media shows its demo link and screenshot thumbnails", a
   for (const [slug, media] of Object.entries(PRODUCT_MEDIA) as [string, any][]) {
     const card = page.locator(`#${slug}`);
     const name = PRODUCTS_BY_SLUG[slug].name;
-    const mp4 = media.video.sources.find((s: { src: string }) => s.src.endsWith(".mp4")).src;
-    await expect(card.getByRole("link", { name: new RegExp(`${name} demo video`) })).toHaveAttribute("href", mp4);
+    if (media.video) {
+      const mp4 = media.video.sources.find((s: { src: string }) => s.src.endsWith(".mp4"))?.src;
+      await expect(card.getByRole("link", { name: new RegExp(`${name} demo video`) })).toHaveAttribute("href", mp4);
+    }
     const thumbs = card.getByRole("list", { name: `${name} screenshots` }).getByRole("link");
-    await expect(thumbs).toHaveCount(media.gallery.length);
+    await expect(thumbs).toHaveCount(media.gallery?.length ?? 0);
     const poster = card.locator("img.studio-interface");
     await poster.scrollIntoViewIfNeeded();
     await expect.poll(() => poster.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);

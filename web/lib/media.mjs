@@ -1,5 +1,6 @@
 // Product videos and screenshot galleries, keyed by catalog slug. Files live in
 // web/public/media/<slug>/; tests/media.test.mjs checks every path, size and budget.
+// Full views are 2560 px wide; `detail: true` marks a 1:1 Retina crop of part of the interface.
 
 export const PRODUCT_MEDIA = {
   "livecut-redux": {
@@ -90,7 +91,7 @@ export const PRODUCT_MEDIA = {
         { src: "/media/tract-form/tract-form-demo.mp4", type: 'video/mp4; codecs="avc1.640029, mp4a.40.2"' },
       ],
       caption:
-        "Recorded live in Ableton Live 12 at 172 BPM: a MIDI clip plays the bassline while arrangement automation moves the macros, across three factory presets (Dark Techstep Roller, Throat Wobble and Speaking Pipe). The drums come from the studio’s own synthesized showcase drum kit.",
+        "Recorded live in Ableton Live 12 at 172 BPM: a MIDI clip plays the bassline while arrangement automation moves the macros, Morph and Drive, across three factory presets (Dark Techstep Roller, Throat Wobble and Speaking Pipe). The drums come from the studio’s own synthesized showcase drum kit.",
     },
     gallery: [
       {
@@ -123,6 +124,7 @@ export const PRODUCT_MEDIA = {
       },
       {
         src: "/media/tract-form/gallery/05-oscillator-flow.webp",
+        detail: true,
         width: 1920,
         height: 1080,
         label: "Oscillator flow",
@@ -130,6 +132,7 @@ export const PRODUCT_MEDIA = {
       },
       {
         src: "/media/tract-form/gallery/06-movement-lanes.webp",
+        detail: true,
         width: 1920,
         height: 1080,
         label: "Movement lanes",
@@ -137,6 +140,7 @@ export const PRODUCT_MEDIA = {
       },
       {
         src: "/media/tract-form/gallery/07-macros-and-output.webp",
+        detail: true,
         width: 1920,
         height: 1080,
         label: "Macros & output",

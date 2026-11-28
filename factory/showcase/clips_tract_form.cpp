@@ -88,7 +88,9 @@ static std::vector<float> withStepperDrums(std::vector<float> bass, double bpm, 
         double duck = 1.0;
         for (const double k : kicks) {
             const double dt = (static_cast<double>(i) - k) / kSr;
-            if (dt >= 0.0 && dt < 0.25) duck = std::min(duck, 1.0 - 0.45 * std::exp(-dt / 0.07));
+            // 3 ms into the duck so the gain change itself cannot click.
+            if (dt >= 0.0 && dt < 0.25)
+                duck = std::min(duck, 1.0 - 0.45 * std::min(1.0, dt / 0.003) * std::exp(-dt / 0.07));
         }
         for (std::size_t c = 0; c < 2u; ++c)
             bass[i * 2u + c] = static_cast<float>(bass[i * 2u + c] * duck + drums[i * 2u + c] * 0.4);
@@ -139,7 +141,7 @@ void renderTractFormClips(const fs::path& repoRoot, const fs::path& outDir) {
         };
         auto audio = renderTractSequence(pDir / "throat-wobble.json", 172.0, 4, talker, nullptr);
         emitClip(outDir, "tract-form", "02-throat-wobble", "Throat Wobble", "172 Neuro", 172.0, "F Phrygian",
-                 "Throat Wobble's tempo-locked vowel lanes talking through a syncopated neuro line over a stepper groove",
+                 "Throat Wobble's tempo-locked vowel lane talking through a syncopated neuro line over a stepper groove",
                  withStepperDrums(std::move(audio), 172.0, 4), -13.0);
     }
 

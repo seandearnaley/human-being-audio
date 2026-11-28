@@ -58,8 +58,8 @@ test("every product media entry points at real, correctly sized, budgeted files"
     for (const shot of gallery) {
       assert.ok(shot.src.startsWith(`/media/${slug}/gallery/`), shot.src);
       assert.deepEqual(webpSize(shot.src), [shot.width, shot.height], shot.src);
-      // Full views are 2560 px wide; 1920 px details are 1:1 Retina crops of the interface.
-      assert.ok(shot.width >= 1920, `${shot.src} should stay Retina-sharp at full width`);
+      // Full views stay Retina-sharp in the 1600 px lightbox; details are 1:1 crops of the interface.
+      assert.ok(shot.width >= (shot.detail ? 1920 : 2560), `${shot.src} is too small to stay sharp`);
       assert.ok(statSync(file(shot.src)).size <= IMAGE_BUDGET, shot.src);
       assert.ok(shot.label && shot.alt.length > 40, `${shot.src} needs a label and descriptive alt text`);
       assert.ok(!alts.has(shot.alt), `Duplicate alt text in ${slug}`);
