@@ -29,7 +29,8 @@ test("browse the studio products, inspect images and open install notes", async 
       "href",
       `${STUDIO.repository}/tree/main/products/${slug}`,
     );
-    const image = card.getByRole("img");
+    const image = card.locator("img.studio-interface");
+    await expect(image).toHaveAttribute("alt", /\S/);
     await image.scrollIntoViewIfNeeded();
     await expect
       .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
