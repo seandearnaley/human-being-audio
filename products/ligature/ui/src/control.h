@@ -6,6 +6,7 @@
 
 #include "theme.h"
 
+#include <algorithm>
 #include <hba/ui/accessible_controls.h>
 #include <hba/ui/controls.h>
 #include <visage/ui.h>
