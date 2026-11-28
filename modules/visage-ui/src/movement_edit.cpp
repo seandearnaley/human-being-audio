@@ -16,8 +16,16 @@ float middleOf(float tension) { return std::pow(0.5f, std::pow(8.0f, tension)); 
 
 float toX(const Area& area, float cycle) { return area.x + area.width * cycle; }
 float toY(const Area& area, float value) { return area.y + area.height * (1.0f - value) * 0.5f; }
-float cycleAt(const Area& area, float x) { return std::clamp((x - area.x) / area.width, 0.0f, 1.0f); }
-float valueAt(const Area& area, float y) { return std::clamp(1.0f - 2.0f * (y - area.y) / area.height, -1.0f, 1.0f); }
+float cycleAt(const Area& area, float x) {
+    if (area.width <= 0.0f)
+        return 0.0f;
+    return std::clamp((x - area.x) / area.width, 0.0f, 1.0f);
+}
+float valueAt(const Area& area, float y) {
+    if (area.height <= 0.0f)
+        return 0.0f;
+    return std::clamp(1.0f - 2.0f * (y - area.y) / area.height, -1.0f, 1.0f);
+}
 Pos pointPos(const Area& area, const hba::dsp::CurvePoint& point) { return {toX(area, point.x), toY(area, point.y)}; }
 
 float snap(float cycle, bool free) {

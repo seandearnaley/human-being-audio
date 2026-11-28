@@ -6,13 +6,27 @@ import mark from "../../design/studio/mark.svg";
 import "./globals.css";
 
 const productNames = new Intl.ListFormat("en").format(PRODUCTS.map((product) => product.name));
+const siteTitle = "Human Being Audio · Free audio plugins";
+const siteDescription = `${productNames}. Open-source audio effects and instruments for macOS, Windows and Ubuntu.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(STUDIO.website),
-  title: "Human Being Audio · Free audio plugins",
-  description: `${productNames}. Open-source audio effects and instruments for macOS, Windows and Ubuntu.`,
+  title: siteTitle,
+  description: siteDescription,
   alternates: { canonical: "/" },
   icons: { icon: mark.src },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: STUDIO.publisher,
+    title: siteTitle,
+    description: siteDescription,
+  },
+  twitter: {
+    card: "summary",
+    title: siteTitle,
+    description: siteDescription,
+  },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,13 +45,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <nav aria-label="Primary">
               <ul className="nav">
                 <li>
-                  <a href="/#plugins">Plugins</a>
+                  <Link href="/#plugins">Plugins</Link>
                 </li>
                 <li>
-                  <a href="/#notes">Releases</a>
+                  <Link href="/#notes">Releases</Link>
                 </li>
                 <li>
-                  <a href="/#install">Install</a>
+                  <Link href="/#install">Install</Link>
                 </li>
                 <li>
                   <Link href="/learn">Learn</Link>

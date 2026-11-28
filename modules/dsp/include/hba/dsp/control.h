@@ -73,7 +73,9 @@ struct Ramp {
 class DcBlocker {
 public:
     void prepare(double cutoffHz, double sampleRate) noexcept HBA_NONBLOCKING {
-        r_ = std::exp(-kTwoPi * cutoffHz / std::max(sampleRate, 1.0));
+        const double sr = std::isfinite(sampleRate) ? std::max(sampleRate, 1.0) : 48000.0;
+        const double fc = std::isfinite(cutoffHz) ? std::max(cutoffHz, 0.0) : 5.0;
+        r_ = std::exp(-kTwoPi * fc / sr);
         reset();
     }
     void reset() noexcept HBA_NONBLOCKING { x1_ = y1_ = 0.0; }

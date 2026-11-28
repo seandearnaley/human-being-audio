@@ -58,7 +58,8 @@ void PluginProcessor::prepareEngine() {
 // session may be restored on any thread. The update is cancelled with the
 // processor, so one still queued when the host unloads it never runs.
 void PluginProcessor::parameterChanged(const juce::String&, float) {
-    if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+    if (const auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+        mm != nullptr && mm->isThisTheMessageThread())
         handleAsyncUpdate();
     else
         triggerAsyncUpdate();

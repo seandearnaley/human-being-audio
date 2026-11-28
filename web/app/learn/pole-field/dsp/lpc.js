@@ -1,4 +1,4 @@
-// 14th-order Burg's Method LPC + Durand-Kerner complex root finder, mirroring products/pole-field/core/src/cubes.cpp.
+// 14th-order Burg's Method LPC + Durand-Kerner complex root finder, mirroring products/pole-field/core/src/imprint_lpc.cpp.
 import { FACTORY_CUBES, NUM_STAGES, SAMPLE_RATE } from "./cubes.js";
 import { cAbs, cAdd, cArg, cDiv, cMul, cSub, clamp } from "./zplane.js";
 

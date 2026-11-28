@@ -130,4 +130,15 @@ TEST_CASE("hba::dsp shared lane router handles follow chains, loops, Free Hz inh
     lanes[0].mode = LaneMode::freeRetrig;
     CHECK(resolveLaneMode(lanes, 1) == LaneMode::freeRetrig);
     CHECK(resolveLanePhase(lanes, 1, clk) == Approx(0.5));
+
+    // Tempo-synced leader: Free / Free R followers inherit the leader's tempo clock domain.
+    lanes[0].mode = LaneMode::sync;
+    lanes[1].mode = LaneMode::freeRun;
+    CHECK(resolveLaneMode(lanes, 1) == LaneMode::sync);
+    CHECK_FALSE(resolveLaneUsesFreeClock(lanes, 1));
+    lanes[1].mode = LaneMode::freeRetrig;
+    CHECK(resolveLaneMode(lanes, 1) == LaneMode::retrig);
+    lanes[0].mode = LaneMode::oneShot;
+    lanes[1].mode = LaneMode::freeRun;
+    CHECK(resolveLaneMode(lanes, 1) == LaneMode::oneShot);
 }

@@ -90,35 +90,43 @@ constexpr double laneStepValue(int lane, int step) noexcept HBA_NONBLOCKING {
 
 // Lane phase in [0, 1) for a host position in quarter notes.
 inline double lanePhase(double ppq, double lengthInQuarters, double phaseDegrees) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(ppq) || !std::isfinite(lengthInQuarters) || !(lengthInQuarters > 0.0) ||
+        !std::isfinite(phaseDegrees))
+        return 0.0;
     const double position = ppq / lengthInQuarters + phaseDegrees / 360.0;
     return position - std::floor(position);
 }
 
 // Free-running lane phase in [0, 1) for elapsed time in seconds at `hz` cycles/sec.
 inline double lanePhaseHz(double seconds, double hz, double phaseDegrees) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(seconds) || !std::isfinite(hz) || !std::isfinite(phaseDegrees))
+        return 0.0;
     const double position = seconds * std::max(0.0, hz) + phaseDegrees / 360.0;
     return position - std::floor(position);
 }
 
 // Built-in waveform value in [-1, 1] at `phase` in [0, 1).
 inline double laneWaveform(LaneWaveform shape, double phase, int lane) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(phase))
+        return 0.0;
+    const double p = phase - std::floor(phase);
     switch (shape) {
     case LaneWaveform::sine:
-        return std::sin(6.283185307179586 * phase);
+        return std::sin(6.283185307179586 * p);
     case LaneWaveform::triangle:
-        if (phase < 0.25)
-            return 4.0 * phase;
-        if (phase < 0.75)
-            return 2.0 - 4.0 * phase;
-        return 4.0 * phase - 4.0;
+        if (p < 0.25)
+            return 4.0 * p;
+        if (p < 0.75)
+            return 2.0 - 4.0 * p;
+        return 4.0 * p - 4.0;
     case LaneWaveform::rampUp:
-        return 2.0 * phase - 1.0;
+        return 2.0 * p - 1.0;
     case LaneWaveform::rampDown:
-        return 1.0 - 2.0 * phase;
+        return 1.0 - 2.0 * p;
     case LaneWaveform::square:
-        return phase < 0.5 ? 1.0 : -1.0;
+        return p < 0.5 ? 1.0 : -1.0;
     case LaneWaveform::steps: {
-        const int step = std::clamp(static_cast<int>(phase * kLaneStepsPerCycle), 0, kLaneStepsPerCycle - 1);
+        const int step = std::clamp(static_cast<int>(p * kLaneStepsPerCycle), 0, kLaneStepsPerCycle - 1);
         return laneStepValue(lane, step);
     }
     case LaneWaveform::custom:
@@ -134,6 +142,8 @@ constexpr bool laneModeIsFree(LaneMode mode) noexcept HBA_NONBLOCKING {
 // Cycle-safe follow-chain resolution: returns `lane` itself or the ultimate leader it follows.
 template <std::size_t N>
 inline int resolveLaneSource(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return 0;
     if (lane < 0 || lane >= static_cast<int>(N))
         return 0;
     int source = lane;
@@ -146,10 +156,15 @@ inline int resolveLaneSource(const std::array<LaneConfig, N>& lanes, int lane) n
     return lane;
 }
 
-// Effective timing mode for `lane`: followers automatically inherit a Free / Free R
-// leader's Hz clock domain so linked lanes stay phase-locked and ratio-accurate across BPMs.
+// Effective timing mode for `lane`: followers automatically inherit their leader's clock domain
+// (Free / Free R Hz vs tempo-synced PPQ) so linked lanes stay phase-locked and ratio-accurate
+// across BPMs instead of reading a tempo-synced leader's hidden Hz rate.
 template <std::size_t N>
 inline LaneMode resolveLaneMode(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return LaneMode::sync;
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return LaneMode::sync;
     const int source = resolveLaneSource(lanes, lane);
     const LaneMode own = lanes[static_cast<std::size_t>(lane)].mode;
     if (source == lane)
@@ -157,6 +172,8 @@ inline LaneMode resolveLaneMode(const std::array<LaneConfig, N>& lanes, int lane
     const LaneMode leader = lanes[static_cast<std::size_t>(source)].mode;
     if (laneModeIsFree(leader))
         return (own == LaneMode::freeRetrig || own == LaneMode::retrig) ? LaneMode::freeRetrig : leader;
+    if (laneModeIsFree(own))
+        return (own == LaneMode::freeRetrig) ? LaneMode::retrig : leader;
     return own;
 }
 
@@ -168,6 +185,10 @@ inline bool resolveLaneUsesFreeClock(const std::array<LaneConfig, N>& lanes, int
 // Cycle length in quarter notes for tempo-synced modes (leader rate divided by follower ratio).
 template <std::size_t N>
 inline double resolveLaneLengthQuarters(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return kLaneRateQuarters[0];
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return kLaneRateQuarters[0];
     const int source = resolveLaneSource(lanes, lane);
     const auto rate = static_cast<std::size_t>(std::clamp(lanes[static_cast<std::size_t>(source)].rateIndex, 0,
                                                           static_cast<int>(kLaneRateQuarters.size()) - 1));
@@ -181,9 +202,15 @@ inline double resolveLaneLengthQuarters(const std::array<LaneConfig, N>& lanes, 
 // Cycle frequency in Hz for free-running modes (leader Hz multiplied by follower ratio).
 template <std::size_t N>
 inline double resolveLaneRateHz(const std::array<LaneConfig, N>& lanes, int lane) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return static_cast<double>(kLaneDefaultHz);
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return static_cast<double>(kLaneDefaultHz);
     const int source = resolveLaneSource(lanes, lane);
-    const double baseHz = std::clamp(lanes[static_cast<std::size_t>(source)].hz, static_cast<double>(kLaneMinHz),
-                                     static_cast<double>(kLaneMaxHz));
+    const double rawHz = lanes[static_cast<std::size_t>(source)].hz;
+    const double baseHz = std::isfinite(rawHz)
+                              ? std::clamp(rawHz, static_cast<double>(kLaneMinHz), static_cast<double>(kLaneMaxHz))
+                              : static_cast<double>(kLaneDefaultHz);
     if (source == lane)
         return baseHz;
     const auto ratio = static_cast<std::size_t>(
@@ -195,6 +222,10 @@ inline double resolveLaneRateHz(const std::array<LaneConfig, N>& lanes, int lane
 template <std::size_t N>
 inline double resolveLanePhase(const std::array<LaneConfig, N>& lanes, int lane,
                                const LaneClock& clock) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return 0.0;
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return 0.0;
     const double phaseDeg = lanes[static_cast<std::size_t>(lane)].phaseDeg;
     const LaneMode mode = resolveLaneMode(lanes, lane);
     if (laneModeIsFree(mode)) {
@@ -203,8 +234,9 @@ inline double resolveLanePhase(const std::array<LaneConfig, N>& lanes, int lane,
     }
     const double length = resolveLaneLengthQuarters(lanes, lane);
     if (mode == LaneMode::oneShot) {
-        const double offset = std::clamp(phaseDeg / 360.0, 0.0, 0.999999);
-        const double progress = std::max(0.0, clock.notePpq) / std::max(length, 1.0e-6);
+        const double offset = std::isfinite(phaseDeg) ? std::clamp(phaseDeg / 360.0, 0.0, 0.999999) : 0.0;
+        const double notePpq = std::isfinite(clock.notePpq) ? std::max(0.0, clock.notePpq) : 0.0;
+        const double progress = notePpq / std::max(length, 1.0e-6);
         return std::clamp(offset + progress, 0.0, 1.0 - 1.0e-6);
     }
     const double clockPpq = (mode == LaneMode::retrig) ? std::max(0.0, clock.notePpq) : clock.hostPpq;
@@ -215,6 +247,10 @@ inline double resolveLanePhase(const std::array<LaneConfig, N>& lanes, int lane,
 template <std::size_t N>
 inline double evaluateLaneOutput(const std::array<LaneConfig, N>& lanes, const std::array<Curve, N>& curves, int lane,
                                  const LaneClock& clock) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return 0.0;
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return 0.0;
     const int source = resolveLaneSource(lanes, lane);
     const double phase = resolveLanePhase(lanes, lane, clock);
     const auto shape = static_cast<LaneWaveform>(
@@ -228,6 +264,10 @@ inline double evaluateLaneOutput(const std::array<LaneConfig, N>& lanes, const s
 template <std::size_t N>
 inline double evaluateLaneSend(const std::array<LaneConfig, N>& lanes, const std::array<Curve, N>& curves, int lane,
                                const LaneClock& clock, double motion) noexcept HBA_NONBLOCKING {
+    if constexpr (N == 0)
+        return 0.0;
+    if (lane < 0 || lane >= static_cast<int>(N))
+        return 0.0;
     const auto& cfg = lanes[static_cast<std::size_t>(lane)];
     if (!cfg.on)
         return 0.0;

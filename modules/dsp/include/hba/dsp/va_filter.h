@@ -18,7 +18,11 @@
 namespace hba::dsp {
 
 // Soft saturation with unit slope at zero that levels off at +-limit.
-inline double softSaturate(double x, double limit) noexcept HBA_NONBLOCKING { return limit * std::tanh(x / limit); }
+inline double softSaturate(double x, double limit) noexcept HBA_NONBLOCKING {
+    if (!std::isfinite(limit) || !(limit > 0.0))
+        return 0.0;
+    return limit * std::tanh(x / limit);
+}
 
 // Four TPT one-poles under global negative feedback (the Moog ladder's
 // topology). `k` is the feedback, 0..4; the linear loop self-oscillates at the
@@ -70,7 +74,9 @@ class TptKorg35 {
         const double y1 = v1 + s1_;
         s1_ = y1 + v1;
         // y = G u + a s2 with u = y1 + k hp(y), hp(y) = a (y - sh): solve for y.
-        const double estimate = (G * y1 - G * k * a * sh_ + a * s2_) / (1.0 - G * k * a);
+        const double denom = 1.0 - G * k * a;
+        const double safeDenom = std::abs(denom) > 1.0e-6 ? denom : (denom < 0.0 ? -1.0e-6 : 1.0e-6);
+        const double estimate = (G * y1 - G * k * a * sh_ + a * s2_) / safeDenom;
         const double u = softSaturate(y1 + k * a * (estimate - sh_), kLimit);
         const double v2 = (u - s2_) * G;
         const double y = v2 + s2_;

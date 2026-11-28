@@ -182,8 +182,8 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                 p[cl::ParamId::padTouch] = 0.0f;
             }
         });
-        emitClip(outDir, "cutline", "01-amen-xy-poly-chop", "Amen Chop 172 · X/Y Poly", "Breakbeat", 172.0, "Drum Kit",
-                 "Cutline 2.0 Amen breakbeat sweeping live into the Poly and Slice X/Y performance stages",
+        emitClip(outDir, "cutline", "01-amen-xy-poly-chop", "Amen Chop 172 · Repeat Pad", "Breakbeat", 172.0,
+                 "Drum Kit", "Cutline Amen breakbeat sweeping live through the Repeat X/Y performance pad",
                  std::move(audio), -12.4);
     }
 
@@ -256,7 +256,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
             }
         });
         emitClip(outDir, "cutline", "03-afro-7-11-polyrhythm", "Afro 7/11 Polyrhythm", "Polyrhythm", 126.0, "Drum Kit",
-                 "Per-lane 7- and 11-step polymetric percussion with a live gravity Bounce X/Y turnaround",
+                 "Per-lane 7- and 11-step polymetric percussion with a live Roll X/Y snare turnaround",
                  std::move(audio), -12.6);
     }
 
@@ -332,9 +332,9 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                 p[cl::ParamId::padTouch] = 0.0f;
             }
         });
-        emitClip(outDir, "cutline", "05-halftime-colossus-drop", "Halftime 0.5× → Drop", "Halftime", 170.0, "Drum Kit",
-                 "Global 0.5× Half-Time opening slamming into 1× with a live Drill Drop X/Y buildup",
-                 std::move(audio), -12.4);
+        emitClip(outDir, "cutline", "05-halftime-colossus-drop", "Halftime 0.5× → Fill", "Halftime", 170.0, "Drum Kit",
+                 "Global 0.5× Half-Time opening slamming into 1× with a live Fill X/Y buildup", std::move(audio),
+                 -12.4);
     }
 
     // 6. Neuro Bass/Stab Slicer -> Tract Form + Pole Field
@@ -350,7 +350,7 @@ void renderCutlineClips(const fs::path& repoRoot, const fs::path& outDir) {
                 tp[tf::ParamId::drive] = 0.42f;
             });
         emitClip(outDir, "cutline", "06-neuro-bass-slicer", "Neuro Bass Slicer → Tract Form", "MIDI Slicer", 172.0,
-                 "F Minor", "Live Bass/Stab MIDI Slicer with Stutter X/Y chop and CC74 expression driving Tract Form",
+                 "F Minor", "Live Bass/Stab MIDI Slicer with Repeat X/Y chop and CC74 expression driving Tract Form",
                  std::move(audio), -13.0);
     }
 }

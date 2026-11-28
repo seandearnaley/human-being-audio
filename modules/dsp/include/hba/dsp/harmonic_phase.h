@@ -52,31 +52,50 @@ template <std::size_t N>
 inline std::array<double, N> optimizeCrestPhases(const std::array<double, N>& amps,
                                                  double basePhaseRad = 0.0) noexcept HBA_NONBLOCKING {
     constexpr int kSamples = 64;
+    constexpr int kMask = kSamples - 1;
 
-    const auto measurePeak = [&](const std::array<double, N>& ph) noexcept HBA_NONBLOCKING -> double {
-        double pk = 0.0;
-        for (int s = 0; s < kSamples; ++s) {
-            const double th = kTwoPi * (static_cast<double>(s) / static_cast<double>(kSamples));
-            double y = 0.0;
-            for (std::size_t k = 0; k < N; ++k) {
-                if (amps[k] > 1.0e-9)
-                    y += amps[k] * std::sin(static_cast<double>(k + 1) * th + ph[k]);
+    // Precompute the 64-point unit circle once; sin((k+1)*th + ph) = sin_tbl*cos(ph) + cos_tbl*sin(ph).
+    std::array<double, kSamples> sinTbl{};
+    std::array<double, kSamples> cosTbl{};
+    for (int s = 0; s < kSamples; ++s) {
+        const double th = kTwoPi * (static_cast<double>(s) / static_cast<double>(kSamples));
+        sinTbl[static_cast<std::size_t>(s)] = std::sin(th);
+        cosTbl[static_cast<std::size_t>(s)] = std::cos(th);
+    }
+
+    const auto evalSum = [&](const std::array<double, N>& ph,
+                             std::array<double, kSamples>& wave) noexcept HBA_NONBLOCKING -> double {
+        wave.fill(0.0);
+        for (std::size_t k = 0; k < N; ++k) {
+            if (std::abs(amps[k]) <= 1.0e-9)
+                continue;
+            const double ac = amps[k] * std::cos(ph[k]);
+            const double as = amps[k] * std::sin(ph[k]);
+            const int step = static_cast<int>(k + 1);
+            for (int s = 0; s < kSamples; ++s) {
+                const auto idx = static_cast<std::size_t>((step * s) & kMask);
+                wave[static_cast<std::size_t>(s)] += ac * sinTbl[idx] + as * cosTbl[idx];
             }
-            pk = std::max(pk, std::abs(y));
         }
+        double pk = 0.0;
+        for (double y : wave)
+            pk = std::max(pk, std::abs(y));
         return pk;
     };
 
     std::array<double, N> best{};
     for (std::size_t k = 0; k < N; ++k)
         best[k] = basePhaseRad;
-    double bestPeak = measurePeak(best);
+    std::array<double, kSamples> bestWave{};
+    double bestPeak = evalSum(best, bestWave);
 
+    std::array<double, kSamples> candWave{};
     const auto consider = [&](const std::array<double, N>& cand) noexcept HBA_NONBLOCKING {
-        const double pk = measurePeak(cand);
+        const double pk = evalSum(cand, candWave);
         if (pk < bestPeak) {
             bestPeak = pk;
             best = cand;
+            bestWave = candWave;
         }
     };
 
@@ -97,25 +116,49 @@ inline std::array<double, N> optimizeCrestPhases(const std::array<double, N>& am
 
         // 2 passes of deterministic coordinate refinement over harmonics k = 1..N-1 (locking fundamental k = 0!)
         constexpr int kSteps = 12;
+        std::array<double, kSamples> rest{};
         for (int pass = 0; pass < 2; ++pass) {
             const double span = (pass == 0) ? kTwoPi : (kTwoPi / static_cast<double>(kSteps));
             for (std::size_t k = 1; k < N; ++k) {
-                if (amps[k] <= 1.0e-6)
+                if (std::abs(amps[k]) <= 1.0e-6)
                     continue;
                 const double center = best[k];
+                const int step = static_cast<int>(k + 1);
+                const double oldAc = amps[k] * std::cos(center);
+                const double oldAs = amps[k] * std::sin(center);
+                for (int s = 0; s < kSamples; ++s) {
+                    const auto idx = static_cast<std::size_t>((step * s) & kMask);
+                    rest[static_cast<std::size_t>(s)] =
+                        bestWave[static_cast<std::size_t>(s)] - (oldAc * sinTbl[idx] + oldAs * cosTbl[idx]);
+                }
+
                 double bestAngle = center;
-                for (int s = 0; s < kSteps; ++s) {
+                for (int st = 0; st < kSteps; ++st) {
                     const double delta = (pass == 0)
-                                             ? (span * static_cast<double>(s) / static_cast<double>(kSteps))
-                                             : (span * (static_cast<double>(s) / static_cast<double>(kSteps) - 0.5));
-                    best[k] = center + delta;
-                    const double pk = measurePeak(best);
+                                             ? (span * static_cast<double>(st) / static_cast<double>(kSteps))
+                                             : (span * (static_cast<double>(st) / static_cast<double>(kSteps) - 0.5));
+                    const double candAngle = center + delta;
+                    const double ac = amps[k] * std::cos(candAngle);
+                    const double as = amps[k] * std::sin(candAngle);
+                    double pk = 0.0;
+                    for (int s = 0; s < kSamples; ++s) {
+                        const auto idx = static_cast<std::size_t>((step * s) & kMask);
+                        pk = std::max(
+                            pk, std::abs(rest[static_cast<std::size_t>(s)] + ac * sinTbl[idx] + as * cosTbl[idx]));
+                    }
                     if (pk < bestPeak) {
                         bestPeak = pk;
-                        bestAngle = best[k];
+                        bestAngle = candAngle;
                     }
                 }
                 best[k] = bestAngle;
+                const double newAc = amps[k] * std::cos(bestAngle);
+                const double newAs = amps[k] * std::sin(bestAngle);
+                for (int s = 0; s < kSamples; ++s) {
+                    const auto idx = static_cast<std::size_t>((step * s) & kMask);
+                    bestWave[static_cast<std::size_t>(s)] =
+                        rest[static_cast<std::size_t>(s)] + newAc * sinTbl[idx] + newAs * cosTbl[idx];
+                }
             }
         }
     }
@@ -129,14 +172,15 @@ inline std::array<double, N> optimizeCrestPhases(const std::array<double, N>& am
 class TwinTResonator {
   public:
     void prepare(double sampleRate) noexcept HBA_NONBLOCKING {
-        fs_ = std::max(sampleRate, 8000.0);
+        fs_ = std::isfinite(sampleRate) ? std::max(sampleRate, 8000.0) : 48000.0;
+        cachedFreq_ = -1.0;
+        cachedDecay_ = -1.0;
         reset();
     }
 
     void reset() noexcept HBA_NONBLOCKING {
         y1_ = 0.0;
         y2_ = 0.0;
-        exc_ = 0.0;
     }
 
     void trigger(double velocity, double startPhaseRad = 0.0) noexcept HBA_NONBLOCKING {
@@ -144,29 +188,33 @@ class TwinTResonator {
         // Seed initial state cleanly along requested phase so sample-0 onset is deterministic
         y1_ = v * std::sin(startPhaseRad);
         y2_ = v * std::cos(startPhaseRad);
-        exc_ = v;
     }
 
     // Advance one sample at instantaneous `freqHz`, exponential decay `decaySec`, and `analogDrive` [0..1].
     double process(double freqHz, double decaySec, double analogDrive) noexcept HBA_NONBLOCKING {
         const double f = std::clamp(freqHz, 18.0, 0.42 * fs_);
         const double tau = std::max(0.015, decaySec);
-        const double r = std::exp(-1.0 / (tau * fs_));
-        const double w = kTwoPi * f / fs_;
-        const double c = std::cos(w);
-        const double s = std::sin(w);
+        if (tau != cachedDecay_) {
+            cachedDecay_ = tau;
+            cachedR_ = std::exp(-1.0 / (tau * fs_));
+        }
+        if (f != cachedFreq_) {
+            cachedFreq_ = f;
+            const double w = kTwoPi * f / fs_;
+            cachedCos_ = std::cos(w);
+            cachedSin_ = std::sin(w);
+        }
 
         // Coupled-form damped rotation (unconditionally stable under rapid pitch sweeps!)
-        double nextY1 = r * (c * y1_ + s * y2_);
-        double nextY2 = r * (-s * y1_ + c * y2_);
+        double nextY1 = cachedR_ * (cachedCos_ * y1_ + cachedSin_ * y2_);
+        double nextY2 = cachedR_ * (-cachedSin_ * y1_ + cachedCos_ * y2_);
 
-        // Soft diode-bridge feedback nonlinearity + short trigger pulse excitation
+        // Soft diode-bridge feedback nonlinearity
         const double drv = std::clamp(analogDrive, 0.0, 1.0);
         if (drv > 1.0e-5) {
             const double k = 1.0 + 1.6 * drv;
             nextY1 = (1.0 - 0.18 * drv) * nextY1 + (0.18 * drv) * (std::tanh(k * nextY1) / k);
         }
-        exc_ *= 0.82;
         y1_ = nextY1;
         y2_ = nextY2;
         return y1_;
@@ -176,18 +224,19 @@ class TwinTResonator {
     double fs_ = 48000.0;
     double y1_ = 0.0;
     double y2_ = 0.0;
-    double exc_ = 0.0;
+    double cachedFreq_ = -1.0;
+    double cachedDecay_ = -1.0;
+    double cachedR_ = 1.0;
+    double cachedCos_ = 1.0;
+    double cachedSin_ = 0.0;
 };
 
-// Smooth asymmetric waveshaper with exact analytical DC cancellation!
-// Uses f(x) = tanh(x + a * x^2) where the DC bias for a sinusoid x = A*sin(theta)
-// is computed via 32-point spectral midpoint quadrature using quarter-wave symmetry
-// (8 precomputed sin nodes -> zero trig calls, < -140 dBFS residual DC, zero phase smear!).
-inline double analyticAsymShape(double x, double asym, double envAmp) noexcept HBA_NONBLOCKING {
+// Analytical DC bias for f(x) = tanh(x + a * x^2) driven by x = envAmp * sin(theta),
+// computed via 32-point spectral midpoint quadrature using quarter-wave symmetry.
+inline double analyticAsymDcOffset(double asym, double envAmp) noexcept HBA_NONBLOCKING {
     const double a = std::clamp(asym, -0.48, 0.48);
-    const double eval = std::tanh(x + a * x * x);
     if (std::abs(a) < 1.0e-6 || envAmp < 1.0e-6)
-        return eval;
+        return 0.0;
 
     // Quarter-wave sin((2m + 1) * pi / 32) for m = 0..7 -> exact 32-point periodic integral
     constexpr std::array<double, 8> kSin32{
@@ -200,8 +249,18 @@ inline double analyticAsymShape(double x, double asym, double envAmp) noexcept H
         const double au2 = a * u * u;
         dc += std::tanh(u + au2) + std::tanh(-u + au2);
     }
-    dc *= (1.0 / 16.0);
-    return eval - dc;
+    return dc * (1.0 / 16.0);
+}
+
+// Evaluates f(x) - dc with a precomputed DC bias (avoids recomputing DC inside oversampling loops).
+inline double analyticAsymShapeWithDc(double x, double asym, double dcOffset) noexcept HBA_NONBLOCKING {
+    const double a = std::clamp(asym, -0.48, 0.48);
+    return std::tanh(x + a * x * x) - dcOffset;
+}
+
+// Smooth asymmetric waveshaper with exact analytical DC cancellation!
+inline double analyticAsymShape(double x, double asym, double envAmp) noexcept HBA_NONBLOCKING {
+    return analyticAsymShapeWithDc(x, asym, analyticAsymDcOffset(asym, envAmp));
 }
 
 } // namespace hba::dsp

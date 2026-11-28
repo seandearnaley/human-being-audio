@@ -168,7 +168,7 @@ export default function Lab2MorphStability({ depth, showMusician, showEngineer }
       {showEngineer && (
         <CodeExcerpt
           file="products/pole-field/core/src/lattice_eval.cpp"
-          lines="145-190"
+          lines="151-185"
           code={CPP_POLAR}
         />
       )}

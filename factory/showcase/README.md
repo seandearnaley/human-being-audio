@@ -1,6 +1,6 @@
 # Showcase Audio Clips
 
-All 60 clips (6 composed, automated musical examples per plugin) are rendered offline directly from the ten C++20 DSP engines in this repository at 48 kHz stereo and encoded to stripped VBR MP3 (`libmp3lame -q:a 2`) alongside precomputed 64-bar peak envelopes in `web/app/audioManifest.json`.
+All 60 clips (6 composed, automated musical examples per plugin) are rendered offline directly from the ten C++20 DSP engines in this repository at 48 kHz stereo and encoded to stripped VBR MP3 (`libmp3lame -q:a 2`) alongside precomputed 64-bar peak envelopes in `web/app/audioManifest.json` (served from `web/public/audio/`).
 
 - `livecut-redux/` — 6 clips driven through `LivecutEngine` (`CutProc11`, `Rush`, `Bounce`, `Tape` stops, `Filter`/`Suction`, and `Loops`/`Glitch`).
 - `tract-form/` — 6 clips rendered from `tf_engine` (`Dark Techstep Roller` and `Throat Wobble` over a stepper groove, `808 Sub Hammer`, `Talking Vowel Slap`, `West-Coast Buchla`, and one sustained `Cathedral Sub Drone`).
@@ -17,8 +17,9 @@ All 60 clips (6 composed, automated musical examples per plugin) are rendered of
 
 ```bash
 python3 factory/showcase/build_showcase.py
+python3 factory/showcase/build_showcase.py --product strike-body
 ```
 
 Requires `cmake`, a C++20 compiler, `ffmpeg` with `libmp3lame`, and `CPM_SOURCE_CACHE` (defaults to `$HOME/.cache/CPM`).
 
-The showcase tool currently rebuilds the seven products with composition recipes. It preserves the existing Lineage, Datum and Ligature manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.
+The showcase tool currently rebuilds the seven products with composition recipes (or a single product when `--product <slug>` is passed). It preserves the existing Lineage, Datum and Ligature manifest entries. Each newly encoded clip must measure at or below −1 dBTP after decoding.

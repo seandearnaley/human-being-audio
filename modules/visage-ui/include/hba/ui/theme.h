@@ -28,7 +28,8 @@ inline constexpr unsigned textDim = 0xff8a95a3;
 inline constexpr unsigned textFaint = 0xff566170;
 
 constexpr unsigned withAlpha(unsigned argb, float alpha) {
-    return (argb & 0x00ffffffu) | (static_cast<unsigned>(alpha * 255.0f + 0.5f) << 24);
+    const float a = std::clamp(alpha, 0.0f, 1.0f);
+    return (argb & 0x00ffffffu) | (static_cast<unsigned>(a * 255.0f + 0.5f) << 24);
 }
 } // namespace colour
 
@@ -79,7 +80,7 @@ inline void drawLabel(visage::Canvas& canvas, float scale, const std::string& te
 inline void drawCurve(visage::Canvas& canvas, float scale, std::span<const float> values, float x, float y, float width,
                       float height, unsigned colourArgb, float low = -1.0f, float high = 1.0f, float fillAlpha = 0.0f,
                       float baseline = 0.0f, float designThickness = metric::stroke) {
-    if (values.size() < 2 || width <= 0.0f || height <= 0.0f)
+    if (values.size() < 2 || width <= 0.0f || height <= 0.0f || !(high > low))
         return;
 
     const auto toY = [&](float value) {

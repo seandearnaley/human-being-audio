@@ -81,7 +81,7 @@ const PRODUCT_DETAILS = {
         "Stamp any WAV’s 14th-order Burg LPC pole structure into the Imprint Cube, modulate from internal Input/Sidechain envelope followers, and compare edits with 64-step Undo/Redo and A/B slots.",
       ],
     ],
-    credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 46 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   cutline: {
     kind: "Drum sequencer & MIDI slicer",
@@ -113,14 +113,14 @@ const PRODUCT_DETAILS = {
       ],
       [
         "Neuro Notch, Sub-Anchor & Stereo Space",
-        "Five timbres (Reese Saw, Pure Sine, Formant Choir, Wavefold FM, Pulse Sub) feeding an LR4 mono Sub-Anchor with harmonic warmth, HIIR oversampled ADAA2 shaping, 4-mode Cytomic SVF (LP 12, LP 24, Bandpass, Neuro Notch) and upper-band Stereo Space.",
+        "Seven timbres (Reese Saw, Pure Sine, Formant Choir, Wavefold FM, Pulse Sub, Glass Bell, Super Organ) feeding an LR4 mono Sub-Anchor with harmonic warmth, HIIR oversampled ADAA2 shaping, 4-mode Cytomic SVF (LP 12, LP 24, Bandpass, Neuro Notch) and upper-band Stereo Space.",
       ],
       [
         "Live chord capture, MPE & Drag exports",
         "Hold any MIDI chord and click Cap A–D to capture voicings live, switch scenes via C0–D#0 keyswitches, stream MPE Lower Zone (±48 st), or drag 8× bar-locked .wav loops and 960-PPQ .mid clips straight into your DAW.",
       ],
     ],
-    credits: "Includes 28 factory presets, two drawable movement lanes, Undo/Redo and A/B compare.",
+    credits: "Includes 32 factory presets, two drawable movement lanes, Undo/Redo and A/B compare.",
   },
   "strike-body": {
     kind: "Percussion synth",

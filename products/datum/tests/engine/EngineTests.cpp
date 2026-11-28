@@ -205,3 +205,27 @@ TEST_CASE("Sub band stays strictly mono even at 100% Air Width and Context Seque
     CHECK(mid[2] == 'h');
     CHECK(mid[3] == 'd');
 }
+
+TEST_CASE("Datum supports 16x oversampling and 16x offline bounce renders finite punchy audio", "[engine]") {
+    constexpr double fs = 48000.0;
+    dt::Engine eng;
+    eng.prepare(fs, 256, 16);
+    CHECK(eng.oversamplingFactor() == 16);
+
+    auto p = dt::Params::defaults();
+    p[dt::ParamId::drive] = 0.65f;
+    std::vector<float> left;
+    std::vector<float> right;
+    dt::Engine::renderOffline(p, hba::dsp::defaultKickPitchCurve(), hba::dsp::defaultKickAmpCurve(),
+                              dt::defaultComposePattern(), nullptr, fs, 172.0, false, 0, left, right);
+    REQUIRE(left.size() >= 2048u);
+    REQUIRE(left.size() == right.size());
+    float peak = 0.0f;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        REQUIRE(std::isfinite(left[i]));
+        REQUIRE(std::isfinite(right[i]));
+        peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
+    }
+    CHECK(peak > 0.25f);
+    CHECK(peak <= 1.05f);
+}

@@ -241,10 +241,6 @@ private:
         hba::dsp::SvfCoefs coefs;
     };
     static bool active(const Band& b) noexcept TF_NONBLOCKING { return b.m.value != 0.0 || b.m.increment != 0.0; }
-    static void refresh(Band& b) noexcept TF_NONBLOCKING {
-        if (active(b))
-            b.coefs = hba::dsp::SvfCoefs::fromGK(b.g.value, b.k.value);
-    }
     std::array<Band, kSculptMaxBands> bands_ {};
     int activeCount_ = 3;
     hba::dsp::Ramp depth_{}, res_{}, combDelay_{};

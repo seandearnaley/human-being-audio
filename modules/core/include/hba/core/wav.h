@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace hba::core {
@@ -24,20 +26,31 @@ inline void writeLe32(std::ofstream& out, std::uint32_t v) {
 } // namespace detail
 
 inline bool writeWavFloat(std::string_view utf8Path, std::span<const float> interleaved, int channels, int sampleRate) {
-    if (utf8Path.empty() || channels <= 0 || sampleRate <= 0)
+    if (utf8Path.empty() || channels <= 0 || channels > 16383 || sampleRate <= 0)
         return false;
     const auto ch = static_cast<std::uint16_t>(channels);
     const auto sr = static_cast<std::uint32_t>(sampleRate);
-    const auto frames = static_cast<std::uint32_t>(interleaved.size() / static_cast<std::size_t>(ch));
-    const auto dataBytes = static_cast<std::uint32_t>(static_cast<std::size_t>(frames) * ch * sizeof(float));
-    const auto blockAlign = static_cast<std::uint16_t>(ch * sizeof(float));
-    const auto byteRate = sr * blockAlign;
+    const std::size_t frameCount = interleaved.size() / static_cast<std::size_t>(ch);
+    constexpr std::uint32_t kHeaderPayload = 4u + (8u + 18u) + (8u + 4u) + 8u;
+    const std::size_t maxDataBytes = std::numeric_limits<std::uint32_t>::max() - kHeaderPayload;
+    const std::size_t blockAlignSz = static_cast<std::size_t>(ch) * sizeof(float);
+    if (frameCount > maxDataBytes / blockAlignSz ||
+        static_cast<std::uint64_t>(sr) * static_cast<std::uint64_t>(blockAlignSz) >
+            std::numeric_limits<std::uint32_t>::max())
+        return false;
+    const auto frames = static_cast<std::uint32_t>(frameCount);
+    const auto dataBytes = static_cast<std::uint32_t>(frameCount * blockAlignSz);
+    const auto blockAlign = static_cast<std::uint16_t>(blockAlignSz);
+    const auto byteRate = sr * static_cast<std::uint32_t>(blockAlign);
 
     // RIFF header + 18-byte IEEE float fmt (cbSize=0) + mandatory 4-byte fact chunk + data chunk.
-    const std::uint32_t riffSize = 4u + (8u + 18u) + (8u + 4u) + (8u + dataBytes);
+    const std::uint32_t riffSize = kHeaderPayload + dataBytes;
 
-    const std::filesystem::path fsPath(
-        std::u8string_view(reinterpret_cast<const char8_t*>(utf8Path.data()), utf8Path.size()));
+    std::u8string u8Path;
+    u8Path.reserve(utf8Path.size());
+    for (char c : utf8Path)
+        u8Path.push_back(static_cast<char8_t>(static_cast<unsigned char>(c)));
+    const std::filesystem::path fsPath(u8Path);
     std::ofstream out(fsPath, std::ios::binary);
     if (!out)
         return false;

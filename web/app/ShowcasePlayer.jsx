@@ -6,6 +6,22 @@ import { drawShowcaseFrame } from "./showcase/drawSpectrum";
 
 const PLAY_EVENT = "hba:showcase-play";
 
+// Share a single AudioContext across all ShowcasePlayer decks so auditioning multiple
+// products never hits browser per-tab AudioContext limits.
+let sharedAudioCtx = null;
+let sharedCtxUsers = 0;
+const playingDecks = new Set();
+
+function getSharedAudioContext() {
+  if (typeof window === "undefined") return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    sharedAudioCtx = new AudioCtx();
+  }
+  return sharedAudioCtx;
+}
+
 function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
   const whole = Math.floor(sec);
@@ -18,11 +34,9 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
   const tracks = manifest[slug] ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(tracks[0]?.duration ?? 0);
   const [autoAdvance, setAutoAdvance] = useState(true);
-  const [hoverProgress, setHoverProgress] = useState(null);
   const [hydrated, setHydrated] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -32,37 +46,37 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
   const stageRef = useRef(null);
 
   // Lazy Web Audio graph refs (connected only on first real playback)
-  const audioCtxRef = useRef(null);
+  const hasAudioGraphRef = useRef(false);
   const analyserRef = useRef(null);
   const freqDataRef = useRef(null);
   const sourceNodeRef = useRef(null);
 
-  // Canvas animation & visibility refs
+  // Canvas animation, seek & visibility refs
   const rafRef = useRef(0);
   const visibleRef = useRef(true);
   const playingRef = useRef(false);
   const energyRef = useRef(0);
   const hoverRef = useRef(null);
+  const activeIndexRef = useRef(0);
   const activeTrackRef = useRef(tracks[0]);
   const currentTimeRef = useRef(0);
   const durationRef = useRef(tracks[0]?.duration ?? 0);
+  const pendingSeekRef = useRef(null);
   const reducedMotionRef = useRef(false);
+  const selectTrackRef = useRef(null);
 
   const headingId = useId();
   const activeTrack = tracks[activeIndex] ?? tracks[0];
 
   useEffect(() => {
+    activeIndexRef.current = activeIndex;
     activeTrackRef.current = activeTrack;
     durationRef.current = duration || activeTrack?.duration || 1;
-  }, [activeTrack, duration]);
+  }, [activeIndex, activeTrack, duration]);
 
   useEffect(() => {
     currentTimeRef.current = currentTime;
   }, [currentTime]);
-
-  useEffect(() => {
-    hoverRef.current = hoverProgress;
-  }, [hoverProgress]);
 
   useEffect(() => {
     playingRef.current = isPlaying;
@@ -83,27 +97,32 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
 
   const ensureAnalyser = useCallback(() => {
     if (analyserRef.current) {
-      if (audioCtxRef.current?.state === "suspended") {
-        audioCtxRef.current.resume().catch(() => {});
+      if (sharedAudioCtx?.state === "suspended") {
+        sharedAudioCtx.resume().catch(() => {});
       }
       return;
     }
     const audio = audioRef.current;
-    if (!audio || typeof window === "undefined") return;
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
+    if (!audio) return;
     try {
-      const ctx = new AudioCtx();
+      const ctx = getSharedAudioContext();
+      if (!ctx) return;
       const source = ctx.createMediaElementSource(audio);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.78;
       source.connect(analyser);
       analyser.connect(ctx.destination);
-      audioCtxRef.current = ctx;
       sourceNodeRef.current = source;
       analyserRef.current = analyser;
       freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
+      if (!hasAudioGraphRef.current) {
+        hasAudioGraphRef.current = true;
+        sharedCtxUsers += 1;
+      }
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
     } catch {
       // Fallback gracefully to waveform progress without FFT if Web Audio is restricted
     }
@@ -148,10 +167,11 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     rafRef.current = requestAnimationFrame(tick);
   }, [drawFrame, stopLoop]);
 
-  // Redraw static frame on track switch, seek, hover, or resize
+  // Redraw static frame on track switch, seek, play/pause, or reduced-motion toggle
+  // (skip redundant redraw when the 60 fps RAF loop is already active).
   useEffect(() => {
-    drawFrame();
-  }, [activeIndex, currentTime, duration, hoverProgress, isPlaying, reducedMotion, drawFrame]);
+    if (!rafRef.current) drawFrame();
+  }, [activeIndex, currentTime, duration, isPlaying, reducedMotion, drawFrame]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -227,11 +247,10 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     if (!audio) return;
     window.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: { slug } }));
     ensureAnalyser();
-    setIsLoading(true);
     try {
       await audio.play();
     } catch {
-      setIsLoading(false);
+      // Autoplay or decode failure handled by <audio> error/pause state
     }
   }, [ensureAnalyser, slug]);
 
@@ -250,10 +269,15 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
       const bounded = ((index % tracks.length) + tracks.length) % tracks.length;
       const audio = audioRef.current;
       const nextTrack = tracks[bounded];
-      if (bounded === activeIndex) {
+      if (bounded === activeIndexRef.current) {
         if (shouldPlay) togglePlay();
         return;
       }
+      activeIndexRef.current = bounded;
+      activeTrackRef.current = nextTrack;
+      currentTimeRef.current = 0;
+      durationRef.current = nextTrack?.duration ?? 1;
+      pendingSeekRef.current = null;
       setActiveIndex(bounded);
       setCurrentTime(0);
       setDuration(nextTrack?.duration ?? 0);
@@ -267,18 +291,28 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
         }
       }
     },
-    [activeIndex, startPlayback, togglePlay, tracks],
+    [startPlayback, togglePlay, tracks],
   );
+  selectTrackRef.current = selectTrack;
 
-  // Release AudioContext & MediaSession handlers on unmount
+  // Release Web Audio graph & MediaSession handlers on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) audioRef.current.pause();
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-        analyserRef.current = null;
-        sourceNodeRef.current = null;
+      playingDecks.delete(slug);
+      sourceNodeRef.current?.disconnect();
+      analyserRef.current?.disconnect();
+      sourceNodeRef.current = null;
+      analyserRef.current = null;
+      if (hasAudioGraphRef.current) {
+        hasAudioGraphRef.current = false;
+        sharedCtxUsers = Math.max(0, sharedCtxUsers - 1);
+        if (sharedCtxUsers === 0 && sharedAudioCtx) {
+          sharedAudioCtx.close().catch(() => {});
+          sharedAudioCtx = null;
+        }
+      } else if (playingDecks.size === 0 && sharedAudioCtx?.state === "running") {
+        sharedAudioCtx.suspend().catch(() => {});
       }
       if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
         try {
@@ -293,29 +327,30 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
         }
       }
     };
-  }, [productName]);
+  }, [productName, slug]);
 
-  // Wire Media Session metadata & hardware media keys when active
+  // Wire Media Session metadata & hardware media keys from live refs (never stale across synchronous track switches)
   const syncMediaSession = useCallback(() => {
-    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !activeTrack) return;
+    const track = activeTrackRef.current;
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !track) return;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: activeTrack.title,
+        title: track.title,
         artist: "Human Being Audio",
         album: productName,
       });
       navigator.mediaSession.setActionHandler("play", () => startPlayback());
       navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
       navigator.mediaSession.setActionHandler("previoustrack", () =>
-        selectTrack(activeIndex - 1, true),
+        selectTrackRef.current?.(activeIndexRef.current - 1, true),
       );
       navigator.mediaSession.setActionHandler("nexttrack", () =>
-        selectTrack(activeIndex + 1, true),
+        selectTrackRef.current?.(activeIndexRef.current + 1, true),
       );
     } catch {
       // Ignore if MediaSession actions are unsupported
     }
-  }, [activeIndex, activeTrack, productName, selectTrack, startPlayback]);
+  }, [productName, startPlayback]);
 
   // Wire native <audio> events
   useEffect(() => {
@@ -324,43 +359,56 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
 
     const onPlay = () => {
       playingRef.current = true;
+      playingDecks.add(slug);
       setIsPlaying(true);
-      setIsLoading(false);
       window.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: { slug } }));
+      if (sharedAudioCtx?.state === "suspended") {
+        sharedAudioCtx.resume().catch(() => {});
+      }
       syncMediaSession();
       if (!reducedMotionRef.current) startLoop();
     };
     const onPause = () => {
       playingRef.current = false;
+      playingDecks.delete(slug);
       setIsPlaying(false);
-      setIsLoading(false);
       energyRef.current = 0;
       if (rootRef.current) rootRef.current.style.setProperty("--energy", "0");
-      if (audioCtxRef.current?.state === "running") {
-        audioCtxRef.current.suspend().catch(() => {});
+      if (playingDecks.size === 0 && sharedAudioCtx?.state === "running") {
+        sharedAudioCtx.suspend().catch(() => {});
       }
       stopLoop();
       drawFrame();
     };
     const onTimeUpdate = () => {
+      currentTimeRef.current = audio.currentTime;
       setCurrentTime(audio.currentTime);
     };
     const onLoadedMetadata = () => {
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        durationRef.current = audio.duration;
         setDuration(audio.duration);
       }
+      if (pendingSeekRef.current != null) {
+        const target =
+          Number.isFinite(audio.duration) && audio.duration > 0
+            ? Math.min(pendingSeekRef.current, audio.duration)
+            : pendingSeekRef.current;
+        pendingSeekRef.current = null;
+        audio.currentTime = target;
+        currentTimeRef.current = target;
+        setCurrentTime(target);
+      }
     };
-    const onWaiting = () => setIsLoading(true);
-    const onCanPlay = () => setIsLoading(false);
     const onError = () => {
       playingRef.current = false;
-      setIsLoading(false);
+      playingDecks.delete(slug);
       setIsPlaying(false);
       stopLoop();
     };
     const onEnded = () => {
       if (autoAdvance && tracks.length > 1) {
-        selectTrack(activeIndex + 1, true);
+        selectTrackRef.current?.(activeIndexRef.current + 1, true);
       } else {
         setIsPlaying(false);
         setCurrentTime(0);
@@ -371,8 +419,6 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
     audio.addEventListener("pause", onPause);
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("waiting", onWaiting);
-    audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("error", onError);
     audio.addEventListener("ended", onEnded);
     return () => {
@@ -380,27 +426,38 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("waiting", onWaiting);
-      audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("error", onError);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [activeIndex, autoAdvance, drawFrame, selectTrack, slug, startLoop, stopLoop, syncMediaSession, tracks.length]);
+  }, [autoAdvance, drawFrame, slug, startLoop, stopLoop, syncMediaSession, tracks.length]);
 
   const handleScrub = (event) => {
     const next = parseFloat(event.target.value);
+    currentTimeRef.current = next;
     setCurrentTime(next);
-    if (audioRef.current) {
-      audioRef.current.currentTime = next;
+    const audio = audioRef.current;
+    if (audio) {
+      if (audio.readyState > 0) {
+        pendingSeekRef.current = null;
+        audio.currentTime = next;
+      } else {
+        pendingSeekRef.current = next;
+      }
     }
+    if (!rafRef.current) drawFrame();
   };
 
   const handlePointerMove = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const usable = rect.width - 20;
     if (usable <= 0) return;
-    const u = Math.max(0, Math.min(1, (event.clientX - rect.left - 10) / usable));
-    setHoverProgress(u);
+    hoverRef.current = Math.max(0, Math.min(1, (event.clientX - rect.left - 10) / usable));
+    if (!rafRef.current) drawFrame();
+  };
+
+  const handlePointerLeave = () => {
+    hoverRef.current = null;
+    if (!rafRef.current) drawFrame();
   };
 
   if (!activeTrack) return null;
@@ -453,7 +510,6 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
                 ? `Pause ${activeTrack.title}`
                 : `Play ${activeTrack.title}`
             }
-            data-loading={isLoading ? "true" : "false"}
           >
             {isPlaying ? (
               <svg viewBox="0 0 20 20" aria-hidden="true" className="showcase__icon">
@@ -522,7 +578,7 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
           ref={stageRef}
           className="showcase__stage"
           onPointerMove={handlePointerMove}
-          onPointerLeave={() => setHoverProgress(null)}
+          onPointerLeave={handlePointerLeave}
         >
           <canvas ref={canvasRef} className="showcase__canvas" aria-hidden="true" />
           <input
@@ -550,7 +606,6 @@ export default function ShowcasePlayer({ slug, productName, hue }) {
                   type="button"
                   className="showcase__track"
                   aria-current={isSelected ? "true" : undefined}
-                  data-playing={isTrackPlaying ? "true" : "false"}
                   onClick={() => selectTrack(idx, true)}
                 >
                   <span className="showcase__track-idx mono" aria-hidden="true">

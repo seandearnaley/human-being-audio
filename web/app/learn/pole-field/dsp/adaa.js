@@ -111,15 +111,109 @@ function buchlaAd2(u) {
   return u < 0 ? -y : y;
 }
 
-// Serialized canonical shaper formulas embedded into the AudioWorklet so Lab 4 audio and FFT cannot drift.
-export const WORKLET_SHAPER_SOURCE = [
-  `const BUCHLA_CELLS = ${JSON.stringify(BUCHLA_CELLS)};`,
-  tanhAd1.toString(),
-  hardClipEval.toString(),
-  hardClipAd1.toString(),
-  buchlaEval.toString(),
-  buchlaAd1.toString(),
-].join("\n");
+// Explicit unminified shaper formulas embedded into the AudioWorklet Blob.
+// Never derive this via Function.prototype.toString(), because production minifiers rename
+// function names and closed-over constants (breaking AudioWorklet scope with ReferenceError).
+export const WORKLET_SHAPER_SOURCE = `
+const DILOG_CHEB = ${JSON.stringify(DILOG_CHEB)};
+const BUCHLA_CELLS = ${JSON.stringify(BUCHLA_CELLS)};
+
+function dilogPosHalf(y) {
+  const t = 4 * y - 1;
+  const twoT = 2 * t;
+  let b1 = 0;
+  let b2 = 0;
+  for (let k = DILOG_CHEB.length - 1; k >= 1; k--) {
+    const b0 = twoT * b1 - b2 + DILOG_CHEB[k];
+    b2 = b1;
+    b1 = b0;
+  }
+  return y * (t * b1 - b2 + DILOG_CHEB[0]);
+}
+
+function tanhAd1(u) {
+  const a = Math.abs(u);
+  if (a <= 0.05) {
+    const u2 = u * u;
+    return u2 * (0.5 - u2 / 12 + (u2 * u2) / 45);
+  }
+  return a + Math.log1p(Math.exp(-2 * a)) - Math.LN2;
+}
+
+function tanhAd2(u) {
+  const a = Math.abs(u);
+  if (a <= 0.05) {
+    const u2 = u * u;
+    return u * u2 * (1 / 6 - u2 / 60 + (u2 * u2) / 315);
+  }
+  const x = Math.exp(-2 * a);
+  const lp = Math.log1p(x);
+  const li2Neg = -dilogPosHalf(x / (1 + x)) - 0.5 * lp * lp;
+  const val = 0.5 * a * a - Math.LN2 * a + (Math.PI * Math.PI) / 24 + 0.5 * li2Neg;
+  return u < 0 ? -val : val;
+}
+
+function hardClipEval(u) {
+  return u > 1 ? 1 : u < -1 ? -1 : u;
+}
+
+function hardClipAd1(u) {
+  const a = Math.abs(u);
+  return a <= 1 ? 0.5 * a * a : a - 0.5;
+}
+
+function hardClipAd2(u) {
+  const a = Math.abs(u);
+  const val = a <= 1 ? (a * a * a) / 6 : 0.5 * a * a - 0.5 * a + 1 / 6;
+  return u < 0 ? -val : val;
+}
+
+function buchlaEval(u) {
+  const a = Math.abs(u);
+  let y = -1.0;
+  if (a < 15.4396936) {
+    y = a;
+    for (let i = 0; i < BUCHLA_CELLS.length; i++) {
+      const th = BUCHLA_CELLS[i][0];
+      const w = BUCHLA_CELLS[i][1];
+      if (a > th) y += w * (a - th);
+    }
+  }
+  return u < 0 ? -y : y;
+}
+
+function buchlaAd1(u) {
+  const a = Math.abs(u);
+  if (a >= 15.4396936) return 1.33347853 - (a - 15.4396936);
+  let y = 0.5 * a * a;
+  for (let i = 0; i < BUCHLA_CELLS.length; i++) {
+    const th = BUCHLA_CELLS[i][0];
+    const w = BUCHLA_CELLS[i][1];
+    if (a > th) y += 0.5 * w * (a - th) * (a - th);
+  }
+  return y;
+}
+
+function buchlaAd2(u) {
+  const a = Math.abs(u);
+  let y;
+  if (a >= 15.4396936) {
+    const d = a - 15.4396936;
+    y = 19.1552893 + 1.33347853 * d - 0.5 * d * d;
+  } else {
+    y = (a * a * a) / 6;
+    for (let i = 0; i < BUCHLA_CELLS.length; i++) {
+      const th = BUCHLA_CELLS[i][0];
+      const w = BUCHLA_CELLS[i][1];
+      if (a > th) {
+        const d = a - th;
+        y += (w * d * d * d) / 6;
+      }
+    }
+  }
+  return u < 0 ? -y : y;
+}
+`;
 
 function runShaperSeries(xArr, mode, shaper) {
   const n = xArr.length;

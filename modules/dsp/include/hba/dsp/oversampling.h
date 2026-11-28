@@ -54,7 +54,7 @@ inline constexpr int kMaxOversampling = 16;
 class Decimator {
 public:
     void prepare(int factor) {
-        factor_ = factor;
+        factor_ = (factor == 1 || factor == 2 || factor == 4 || factor == 8 || factor == 16) ? factor : 1;
         s2_.set_coefs(decimator_coefs::k2.data());
         s4_.set_coefs(decimator_coefs::k4.data());
         s8_.set_coefs(decimator_coefs::k8.data());
@@ -150,47 +150,54 @@ class BaseRate4x {
     hiir::Downsampler2xFpu<5> d4_;
 };
 
-// Matched 2x/4x/8x up/down oversampler for audio effects.
+// Matched 2x/4x/8x/16x up/down oversampler for audio effects.
 class Oversampler {
 public:
     void prepare(int factor) {
-        factor_ = (factor == 2 || factor == 4 || factor == 8) ? factor : 4;
+        factor_ = (factor == 2 || factor == 4 || factor == 8 || factor == 16) ? factor : 4;
         u2_.set_coefs(decimator_coefs::k2.data());
         u4_.set_coefs(decimator_coefs::k4.data());
         u8_.set_coefs(decimator_coefs::k8.data());
+        u16_.set_coefs(decimator_coefs::k16.data());
         d2_.set_coefs(decimator_coefs::k2.data());
         d4_.set_coefs(decimator_coefs::k4.data());
         d8_.set_coefs(decimator_coefs::k8.data());
+        d16_.set_coefs(decimator_coefs::k16.data());
         reset();
     }
     void reset() noexcept HBA_NONBLOCKING {
         u2_.clear_buffers();
         u4_.clear_buffers();
         u8_.clear_buffers();
+        u16_.clear_buffers();
         d2_.clear_buffers();
         d4_.clear_buffers();
         d8_.clear_buffers();
+        d16_.clear_buffers();
     }
     int factor() const noexcept HBA_NONBLOCKING { return factor_; }
 
-    // Passband round-trip (up + down) group delay in base-rate samples for HIIR k2/k4/k8.
+    // Measured DC round-trip (up + down) impulse group delay in base-rate samples for HIIR k2/k4/k8/k16.
+    // Accounts for the 1 - 1/factor frame-pairing offset between Upsampler2xFpu and Downsampler2xFpu.
     double latencyExact() const noexcept HBA_NONBLOCKING {
         if (factor_ <= 2)
-            return 4.5483;
+            return 4.0483;
         if (factor_ == 4)
-            return 6.2007;
-        return 6.7549;
+            return 5.4507;
+        if (factor_ == 8)
+            return 5.8799;
+        return 6.0190;
     }
     int latencySamples() const noexcept HBA_NONBLOCKING {
         if (factor_ <= 2)
-            return 5;
+            return 4;
         if (factor_ == 4)
-            return 6;
-        return 7;
+            return 5;
+        return 6;
     }
 
     void up(float x, float* out) noexcept HBA_NONBLOCKING {
-        std::array<float, 8> tmp {};
+        std::array<float, kMaxOversampling> tmp{};
         halfBandUp(u2_, x, out);
         if (factor_ >= 4) {
             tmp[0] = out[0];
@@ -199,19 +206,34 @@ public:
             halfBandUp(u4_, tmp[1], out + 2);
         }
         if (factor_ >= 8) {
-            for (int i = 0; i < 4; ++i) tmp[static_cast<std::size_t>(i)] = out[i];
-            for (int i = 0; i < 4; ++i) halfBandUp(u8_, tmp[static_cast<std::size_t>(i)], out + 2 * i);
+            for (int i = 0; i < 4; ++i)
+                tmp[static_cast<std::size_t>(i)] = out[i];
+            for (int i = 0; i < 4; ++i)
+                halfBandUp(u8_, tmp[static_cast<std::size_t>(i)], out + 2 * i);
+        }
+        if (factor_ >= 16) {
+            for (int i = 0; i < 8; ++i)
+                tmp[static_cast<std::size_t>(i)] = out[i];
+            for (int i = 0; i < 8; ++i)
+                halfBandUp(u16_, tmp[static_cast<std::size_t>(i)], out + 2 * i);
         }
     }
 
     float down(float* buf) noexcept HBA_NONBLOCKING {
         int n = factor_;
+        if (n >= 16) {
+            for (int i = 0; i < 8; ++i)
+                buf[i] = halfBand(d16_, buf + 2 * i);
+            n = 8;
+        }
         if (n >= 8) {
-            for (int i = 0; i < 4; ++i) buf[i] = halfBand(d8_, buf + 2 * i);
+            for (int i = 0; i < 4; ++i)
+                buf[i] = halfBand(d8_, buf + 2 * i);
             n = 4;
         }
         if (n >= 4) {
-            for (int i = 0; i < 2; ++i) buf[i] = halfBand(d4_, buf + 2 * i);
+            for (int i = 0; i < 2; ++i)
+                buf[i] = halfBand(d4_, buf + 2 * i);
             n = 2;
         }
         return halfBand(d2_, buf);
@@ -222,9 +244,11 @@ private:
     hiir::Upsampler2xFpu<10> u2_;
     hiir::Upsampler2xFpu<5> u4_;
     hiir::Upsampler2xFpu<3> u8_;
+    hiir::Upsampler2xFpu<2> u16_;
     hiir::Downsampler2xFpu<10> d2_;
     hiir::Downsampler2xFpu<5> d4_;
     hiir::Downsampler2xFpu<3> d8_;
+    hiir::Downsampler2xFpu<2> d16_;
 };
 
 // Local rate lift inside an already-oversampled synthesis domain up to `targetRate`
@@ -232,12 +256,17 @@ private:
 class LocalOversampler {
 public:
     static int localFactor(int domainFactor, int targetRate = kMaxOversampling) noexcept HBA_NONBLOCKING {
-        return domainFactor >= 2 && domainFactor < targetRate ? targetRate / domainFactor : 1;
+        const int dom =
+            (domainFactor == 2 || domainFactor == 4 || domainFactor == 8 || domainFactor == 16) ? domainFactor : 1;
+        const int target =
+            (targetRate == 2 || targetRate == 4 || targetRate == 8 || targetRate == 16) ? targetRate : kMaxOversampling;
+        return dom >= 2 && dom < target ? target / dom : 1;
     }
 
     void prepare(int domainFactor, int targetRate = kMaxOversampling) {
-        domain_ = domainFactor;
-        factor_ = localFactor(domainFactor, targetRate);
+        domain_ =
+            (domainFactor == 2 || domainFactor == 4 || domainFactor == 8 || domainFactor == 16) ? domainFactor : 1;
+        factor_ = localFactor(domain_, targetRate);
         up4_.set_coefs(decimator_coefs::k4.data());
         up8_.set_coefs(decimator_coefs::k8.data());
         up16_.set_coefs(decimator_coefs::k16.data());

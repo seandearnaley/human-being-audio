@@ -213,6 +213,16 @@ export function drawZPlaneCanvas(
   }
 }
 
+const LAB2_TRAJECTORY = Array.from({ length: 61 }, (_, i) => {
+  const { polar, cartesian } = compareCartesianVsPolar(i / 60);
+  return {
+    polarX: polar.r * Math.cos(polar.theta),
+    polarY: polar.r * Math.sin(polar.theta),
+    cartX: cartesian.r * Math.cos(cartesian.theta),
+    cartY: cartesian.r * Math.sin(cartesian.theta),
+  };
+});
+
 /** Draws the Lab 2 Log-Polar arc vs Direct-Form Cartesian chord trajectory. */
 export function drawLab2TrajectoryCanvas(canvas, logicalW, logicalH, lab2Data) {
   const ctx = prepareHiDpiCanvas(canvas, logicalW, logicalH);
@@ -239,10 +249,10 @@ export function drawLab2TrajectoryCanvas(canvas, logicalW, logicalH, lab2Data) {
   ctx.stroke();
 
   ctx.beginPath();
-  for (let i = 0; i <= 60; i++) {
-    const d = compareCartesianVsPolar(i / 60).polar;
-    const x = cx + d.r * R * Math.cos(d.theta);
-    const y = cy - d.r * R * Math.sin(d.theta);
+  for (let i = 0; i < LAB2_TRAJECTORY.length; i++) {
+    const pt = LAB2_TRAJECTORY[i];
+    const x = cx + pt.polarX * R;
+    const y = cy - pt.polarY * R;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
@@ -251,10 +261,10 @@ export function drawLab2TrajectoryCanvas(canvas, logicalW, logicalH, lab2Data) {
   ctx.stroke();
 
   ctx.beginPath();
-  for (let i = 0; i <= 60; i++) {
-    const d = compareCartesianVsPolar(i / 60).cartesian;
-    const x = cx + d.r * R * Math.cos(d.theta);
-    const y = cy - d.r * R * Math.sin(d.theta);
+  for (let i = 0; i < LAB2_TRAJECTORY.length; i++) {
+    const pt = LAB2_TRAJECTORY[i];
+    const x = cx + pt.cartX * R;
+    const y = cy - pt.cartY * R;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }

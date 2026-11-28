@@ -75,8 +75,9 @@ scripts=()
 entitlements=""
 if [[ $PRODUCT == livecut-redux ]]; then
     scripts=(--scripts "$product_dir/packaging/macos/scripts")
-    entitlements="$repo/factory/release/audio-input.entitlements"
-elif [[ $PRODUCT == pole-field ]]; then
+fi
+if [[ $PRODUCT == livecut-redux || $PRODUCT == pole-field || $PRODUCT == prism-vein ]] \
+   || plutil -extract NSMicrophoneUsageDescription raw -o - "$artefacts/Standalone/$NAME.app/Contents/Info.plist" >/dev/null 2>&1; then
     entitlements="$repo/factory/release/audio-input.entitlements"
 fi
 package "$artefacts/VST3/$NAME.vst3" "/Library/Audio/Plug-Ins/VST3" vst3 "" ${scripts[@]+"${scripts[@]}"}

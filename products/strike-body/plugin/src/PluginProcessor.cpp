@@ -62,7 +62,8 @@ void PluginProcessor::prepareEngine() {
 void PluginProcessor::parameterChanged(const juce::String& id, float) {
     bouncer.invalidate();
     if (id == kQualityId) {
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+        if (const auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+            mm != nullptr && mm->isThisTheMessageThread())
             handleAsyncUpdate();
         else
             triggerAsyncUpdate();

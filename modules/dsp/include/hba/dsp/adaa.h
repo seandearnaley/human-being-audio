@@ -394,10 +394,6 @@ class MultiShaperAdaa2 {
     double bypass(double x) noexcept HBA_DSP_NONBLOCKING {
         const double dry = x1_;
         x1_ = x;
-        u2_ = u1_;
-        u1_ = x;
-        offset2_ = 0.0;
-        offset1_ = 0.0;
         primed_ = false;
         return dry;
     }
@@ -423,13 +419,15 @@ class MultiShaperAdaa2 {
                 primeModel(from, u1_, u2_);
             primed_ = true;
         } else {
-            if (to != activeTo_) {
-                if (to != activeFrom_)
+            const ShaperModel prevTo = activeTo_;
+            const ShaperModel prevFrom = activeFrom_;
+            if (to != prevTo) {
+                if (to != prevFrom)
                     primeModel(to, u1_, u2_);
                 activeTo_ = to;
             }
-            if (mix < 1.0 && from != activeFrom_) {
-                if (from != activeTo_)
+            if (mix < 1.0 && from != prevFrom) {
+                if (from != prevTo && from != to)
                     primeModel(from, u1_, u2_);
                 activeFrom_ = from;
             }

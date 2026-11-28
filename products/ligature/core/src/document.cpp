@@ -278,13 +278,21 @@ void Document::setBridgeBars(int bridge, int bars) {
     if (validBridge(song_, bridge))
         change([&](Song& s) {
             auto& b = s.bridges[static_cast<std::size_t>(bridge)];
-            const float k = static_cast<float>(bars) / static_cast<float>(b.bars);
+            const int nb = std::clamp(bars, 1, kMaxBridgeBars);
+            const float k = static_cast<float>(nb) / static_cast<float>(b.bars);
             for (auto& p : s.pins)
                 if (p.item == ItemRef::bridge(bridge)) {
                     p.start *= k;
                     p.dur *= k;
                 }
-            b.bars = bars;
+            StutterCells cells;
+            for (const auto& [step, cell] : b.stutter) {
+                const int ns = static_cast<int>(std::lround(static_cast<float>(step) * k));
+                if (ns >= 0 && ns < nb * kStepsPerBar)
+                    cells[ns] = cell;
+            }
+            b.stutter = std::move(cells);
+            b.bars = nb;
         });
 }
 

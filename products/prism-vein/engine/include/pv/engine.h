@@ -113,17 +113,27 @@ class Engine {
         double dcInR = 0.0, dcOutR = 0.0;
         double freqHz = 174.61;
         double targetHz = 174.61;
+        double cachedFbFreq = -1.0;
+        double cachedFbT60 = -1.0;
+        double cachedFb = 0.7;
         float panL = 0.707f;
         float panR = 0.707f;
         float weight = 0.0f;
+    };
+
+    struct CombBlockParams {
+        double t60 = 0.25;
+        double dampCoef = 0.3;
+        double fanAmt = 0.0;
+        double excGain = 0.5;
     };
 
     void updateActiveChordTargets(const Params& p, double totalShiftSt, bool& midiWaitingOut) noexcept PV_NONBLOCKING;
     void processStftFrame(hba::dsp::StereoStft<kFftSize>::FrameBuffers& fb, const Params& p, double modDecay,
                           double modTame, double modTilt, double modFan, double modMorph,
                           bool publishTelemetry) noexcept PV_NONBLOCKING;
-    void processCombSample(double inL, double inR, double decayAmt, double tiltAmt, double fanAmt, double qSharp,
-                           double& outL, double& outR) noexcept PV_NONBLOCKING;
+    void processCombSample(double inL, double inR, const CombBlockParams& cb, double& outL,
+                           double& outR) noexcept PV_NONBLOCKING;
     void pushCombTelemetrySample(float inMono, float outMono, double liveTameCutDb,
                                  double tameFocusHz) noexcept PV_NONBLOCKING;
     void synthesizeDemoSample(double& outL, double& outR) noexcept PV_NONBLOCKING;
@@ -282,6 +292,10 @@ class Engine {
     hba::dsp::SvfState demoReeseFilterL_{};
     hba::dsp::SvfState demoReeseFilterR_{};
     hba::dsp::SvfState demoSnareFilter_{};
+    hba::dsp::SvfCoefs demoSnareCoefs_{};
+    double demoKickDecay_ = 0.9996;
+    double demoSnareDecay_ = 0.9997;
+    double demoHatDecay_ = 0.9988;
     hba::dsp::XorShift32 demoRng_{};
 
     // Telemetry + log-frequency bin mapping for 96-column spectrum display.

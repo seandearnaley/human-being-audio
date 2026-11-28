@@ -45,8 +45,22 @@ export function ProductVideo({ slug, name, video, posterAlt }) {
       if (event.detail?.slug !== source) videoRef.current?.pause();
     };
     window.addEventListener(PLAY_EVENT, onOtherPlay);
-    return () => window.removeEventListener(PLAY_EVENT, onOtherPlay);
-  }, [source]);
+    return () => {
+      window.removeEventListener(PLAY_EVENT, onOtherPlay);
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+        try {
+          if (navigator.mediaSession.metadata?.title === video.title) {
+            navigator.mediaSession.metadata = null;
+            for (const action of ["play", "pause", "previoustrack", "nexttrack"]) {
+              navigator.mediaSession.setActionHandler(action, null);
+            }
+          }
+        } catch {
+          // Ignore unsupported MediaSession cleanup
+        }
+      }
+    };
+  }, [source, video.title]);
 
   return (
     <figure className="product-video" data-product-video={slug}>

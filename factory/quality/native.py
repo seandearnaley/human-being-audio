@@ -10,13 +10,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SHARED = {".clang-format", ".clang-format-ignore", ".clang-tidy", ".clangd", "studio.json",
-          ".github/workflows/native.yml", ".gitmodules", "factory/release/standalone-linux.py"}
+          ".github/workflows/native.yml", "factory/release/standalone-linux.py"}
 VENDOR = {"third_party", "libs", "build", "_deps", ".cpm-cache"}
 TRANSLATIONS = {".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
 # Products whose build compiles another product's code: Ligature's studio voices build these instruments' core and
 # engine directories and embed their factory presets (products/ligature/voices/CMakeLists.txt).
 BUILDS_FROM = {"ligature": ("torus-glide", "lineage", "datum", "strike-body")}
 BORROWED_PARTS = ("core/", "engine/", "presets/")
+# Engines compiled into studio-showcase by factory/showcase/CMakeLists.txt (verified in factory.yml).
+SHOWCASE_SOURCES = (
+    "modules/core/",
+    "modules/dsp/",
+    "cmake/",
+    "products/livecut-redux/src/engine/",
+    *(f"products/{p}/{part}"
+      for p in ("tract-form", "pole-field", "cutline", "torus-glide", "strike-body", "prism-vein")
+      for part in ("core/", "engine/")),
+)
 
 
 def affected(products, changes):
@@ -65,7 +75,8 @@ def plan_checks(products, changes, version_only=()):
         jobs.append("website")
     if full or "studio.json" in paths or any(p.startswith(("factory/", "design/studio/")) or "/docs/releases/" in p or
             (p.startswith("products/") and len(Path(p).parts) == 3 and p.endswith("/CMakeLists.txt")) or
-            p in {".github/workflows/factory.yml", ".github/workflows/release.yml"} for p in paths):
+            p in {".github/workflows/factory.yml", ".github/workflows/release.yml"} for p in paths) or any(
+            p.startswith(SHOWCASE_SOURCES) for p in cross_platform):
         jobs.append("factory")
     return {"products": native, "macos": macos, "windows": windows,
             "windows_editor_only": windows_editor_only, "livecut_windows_only": livecut_windows_only, "jobs": jobs}

@@ -1,14 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import livecutImage from "../../products/livecut-redux/press/screenshots/livecut-redux-interface.png";
-import tractImage from "../../products/tract-form/press/screenshots/tract-form-interface.png";
-import poleFieldImage from "../../products/pole-field/press/screenshots/pole-field-interface.png";
-import cutlineImage from "../../products/cutline/press/screenshots/cutline-interface.png";
-import torusGlideImage from "../../products/torus-glide/press/screenshots/torus-glide-interface.png";
-import strikeBodyImage from "../../products/strike-body/press/screenshots/strike-body-interface.png";
-import lineageImage from "../../products/lineage/press/screenshots/lineage-interface.png";
-import datumImage from "../../products/datum/press/screenshots/datum-interface.png";
-import prismVeinImage from "../../products/prism-vein/press/screenshots/prism-vein-interface.png";
 import ligatureImage from "../../products/ligature/press/screenshots/ligature-interface.png";
 import { PLATFORMS, PRODUCTS, PRODUCTS_BY_SLUG, STUDIO } from "../lib/catalog.mjs";
 import { PRODUCT_MEDIA } from "../lib/media.mjs";
@@ -19,16 +10,8 @@ import ShowcasePlayer from "./ShowcasePlayer";
 
 export const revalidate = 60;
 
+// Fallback static screenshots only for products without a video in PRODUCT_MEDIA.
 const PRODUCT_IMAGES = {
-  "livecut-redux": livecutImage,
-  "tract-form": tractImage,
-  "pole-field": poleFieldImage,
-  cutline: cutlineImage,
-  "torus-glide": torusGlideImage,
-  "strike-body": strikeBodyImage,
-  lineage: lineageImage,
-  datum: datumImage,
-  "prism-vein": prismVeinImage,
   ligature: ligatureImage,
 };
 

@@ -141,9 +141,12 @@ void PluginModel::cloneActiveSceneToNext() {
     GrooveBank bank = processor_.patterns.bank();
     bank.scenes[static_cast<std::size_t>(next)] = bank.scenes[static_cast<std::size_t>(cur)];
     processor_.patterns.set(bank);
+    const bool prevApplying = applyingSnapshot_;
+    applyingSnapshot_ = true;
     begin(ParamId::scene);
     set(ParamId::scene, static_cast<float>(next));
     end(ParamId::scene);
+    applyingSnapshot_ = prevApplying;
 }
 
 // A cleared scene is empty and stays empty. In MIDI Slicer mode, Clear empties the gate strip instead.

@@ -70,14 +70,34 @@ inline FormantTargets vowelTargets(int vowel) {
 }
 
 // Per-vowel loudness constants in dB for a bank running at `sampleRate`.
-// Allocation-free but slow; call from prepare().
+// Allocation-free; precomputes per-formant digital response constants once per vowel.
 inline std::array<double, kVowelCount> computeVowelCompDb(double sampleRate) {
     std::array<double, kVowelCount> comp {};
     for (int v = 0; v < kVowelCount; ++v) {
         const auto t = vowelTargets(v);
+        std::array<double, kFormantCount> g{};
+        std::array<double, kFormantCount> k{};
+        std::array<double, kFormantCount> signedGain{};
+        for (std::size_t i = 0; i < kFormantCount; ++i) {
+            const double f = clampFormantHz(std::exp(t.logHz[i]), sampleRate);
+            const double bw = std::exp(t.logBandwidth[i]);
+            g[i] = std::tan(hba::dsp::kPi * f / sampleRate);
+            k[i] = bw / f;
+            signedGain[i] = kFormantSign[i] * hba::dsp::dbToGain(t.gainDb[i]);
+        }
         double power = 0.0;
         int count = 0;
-        for (double hz = 20.0; hz <= 20000.0; hz += 1.0, ++count) power += formantSumPower(t, hz, sampleRate);
+        for (double hz = 20.0; hz <= 20000.0; hz += 1.0, ++count) {
+            std::complex<double> sum{0.0, 0.0};
+            const double w = std::tan(hba::dsp::kPi * hz / sampleRate);
+            for (std::size_t i = 0; i < kFormantCount; ++i) {
+                const double omega = w / g[i];
+                const std::complex<double> s{0.0, omega};
+                const std::complex<double> h = k[i] * s / (s * s + k[i] * s + 1.0);
+                sum += signedGain[i] * h;
+            }
+            power += std::norm(sum);
+        }
         power /= count;
         comp[static_cast<std::size_t>(v)] = kTractNoiseGainDb - 10.0 * std::log10(power);
     }

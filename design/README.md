@@ -1,13 +1,13 @@
 # Studio design and product handoff
 
-The [studio mark](studio/mark.svg) appears in both native About screens, the website header and browser tab. It also supplies the installers’ welcome and header artwork. Rebuild the shared high-density PNG and the native installer images with `bash design/studio/render-installers.sh` using resvg and ImageMagick. Both products use the same [About controls](../modules/studio-ui/StudioAbout.h). Product-specific art and instrument controls live next to the product.
+The [studio mark](studio/mark.svg) appears in the native About screens, the website header and browser tab. It also supplies the installers’ welcome and header artwork. Rebuild the shared high-density PNG and the native installer images with `bash design/studio/render-installers.sh` using resvg and ImageMagick. All studio products share [About controls](../modules/studio-ui/StudioAbout.h) and core Visage UI tokens in [modules/visage-ui](../modules/visage-ui). Product-specific art and instrument controls live next to each product.
 
 | Surface | Editable source | Inspect the result |
 | --- | --- | --- |
 | Studio identity and download names | [Studio catalogue](../studio.json) | Inspect the installed VST3 factory, About sheet, installer and website |
-| Livecut Redux | [Editor and drawing code](../products/livecut-redux/src/ui), [skin guide](../products/livecut-redux/docs/skin.md) | Open the editor, press its wordmark, use Close or Escape |
-| Tract Form | [Visage interface](../products/tract-form/ui), [brand sources](../products/tract-form/brand) | Click the Tract Form wordmark to open About. Build the dev preset, then run `./brand/build.py --screenshots` from the product directory |
-| Product photography and audio | Product screenshots, offline renders in [research](../research) | The website displays actual editor captures and short lossless examples from the engines |
+| Livecut Redux | [Visage editor](../products/livecut-redux/ui), [skin guide](../products/livecut-redux/docs/skin.md) | Open the editor, press its wordmark, use Close or Escape |
+| Tract Form & other Visage products | [Visage interface](../products/tract-form/ui), [brand sources](../products/tract-form/brand) | Click the product wordmark to open About. Build the dev preset, then run the product's `*-ui-snapshot` tool or `brand/build.py --screenshots` |
+| Product photography and audio | Product screenshots, offline renders in [factory/showcase](../factory/showcase) and [research](../research) | The website displays actual editor captures and short lossless examples from the engines |
 
 ## From a control concept to a native editor
 

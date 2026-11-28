@@ -214,7 +214,7 @@ export default function Lab4AdaaDrive({
       {showEngineer && (
         <CodeExcerpt
           file="modules/dsp/include/hba/dsp/adaa.h"
-          lines="101-127"
+          lines="107-134"
           code={CPP_ADAA}
         />
       )}

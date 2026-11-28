@@ -8,6 +8,7 @@
 #include <cmath>
 #include <functional>
 #include <string>
+#include <unordered_map>
 
 namespace hba::ui {
 
@@ -34,7 +35,13 @@ inline void drawBrandWordmark(visage::Canvas& canvas, const visage::Button& word
                               unsigned focusRingArgb = 0u) {
     const float h = designHeight * scale;
     const float w = h * aspect;
-    visage::Svg svg(svgAsset);
+    // Cache parsed SVG drawables per embedded asset address so repaints do not re-parse XML every frame.
+    // drawBrandWordmark runs exclusively on the message/UI thread.
+    static std::unordered_map<const void*, visage::Svg> svgCache;
+    auto it = svgCache.find(svgAsset.data);
+    if (it == svgCache.end())
+        it = svgCache.try_emplace(svgAsset.data, svgAsset).first;
+    visage::Svg& svg = it->second;
     svg.setDimensions(static_cast<int>(std::ceil(w)), static_cast<int>(std::ceil(h)), canvas.dpiScale());
     canvas.svg(svg, designX * scale, (wordmark.height() - h) * 0.5f, w, h);
     if (focusRingArgb != 0u && wordmark.hasKeyboardFocus()) {
@@ -44,6 +51,8 @@ inline void drawBrandWordmark(visage::Canvas& canvas, const visage::Button& word
 }
 
 template <typename Model> inline void showStudioPresetMenu(Model& model, visage::Frame* anchor) {
+    if (anchor == nullptr)
+        return;
     if (model.openHostPresetMenu) {
         model.openHostPresetMenu(*anchor);
         return;

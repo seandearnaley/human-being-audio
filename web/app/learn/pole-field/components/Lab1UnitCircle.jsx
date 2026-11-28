@@ -64,11 +64,13 @@ export default function Lab1UnitCircle({
       if (isDown) {
         const pt = stageZPoint(dipole, SAMPLE_RATE);
         const px = cx + pt.poleR * R * Math.cos(pt.poleTheta);
-        const py = cy - pt.poleR * R * Math.sin(pt.poleTheta);
+        const pyPos = cy - pt.poleR * R * Math.sin(pt.poleTheta);
+        const pyNeg = cy + pt.poleR * R * Math.sin(pt.poleTheta);
         const zx = cx + pt.zeroR * R * Math.cos(pt.zeroTheta);
-        const zy = cy - pt.zeroR * R * Math.sin(pt.zeroTheta);
-        const dPole = Math.hypot(x - px, y - py);
-        const dZero = Math.hypot(x - zx, y - zy);
+        const zyPos = cy - pt.zeroR * R * Math.sin(pt.zeroTheta);
+        const zyNeg = cy + pt.zeroR * R * Math.sin(pt.zeroTheta);
+        const dPole = Math.min(Math.hypot(x - px, y - pyPos), Math.hypot(x - px, y - pyNeg));
+        const dZero = Math.min(Math.hypot(x - zx, y - zyPos), Math.hypot(x - zx, y - zyNeg));
         target = dZero < dPole ? "zero" : "pole";
         setDragTarget(target);
         canvas.setPointerCapture?.(e.pointerId);
@@ -77,8 +79,16 @@ export default function Lab1UnitCircle({
       const { hz, q } = zPointToHzQ(r, theta, SAMPLE_RATE);
       setDipole((prev) =>
         target === "pole"
-          ? { ...prev, poleHz: Math.round(hz), poleQ: Number(q.toFixed(1)) }
-          : { ...prev, zeroHz: Math.round(hz), zeroQ: Number(Math.min(24, q).toFixed(1)) },
+          ? {
+              ...prev,
+              poleHz: Math.min(8500, Math.max(80, Math.round(hz))),
+              poleQ: Number(Math.min(36, Math.max(0.7, q)).toFixed(1)),
+            }
+          : {
+              ...prev,
+              zeroHz: Math.min(10500, Math.max(80, Math.round(hz))),
+              zeroQ: Number(Math.min(20, Math.max(0.7, q)).toFixed(1)),
+            },
       );
     },
     [dipole, dragTarget],
@@ -254,7 +264,7 @@ export default function Lab1UnitCircle({
       {showEngineer && (
         <CodeExcerpt
           file="products/pole-field/engine/src/pole_zero.h"
-          lines="27-92"
+          lines="29-91"
           code={CPP_DIPOLE}
         />
       )}

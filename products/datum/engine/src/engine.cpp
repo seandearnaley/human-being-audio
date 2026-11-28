@@ -138,6 +138,18 @@ struct Voice {
     hba::dsp::SvfState noiseFilterR;
     hba::dsp::SvfState cavityFilter;
     hba::dsp::SvfState boxFilter;
+    double cachedCavHz = -1.0;
+    double cachedCavQ = -1.0;
+    hba::dsp::SvfCoefs cachedCavCoefs{};
+    double cachedBoxHz = -1.0;
+    double cachedBoxDb = -1.0;
+    hba::dsp::SvfCoefs cachedBoxCoefs{};
+    double cachedBoxBellGain = 1.0;
+    double cachedBeaterHz = -1.0;
+    hba::dsp::SvfCoefs cachedBeaterCoefs{};
+    double cachedNoiseHz = -1.0;
+    double cachedNoiseQ = -1.0;
+    hba::dsp::SvfCoefs cachedNoiseCoefs{};
 
     std::array<double, kCavityDelaySize> cavityDelay{};
     int cavityPos = 0;
@@ -160,6 +172,10 @@ struct Voice {
         noiseFilterR.reset();
         cavityFilter.reset();
         boxFilter.reset();
+        cachedCavHz = cachedCavQ = -1.0;
+        cachedBoxHz = cachedBoxDb = -1.0;
+        cachedBeaterHz = -1.0;
+        cachedNoiseHz = cachedNoiseQ = -1.0;
     }
 
     void beginChoke(double fs, double ms = 1.2) noexcept DT_NONBLOCKING {
@@ -395,13 +411,17 @@ struct Voice {
         if (cavAmt > 0.01) {
             const double cavHz = static_cast<double>(p[ParamId::cavityHz]);
             const double cavQ = 1.4 + 7.5 * cavAmt;
-            const auto cavCoefs = hba::dsp::SvfCoefs::make(cavHz, cavQ, fs);
+            if (cavHz != cachedCavHz || cavQ != cachedCavQ) {
+                cachedCavCoefs = hba::dsp::SvfCoefs::make(cavHz, cavQ, fs);
+                cachedCavHz = cavHz;
+                cachedCavQ = cavQ;
+            }
             const int delaySamples =
                 std::clamp(static_cast<int>(fs / std::max(45.0, cavHz * 2.0)), 8, kCavityDelaySize - 2);
             const int readIdx = (cavityPos - delaySamples + kCavityDelaySize) % kCavityDelaySize;
             const double backPress = cavityDelay[static_cast<std::size_t>(readIdx)] * (0.25 * cavAmt);
             const double cavIn = (subSig + bodySig) * amp + backPress;
-            const double cavOut = cavityFilter.bandpass(cavCoefs, cavIn);
+            const double cavOut = cavityFilter.bandpass(cachedCavCoefs, cavIn);
             cavityDelay[static_cast<std::size_t>(cavityPos)] = std::tanh(cavOut);
             cavityPos = (cavityPos + 1) % kCavityDelaySize;
             bodySig += cavOut * (0.42 * cavAmt);
@@ -409,10 +429,16 @@ struct Voice {
 
         // Minimum-phase SVF Box-Cut when zero-phase dip is switched off
         if (!boxZeroPh && boxDb > 0.05) {
-            const auto boxCoefs = hba::dsp::SvfCoefs::make(boxHz, 1.35, fs);
-            const double bellGain = hba::dsp::dbToGain(-boxDb);
-            const double bp = boxFilter.bandpass(boxCoefs, bodySig);
-            bodySig += (bellGain - 1.0) * bp;
+            if (boxHz != cachedBoxHz) {
+                cachedBoxCoefs = hba::dsp::SvfCoefs::make(boxHz, 1.35, fs);
+                cachedBoxHz = boxHz;
+            }
+            if (boxDb != cachedBoxDb) {
+                cachedBoxBellGain = hba::dsp::dbToGain(-boxDb);
+                cachedBoxDb = boxDb;
+            }
+            const double bp = boxFilter.bandpass(cachedBoxCoefs, bodySig);
+            bodySig += (cachedBoxBellGain - 1.0) * bp;
         }
 
         phaseRad += dPhi;
@@ -464,9 +490,12 @@ struct Voice {
                     break;
                 }
                 }
-                const auto bCoefs =
-                    hba::dsp::SvfCoefs::make(std::clamp(bTone * (0.65 + 0.65 * velocity), 220.0, 0.44 * fs), 0.75, fs);
-                beater = beaterFilter.lowpass(bCoefs, beater);
+                const double bHz = std::clamp(bTone * (0.65 + 0.65 * velocity), 220.0, 0.44 * fs);
+                if (bHz != cachedBeaterHz) {
+                    cachedBeaterCoefs = hba::dsp::SvfCoefs::make(bHz, 0.75, fs);
+                    cachedBeaterHz = bHz;
+                }
+                beater = beaterFilter.lowpass(cachedBeaterCoefs, beater);
             }
 
             // Phase-locked 2-op transient FM knock
@@ -496,7 +525,11 @@ struct Voice {
                     const double nHz = std::clamp(static_cast<double>(p[ParamId::noiseHz]) * (0.55 + 0.65 * velocity),
                                                   220.0, 0.44 * fs);
                     const double nQ = 0.65 + 4.5 * static_cast<double>(p[ParamId::noiseQ]);
-                    const auto nCoefs = hba::dsp::SvfCoefs::make(nHz, nQ, fs);
+                    if (nHz != cachedNoiseHz || nQ != cachedNoiseQ) {
+                        cachedNoiseCoefs = hba::dsp::SvfCoefs::make(nHz, nQ, fs);
+                        cachedNoiseHz = nHz;
+                        cachedNoiseQ = nQ;
+                    }
                     const int nMode = p.choice(ParamId::noiseMode);
                     const double rawL = rng.nextBipolar();
                     const double airW = static_cast<double>(p[ParamId::airWidth]);
@@ -504,14 +537,14 @@ struct Voice {
                     double fL = 0.0;
                     double fR = 0.0;
                     if (nMode == static_cast<int>(NoiseMode::lp)) {
-                        fL = noiseFilterL.lowpass(nCoefs, rawL);
-                        fR = noiseFilterR.lowpass(nCoefs, rawR);
+                        fL = noiseFilterL.lowpass(cachedNoiseCoefs, rawL);
+                        fR = noiseFilterR.lowpass(cachedNoiseCoefs, rawR);
                     } else if (nMode == static_cast<int>(NoiseMode::hp)) {
-                        fL = noiseFilterL.highpass(nCoefs, rawL);
-                        fR = noiseFilterR.highpass(nCoefs, rawR);
+                        fL = noiseFilterL.highpass(cachedNoiseCoefs, rawL);
+                        fR = noiseFilterR.highpass(cachedNoiseCoefs, rawR);
                     } else {
-                        fL = noiseFilterL.bandpass(nCoefs, rawL);
-                        fR = noiseFilterR.bandpass(nCoefs, rawR);
+                        fL = noiseFilterL.bandpass(cachedNoiseCoefs, rawL);
+                        fR = noiseFilterR.bandpass(cachedNoiseCoefs, rawR);
                     }
                     nL = fL * nEnv * nLvl * 0.85;
                     nR = fR * nEnv * nLvl * 0.85;
@@ -561,12 +594,12 @@ struct Engine::Impl {
 
     hba::dsp::SampleExchange<ClickSlot> clicks;
 
-    // 8x HIIR Oversampled ADAA2 Body Shaper (L/R)
-    hba::dsp::Oversampler osL, osR;
-    hba::dsp::Adaa2<hba::dsp::TanhShaper> tubeL, tubeR;
-    hba::dsp::Adaa2<hba::dsp::HardClipShaper> hardL, hardR;
-    hba::dsp::Adaa2<hba::dsp::SineFoldShaper> foldL, foldR;
-    hba::dsp::SoftClipAdaa1 softClipL, softClipR;
+    // Up to 16x HIIR Oversampled ADAA2 Body Shaper (mono — body + sub are strictly mono)
+    hba::dsp::Oversampler osBody;
+    hba::dsp::Adaa2<hba::dsp::TanhShaper> tubeBody;
+    hba::dsp::Adaa2<hba::dsp::HardClipShaper> hardBody;
+    hba::dsp::Adaa2<hba::dsp::SineFoldShaper> foldBody;
+    hba::dsp::SoftClipAdaa1 softClipBody;
 
     // Master Orchard/Bedrosian PhaseRotator (0..360 deg) + 8-stage Allpass Disperser
     hba::dsp::PhaseRotator rotL, rotR;
@@ -611,10 +644,9 @@ struct Engine::Impl {
 
     void prepare(double sampleRate, int /*maxBlockSize*/, int factor) {
         fs = std::max(8000.0, sampleRate);
-        osFactor = (factor == 8) ? 8 : ((factor == 2) ? 2 : 4);
+        osFactor = (factor == 16) ? 16 : ((factor == 8) ? 8 : ((factor == 2) ? 2 : 4));
         scopeWindowSamples = std::max(kScopePoints, static_cast<int>(std::round(fs * 0.180)));
-        osL.prepare(osFactor);
-        osR.prepare(osFactor);
+        osBody.prepare(osFactor);
         rotL.prepare(fs);
         rotR.prepare(fs);
         scLowpass.reset();
@@ -624,16 +656,11 @@ struct Engine::Impl {
     void reset() noexcept DT_NONBLOCKING {
         for (auto& v : voices)
             v.reset(fs);
-        osL.reset();
-        osR.reset();
-        tubeL.reset();
-        tubeR.reset();
-        hardL.reset();
-        hardR.reset();
-        foldL.reset();
-        foldR.reset();
-        softClipL.reset();
-        softClipR.reset();
+        osBody.reset();
+        tubeBody.reset();
+        hardBody.reset();
+        foldBody.reset();
+        softClipBody.reset();
         rotL.reset();
         rotR.reset();
         for (auto& ap : dispL)
@@ -740,6 +767,11 @@ struct Engine::Impl {
             return x;
         const double gain = 1.0 + drive * 6.5;
         const double invComp = 1.0 / (1.0 + drive * 1.45);
+        const double asymAmt = 0.38 * drive;
+        const double asymDc =
+            (shaperType == static_cast<int>(ShaperType::asym) || shaperType > static_cast<int>(ShaperType::asym))
+                ? hba::dsp::analyticAsymDcOffset(asymAmt, std::min(1.5, envAmp * gain))
+                : 0.0;
         float osBuf[hba::dsp::kMaxOversampling]{};
         os.up(static_cast<float>(x * gain), osBuf);
         const int fac = os.factor();
@@ -764,7 +796,7 @@ struct Engine::Impl {
                 break;
             case static_cast<int>(ShaperType::asym):
             default:
-                y = hba::dsp::analyticAsymShape(u, 0.38 * drive, std::min(1.5, envAmp * gain));
+                y = hba::dsp::analyticAsymShapeWithDc(u, asymAmt, asymDc);
                 break;
             }
             osBuf[s] = static_cast<float>(y);
@@ -905,10 +937,12 @@ struct Engine::Impl {
         const int refMode = p.choice(ParamId::refBassMode);
 
         const auto scLpCoefs = hba::dsp::SvfCoefs::make(180.0, 0.707, fs);
+        const double refDuckCoef = 1.0 - std::exp(-1.0 / (0.045 * fs));
 
         float blockPeakL = 0.0f;
         float blockPeakR = 0.0f;
         float blockGrDb = 0.0f;
+        double blockTruePeak = 0.0;
         double scEnergy = 0.0;
 
         for (int i = 0; i < numSamples; ++i) {
@@ -975,15 +1009,13 @@ struct Engine::Impl {
             const double bodyDry = sumBody * bodyLvl;
             const double effDrive = std::clamp(drive * activeDriveScale, 0.0, 1.0);
 
-            // Phase-Native 3-Band Shaping: Body (plus optional Glue share of Sub) through 8x ADAA2!
+            // Phase-Native 3-Band Shaping: mono Body (plus optional Glue share of Sub) through oversampled ADAA2!
             const double intoShaper = bodyDry + subDry * glue;
-            const double shapedL =
-                shapeBodySample(intoShaper, maxEnvAmp, effDrive, shaperType, osL, tubeL, hardL, foldL, softClipL);
-            const double shapedR =
-                shapeBodySample(intoShaper, maxEnvAmp, effDrive, shaperType, osR, tubeR, hardR, foldR, softClipR);
+            const double shaped = shapeBodySample(intoShaper, maxEnvAmp, effDrive, shaperType, osBody, tubeBody,
+                                                  hardBody, foldBody, softClipBody);
 
-            double outL = subDry * (1.0 - glue) + shapedL + sumClickL * clickLvl;
-            double outR = subDry * (1.0 - glue) + shapedR + sumClickR * clickLvl;
+            double outL = subDry * (1.0 - glue) + shaped + sumClickL * clickLvl;
+            double outR = subDry * (1.0 - glue) + shaped + sumClickR * clickLvl;
 
             // Smooth Orchard/Bedrosian PhaseRotator (0..360 deg)
             phaseCos += (targetCos - phaseCos) * 0.01;
@@ -1017,9 +1049,7 @@ struct Engine::Impl {
             }
 
             // True-peak & level metering on kick bus (before optional reference bass)
-            const double tp = truePeak.process(outL, outR);
-            const float tpDb = static_cast<float>(hba::dsp::gainToDb(std::max(1.0e-4, tp)));
-            tel.truePeakDb = std::max(tpDb, tel.truePeakDb - 0.002f);
+            blockTruePeak = std::max(blockTruePeak, truePeak.process(outL, outR));
 
             // Sidechain capture (Sub-Link)
             double scSample = 0.0;
@@ -1083,7 +1113,7 @@ struct Engine::Impl {
                     refBassPhase -= hba::dsp::kTwoPi;
 
                 // Clean ducking envelope recovering over ~65 ms after kick trigger
-                refBassDuck += (1.0 - refBassDuck) * (1.0 - std::exp(-1.0 / (0.045 * fs)));
+                refBassDuck += (1.0 - refBassDuck) * refDuckCoef;
                 double gate = 1.0;
                 const double beatFrac = std::fmod(std::max(0.0, curPpq), 1.0);
                 if (refMode == static_cast<int>(RefBassMode::tech132))
@@ -1104,6 +1134,8 @@ struct Engine::Impl {
         }
 
         // Update block-level telemetry
+        const float blockTpDb = static_cast<float>(hba::dsp::gainToDb(std::max(1.0e-4, blockTruePeak)));
+        tel.truePeakDb = std::max(blockTpDb, tel.truePeakDb - 0.002f * static_cast<float>(numSamples));
         int activeCount = 0;
         for (const auto& v : voices)
             if (v.active)
@@ -1250,6 +1282,11 @@ PreviewSnapshot Engine::renderPreview(const Params& params, const hba::dsp::Enve
         if (drive > 1.0e-4) {
             const double gain = 1.0 + drive * 6.5;
             const double invComp = 1.0 / (1.0 + drive * 1.45);
+            const double asymAmt = 0.38 * drive;
+            const double asymDc =
+                (shaperType == static_cast<int>(ShaperType::asym) || shaperType > static_cast<int>(ShaperType::asym))
+                    ? hba::dsp::analyticAsymDcOffset(asymAmt, std::min(1.5, b.envAmp * gain))
+                    : 0.0;
             float buf[4]{};
             os.up(static_cast<float>(shaped * gain), buf);
             for (int s = 0; s < 4; ++s) {
@@ -1273,7 +1310,7 @@ PreviewSnapshot Engine::renderPreview(const Params& params, const hba::dsp::Enve
                     break;
                 case static_cast<int>(ShaperType::asym):
                 default:
-                    y = hba::dsp::analyticAsymShape(u, 0.38 * drive, std::min(1.5, b.envAmp * gain));
+                    y = hba::dsp::analyticAsymShapeWithDc(u, asymAmt, asymDc);
                     break;
                 }
                 buf[s] = static_cast<float>(y);
@@ -1303,12 +1340,15 @@ PreviewSnapshot Engine::renderPreview(const Params& params, const hba::dsp::Enve
 
         const int bin = std::min(kScopePoints - 1, (i * kScopePoints) / totalSamples);
         const auto bi = static_cast<std::size_t>(bin);
-        if (std::abs(subDry) >= std::abs(snap.subWave[bi]))
-            snap.subWave[bi] = static_cast<float>(subDry * outGain);
-        if (std::abs(shaped) >= std::abs(snap.bodyWave[bi]))
-            snap.bodyWave[bi] = static_cast<float>(shaped * outGain);
-        if (std::abs(clk) >= std::abs(snap.clickWave[bi]))
-            snap.clickWave[bi] = static_cast<float>(clk * outGain);
+        const double subScaled = subDry * outGain;
+        const double bodyScaled = shaped * outGain;
+        const double clkScaled = clk * outGain;
+        if (std::abs(subScaled) >= std::abs(snap.subWave[bi]))
+            snap.subWave[bi] = static_cast<float>(subScaled);
+        if (std::abs(bodyScaled) >= std::abs(snap.bodyWave[bi]))
+            snap.bodyWave[bi] = static_cast<float>(bodyScaled);
+        if (std::abs(clkScaled) >= std::abs(snap.clickWave[bi]))
+            snap.clickWave[bi] = static_cast<float>(clkScaled);
         if (std::abs(sum) >= std::abs(snap.sumWave[bi]))
             snap.sumWave[bi] = static_cast<float>(sum);
     }
@@ -1443,7 +1483,7 @@ void Engine::renderOffline(const Params& params, const hba::dsp::EnvelopeCurve& 
                            int slotIndex, std::vector<float>& outLeft, std::vector<float>& outRight) {
     const double fs = std::max(22050.0, sampleRate);
     Engine eng;
-    eng.prepare(fs, 256, 8);
+    eng.prepare(fs, 256, 16);
     eng.setCurves(pitchCurve, ampCurve);
     eng.setPattern(pattern);
     if (click != nullptr && click->valid())

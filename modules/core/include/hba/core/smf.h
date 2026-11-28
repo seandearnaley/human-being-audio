@@ -48,7 +48,8 @@ inline void pushBe32(std::vector<std::uint8_t>& out, std::uint32_t v) {
 }
 
 inline void pushVlq(std::vector<std::uint8_t>& out, std::uint32_t value) {
-    std::uint8_t buf[5]{};
+    value = std::min<std::uint32_t>(value, 0x0FFFFFFFu); // SMF max 4-byte variable-length quantity
+    std::uint8_t buf[4]{};
     int n = 0;
     buf[n++] = static_cast<std::uint8_t>(value & 0x7Fu);
     value >>= 7u;
@@ -76,7 +77,8 @@ std::vector<std::uint8_t> encodeSmf(std::array<SmfTrack, N> tracks, std::uint16_
     pushBe32(smf, 6u);
     pushBe16(smf, N == 1 ? 0u : 1u);
     pushBe16(smf, static_cast<std::uint16_t>(N));
-    pushBe16(smf, ppq);
+    const std::uint16_t safePpq = std::clamp<std::uint16_t>(ppq, 1u, 0x7FFFu);
+    pushBe16(smf, safePpq);
 
     for (std::size_t i = 0; i < N; ++i) {
         auto& [name, events] = tracks[i];
@@ -101,6 +103,8 @@ std::vector<std::uint8_t> encodeSmf(std::array<SmfTrack, N> tracks, std::uint16_
 
         std::uint32_t prevTick = 0u;
         for (const auto& ev : events) {
+            if (ev.size == 0)
+                continue;
             const std::uint32_t delta = ev.tick >= prevTick ? (ev.tick - prevTick) : 0u;
             prevTick = std::max(prevTick, ev.tick);
             pushVlq(track, delta);

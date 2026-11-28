@@ -233,14 +233,17 @@ void PluginProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juc
     for (const auto metadata : midi) {
         if (metadata.numBytes == 3) {
             const auto msg = metadata.getMessage();
-            auto& held = passedThrough_[static_cast<std::size_t>(msg.getChannel() - 1)];
-            const auto note = static_cast<std::size_t>(msg.getNoteNumber());
-            if (msg.isNoteOn()) {
-                held.set(note);
-            } else if (msg.isNoteOff()) {
-                if (!held.test(note))
-                    continue;
-                held.reset(note);
+            const int ch = msg.getChannel();
+            if (ch >= 1 && ch <= 16 && (msg.isNoteOn() || msg.isNoteOff())) {
+                auto& held = passedThrough_[static_cast<std::size_t>(ch - 1)];
+                const auto note = static_cast<std::size_t>(msg.getNoteNumber());
+                if (msg.isNoteOn()) {
+                    held.set(note);
+                } else {
+                    if (!held.test(note))
+                        continue;
+                    held.reset(note);
+                }
             }
         }
         bypassMidi_.addEvent(metadata.data, metadata.numBytes, metadata.samplePosition);
@@ -383,18 +386,25 @@ void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
 // song.
 void PluginProcessor::setStateInformation(const void* data, int size) {
     const auto xml = getXmlFromBinary(data, size);
+    bool loaded = false;
     if (xml != nullptr && xml->hasTagName(state.state.getType()) &&
         xml->getIntAttribute(kFormatProp.toString(), 0) >= kStateFormat) {
         state.replaceState(juce::ValueTree::fromXml(*xml));
         if (auto song = parseSong(state.state.getProperty(kSongProp).toString().toStdString())) {
             document_.load(*song, false);
-            songChanged();
-            return;
+            loaded = true;
         }
     }
-    const int index = presets.indexOf(kDefaultPreset);
-    document_.load(index >= 0 ? presets.all()[static_cast<std::size_t>(index)] : defaultSong(), false);
-    state.state.setProperty(kPresetNameProp, toJuce(document_.song().name), nullptr);
+    if (!loaded) {
+        const int index = presets.indexOf(kDefaultPreset);
+        document_.load(index >= 0 ? presets.all()[static_cast<std::size_t>(index)] : defaultSong(), false);
+        state.state.setProperty(kPresetNameProp, toJuce(document_.song().name), nullptr);
+    }
+    lastScene_ = values_.snapshot().choice(ParamId::scene);
+    if (outputRole() >= 0) {
+        LinkHub::instance().releaseLeader(this);
+        followerSongGeneration_ = 0;
+    }
     songChanged();
 }
 

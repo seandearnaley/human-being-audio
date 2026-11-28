@@ -985,10 +985,10 @@ void Engine::Impl::renderAuditionAudio(const Params& params, float* left, float*
     if (left == nullptr || numSamples <= 0)
         return;
     const bool enabled = params.on(ParamId::audition);
-    const float gainDb = params[ParamId::auditionGain];
+    const double targetGain = enabled ? hba::dsp::dbToGain(static_cast<double>(params[ParamId::auditionGain])) : 0.0;
     for (int i = 0; i < numSamples; ++i) {
         float l = 0.0f, r = 0.0f;
-        audition.renderSample(gainDb, enabled, l, r);
+        audition.renderSampleLinear(targetGain, l, r);
         if (right != nullptr) {
             left[i] = l;
             right[i] = r;

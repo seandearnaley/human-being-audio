@@ -60,9 +60,14 @@ inline std::optional<hba::dsp::Curve> readCurveJson(const Json& value) {
         if (segment == kSegmentNames.end())
             return std::nullopt;
         hba::dsp::CurvePoint point;
-        point.x = item[0].get<float>();
-        point.y = item[1].get<float>();
-        point.tension = std::clamp(item[2].get<float>(), -1.0f, 1.0f);
+        const float px = item[0].get<float>();
+        const float py = item[1].get<float>();
+        const float pt = item[2].get<float>();
+        if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pt))
+            return std::nullopt;
+        point.x = px;
+        point.y = py;
+        point.tension = std::clamp(pt, -1.0f, 1.0f);
         point.segment = static_cast<hba::dsp::Segment>(segment - kSegmentNames.begin());
         hba::dsp::addPoint(curve, point);
     }
@@ -75,7 +80,10 @@ inline Json writeCurveJson(const hba::dsp::Curve& curve) {
     for (int i = 0; i < n; ++i) {
         const auto& point = curve.points[static_cast<std::size_t>(i)];
         const auto segIdx = std::min<std::size_t>(static_cast<std::size_t>(point.segment), kSegmentNames.size() - 1u);
-        points.push_back(Json::array({point.x, point.y, point.tension, std::string(kSegmentNames[segIdx])}));
+        const float x = std::isfinite(point.x) ? std::clamp(point.x, 0.0f, 0.9999f) : 0.0f;
+        const float y = std::isfinite(point.y) ? std::clamp(point.y, -1.0f, 1.0f) : 0.0f;
+        const float t = std::isfinite(point.tension) ? std::clamp(point.tension, -1.0f, 1.0f) : 0.0f;
+        points.push_back(Json::array({x, y, t, std::string(kSegmentNames[segIdx])}));
     }
     return points;
 }

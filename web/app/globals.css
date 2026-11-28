@@ -252,15 +252,6 @@
     position: relative;
     &:hover { color: var(--ink); }
   }
-  .nav__progress {
-    position: absolute; inset-inline: 0.35rem; inset-block-end: 0.15rem; block-size: 2px;
-    background: var(--film); transform-origin: 0 50%; scale: 0 1; opacity: 0;
-  }
-
-  .scroll-progress {
-    position: absolute; inset-inline: 0; inset-block-end: -1px; block-size: 2px;
-    background: var(--film); transform-origin: 0 50%; scale: 0 1;
-  }
 
   /* Buttons ---------------------------------------------------------------- */
   .btn {
@@ -279,22 +270,7 @@
   }
   .btn--primary { --_bg: var(--ink); --_fg: var(--paper); --_bd: var(--ink);
     &:hover { --_bg: color-mix(in oklab, var(--ink) 86%, var(--paper)); } }
-  .btn--accent { --_bg: var(--accent); --_fg: var(--on-accent); --_bd: var(--accent);
-    &:hover { --_bg: color-mix(in oklab, var(--accent) 84%, white); --_bd: var(--_bg); } }
   .btn--quiet { --_bd: transparent; padding-inline: 0.6rem; &:hover { --_bd: var(--line-strong); } }
-  .btn__chev { inline-size: 0.6em; aspect-ratio: 1; border: solid currentColor; border-width: 0 1.5px 1.5px 0; rotate: 45deg; translate: 0 -0.15em; }
-
-  .tag {
-    display: inline-flex; align-items: center; gap: 0.4em;
-    padding: 0.15rem 0.5rem; border-radius: 999px;
-    font-family: var(--font-mono); font-size: var(--step--2); font-stretch: 87.5%; font-weight: 500;
-    border: 1px solid var(--line-strong); color: var(--ink-2); white-space: nowrap;
-  }
-  .tag--released { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-wash); }
-  .tag--beta { border-style: solid; }
-  .tag--concept { border-style: dashed; }
-  .tag--pending { border-style: dashed; color: var(--ink-2); font-size: 0.68rem; }
-  .dot { inline-size: 0.55em; aspect-ratio: 1; border-radius: 50%; background: var(--accent, var(--ink-2)); }
 
   /* Hero ------------------------------------------------------------------- */
   .hero__title {
@@ -311,8 +287,6 @@
   }
   .hero__lede { font-size: var(--step-1); max-inline-size: 36ch; color: var(--ink); line-height: 1.45; }
   .hero__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-block-start: var(--space-5); }
-  .hero__latest { margin-block-start: var(--space-4); font-size: var(--step--1); color: var(--ink-2);
-    & a { color: var(--ink); } }
 
   /* Transparent drag surfaces that sit over the sculpture. Horizontal drags
      twist; vertical gestures stay with the page so scrolling never traps. */

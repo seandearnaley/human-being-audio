@@ -159,20 +159,30 @@ void PluginModel::savePreset() {
 }
 
 void PluginModel::undo() {
+    if (following())
+        return;
     processor_.document().undo();
     processor_.songChanged();
 }
 
 void PluginModel::redo() {
+    if (following())
+        return;
     processor_.document().redo();
     processor_.songChanged();
 }
 
 void PluginModel::toggleAB() {
+    if (following())
+        return;
     processor_.document().toggleAB();
     processor_.songChanged();
 }
 
-void PluginModel::copyAB() { processor_.document().copyAB(); }
+void PluginModel::copyAB() {
+    if (following())
+        return;
+    processor_.document().copyAB();
+}
 
 } // namespace lg

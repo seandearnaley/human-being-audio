@@ -112,6 +112,31 @@ export default function Lab3MorphCube({
     setMorphY(Number(ny.toFixed(3)));
   }, []);
 
+  const handlePadKeyDown = useCallback((e) => {
+    const step = e.shiftKey ? 0.01 : 0.05;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setMorphX((v) => Number(Math.max(0, v - step).toFixed(3)));
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setMorphX((v) => Number(Math.min(1, v + step).toFixed(3)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMorphY((v) => Number(Math.max(0, v - step).toFixed(3)));
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMorphY((v) => Number(Math.min(1, v + step).toFixed(3)));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setMorphX(0);
+      setMorphY(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setMorphX(1);
+      setMorphY(1);
+    }
+  }, []);
+
   return (
     <section className="fg-chapter" id="morph-cube" aria-labelledby="ch3-title">
       <div className="fg-chapter__head">
@@ -193,13 +218,20 @@ export default function Lab3MorphCube({
           <div className="fg-bench__stage">
             <div className="fg-canvas-box fg-canvas-box--interactive">
               <span className="fg-canvas-label">
-                XY Morph Pad · {FACTORY_CUBES[cubeIndex].name} (drag to morph)
+                XY Morph Pad · {FACTORY_CUBES[cubeIndex].name} (drag or use arrow keys)
               </span>
               <canvas
                 ref={lab3PadRef}
                 width={LAB3_PAD_W}
                 height={LAB3_PAD_H}
-                aria-label="Interactive 2D XY morph pad for Pole Field 3D filter cube"
+                tabIndex={0}
+                role="slider"
+                aria-label={`Interactive 2D XY morph pad for ${FACTORY_CUBES[cubeIndex].name}; use arrow keys to adjust Morph X and Y`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(morphX * 100)}
+                aria-valuetext={`X ${Math.round(morphX * 100)}%, Y ${Math.round(morphY * 100)}%`}
+                onKeyDown={handlePadKeyDown}
                 onPointerDown={(e) => handlePadPointer(e, true)}
                 onPointerMove={(e) => handlePadPointer(e, false)}
                 onPointerUp={() => {
@@ -303,6 +335,26 @@ export default function Lab3MorphCube({
             </div>
 
             <SliderControl
+              id="l3-x"
+              label="Morph X (Left ↔ Right)"
+              min={0}
+              max={1}
+              step={0.01}
+              value={morphX}
+              displayValue={`${Math.round(morphX * 100)}%`}
+              onChange={setMorphX}
+            />
+            <SliderControl
+              id="l3-y"
+              label="Morph Y (Top ↔ Bottom)"
+              min={0}
+              max={1}
+              step={0.01}
+              value={morphY}
+              displayValue={`${Math.round(morphY * 100)}%`}
+              onChange={setMorphY}
+            />
+            <SliderControl
               id="l3-z"
               label="Morph Z (Front ↔ Back Face)"
               min={0}
@@ -377,7 +429,7 @@ export default function Lab3MorphCube({
       {showEngineer && (
         <CodeExcerpt
           file="products/pole-field/engine/src/engine.cpp"
-          lines="35-45"
+          lines="37-42"
           code={CPP_SUBLOCK}
         />
       )}

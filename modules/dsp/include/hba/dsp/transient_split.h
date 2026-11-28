@@ -16,7 +16,7 @@ namespace hba::dsp {
 class TransientSplit {
   public:
     void prepare(double sampleRate) noexcept HBA_NONBLOCKING {
-        const double sr = std::max(sampleRate, 1.0);
+        const double sr = std::isfinite(sampleRate) ? std::max(sampleRate, 1.0) : 48000.0;
         const double dt = 1.0 / sr;
         // Cascaded 1-pole high-pass at 240 Hz on detector mono sidechain to ignore sub cycles.
         hpCoef_ = std::exp(-kTwoPi * 240.0 * dt);

@@ -33,7 +33,8 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
     this.subLp1 = 0; this.subLp2 = 0;
     this.dcX = 0; this.dcY = 0;
     this.dcXR = 0; this.dcYR = 0;
-    this.adaaPrevX = 0; this.adaaPrevF1 = 0;
+    this.adaaX1 = 0; this.adaaX2 = 0;
+    this.adaaF2_1 = 0; this.adaaD1_1 = 0;
 
     this.port.onmessage = (e) => {
       const msg = e.data || {};
@@ -50,7 +51,11 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
         if (typeof msg.adaaEnabled === "boolean") this.adaaEnabled = msg.adaaEnabled;
         if (typeof msg.adaaDrive === "number") this.adaaDrive = msg.adaaDrive;
         if (typeof msg.adaaFreq === "number") this.adaaFreq = msg.adaaFreq;
-        if (msg.adaaShaper) this.adaaShaper = msg.adaaShaper;
+        if (msg.adaaShaper && msg.adaaShaper !== this.adaaShaper) {
+          this.adaaShaper = msg.adaaShaper;
+          this.adaaX1 = 0; this.adaaX2 = 0;
+          this.adaaF2_1 = 0; this.adaaD1_1 = 0;
+        }
         if (typeof msg.adaaOs === "number") this.adaaOs = msg.adaaOs === 2 ? 2 : 1;
         if (Array.isArray(msg.stages)) this.updateCoefs(msg.stages);
       }
@@ -217,15 +222,37 @@ class PoleFieldBenchProcessor extends AudioWorkletProcessor {
     return tanhAd1(u);
   }
 
+  shaperAd2(u) {
+    if (this.adaaShaper === "buchla") return buchlaAd2(u);
+    if (this.adaaShaper === "clip") return hardClipAd2(u);
+    return tanhAd2(u);
+  }
+
   stepAdaaSample(x0) {
     if (!this.adaaEnabled) return this.shaperEval(x0);
-    const f1_0 = this.shaperAd1(x0);
-    const d = x0 - this.adaaPrevX;
-    const y = Math.abs(d) > 1e-4
-      ? (f1_0 - this.adaaPrevF1) / d
-      : this.shaperEval(0.5 * (x0 + this.adaaPrevX));
-    this.adaaPrevX = x0;
-    this.adaaPrevF1 = f1_0;
+    const f2_0 = this.shaperAd2(x0);
+    const diff01 = x0 - this.adaaX1;
+    const d1_0 = Math.abs(diff01) > 1e-5
+      ? (f2_0 - this.adaaF2_1) / diff01
+      : this.shaperAd1(0.5 * (x0 + this.adaaX1));
+    const diff02 = x0 - this.adaaX2;
+    let y;
+    if (Math.abs(diff02) > 1e-4) {
+      y = (2 * (d1_0 - this.adaaD1_1)) / diff02;
+    } else {
+      const xBar = 0.5 * (x0 + this.adaaX2);
+      const delta = xBar - this.adaaX1;
+      if (Math.abs(delta) > 1e-4) {
+        const d1Bar = (this.shaperAd2(xBar) - this.adaaF2_1) / delta;
+        y = (2 * (this.shaperAd1(xBar) - d1Bar)) / delta;
+      } else {
+        y = this.shaperEval((x0 + this.adaaX1 + this.adaaX2) / 3);
+      }
+    }
+    this.adaaX2 = this.adaaX1;
+    this.adaaX1 = x0;
+    this.adaaF2_1 = f2_0;
+    this.adaaD1_1 = d1_0;
     return y;
   }
 

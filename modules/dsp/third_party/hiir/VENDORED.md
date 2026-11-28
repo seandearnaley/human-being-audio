@@ -7,6 +7,6 @@
 - Files: only the scalar ("Fpu") 2x downsampler and upsampler and what they
   include, unmodified (`readme.txt` is the archive's own readme).
 
-The half-band coefficients used by `engine/src/decimator.h` were generated once
+The half-band coefficients used by `modules/dsp/include/hba/dsp/oversampling.h` were generated once
 with `hiir::PolyphaseIir2Designer::compute_coefs` from the same archive (not
 vendored); the design targets are recorded next to the coefficient tables.

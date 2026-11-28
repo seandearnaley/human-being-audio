@@ -59,7 +59,7 @@ export const RECIPES = [
   },
 ];
 
-export const CPP_DIPOLE = `// products/pole-field/engine/src/pole_zero.h:27-42
+export const CPP_DIPOLE = `// products/pole-field/engine/src/pole_zero.h:29-44
 static PoleZeroCoefs make(const SectionSpec& s, double sampleRate) noexcept PF_NONBLOCKING {
     const double gp = SvfCoefs::prewarp(static_cast<double>(s.poleHz), sampleRate);
     const double gz = SvfCoefs::prewarp(static_cast<double>(s.zeroHz), sampleRate);
@@ -77,7 +77,7 @@ static PoleZeroCoefs make(const SectionSpec& s, double sampleRate) noexcept PF_N
     return c;
 }
 
-// Nonlinear passive OTA resonance damping (pole_zero.h:84-92):
+// Nonlinear passive OTA resonance damping (pole_zero.h:85-91):
 const double e = v1Lin * (1.0 / 3.2);
 const double kAdd = 0.28 * (e * e) / (1.0 + e * e);
 const double a1 = 1.0 / (1.0 + g * (g + c.svf.k + kAdd));`;
@@ -104,14 +104,14 @@ for (std::size_t s = 0; s < kNumStages; ++s) {
     };
 }`;
 
-export const CPP_SUBLOCK = `// products/pole-field/engine/src/engine.cpp:35-40
+export const CPP_SUBLOCK = `// products/pole-field/engine/src/engine.cpp:37-41
 // Exact 0.00 dB flat LR4 Sub Lock crossover + Dome Hilbert reference alignment:
 //   Sub = subFit(LR4_LP(inMono))
 //   Pre-lattice high = LR4_HP(in)  (-39 dB at f0/3 -> prevents drive IM in sub band)
 //   Post-lattice Mid passes unfiltered at subSplit -> Sub + WetMid == exact 0.00 dB LR4_AP!
 //   Post-lattice Side runs LR4_HP(subSplit) so sub band stays < -65 dB strictly mono!`;
 
-export const CPP_ADAA = `// modules/dsp/include/hba/dsp/adaa.h:101-127 (TanhShaper ADAA2)
+export const CPP_ADAA = `// modules/dsp/include/hba/dsp/adaa.h:107-134 (TanhShaper ADAA2)
 static double ad1(double u) noexcept HBA_DSP_NONBLOCKING {
     const double a = std::abs(u);
     if (a <= 0.5) { // Maclaurin polynomial eliminates cancellation near 0

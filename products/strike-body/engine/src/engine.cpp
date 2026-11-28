@@ -345,7 +345,6 @@ void Engine::process(const Params& params, float* outL, float* outR, int numSamp
             // Layer 2: 24-Mode Nonlinear Tensioned Modal Shell + 6 Mallet Materials
             // ----------------------------------------------------------------
             double mallet = 0.0;
-            const double ageSec = v.ageSamples * invSr;
             switch (v.malletType) {
             case MalletType::woodStick: {
                 const double len = std::max(6.0, 0.00038 * sr);
@@ -407,7 +406,6 @@ void Engine::process(const Params& params, float* outL, float* outR, int numSamp
                 break;
             }
             }
-            (void)ageSec;
 
             // Skip tension trig updates once shellEnergy decays below 1e-4!
             const bool updateTension =

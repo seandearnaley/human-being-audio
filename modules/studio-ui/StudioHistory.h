@@ -11,15 +11,17 @@
 namespace hba::studio {
 
 template <typename Snapshot, std::size_t kMaxDepth = 64> class History {
+    static_assert(kMaxDepth > 0, "History kMaxDepth must be positive");
+
   public:
     void push(const Snapshot& beforeChange) {
         lastCoalesceTag_ = 0;
+        redo_.clear();
         if (!undo_.empty() && undo_.back() == beforeChange)
             return;
         if (undo_.size() >= kMaxDepth)
             undo_.erase(undo_.begin());
         undo_.push_back(beforeChange);
-        redo_.clear();
     }
 
     // Coalesces rapid continuous edits (e.g. curve point drags, note drags, divider drags)
@@ -27,7 +29,7 @@ template <typename Snapshot, std::size_t kMaxDepth = 64> class History {
     // Undo reverts the entire drag gesture rather than a single pixel step.
     void pushCoalesced(const Snapshot& beforeChange, std::uint64_t tag, std::int64_t nowMs,
                        std::int64_t windowMs = 450) {
-        if (tag != 0 && tag == lastCoalesceTag_ && (nowMs - lastCoalesceMs_) <= windowMs) {
+        if (tag != 0 && tag == lastCoalesceTag_ && nowMs >= lastCoalesceMs_ && (nowMs - lastCoalesceMs_) <= windowMs) {
             lastCoalesceMs_ = nowMs;
             return;
         }
@@ -79,13 +81,8 @@ template <typename Snapshot, std::size_t kMaxDepth = 64> class History {
     }
 
     void copyActiveToOther(const Snapshot& current) {
-        if (slotBActive_) {
-            slotB_ = current;
-            slotA_ = current;
-        } else {
-            slotA_ = current;
-            slotB_ = current;
-        }
+        slotA_ = current;
+        slotB_ = current;
     }
 
     bool canUndo() const noexcept { return !undo_.empty(); }

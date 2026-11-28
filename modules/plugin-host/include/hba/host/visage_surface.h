@@ -67,6 +67,10 @@ struct VisageSurface : juce::HWNDComponent {
   private:
     static LRESULT CALLBACK parentWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR,
                                              DWORD_PTR context) {
+        if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(window, parentWindowProc, 0);
+            return DefSubclassProc(window, message, wParam, lParam);
+        }
         auto& surface = *reinterpret_cast<VisageSurface*>(context);
         if (message == WM_SIZE && surface.getHWND() == window && surface.onNativeResize)
             surface.onNativeResize(LOWORD(lParam), HIWORD(lParam));

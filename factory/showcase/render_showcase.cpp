@@ -11,26 +11,68 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string_view>
 
 int main(int argc, char** argv) {
     using namespace hba::showcase;
-    if (argc < 3) {
-        std::cerr << "usage: studio-showcase <repo-root> <out-wav-dir>\n";
+    if (argc < 3 || argc > 4) {
+        std::cerr << "usage: studio-showcase <repo-root> <out-wav-dir> [product]\n";
         return 2;
     }
     const fs::path repoRoot = argv[1];
     const fs::path outDir = argv[2];
+    const std::string_view onlyProduct = (argc == 4) ? std::string_view(argv[3]) : std::string_view{};
     fs::create_directories(outDir);
 
+    auto renderProduct = [&](std::string_view slug) -> bool {
+        if (slug == "livecut-redux") {
+            renderLivecutClips(outDir);
+            return true;
+        }
+        if (slug == "tract-form") {
+            renderTractFormClips(repoRoot, outDir);
+            return true;
+        }
+        if (slug == "pole-field") {
+            renderPoleFieldClips(repoRoot, outDir);
+            return true;
+        }
+        if (slug == "cutline") {
+            renderCutlineClips(repoRoot, outDir);
+            return true;
+        }
+        if (slug == "torus-glide") {
+            renderTorusGlideClips(repoRoot, outDir);
+            return true;
+        }
+        if (slug == "strike-body") {
+            renderStrikeBodyClips(repoRoot, outDir);
+            return true;
+        }
+        if (slug == "prism-vein") {
+            renderPrismVeinClips(repoRoot, outDir);
+            return true;
+        }
+        return false;
+    };
+
     try {
-        std::cout << "Rendering Human Being Audio Studio Showcase (42 clips)...\n";
-        renderLivecutClips(outDir);
-        renderTractFormClips(repoRoot, outDir);
-        renderPoleFieldClips(repoRoot, outDir);
-        renderCutlineClips(repoRoot, outDir);
-        renderTorusGlideClips(repoRoot, outDir);
-        renderStrikeBodyClips(repoRoot, outDir);
-        renderPrismVeinClips(repoRoot, outDir);
+        if (onlyProduct.empty()) {
+            std::cout << "Rendering Human Being Audio Studio Showcase (42 clips)...\n";
+            renderLivecutClips(outDir);
+            renderTractFormClips(repoRoot, outDir);
+            renderPoleFieldClips(repoRoot, outDir);
+            renderCutlineClips(repoRoot, outDir);
+            renderTorusGlideClips(repoRoot, outDir);
+            renderStrikeBodyClips(repoRoot, outDir);
+            renderPrismVeinClips(repoRoot, outDir);
+        } else {
+            std::cout << "Rendering Human Being Audio Showcase (" << onlyProduct << ")...\n";
+            if (!renderProduct(onlyProduct)) {
+                std::cerr << "ERROR: unknown showcase product '" << onlyProduct << "'\n";
+                return 2;
+            }
+        }
 
         nlohmann::ordered_json arr = nlohmann::ordered_json::array();
         for (const auto& c : manifest()) {
