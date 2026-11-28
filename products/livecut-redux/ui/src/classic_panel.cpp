@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace lc::ui {
@@ -405,6 +406,16 @@ void ClassicPanel::tick() {
 
     if (v.canApplyMode != lastCanApply_) {
         lastCanApply_ = v.canApplyMode;
+        redraw();
+    }
+
+    // draw() paints these status lines itself, so the panel repaints whenever one changes.
+    auto painted = std::tie(paintedTransform_, paintedFracture_, paintedResonator_, paintedSpectral_, paintedHold_,
+                            paintedCapture_);
+    const auto current = std::tie(v.transformStatus, v.fractureStatus, v.resonatorStatus, v.spectralStatus,
+                                  v.holdStatus, v.captureStatus);
+    if (painted != current) {
+        painted = current;
         redraw();
     }
 }
