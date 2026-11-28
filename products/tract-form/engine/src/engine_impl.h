@@ -267,13 +267,14 @@ struct Engine::Impl {
     detail::ReachFilter topA, topB;
     FilterType filterFrom = FilterType::clean, filterTo = FilterType::clean;
     double filterMix = 1.0;
+    bool preActive = false, topActive = false; // the Pre filters and the bounding low-pass ran last sample
     // Each voice's stack: the side voices' phases (cycles; [0] unused, the centre
     // is phaseA / phaseB), every stack voice's last phase for PolyBLEP, and the
     // model with its crossfade.
     struct VoiceStack {
         std::array<double, hba::dsp::kMaxUnison> phase{};
         std::array<double, hba::dsp::kMaxUnison> lastT{};
-        bool fresh = true; // lastT is stale: take this sample's phase as the last one
+        std::array<bool, hba::dsp::kMaxUnison> live{}; // lastT holds last sample's phase
         VoiceModel from = VoiceModel::sine, to = VoiceModel::sine;
         double mix = 1.0;
         detail::ModelShape shape{};
@@ -281,6 +282,7 @@ struct Engine::Impl {
     VoiceStack stackA, stackB;
     // Per side voice: increment multiplier (cents) and offset (Beat lock, cycles per sample).
     std::array<double, hba::dsp::kMaxUnison> stackMul{}, stackAdd{};
+    std::size_t stackEnd = 1; // one past the last side voice with any gain
     detail::WeightFilter weightA, weightB;
     detail::SculptCoefs sculptCoefsA, sculptCoefsB;
     std::array<detail::SculptChannel, 2> sculptA{}, sculptB{};

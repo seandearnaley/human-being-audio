@@ -98,11 +98,14 @@ inline double modelSample(VoiceModel model, const ModelShape& m, double t, doubl
 // ---- filter ------------------------------------------------------------------
 
 // Per-sample filter controls: Reach's pre-warped cutoff, resonance 0..1 and the
-// drive gain into the saturated types.
+// drive gain into the saturated types, with the coefficients the Clean and SVF
+// types need, worked out once for both voices.
 struct FilterControls {
     double g = 0.0;
     double res = 0.0;
     double drive = 1.0;
+    ReachCoefs clean{};
+    hba::dsp::SvfCoefs svf{};
 };
 
 // Resonance to each type's feedback or damping.
@@ -115,6 +118,19 @@ inline double korg35Feedback(double res) noexcept TF_NONBLOCKING {
 // SVF damping k = 1 / Q, Q from Butterworth (0.707) up to about 35.
 inline double svfDamping(double res) noexcept TF_NONBLOCKING {
     return std::sqrt(2.0) * (1.0 - 0.98 * std::clamp(res, 0.0, 1.0));
+}
+
+inline bool usesSvf(FilterType t) noexcept TF_NONBLOCKING { return t == FilterType::lowpass || t == FilterType::notch; }
+
+// The controls for one sample, with only the coefficients the playing types use.
+inline FilterControls filterControls(double g, double res, double drive, FilterType from,
+                                     FilterType to) noexcept TF_NONBLOCKING {
+    FilterControls c{g, res, drive, {}, {}};
+    if (from == FilterType::clean || to == FilterType::clean)
+        c.clean = ReachCoefs::make(g);
+    if (usesSvf(from) || usesSvf(to))
+        c.svf = hba::dsp::SvfCoefs::fromGK(g, svfDamping(res));
+    return c;
 }
 
 // One channel's filter, holding every type's state so a type change can
@@ -151,7 +167,7 @@ class VoiceFilter {
     double run(FilterType type, const FilterControls& c, double x) noexcept TF_NONBLOCKING {
         switch (type) {
         case FilterType::clean:
-            return clean_.process(ReachCoefs::make(c.g), x);
+            return clean_.process(c.clean, x);
         case FilterType::ladder: {
             const double k = ladderFeedback(c.res);
             // Make up the ladder's passband loss, 1 / (1 + k), part way.
@@ -160,14 +176,12 @@ class VoiceFilter {
         case FilterType::ms20:
             return korg_.process(x, c.g, korg35Feedback(c.res), c.drive);
         case FilterType::lowpass:
-            return lowpass_.lowpass(hba::dsp::SvfCoefs::fromGK(c.g, svfDamping(c.res)),
-                                    hba::dsp::softSaturate(c.drive * x, kSvfLimit));
+            return lowpass_.lowpass(c.svf, hba::dsp::softSaturate(c.drive * x, kSvfLimit));
         case FilterType::notch: {
-            const auto coefs = hba::dsp::SvfCoefs::fromGK(c.g, svfDamping(c.res));
             const double in = hba::dsp::softSaturate(c.drive * x, kSvfLimit);
             double band = 0.0, low = 0.0;
-            notch_.tick(coefs, in, band, low);
-            return in - coefs.k * band;
+            notch_.tick(c.svf, in, band, low);
+            return in - c.svf.k * band;
         }
         }
         return x;
@@ -176,6 +190,8 @@ class VoiceFilter {
     // `mix` runs 0 -> 1 across a type change from `from` to `to`.
     double process(FilterType from, FilterType to, double mix, const FilterControls& c,
                    double x) noexcept TF_NONBLOCKING {
+        if (to == FilterType::clean && (mix >= 1.0 || from == to))
+            return clean_.process(c.clean, x); // the common case, kept inline
         const double now = run(to, c, x);
         if (mix >= 1.0 || from == to)
             return now;

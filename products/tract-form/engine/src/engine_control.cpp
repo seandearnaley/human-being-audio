@@ -129,6 +129,7 @@ void Engine::Impl::resetDsp() noexcept TF_NONBLOCKING {
     topA.reset();
     topB.reset();
     filterMix = 1.0;
+    preActive = topActive = false;
     weightA.reset();
     weightB.reset();
     for (auto& ch : sculptA)
@@ -623,8 +624,6 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
     t[subWarmth_] = std::clamp(sm(subWarmthSm), 0.0, 1.0);
     t[shapeA] = moved(LaneTarget::shape, sm(aShapeSm), 0.0, 1.0);
     t[shapeB] = moved(LaneTarget::shape, sm(bShapeSm), 0.0, 1.0);
-    stackA.shape = modelShape(t[shapeA]);
-    stackB.shape = modelShape(t[shapeB]);
     t[filterResO] = moved(LaneTarget::res, sm(filterResSm), 0.0, 1.0);
     t[filterDriveG] = dbToGain(kFilterMaxDriveDb * std::clamp(sm(filterDriveSm), 0.0, 1.0));
     t[filterPost_] = std::clamp(sm(filterPosSm), 0.0, 1.0);
@@ -640,6 +639,9 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
         const double lockStep = beatLockOn ? beatLockHz(anchorBpmOrCurrent(), beatAmt) / fo : 0.0;
         for (std::size_t j = 0; j < stackMul.size(); ++j) {
             t[stackGain0 + j] = j == 0 ? gains.centre : static_cast<int>(j) < count ? gains.side : 0.0;
+            // A side voice past the stack only fades out; its detune need not move.
+            if (j > 0 && static_cast<int>(j) >= count && os[stackGain0 + j].value == 0.0)
+                continue;
             const double offset = hba::dsp::kSzaboOffsets[j];
             stackMul[j] = beatLockOn ? 1.0 : std::exp2(stackCents(offset, spreadAmt, beatAmt) / 1200.0);
             stackAdd[j] = offset * spreadAmt * lockStep;
@@ -668,6 +670,14 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
             os[i].snap(t[i]);
         else
             os[i].to(t[i], controlOs);
+    }
+    // A side voice that has faded out lands exactly on zero, so it is skipped.
+    stackEnd = 1;
+    for (std::size_t i = stackGain0 + 1; i <= stackGainLast; ++i) {
+        if (t[i] == 0.0 && std::abs(os[i].value) < 1e-9)
+            os[i].snap(0.0);
+        if (t[i] != 0.0 || os[i].value != 0.0)
+            stackEnd = i - stackGain0 + 1;
     }
 
     updateSculptTargets(p, f0, t[width], c, snap);
@@ -717,6 +727,12 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
     };
     updateModel(stackA, ParamId::aModel);
     updateModel(stackB, ParamId::bModel);
+    // The non-sine models' constants, once the models are settled (Sine reads
+    // its Shape per sample).
+    if (stackA.to != VoiceModel::sine || stackA.from != VoiceModel::sine)
+        stackA.shape = modelShape(t[shapeA]);
+    if (stackB.to != VoiceModel::sine || stackB.from != VoiceModel::sine)
+        stackB.shape = modelShape(t[shapeB]);
     const auto ftype = static_cast<FilterType>(
         std::clamp(p.choice(ParamId::filterType), 0, static_cast<int>(choices::filterType.size()) - 1));
     if (snap) {
