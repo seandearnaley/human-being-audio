@@ -41,11 +41,11 @@ const PRODUCT_DETAILS = {
     form: "prisms",
     formLabel: "Prisms",
     alt: "Tract Form’s oscillator flow, Pre/Post formant tract, live analysis, modulation arcs and four movement lanes",
-    body: "One master sine feeds two phase-modulated reese voices and a clean LR8-locked mono sub. Morph vowels Pre or Post ADAA2 wavefolding, shape ADSR & Sub Punch, carve Stereo Sculpt notches and animate four tempo-locked lanes.",
+    body: "One master sine phase-modulates two reese voices, each a sine, saw, pulse or resonant phase-distortion oscillator stacked up to seven deep, and becomes a clean, locked mono sub underneath. Shape them through a resonant filter that follows the note, morph vowels, fold, carve Sculpt notches and animate four tempo-locked lanes.",
     features: [
       [
-        "Sub-locked neuro bass engine",
-        "Phase-aligned LR8 crossover with Dome Hilbert phase rotation, continuous Sub Warmth, ADSR + Sub Punch envelope, and 2×/4×/8× oversampled ADAA2 shaping (Fold, Sine, Tube, Buchla, Clip).",
+        "Reese core and resonant filter",
+        "Sine, Saw, Pulse or resonant PD per voice, stacked up to seven deep; a Clean, Ladder, MS-20, Low-pass or Notch filter that tracks the note before or after the fold; and a phase-locked mono sub that never moves.",
       ],
       [
         "Pre/Post vocal tract & Stereo Sculpt",
@@ -56,7 +56,7 @@ const PRODUCT_DETAILS = {
         "Render four bars offline with 16× oversampling and drag the WAV into a session, with zero-latency C² safety limiting, 64-step Undo/Redo and A/B compare.",
       ],
     ],
-    credits: "Includes 42 factory presets, eight macros, Undo/Redo and A/B compare.",
+    credits: "Includes 54 factory presets, eight macros, Undo/Redo and A/B compare.",
   },
   "pole-field": {
     kind: "Morphing filterbank",

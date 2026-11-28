@@ -11,7 +11,7 @@ shell and the interface. Change it in the same commit as the code it describes.
 
 | Area | Choice | Reason |
 |---|---|---|
-| Shell | JUCE 9.0.5 | Canonical VST3/AU/Standalone, parameters, state. |
+| Shell | JUCE 9.0.6 | Canonical VST3/AU/Standalone, parameters, state. |
 | Interface | Visage 1.0.0 (Metal, Direct3D, Vulkan) | GPU vector rendering, headless screenshots. |
 | Engine | Plain C++20, no JUCE | Fast tests, portable. |
 | Licence | AGPL-3.0-or-later | Matches JUCE's open-source terms. |
@@ -392,3 +392,106 @@ keeping the low end mono is about speakers and rooms, not the note.
 The host owns the top-level window. Drawing Visage directly into that window let it cover standalone controls on Windows and the About sheet on macOS. Visage deliberately ignores a close request for an embedded Mac view. Each plugin instance therefore owns a native child surface whose visibility and bounds follow the JUCE editor.
 
 On Windows a JUCE HWNDComponent confines the native Visage window to the editor bounds so host controls remain visible at any display scale. On Linux the editor embeds its Visage window inside a JUCE XEmbedComponent. The JUCE message loop monitors the Visage X11 file descriptor for rendering and input. On macOS a JUCE NSViewComponent owns the embedded instrument view. Opening About hides the native surface on all three platforms. Closing the sheet or pressing Escape reveals the same instrument without rebuilding its renderer or changing the preset.
+
+## Revision 2, pass 1: voice models, stack and filter
+
+Measured on 1.1 (research Dossier 07): the voices were warped sines, the only
+low-pass had no resonance, and with their lanes running most Neuro, Motion and
+Talk presets put nearly as much energy between the harmonics as on them. Pass 1
+gives the voices a reese core and Reach a resonant filter. A patch that keeps
+Sine, a stack of one and the Clean filter in the Post position renders exactly
+as before (the golden fixtures are unchanged).
+
+### Voice models
+
+`aModel`, `bModel`: Sine, Saw, Pulse, PD. `aShape`, `bShape` replace `oscShape`
+and mean, by model:
+
+| Model | Shape |
+|---|---|
+| Sine | the original warp, `sin(φ + 0.85 s sin φ)` blended in (Beat lock warps against the locked phase) |
+| Saw | bends the ramp by the same warp; the step stays at the wrap; PolyBLEP |
+| Pulse | width 0.5 down to 0.05; PolyBLEP; DC removed |
+| PD | Casio-style resonant phase distortion, `(1 − t)(1 − cos 2πkt)`, `k = 2^(4s)`, restarted each cycle so it stays harmonic |
+
+Every model is phase-modulated by the master and the feedback exactly as the
+sine was. PolyBLEP takes the phase's actual advance each sample, so deep PM
+(even running backwards) keeps its edges band-limited. A test holds every model,
+with one and seven stacked voices, at −45 dB off-harmonic or lower at F1 and A4
+in the default patch with detune, Beat and Spread removed and the Ladder at
+Resonance 0.5.
+
+### Stack
+
+`stack` (1–7) voices per reese voice and `spread`. Side voice `j` sits at
+Szabo's asymmetric offset `j` (`hba::dsp::kSzaboOffsets`) times
+`tf::stackCents(offset, spread, beat)`: up to 60 cents at Spread 1 and Beat 1,
+Spread squared for a fine low end. Under Beat lock it sits offset × Spread beats
+per division away in Hz instead. Side voices sit at 0.85 of the centre, and the
+stack keeps the centre voice's power (`hba::dsp::unisonGains`). The centre is
+the voice's own phase; on every phase reset the sides restart at the same
+golden-ratio spread of phases (`hba::dsp::unisonSpreadPhases`, B's offset half a
+cycle from A's), so every note starts the same whatever came before. A stack
+shares its voice's tract and fold, which relaxes revision 0.2's rule that
+detuned voices never meet in a nonlinearity; A and B still have their own.
+
+### Filter
+
+Reach's fixed Butterworth becomes the filter, its cutoff still Reach × f0.
+
+| Id | Name | Range | Default |
+|---|---|---|---|
+| `filterType` | Filter | Clean, Ladder, MS-20, Low-pass, Notch | Clean |
+| `filterRes` | Resonance | 0–1 | 0.25 |
+| `filterDrive` | Filter drive | 0–1 (0–24 dB) | 0 |
+| `filterPos` | Filter pos | Pre, Post | Post |
+
+Clean is the original 24 dB/oct Butterworth and ignores Resonance and Drive.
+Ladder and MS-20 are `hba::dsp::TptLadder` and `hba::dsp::TptKorg35`: TPT
+one-poles whose loop is solved linearly each sample and then saturated, so
+self-oscillation (Resonance near 1) stays bounded and tracks the note. The
+ladder's passband loss is made up by `1 + 0.4k`. Low-pass and Notch are the TPT
+SVF from Butterworth Q up to about 35, with Drive as soft saturation in front.
+Pre puts the filter before Tract and Fold; there a Clean low-pass four times
+above Reach keeps the fold's harmonics bounded. Type, position and model changes
+crossfade over 10 ms; going back to the type still fading out reverses the fade. Lanes gain two targets, Shape (both voices, ±0.5) and Res
+(±0.5).
+
+The plugin has 109 parameters, 64 automatable: `aModel`, `bModel`, `stack`,
+`spread`, `filterType` and `filterPos` are not automatable.
+
+### Measuring harmonicity
+
+`tf::harmonicSpreadHz` gives the off-harmonic tolerance two parts: a flat one
+for Sine voices (every partial moves by the carrier's offset) and one that grows
+with the harmonic number for Saw, Pulse and PD voices, whose k-th harmonic sits
+k times the offset away. Stack side voices count in both. Through the fold and
+filter a detuned saw still spreads partials around every harmonic by multiples
+of its detune, and the measurement moves with the render window, so presets
+with a non-sine voice are held to −15 dB off-harmonic (3 dB under the worst of
+the bank when it was voiced) rather than their category's budget; white noise
+reads −1 dB. Old presets and sessions that hold one `oscShape` give it to both
+voices.
+
+### Interface
+
+Seven columns: Master, Reese A/B, Tract, Fold, Filter, Sculpt, Out.
+
+- Master takes Tract's compact layout: the master sine, then Stack, Spread,
+  Punch, Phase reset, Beat lock.
+- Each Reese card's title band carries a Model chip, a Shape chip and the
+  voice's waveform, drawn from the model with its Shape and PM.
+- Filter sits after Fold: a Pre/Post chip, the response drawn over a drag pad
+  of Reach (x) against Resonance (y), and Type, Reach, Resonance and Drive rows.
+- Out absorbs Mid/side: Growl, Sub, Punch ms, Velocity, then Mid, Side and
+  Crossover. The Mid/side curve and its drag pad are gone; Out's scope is a
+  line in its title band.
+
+### Presets
+
+The Reese presets except Coupled Reese (the defaults) move to two Saw voices,
+a stack of two at Spread 0.6, the Ladder at Resonance 0.25 and half their
+Coupling, with Reach set so the balance of 1.6–8 kHz against 100–500 Hz matches
+the old preset. New: Two Saw Roller, Seven Saw Wall, Resonant PD Reese (Reese)
+and Squelch Ladder (Neuro, the ladder in the Pre position).
+

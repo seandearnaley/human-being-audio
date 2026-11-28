@@ -1,5 +1,5 @@
 // The signal graph: Master, the two Reese voices with their feedback loop, Tract,
-// Fold, Sculpt, Mid/side and Out, joined by wires, with the sub path underneath.
+// Fold, Filter, Sculpt and Out, joined by wires, with the sub path underneath.
 #include "panels.h"
 
 #include "graph_curves.h"
@@ -46,7 +46,8 @@ constexpr float kCompactRowsTop = 96.0f;
 constexpr float kCompactRowHeight = 20.0f;
 constexpr float kReeseRowsTop = 30.0f;  // the Reese cards' 2x2 grid
 constexpr float kColumnGap = 20.0f;     // between the two columns of that grid
-constexpr float kSparkWidth = 90.0f;
+constexpr float kOutRowsTop = 30.0f;    // Out's rows start under its title band, which holds its sparkline
+constexpr float kOutGroupGap = 10.0f;   // between Out's levels and its mid/side rows
 
 constexpr float kPanelWidth = 1256.0f;  // the editor gives the graph its full content width
 constexpr float kNodeTop = metric::pad;
@@ -62,9 +63,9 @@ constexpr Box kReeseB { kReeseA.x, 104.0f, kReeseWidth, 84.0f };
 constexpr Box kFeedback { kReeseA.x, 196.0f, kReeseWidth, 24.0f };
 constexpr Box kTract = nextColumn(kReeseA, 160.0f);
 constexpr Box kFold = nextColumn(kTract, 146.0f);
-constexpr Box kSculpt = nextColumn(kFold, 150.0f);
-constexpr Box kMidSide = nextColumn(kSculpt, 136.0f);
-constexpr Box kOut = nextColumn(kMidSide, 134.0f);
+constexpr Box kFilter = nextColumn(kFold, 136.0f);
+constexpr Box kSculpt = nextColumn(kFilter, 150.0f);
+constexpr Box kOut = nextColumn(kSculpt, 134.0f);
 static_assert(kOut.right() == kPanelWidth - metric::pad, "the columns fill the panel");
 
 constexpr float kSubY = 256.0f;
@@ -85,7 +86,14 @@ constexpr float kChipHeight = 20.0f;
 constexpr float kChipGap = 6.0f;
 constexpr float kCountChipWidth = 24.0f; // Sculpt's band count, in its title band
 constexpr float kModeChipWidth = 48.0f;  // Sculpt's mode (Bell/Phaser/Comb), in its title band
-constexpr float kPosChipWidth = 42.0f;   // Tract Pre/Post chip
+constexpr float kPosChipWidth = 42.0f;   // Tract and Filter Pre/Post chip
+// A Reese card's title band: name, Model chip, Shape chip, then the sparkline to the edge.
+constexpr float kVoiceNameWidth = 54.0f;
+constexpr float kModelChipWidth = 38.0f;
+constexpr float kShapeChipWidth = 40.0f;
+constexpr float kVoiceChipGap = 4.0f;
+constexpr float kSparkGap = 8.0f;
+constexpr float kOutSparkWidth = 76.0f;
 constexpr float kAuditionWidth = 34.0f;  // Master F1 audition pill
 constexpr float kCountChipHeight = 18.0f;
 constexpr float kFeedbackLabelWidth = 58.0f;  // "Feedback" at label size
@@ -117,6 +125,27 @@ Box nodeRow(const Box& node, int index) {
 Box compactRow(const Box& node, int index) {
     return {node.x + kInset, node.y + kCompactRowsTop + kCompactRowHeight * static_cast<float>(index),
             node.w - 2.0f * kInset, kCompactRowHeight};
+}
+
+// Out's levels, then a gap, then its mid/side rows.
+Box outRow(int index) {
+    const float group = index >= 4 ? kOutGroupGap : 0.0f;
+    return {kOut.x + kInset, kOut.y + kOutRowsTop + metric::row * static_cast<float>(index) + group,
+            kOut.w - 2.0f * kInset, metric::row};
+}
+static_assert(kOutRowsTop + 7.0f * metric::row + kOutGroupGap <= kNodeHeight - kInset, "Out's rows fit");
+
+// Where the Model and Shape chips and the sparkline sit in a Reese card's title band.
+Box voiceChip(const Box& card, int index) {
+    const Box band = nodeTitle(card);
+    const float x = band.x + kVoiceNameWidth + (index == 0 ? 0.0f : kModelChipWidth + kVoiceChipGap);
+    return {x, band.midY() - kCountChipHeight * 0.5f, index == 0 ? kModelChipWidth : kShapeChipWidth, kCountChipHeight};
+}
+
+Box voiceSpark(const Box& card) {
+    const Box band = nodeTitle(card);
+    const float x = voiceChip(card, 1).right() + kSparkGap;
+    return {x, band.y, band.right() - x, band.h};
 }
 
 Box reeseCell(const Box& card, int column, int row) {
@@ -166,9 +195,9 @@ std::vector<std::pair<Wire, unsigned>> signalWires() {
     wires.emplace_back(link(kReeseA, kReeseA.midY(), kTract, mid), colour::growl);
     wires.emplace_back(link(kReeseB, kReeseB.midY(), kTract, mid), colour::growl);
     wires.emplace_back(link(kTract, mid, kFold, mid), colour::growl);
-    wires.emplace_back(link(kFold, mid, kSculpt, mid), colour::growl);
-    wires.emplace_back(link(kSculpt, mid, kMidSide, mid), colour::growl);
-    wires.emplace_back(link(kMidSide, mid, kOut, mid), colour::growl);
+    wires.emplace_back(link(kFold, mid, kFilter, mid), colour::growl);
+    wires.emplace_back(link(kFilter, mid, kSculpt, mid), colour::growl);
+    wires.emplace_back(link(kSculpt, mid, kOut, mid), colour::growl);
 
     // The sub: down from Master, along the lane, up into Out.
     const float left = kMaster.midX();
@@ -381,17 +410,21 @@ class DragPad final : public visage::Frame {
 class GraphPanel final : public Panel {
 public:
     explicit GraphPanel(Context& context) : Panel(context) {
-        // Master: F1 audition pill + 4 standard rows (Glide lives in the studio Voice footer bar)
+        // Master: F1 audition pill + 5 compact rows (Glide lives in the studio Voice footer bar).
+        // Stack and Spread copy both reese voices, so they are amber.
         const Box masterTitle = nodeTitle(kMaster);
         place<AuditionPill>({masterTitle.right() - kAuditionWidth, masterTitle.midY() - 8.0f, kAuditionWidth, 16.0f});
-        place<Row>(nodeRow(kMaster, 0), ParamId::oscShape, colour::master, "Shape", true);
-        place<Row>(nodeRow(kMaster, 1), ParamId::punchAmt, colour::master, "Punch", true);
-        place<Row>(nodeRow(kMaster, 2), ParamId::phaseReset, colour::master, "Phase reset");
-        place<Row>(nodeRow(kMaster, 3), ParamId::beatLock, colour::master, "Beat lock");
+        place<Row>(compactRow(kMaster, 0), ParamId::stack, colour::growl, "Stack");
+        place<Row>(compactRow(kMaster, 1), ParamId::spread, colour::growl, "Spread", true);
+        place<Row>(compactRow(kMaster, 2), ParamId::punchAmt, colour::master, "Punch", true);
+        place<Row>(compactRow(kMaster, 3), ParamId::phaseReset, colour::master, "Phase reset");
+        place<Row>(compactRow(kMaster, 4), ParamId::beatLock, colour::master, "Beat lock");
 
-        // Reese A and B
-        addVoice(kReeseA, ParamId::aDetune, ParamId::aRatio, ParamId::aPhase, ParamId::aPm);
-        addVoice(kReeseB, ParamId::bDetune, ParamId::bRatio, ParamId::bPhase, ParamId::bPm);
+        // Reese A and B: Model and Shape chips in the title band + 2x2 rows
+        addVoice(kReeseA, ParamId::aModel, ParamId::aShape, ParamId::aDetune, ParamId::aRatio, ParamId::aPhase,
+                 ParamId::aPm);
+        addVoice(kReeseB, ParamId::bModel, ParamId::bShape, ParamId::bDetune, ParamId::bRatio, ParamId::bPhase,
+                 ParamId::bPm);
         const float chipY = kFeedback.midY() - kChipHeight * 0.5f;
         const float amountX = kFeedback.right() - kInset - kChipWidth;
         place<Chip>({ amountX - kChipGap - kTimeChipWidth, chipY, kTimeChipWidth, kChipHeight }, ParamId::fbTime,
@@ -437,6 +470,25 @@ public:
         markers_[2] = &place<LaneMarker>(markerBox(nodeRow(kFold, 1)), ParamId::drive, LaneTarget::drive);
         markers_[3] = &place<LaneMarker>(markerBox(nodeRow(kFold, 3)), ParamId::weight, LaneTarget::weight);
 
+        // Filter: Pre/Post chip + 2D DragPad (Reach is the cutoff) + 4 rows
+        const Box filterTitle = nodeTitle(kFilter);
+        place<Chip>({filterTitle.right() - kPosChipWidth, filterTitle.midY() - kCountChipHeight * 0.5f, kPosChipWidth,
+                     kCountChipHeight},
+                    ParamId::filterPos, colour::growl);
+        place<DragPad>(nodeVisual(kFilter, kFilter.w - 2.0f * kInset), ParamId::reach, ParamId::filterRes,
+                       colour::growl);
+        place<Row>(nodeRow(kFilter, 0), ParamId::filterType, colour::growl, "Type");
+        auto& reachRow = place<Row>(nodeRow(kFilter, 1), ParamId::reach, colour::growl, "Reach", true);
+        reachRow.setModProvider([&model = context_.model]() {
+            const auto& v = model.visuals();
+            return v.effActive ? toNormalised(spec(ParamId::reach), v.effReach)
+                               : toNormalised(spec(ParamId::reach), model.get(ParamId::reach));
+        });
+        place<Row>(nodeRow(kFilter, 2), ParamId::filterRes, colour::growl, "Resonance", true);
+        place<Row>(nodeRow(kFilter, 3), ParamId::filterDrive, colour::growl, "Drive", true);
+        markers_[4] = &place<LaneMarker>(markerBox(nodeRow(kFilter, 1)), ParamId::reach, LaneTarget::reach);
+        markers_[5] = &place<LaneMarker>(markerBox(nodeRow(kFilter, 2)), ParamId::filterRes, LaneTarget::res);
+
         // Sculpt: Mode + Count chips in title band + 2D DragPad + 3 rows
         const Box sculptTitle = nodeTitle(kSculpt);
         const float countX = sculptTitle.right() - kCountChipWidth;
@@ -451,18 +503,14 @@ public:
         place<Row>(nodeRow(kSculpt, 1), ParamId::sculptSpread, colour::growl, "Spread");
         place<Row>(nodeRow(kSculpt, 2), ParamId::sculptRes, colour::growl, "Resonance");
 
-        // Mid/side: 2D DragPad + 3 rows
-        place<DragPad>(nodeVisual(kMidSide, kMidSide.w - 2.0f * kInset), ParamId::xover, ParamId::sideGain,
-                       colour::text);
-        place<Row>(nodeRow(kMidSide, 0), ParamId::midGain, colour::text, "Mid");
-        place<Row>(nodeRow(kMidSide, 1), ParamId::sideGain, colour::text, "Side");
-        place<Row>(nodeRow(kMidSide, 2), ParamId::xover, colour::text, "Crossover");
-
-        // Out: 4 rows
-        place<Row>(nodeRow(kOut, 0), ParamId::growlLevel, colour::growl, "Growl", true);
-        place<Row>(nodeRow(kOut, 1), ParamId::subLevel, colour::master, "Sub", true);
-        place<Row>(nodeRow(kOut, 2), ParamId::punchMs, colour::master, "Punch ms");
-        place<Row>(nodeRow(kOut, 3), ParamId::velSens, colour::text, "Velocity", true);
+        // Out: the levels, then the mid/side split of the growl
+        place<Row>(outRow(0), ParamId::growlLevel, colour::growl, "Growl", true);
+        place<Row>(outRow(1), ParamId::subLevel, colour::master, "Sub", true);
+        place<Row>(outRow(2), ParamId::punchMs, colour::master, "Punch ms");
+        place<Row>(outRow(3), ParamId::velSens, colour::text, "Velocity", true);
+        place<Row>(outRow(4), ParamId::midGain, colour::text, "Mid");
+        place<Row>(outRow(5), ParamId::sideGain, colour::text, "Side");
+        place<Row>(outRow(6), ParamId::xover, colour::text, "Crossover");
 
         // Sub lock: Split, Fit, Warmth
         const float subRowY = kSubLock.midY() - metric::row * 0.5f;
@@ -502,7 +550,7 @@ public:
         const Visuals& visuals = context_.model.visuals();
         drawWires(canvas, visuals.gate);
 
-        for (const Box& node : { kMaster, kReeseA, kReeseB, kTract, kFold, kSculpt, kMidSide, kOut, kSubLock })
+        for (const Box& node : {kMaster, kReeseA, kReeseB, kTract, kFold, kFilter, kSculpt, kOut, kSubLock})
             drawPanel(canvas, context_, px(node.x), px(node.y), px(node.w), px(node.h), colour::raised,
                       metric::radiusSmall);
 
@@ -510,15 +558,15 @@ public:
         drawMaster(canvas, visuals);
         // Phase lanes move the two voices opposite ways.
         const float phase = laneSum(params, visuals.laneValue, LaneTarget::phase);
-        drawVoice(canvas, kReeseA, "Reese A", ParamId::aRatio, laneApply(LaneTarget::phase, get(ParamId::aPhase), phase),
-                  ParamId::aPm);
-        drawVoice(canvas, kReeseB, "Reese B", ParamId::bRatio, laneApply(LaneTarget::phase, get(ParamId::bPhase), -phase),
-                  ParamId::bPm);
+        drawVoice(canvas, params, visuals, kReeseA, "Reese A", ParamId::aModel, ParamId::aShape, ParamId::aRatio,
+                  laneApply(LaneTarget::phase, get(ParamId::aPhase), phase), ParamId::aPm);
+        drawVoice(canvas, params, visuals, kReeseB, "Reese B", ParamId::bModel, ParamId::bShape, ParamId::bRatio,
+                  laneApply(LaneTarget::phase, get(ParamId::bPhase), -phase), ParamId::bPm);
         drawFeedbackLabel(canvas);
         drawTract(canvas, params, visuals);
         drawFold(canvas, params, visuals);
+        drawFilter(canvas, params, visuals);
         drawSculpt(canvas, params, visuals);
-        drawMidSide(canvas);
         drawOut(canvas, visuals);
         title(canvas, { kSubLock.x + kInset, kSubLock.midY() - kTitleHeight * 0.5f, kSubLockRowX, kTitleHeight },
               "Sub lock", colour::master);
@@ -527,9 +575,21 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
-    // Everything the panel's own drawing depends on.
+    // Everything the panel's own drawing depends on. The lanes' on and target
+    // decide which values they move.
+    static constexpr std::array kWatchedParams{
+        ParamId::coupling,    ParamId::aModel,       ParamId::aShape,      ParamId::aRatio,      ParamId::aPhase,
+        ParamId::aPm,         ParamId::bModel,       ParamId::bShape,      ParamId::bRatio,      ParamId::bPhase,
+        ParamId::bPm,         ParamId::vowelA,       ParamId::vowelB,      ParamId::morph,       ParamId::tractShift,
+        ParamId::tractQ,      ParamId::foldType,     ParamId::drive,       ParamId::asym,        ParamId::weight,
+        ParamId::filterType,  ParamId::reach,        ParamId::filterRes,   ParamId::sculpt,      ParamId::sculptDepth,
+        ParamId::sculptCount, ParamId::sculptSpread, ParamId::sculptRes,   ParamId::sculptMode,  ParamId::subWarmth,
+        ParamId::lane1On,     ParamId::lane1Target,  ParamId::lane2On,     ParamId::lane2Target, ParamId::lane3On,
+        ParamId::lane3Target, ParamId::lane4On,      ParamId::lane4Target,
+    };
+
     struct Watched {
-        std::array<float, 37> params{};
+        std::array<float, kWatchedParams.size()> params{};
         std::array<float, kLaneCount> lanes {};
         float hz = 0.0f;
         int note = -1;
@@ -537,21 +597,8 @@ private:
         bool operator==(const Watched&) const = default;
     };
 
-    // The lanes' on and target decide which values they move.
-    static constexpr std::array<ParamId, 37> kWatchedParams{
-        ParamId::coupling,    ParamId::width,       ParamId::aRatio,      ParamId::aPhase,       ParamId::aPm,
-        ParamId::bRatio,      ParamId::bPhase,      ParamId::bPm,         ParamId::vowelA,       ParamId::vowelB,
-        ParamId::morph,       ParamId::foldType,    ParamId::drive,       ParamId::asym,         ParamId::reach,
-        ParamId::sculpt,      ParamId::sculptDepth, ParamId::sculptCount, ParamId::sculptSpread, ParamId::sculptRes,
-        ParamId::sideGain,    ParamId::xover,       ParamId::weight,      ParamId::oscShape,     ParamId::subWarmth,
-        ParamId::tractShift,  ParamId::tractQ,      ParamId::tractPos,    ParamId::sculptMode,   ParamId::lane1On,
-        ParamId::lane1Target, ParamId::lane2On,     ParamId::lane2Target, ParamId::lane3On,      ParamId::lane3Target,
-        ParamId::lane4On,     ParamId::lane4Target,
-    };
-
     Watched watch() {
         Watched w;
-        static_assert(std::tuple_size_v<decltype(w.params)> == kWatchedParams.size());
         for (std::size_t i = 0; i < kWatchedParams.size(); ++i) w.params[i] = get(kWatchedParams[i]);
         const Visuals& visuals = context_.model.visuals();
         for (std::size_t i = 0; i < w.lanes.size(); ++i) w.lanes[i] = visuals.laneValue[i];
@@ -574,7 +621,10 @@ private:
         return { row.x, row.bottom() - LaneMarker::kAbove, row.w, LaneMarker::kHeight };
     }
 
-    void addVoice(const Box& card, ParamId detune, ParamId ratio, ParamId phase, ParamId pm) {
+    void addVoice(const Box& card, ParamId model, ParamId shape, ParamId detune, ParamId ratio, ParamId phase,
+                  ParamId pm) {
+        place<Chip>(voiceChip(card, 0), model, colour::growl);
+        place<Chip>(voiceChip(card, 1), shape, colour::growl);
         place<Row>(reeseCell(card, 0, 0), detune, colour::growl, "Detune");
         place<Row>(reeseCell(card, 1, 0), ratio, colour::growl, "Ratio");
         place<Row>(reeseCell(card, 0, 1), phase, colour::growl, "Phase");
@@ -646,7 +696,7 @@ private:
 
     void drawMaster(visage::Canvas& canvas, const Visuals& visuals) {
         title(canvas, nodeTitle(kMaster), "Master", colour::master);
-        const Box vis = nodeVisual(kMaster, kMaster.w - 2.0f * kInset);
+        const Box vis = compactVisual(kMaster, kMaster.w - 2.0f * kInset);
         const Box waveBox{vis.x, vis.y, vis.w, vis.h - 14.0f};
         curve(canvas, subPeriod(get(ParamId::subWarmth)), waveBox, colour::master, -1.2f, 1.2f, 0.12f);
 
@@ -659,13 +709,15 @@ private:
                       visage::Font::kRight, type::small, Weight::regular);
     }
 
-    void drawVoice(visage::Canvas& canvas, const Box& card, const char* name, ParamId ratio, float phaseDegrees,
-                   ParamId pm) {
-        const Box band = nodeTitle(card);
-        title(canvas, band, name, colour::growl);
-        const auto values = voicePeriod(get(ratio), phaseDegrees, feel::pmIndex(get(pm), get(ParamId::coupling)),
-                                        get(ParamId::oscShape));
-        curve(canvas, values, { band.right() - kSparkWidth, band.y, kSparkWidth, band.h }, colour::growl, -1.15f, 1.15f);
+    // The title band's sparkline plays one cycle of what the voice plays, Shape
+    // moved by the lanes aimed at it.
+    void drawVoice(visage::Canvas& canvas, const Params& params, const Visuals& visuals, const Box& card,
+                   const char* name, ParamId model, ParamId shape, ParamId ratio, float phaseDegrees, ParamId pm) {
+        title(canvas, nodeTitle(card), name, colour::growl);
+        const auto type = static_cast<VoiceModel>(std::clamp(static_cast<int>(get(model) + 0.5f), 0, 3));
+        const auto values = voicePeriod(type, get(ratio), phaseDegrees, feel::pmIndex(get(pm), get(ParamId::coupling)),
+                                        moved(params, visuals, shape, LaneTarget::shape));
+        curve(canvas, values, voiceSpark(card), colour::growl, -1.15f, 1.15f);
     }
 
     void drawFeedbackLabel(visage::Canvas& canvas) {
@@ -702,6 +754,19 @@ private:
         curve(canvas, foldTransfer(type, drive, get(ParamId::asym), kExtent), box, colour::growl, -kExtent, kExtent);
     }
 
+    // The filter's response over Reach's range, the 0 dB line behind it. Lanes
+    // aimed at Reach or Resonance move it.
+    void drawFilter(visage::Canvas& canvas, const Params& params, const Visuals& visuals) {
+        title(canvas, nodeTitle(kFilter), "Filter", colour::growl);
+        const Box box = nodeVisual(kFilter, kFilter.w - 2.0f * kInset);
+        const float zero = box.y + box.h * kFilterCeilingDb / (kFilterCeilingDb - kFilterFloorDb);
+        hairline(canvas, {box.x, zero}, {box.right(), zero}, colour::track);
+        const auto type = static_cast<FilterType>(std::clamp(static_cast<int>(get(ParamId::filterType) + 0.5f), 0, 4));
+        const auto values = filterResponse(type, moved(params, visuals, ParamId::reach, LaneTarget::reach),
+                                           moved(params, visuals, ParamId::filterRes, LaneTarget::res));
+        curve(canvas, values, box, colour::growl, kFilterFloorDb, kFilterCeilingDb, 0.12f, kFilterFloorDb);
+    }
+
     // The bank's response around the 0 dB line, with Reach marked where it cuts
     // off. Lanes aimed at Sculpt move the bank; one aimed at Reach adds a violet
     // hairline where they have pushed it.
@@ -727,37 +792,18 @@ private:
         curve(canvas, values, box, colour::growl, -kSculptRangeDb, kSculptRangeDb, 0.12f);
     }
 
-    // The sum that leaves the plugin: the same phase-locked output trace the scope shows.
+    // The sum that leaves the plugin, as a sparkline in the title band: the same
+    // phase-locked output trace the scope shows.
     void drawOut(visage::Canvas& canvas, const Visuals& visuals) {
-        title(canvas, nodeTitle(kOut), "Out", colour::text);
-        const Box box = nodeVisual(kOut, kOut.w - 2.0f * kInset);
-        hairline(canvas, { box.x, box.midY() }, { box.right(), box.midY() }, colour::track);
-        drawCurve(canvas, context_, visuals.scopeOut, px(box.x), px(box.y), px(box.w), px(box.h),
+        const Box band = nodeTitle(kOut);
+        title(canvas, band, "Out", colour::text);
+        const Box spark{band.right() - kOutSparkWidth, band.y, kOutSparkWidth, band.h};
+        drawCurve(canvas, context_, visuals.scopeOut, px(spark.x), px(spark.y), px(spark.w), px(spark.h),
                   colour::withAlpha(colour::text, 0.8f), -1.2f, 1.2f);
     }
 
-    void drawMidSide(visage::Canvas& canvas) {
-        title(canvas, nodeTitle(kMidSide), "Mid/side", colour::text);
-        constexpr float kLow = 30.0f, kHigh = 3000.0f;
-        const Box box = nodeVisual(kMidSide, kMidSide.w - 2.0f * kInset);
-        const float split = std::log(get(ParamId::xover) / kLow) / std::log(kHigh / kLow);
-        const float sideGain = std::pow(10.0f, get(ParamId::sideGain) / 20.0f);
-        const float spread = 0.8f * std::clamp(get(ParamId::width) * sideGain * 0.5f, 0.0f, 1.0f);
-
-        hairline(canvas, { box.x + box.w * split, box.y }, { box.x + box.w * split, box.bottom() }, colour::track);
-        GraphCurve<kShapePoints> upper{}, lower{};
-        for (std::size_t i = 0; i < upper.size(); ++i) {
-            const float position = static_cast<float>(i) / static_cast<float>(upper.size() - 1);
-            const float apart = spread * smoothstep((position - split) / 0.3f);
-            upper[i] = apart;
-            lower[i] = -apart;
-        }
-        curve(canvas, lower, box, colour::text, -1.0f, 1.0f);
-        curve(canvas, upper, box, colour::text, -1.0f, 1.0f);
-    }
-
     std::vector<std::pair<visage::Frame*, Box>> placed_;
-    std::array<LaneMarker*, 4> markers_{}; // morph, shift, drive, weight
+    std::array<LaneMarker*, 6> markers_{}; // morph, shift, drive, weight, reach, res
     Watched shown_;
     float flow_ = 0.0f;
     Clock::time_point lastTick_;

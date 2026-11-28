@@ -10,6 +10,7 @@
 #include "squash.h"
 #include "tract.h"
 #include "voice.h"
+#include "voice_core.h"
 
 #include "tf/feel.h"
 #include "tf/lanes.h"
@@ -21,6 +22,7 @@
 #include <hba/dsp/limiter.h>
 #include <hba/dsp/oversampling.h>
 #include <hba/dsp/svf.h>
+#include <hba/dsp/unison.h>
 
 #include <algorithm>
 #include <array>
@@ -77,6 +79,13 @@ constexpr double kPpqTolerance = 1e-5; // quarters; larger jumps re-anchor the c
 // is -9.4 dB at growlLevel 0.76 and -7.0 at 1. (More gain does not raise it:
 // at 4 and 6 the clipped, limited growl at level 1 still reads -7.4 re sub,
 // because its peaks are held to G whatever drives them.)
+// The stack's side voices sit at this level of the centre (their detune is
+// tf::stackCents, in voice_pitch.h).
+constexpr double kStackSideLevel = 0.85;
+// The filter's Drive range, and in the Pre position the Clean low-pass that
+// bounds the fold, this many times above Reach.
+constexpr double kFilterMaxDriveDb = 24.0;
+constexpr double kTopHarmonicRatio = 4.0;
 constexpr double kGrowlGain = 2.4;
 constexpr double kGrowlCeilingMargin = 0.96605;      // -0.3 dB, for inter-sample peaks
 constexpr double kGrowlCeilingFloor = 1e-3;          // -60 dBFS: a sub at or above the ceiling leaves the growl this
@@ -123,7 +132,14 @@ enum Os : std::size_t {
     incLockB,   // the voices at exactly f0 x ratio: what the feedback loop hears
     subRot,     // the sub's phase against the master, cycles, unwrapped
     subWarmth_, // phase-locked 2nd/3rd sub saturation amount (0..1)
-    oscShape_,  // carrier harmonic richness morph (0 = pure sine .. 1 = rich phase-warped core)
+    shapeA,     // each voice's Shape (model-dependent; Sine: the warp)
+    shapeB,
+    filterResO,   // filter resonance, 0..1
+    filterDriveG, // drive gain into the saturated filter types
+    filterPost_,  // 0 = filter before Tract and Fold, 1 = after Fold
+    topG,         // Pre position: the Clean low-pass two octaves above Reach that bounds the fold
+    stackGain0,   // the stack's centre gain, then stackGain0 + j for side voice j
+    stackGainLast = stackGain0 + static_cast<std::size_t>(hba::dsp::kMaxUnison) - 1,
     tractPost_, // 0 = Tract pre-Fold, 1 = Tract post-Fold
     reachG,     // Reach low-pass, pre-warped cutoff
     loopG,      // the feedback loop's low-pass, pre-warped cutoff
@@ -161,7 +177,12 @@ inline double lr4LowpassMagnitude(double hz, double cutoff, double sampleRate) n
 enum Sm : std::size_t {
     coupling,
     beat,
-    oscShapeSm,
+    aShapeSm,
+    bShapeSm,
+    spreadSm,
+    filterResSm,
+    filterDriveSm,
+    filterPosSm,
     punchAmt_,
     aDetune,
     bDetune,
@@ -240,7 +261,28 @@ struct Engine::Impl {
     detail::TractChannel tractPostA, tractPostB;
     detail::Folder foldA, foldB;
     float subFoldDelay = 0.0f;
-    detail::ReachFilter reachA, reachB;
+    // The filter (spec, "Revision 2, pass 1") at Reach, in either position, and in
+    // the Pre position the Clean low-pass above it that bounds the fold.
+    detail::VoiceFilter filterPreA, filterPreB, filterPostA, filterPostB;
+    detail::ReachFilter topA, topB;
+    FilterType filterFrom = FilterType::clean, filterTo = FilterType::clean;
+    double filterMix = 1.0;
+    bool preActive = false, topActive = false; // the Pre filters and the bounding low-pass ran last sample
+    // Each voice's stack: the side voices' phases (cycles; [0] unused, the centre
+    // is phaseA / phaseB), every stack voice's last phase for PolyBLEP, and the
+    // model with its crossfade.
+    struct VoiceStack {
+        std::array<double, hba::dsp::kMaxUnison> phase{};
+        std::array<double, hba::dsp::kMaxUnison> lastT{};
+        std::array<bool, hba::dsp::kMaxUnison> live{}; // lastT holds last sample's phase
+        VoiceModel from = VoiceModel::sine, to = VoiceModel::sine;
+        double mix = 1.0;
+        detail::ModelShape shape{};
+    };
+    VoiceStack stackA, stackB;
+    // Per side voice: increment multiplier (cents) and offset (Beat lock, cycles per sample).
+    std::array<double, hba::dsp::kMaxUnison> stackMul{}, stackAdd{};
+    std::size_t stackEnd = 1; // one past the last side voice with any gain
     detail::WeightFilter weightA, weightB;
     detail::SculptCoefs sculptCoefsA, sculptCoefsB;
     std::array<detail::SculptChannel, 2> sculptA{}, sculptB{};
@@ -362,6 +404,9 @@ struct Engine::Impl {
     void controlTick(const Params& p) noexcept TF_NONBLOCKING;
     double anchorBpmOrCurrent() const noexcept TF_NONBLOCKING { return qps * 60.0 * fs; }
 
+    double renderVoice(VoiceStack& v, double shape, double phi, double phiLock, double mod, double inc,
+                       double offset) noexcept TF_NONBLOCKING;
+    void resetStacks() noexcept TF_NONBLOCKING;
     void oversampledSample(int j) noexcept TF_NONBLOCKING;
     void goIdle() noexcept TF_NONBLOCKING;
     void updateClock(const Transport& t) noexcept TF_NONBLOCKING;

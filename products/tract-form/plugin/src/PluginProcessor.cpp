@@ -215,6 +215,16 @@ void PluginProcessor::getStateInformation(juce::MemoryBlock& destination) {
 void PluginProcessor::setStateInformation(const void* data, int size) {
     if (const auto xml = getXmlFromBinary(data, size))
         if (xml->hasTagName(state.state.getType())) {
+            // Sessions saved before 2.0 hold one "oscShape"; both voices' Shape take it.
+            if (auto* old = xml->getChildByAttribute("id", "oscShape")) {
+                for (const char* id : {"aShape", "bShape"})
+                    if (xml->getChildByAttribute("id", id) == nullptr) {
+                        auto* shape = xml->createNewChildElement(old->getTagName());
+                        shape->setAttribute("id", id);
+                        shape->setAttribute("value", old->getStringAttribute("value"));
+                    }
+                xml->removeChildElement(old, true);
+            }
             state.replaceState(juce::ValueTree::fromXml(*xml));
             curves.reloadFromState();
         }

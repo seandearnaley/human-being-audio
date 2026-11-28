@@ -1,7 +1,7 @@
 {
     "name": "Iron Clip",
     "category": "Reese",
-    "coupling": 0.72,
+    "coupling": 0.36,
     "beat": 0.25,
     "tract": 0.3,
     "warp": 0.9,
@@ -54,7 +54,7 @@
     "lane4Phase": 0.0,
     "lane4Depth": 0.25,
     "lane4Shape": "Sine",
-    "reach": 64.0,
+    "reach": 30.7,
     "weight": 0.65,
     "fit": 0.0,
     "beatLock": false,
@@ -75,7 +75,6 @@
     "lane4Target": "Phase",
     "lane4Follow": "Own",
     "lane4Ratio": "×1",
-    "oscShape": 0.28,
     "punchAmt": 0.0,
     "punchMs": 32.0,
     "tractShift": -1.5,
@@ -99,5 +98,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.28,
+    "bShape": 0.28,
+    "aModel": "Saw",
+    "bModel": "Saw",
+    "stack": "2",
+    "spread": 0.6,
+    "filterType": "Ladder",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

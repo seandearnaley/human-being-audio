@@ -122,8 +122,14 @@ void Engine::Impl::resetDsp() noexcept TF_NONBLOCKING {
     foldA.reset();
     foldB.reset();
     subFoldDelay = 0.0f;
-    reachA.reset();
-    reachB.reset();
+    filterPreA.reset();
+    filterPreB.reset();
+    filterPostA.reset();
+    filterPostB.reset();
+    topA.reset();
+    topB.reset();
+    filterMix = 1.0;
+    preActive = topActive = false;
     weightA.reset();
     weightB.reset();
     for (auto& ch : sculptA)
@@ -163,6 +169,7 @@ void Engine::Impl::reset() noexcept TF_NONBLOCKING {
     pendingVelocity = 1.0;
     noteVelocity = 1.0;
     phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
+    resetStacks();
     for (auto& s : smooth)
         s.reset();
     for (auto& s : laneSmooth)
@@ -218,8 +225,10 @@ void Engine::Impl::startNote(int note, double velocity) noexcept TF_NONBLOCKING 
 }
 
 void Engine::Impl::beginNote(int note, double velocity) noexcept TF_NONBLOCKING {
-    if (phaseResetOn)
+    if (phaseResetOn) {
         phaseMaster = phaseA = phaseB = phaseLockA = phaseLockB = 0.0;
+        resetStacks();
+    }
     noteVelocity = std::clamp(velocity, 0.01, 1.0);
     punch.trigger(0.4 + 0.6 * noteVelocity);
     if (glideModeCur == GlideMode::always && hasPlayedNote && glideMs > 0.05)
@@ -412,7 +421,12 @@ void Engine::Impl::smoothParameters(const Params& p, double c, bool snap) noexce
     const auto step = [&](Sm id, double target) { return smooth[id].step(target, c); };
     step(coupling, p[ParamId::coupling]);
     step(beat, p[ParamId::beat]);
-    step(oscShapeSm, p[ParamId::oscShape]);
+    step(aShapeSm, p[ParamId::aShape]);
+    step(bShapeSm, p[ParamId::bShape]);
+    step(spreadSm, p[ParamId::spread]);
+    step(filterResSm, p[ParamId::filterRes]);
+    step(filterDriveSm, p[ParamId::filterDrive]);
+    step(filterPosSm, p.choice(ParamId::filterPos) == static_cast<int>(TractPos::post) ? 1.0 : 0.0);
     step(punchAmt_, p[ParamId::punchAmt]);
     step(aDetune, p[ParamId::aDetune]);
     step(bDetune, p[ParamId::bDetune]);
@@ -588,6 +602,7 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
             std::exp2(reachVelOct),
         static_cast<double>(spec(ParamId::reach).min), static_cast<double>(spec(ParamId::reach).max));
     t[reachG] = SvfCoefs::prewarp(std::min(reachHarmonic * f0, kMaxFilterRatio * fo), fo);
+    t[topG] = SvfCoefs::prewarp(std::min(kTopHarmonicRatio * reachHarmonic * f0, kMaxFilterRatio * fo), fo);
     const double loopHarmonic = std::min(reachHarmonic, kLoopMaxHarmonic);
     t[loopG] = SvfCoefs::prewarp(std::min(loopHarmonic * f0, kMaxFilterRatio * fo), fo);
 
@@ -607,7 +622,31 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
     t[asymOffset] = 0.5 * sm(asym_);
     t[warpAmt] = std::clamp(sm(warp_), 0.0, 1.0);
     t[subWarmth_] = std::clamp(sm(subWarmthSm), 0.0, 1.0);
-    t[oscShape_] = std::clamp(sm(oscShapeSm), 0.0, 1.0);
+    t[shapeA] = moved(LaneTarget::shape, sm(aShapeSm), 0.0, 1.0);
+    t[shapeB] = moved(LaneTarget::shape, sm(bShapeSm), 0.0, 1.0);
+    t[filterResO] = moved(LaneTarget::res, sm(filterResSm), 0.0, 1.0);
+    t[filterDriveG] = dbToGain(kFilterMaxDriveDb * std::clamp(sm(filterDriveSm), 0.0, 1.0));
+    t[filterPost_] = std::clamp(sm(filterPosSm), 0.0, 1.0);
+
+    // The stack: equal-power gains for its size, Szabo's offsets scaled by
+    // Spread (squared, for a fine low end) and Beat in cents, or under Beat lock
+    // by a fraction of one beat per division in Hz.
+    {
+        const int count = std::clamp(p.choice(ParamId::stack), 0, hba::dsp::kMaxUnison - 1) + 1;
+        const auto gains = hba::dsp::unisonGains(count, kStackSideLevel);
+        const double spreadAmt = std::clamp(sm(spreadSm), 0.0, 1.0);
+        const double beatAmt = moved(LaneTarget::beat, sm(beat), 0.0, 1.0);
+        const double lockStep = beatLockOn ? beatLockHz(anchorBpmOrCurrent(), beatAmt) / fo : 0.0;
+        for (std::size_t j = 0; j < stackMul.size(); ++j) {
+            t[stackGain0 + j] = j == 0 ? gains.centre : static_cast<int>(j) < count ? gains.side : 0.0;
+            // A side voice past the stack only fades out; its detune need not move.
+            if (j > 0 && static_cast<int>(j) >= count && os[stackGain0 + j].value == 0.0)
+                continue;
+            const double offset = hba::dsp::kSzaboOffsets[j];
+            stackMul[j] = beatLockOn ? 1.0 : std::exp2(stackCents(offset, spreadAmt, beatAmt) / 1200.0);
+            stackAdd[j] = offset * spreadAmt * lockStep;
+        }
+    }
     t[tractPost_] = std::clamp(sm(tractPos_), 0.0, 1.0);
 
     // Fit: the sub runs ahead of the master by the phase its LR4 low-pass
@@ -631,6 +670,14 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
             os[i].snap(t[i]);
         else
             os[i].to(t[i], controlOs);
+    }
+    // A side voice that has faded out lands exactly on zero, so it is skipped.
+    stackEnd = 1;
+    for (std::size_t i = stackGain0 + 1; i <= stackGainLast; ++i) {
+        if (t[i] == 0.0 && std::abs(os[i].value) < 1e-9)
+            os[i].snap(0.0);
+        if (t[i] != 0.0 || os[i].value != 0.0)
+            stackEnd = i - stackGain0 + 1;
     }
 
     updateSculptTargets(p, f0, t[width], c, snap);
@@ -663,6 +710,45 @@ void Engine::Impl::controlTick(const Params& p) noexcept TF_NONBLOCKING {
         foldFrom = foldMix >= 0.5 ? foldTo : foldFrom;
         foldTo = type;
         foldMix = 0.0;
+    }
+
+    // Voice models and filter type: crossfade on change.
+    const auto updateModel = [&](VoiceStack& v, ParamId id) noexcept TF_NONBLOCKING {
+        const auto m =
+            static_cast<VoiceModel>(std::clamp(p.choice(id), 0, static_cast<int>(choices::voiceModel.size()) - 1));
+        if (snap) {
+            v.from = v.to = m;
+            v.mix = 1.0;
+        } else if (m != v.to) {
+            v.from = v.mix >= 0.5 ? v.to : v.from;
+            v.to = m;
+            v.mix = 0.0;
+        }
+    };
+    updateModel(stackA, ParamId::aModel);
+    updateModel(stackB, ParamId::bModel);
+    // The non-sine models' constants, once the models are settled (Sine reads
+    // its Shape per sample).
+    if (stackA.to != VoiceModel::sine || stackA.from != VoiceModel::sine)
+        stackA.shape = modelShape(t[shapeA]);
+    if (stackB.to != VoiceModel::sine || stackB.from != VoiceModel::sine)
+        stackB.shape = modelShape(t[shapeB]);
+    const auto ftype = static_cast<FilterType>(
+        std::clamp(p.choice(ParamId::filterType), 0, static_cast<int>(choices::filterType.size()) - 1));
+    if (snap) {
+        filterFrom = filterTo = ftype;
+        filterMix = 1.0;
+    } else if (ftype != filterTo && ftype == filterFrom) {
+        // Back to the type still fading out: reverse the fade, keep its state.
+        filterFrom = filterTo;
+        filterTo = ftype;
+        filterMix = 1.0 - filterMix;
+    } else if (ftype != filterTo) {
+        filterFrom = filterMix >= 0.5 ? filterTo : filterFrom;
+        filterTo = ftype;
+        filterMix = 0.0;
+        for (auto* filter : {&filterPreA, &filterPreB, &filterPostA, &filterPostB})
+            filter->resetType(ftype);
     }
 
     // Base rate.

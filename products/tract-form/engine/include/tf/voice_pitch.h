@@ -7,6 +7,8 @@
 #include "tf/nonblocking.h"
 #include "tf/params.h"
 
+#include <hba/dsp/unison.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -57,4 +59,49 @@ inline VoiceOffsets voiceOffsetsHz(const Params& p, double f0, double bpm) noexc
     return { offset(ParamId::aDetune, ParamId::aRatio), offset(ParamId::bDetune, ParamId::bRatio) };
 }
 
+// The stack (spec, "Revision 2, pass 1"): side voice j sits Szabo's offset j
+// times this many cents at Spread 1 and Beat 1 (Spread squared, for a fine low
+// end). Under Beat lock it sits offset j x Spread beats per division away instead.
+inline constexpr double kStackMaxCents = 60.0;
+
+inline double stackCents(double offset, double spread, double beat) noexcept TF_NONBLOCKING {
+    return offset * kStackMaxCents * spread * spread * beat;
+}
+
+// How far each voice's partials sit from the note's harmonics. A Sine voice is
+// the master's PM sidebands around its carrier, so every partial moves by the
+// carrier's offset: `flatHz`. Saw, Pulse and PD voices multiply their
+// fundamental's offset by the harmonic number: `perHarmonicHz` is the offset at
+// the first harmonic of the note. Both include the widest stack side voice.
+struct HarmonicSpread {
+    double flatHz = 0.0;
+    double perHarmonicHz = 0.0;
+};
+
+inline HarmonicSpread harmonicSpreadHz(const Params& p, double f0, double bpm) noexcept TF_NONBLOCKING {
+    const auto offsets = voiceOffsetsHz(p, f0, bpm);
+    const int count = std::clamp(p.choice(ParamId::stack), 0, hba::dsp::kMaxUnison - 1) + 1;
+    const double spread = std::clamp(static_cast<double>(p[ParamId::spread]), 0.0, 1.0);
+    const double beat = p[ParamId::beat];
+    const bool locked = p.on(ParamId::beatLock);
+    HarmonicSpread s;
+    const auto voice = [&](double offsetHz, ParamId ratioId, ParamId modelId) {
+        const double ratio = std::max(1e-3, static_cast<double>(p[ratioId]));
+        double side = 0.0;
+        for (std::size_t j = 1; j < static_cast<std::size_t>(count); ++j) {
+            const double o = hba::dsp::kSzaboOffsets[j];
+            side =
+                std::max(side, locked ? std::abs(o) * spread * beatLockHz(bpm, beat)
+                                      : f0 * ratio * std::abs(std::exp2(stackCents(o, spread, beat) / 1200.0) - 1.0));
+        }
+        const double total = std::abs(offsetHz) + side;
+        if (p.choice(modelId) == static_cast<int>(VoiceModel::sine))
+            s.flatHz = std::max(s.flatHz, total);
+        else
+            s.perHarmonicHz = std::max(s.perHarmonicHz, total / ratio);
+    };
+    voice(offsets.a, ParamId::aRatio, ParamId::aModel);
+    voice(offsets.b, ParamId::bRatio, ParamId::bModel);
+    return s;
+}
 }

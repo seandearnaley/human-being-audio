@@ -26,6 +26,7 @@ add_executable(hba_modules_tests
     dsp/tests/CurveTests.cpp
     dsp/tests/DspModulesTests.cpp
     dsp/tests/GainTests.cpp
+    dsp/tests/VoiceTests.cpp
     core/tests/CorePrimitivesTests.cpp
     core/tests/PresetJsonTests.cpp)
 hba_build_for_host_only(hba_modules_tests)

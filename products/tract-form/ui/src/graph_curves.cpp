@@ -33,21 +33,81 @@ GraphCurve<kShapePoints> subPeriod(float subWarmth) {
     return values;
 }
 
-GraphCurve<kSparkPoints> voicePeriod(float ratio, float phaseDegrees, float pmIndex, float oscShape) {
+// The engine's models (engine/src/voice_core.h), without their DC offsets so
+// every model fills the same -1..1 band.
+GraphCurve<kSparkPoints> voicePeriod(VoiceModel model, float ratio, float phaseDegrees, float pmIndex, float shape) {
+    constexpr float kWarp = 0.85f;
     GraphCurve<kSparkPoints> values{};
     const float phase = phaseDegrees * kPi / 180.0f;
-    const float shp = std::clamp(oscShape, 0.0f, 1.0f);
+    const float shp = std::clamp(shape, 0.0f, 1.0f);
+    const float width = 0.5f - 0.45f * shp;
+    const float pdK = std::exp2(4.0f * shp);
     for (std::size_t i = 0; i < values.size(); ++i) {
         const float x = static_cast<float>(i) / static_cast<float>(values.size() - 1);
         const float rad = kTwoPi * x * ratio + phase + pmIndex * std::sin(kTwoPi * x);
-        const float s1 = std::sin(rad);
-        if (shp <= 1.0e-4f) {
-            values[i] = s1;
-        } else {
-            const float s2 = std::sin(2.0f * rad);
-            const float rich = std::sin(rad + 0.85f * shp * s1 + 0.35f * shp * s2);
-            values[i] = (1.0f - shp) * s1 + shp * rich;
+        const float cycles = rad / kTwoPi;
+        const float t = cycles - std::floor(cycles);
+        switch (model) {
+        case VoiceModel::sine: {
+            const float s1 = std::sin(rad);
+            values[i] = (1.0f - shp) * s1 + shp * std::sin(rad + kWarp * shp * s1);
+            break;
         }
+        case VoiceModel::saw:
+            values[i] = 2.0f * (t + kWarp * shp / kTwoPi * std::sin(kTwoPi * t)) - 1.0f;
+            break;
+        case VoiceModel::pulse:
+            values[i] = t < width ? 1.0f : -1.0f;
+            break;
+        case VoiceModel::pd:
+            values[i] = (1.0f - t) * (1.0f - std::cos(kTwoPi * pdK * t)) - 1.0f;
+            break;
+        }
+    }
+    return values;
+}
+
+// Analogue prototypes of the engine's filters (engine/src/voice_core.h) at s = jw,
+// w in multiples of the cutoff. Drive saturates and so has no linear picture.
+GraphCurve<kShapePoints> filterResponse(FilterType type, float reach, float resonance) {
+    const ParamSpec& range = spec(ParamId::reach);
+    const float res = std::clamp(resonance, 0.0f, 1.0f);
+    const float cutoff = std::clamp(reach, range.min, range.max);
+    const std::complex<float> one(1.0f, 0.0f);
+    GraphCurve<kShapePoints> values{};
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const float position = static_cast<float>(i) / static_cast<float>(values.size() - 1);
+        const float w = range.min * std::pow(range.max / range.min, position) / cutoff;
+        const std::complex<float> s(0.0f, w);
+        // |numerator| / |denominator|, kept apart so a pole on the axis cannot divide by zero.
+        float numerator = 1.0f;
+        float denominator = 1.0f;
+        switch (type) {
+        case FilterType::clean: // 24 dB/oct Butterworth
+            denominator = std::sqrt(1.0f + std::pow(w, 8.0f));
+            break;
+        case FilterType::ladder: { // four poles under negative feedback, passband loss made up part way
+            const float k = 4.2f * res;
+            numerator = 1.0f + 0.4f * k;
+            denominator = std::abs((one + s) * (one + s) * (one + s) * (one + s) + k);
+            break;
+        }
+        case FilterType::ms20: { // Korg 35: two poles, positive feedback through a high-pass
+            const float k = 2.1f * res;
+            denominator = std::abs(s * s + (2.0f - k) * s + one);
+            break;
+        }
+        case FilterType::lowpass:
+        case FilterType::notch: { // state-variable, damping from Butterworth down
+            const float damping = std::sqrt(2.0f) * (1.0f - 0.98f * res);
+            if (type == FilterType::notch)
+                numerator = std::abs(s * s + one);
+            denominator = std::abs(s * s + damping * s + one);
+            break;
+        }
+        }
+        const float magnitude = numerator / std::max(denominator, 1.0e-6f);
+        values[i] = std::clamp(20.0f * std::log10(std::max(magnitude, 1.0e-6f)), kFilterFloorDb, kFilterCeilingDb);
     }
     return values;
 }

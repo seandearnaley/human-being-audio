@@ -75,7 +75,6 @@
     "lane4Target": "Reach",
     "lane4Follow": "Lane 1",
     "lane4Ratio": "×1",
-    "oscShape": 0.32,
     "punchAmt": 3.0,
     "punchMs": 20.0,
     "tractShift": 0.0,
@@ -149,5 +148,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.32,
+    "bShape": 0.32,
+    "aModel": "Sine",
+    "bModel": "Sine",
+    "stack": "1",
+    "spread": 0.35,
+    "filterType": "Clean",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

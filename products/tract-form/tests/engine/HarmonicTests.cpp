@@ -42,10 +42,11 @@ constexpr double kSteadyFrom = 0.5;  // seconds: attack and smoothing are over
 
 double offHarmonic(const Rendered& out, const Params& p, int note, double fs, double bpm) {
     const double f0 = noteHz(note);
-    const auto offsets = voiceOffsetsHz(p, f0, bpm);
-    const double tol = analysis::harmonicToleranceHz(offsets.a, offsets.b);
+    const auto spread = harmonicSpreadHz(p, f0, bpm);
+    const double tol = analysis::harmonicToleranceHz(spread.flatHz, spread.flatHz);
     const Signal m = mid(out);
-    return analysis::offHarmonicDb(m, static_cast<std::size_t>(kSteadyFrom * fs), m.size(), fs, f0, tol);
+    return analysis::offHarmonicDb(m, static_cast<std::size_t>(kSteadyFrom * fs), m.size(), fs, f0, tol,
+                                   spread.perHarmonicHz);
 }
 
 // Phase (radians) of the component at `hz` in x[from, to), whole periods.
@@ -667,4 +668,45 @@ TEST_CASE("sculpt on: block sizes 1, 7, 64 and 512 give identical output", "[eng
         CHECK(maxAbsDiff(out.left, reference.left) == 0.0);
         CHECK(maxAbsDiff(out.right, reference.right) == 0.0);
     }
+}
+
+TEST_CASE("every voice model and stack size stays on the harmonics with detune removed", "[engine][harmonic][models]") {
+    // Revision 2, pass 1: the Saw and Pulse edges are PolyBLEP'd from the
+    // phase's actual advance, PD is continuous, and every model takes the
+    // master's PM and the fold. With nothing detuned and no spread, any energy
+    // off the harmonics is aliasing.
+    const int model = GENERATE(0, 1, 2, 3); // Sine, Saw, Pulse, PD
+    const int stack = GENERATE(0, 6);       // one voice, seven
+    const int note = GENERATE(29, 69);      // F1, A4
+    CAPTURE(model, stack, note);
+    Setup s;
+    s.params = lanesOff(Params::defaults());
+    s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
+    s.params[ParamId::spread] = 0.0f;
+    s.params[ParamId::aModel] = s.params[ParamId::bModel] = static_cast<float>(model);
+    s.params[ParamId::stack] = static_cast<float>(stack);
+    s.params[ParamId::filterType] = static_cast<float>(FilterType::ladder);
+    s.params[ParamId::filterRes] = 0.5f;
+    const auto out = render(s, held(note), frames(1.5, s.sampleRate));
+    CHECK(offHarmonic(out, s.params, note, s.sampleRate, s.bpm) <= -45.0);
+}
+
+TEST_CASE("every filter type stays finite and bounded at full resonance and drive", "[engine][harmonic][models]") {
+    const int type = GENERATE(0, 1, 2, 3, 4);
+    const int position = GENERATE(0, 1); // Pre, Post
+    CAPTURE(type, position);
+    Setup s;
+    s.params = lanesOff(hotPatch());
+    s.params[ParamId::aModel] = s.params[ParamId::bModel] = static_cast<float>(VoiceModel::saw);
+    s.params[ParamId::filterType] = static_cast<float>(type);
+    s.params[ParamId::filterPos] = static_cast<float>(position);
+    s.params[ParamId::filterRes] = 1.0f;
+    s.params[ParamId::filterDrive] = 1.0f;
+    const auto out = render(s, held(29), frames(1.0, s.sampleRate));
+    double peak = 0.0;
+    for (std::size_t i = 0; i < out.left.size(); ++i)
+        peak = std::max({peak, std::abs(out.left[i]), std::abs(out.right[i])});
+    REQUIRE(std::isfinite(peak));
+    CHECK(peak <= 1.0);
+    CHECK(peak > 0.01);
 }

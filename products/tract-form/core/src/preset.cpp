@@ -22,7 +22,20 @@ std::optional<Preset> parsePreset(std::string_view json, std::string* error) {
     }
 
     Preset preset;
+    // Before 2.0 one "oscShape" set both voices' Shape.
+    std::optional<float> legacyShape;
+    bool hasVoiceShape = false;
     for (const auto& [key, value] : root.items()) {
+        if (key == "oscShape") {
+            const auto real = hba::core::readParamJson(spec(ParamId::aShape), value, clampToRange);
+            if (!real) {
+                fail(error, "bad value for \"" + key + "\"");
+                return std::nullopt;
+            }
+            legacyShape = *real;
+            continue;
+        }
+        hasVoiceShape |= key == "aShape" || key == "bShape";
         if (key == "name" || key == "category") {
             if (!value.is_string()) {
                 fail(error, "\"" + key + "\" must be a string");
@@ -52,6 +65,8 @@ std::optional<Preset> parsePreset(std::string_view json, std::string* error) {
         }
         preset.params[*id] = *real;
     }
+    if (legacyShape && !hasVoiceShape)
+        preset.params[ParamId::aShape] = preset.params[ParamId::bShape] = *legacyShape;
     return preset;
 }
 
