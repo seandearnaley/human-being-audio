@@ -1,7 +1,7 @@
 {
     "name": "Liquid Velvet Roller",
     "category": "Reese",
-    "coupling": 0.44,
+    "coupling": 0.22,
     "beat": 0.36,
     "tract": 0.46,
     "warp": 0.38,
@@ -54,7 +54,7 @@
     "lane4Phase": 270.0,
     "lane4Depth": 0.38,
     "lane4Shape": "Sine",
-    "reach": 24.0,
+    "reach": 5.2,
     "weight": 0.72,
     "fit": 0.0,
     "beatLock": false,
@@ -75,7 +75,6 @@
     "lane4Target": "Beat",
     "lane4Follow": "Own",
     "lane4Ratio": "×1",
-    "oscShape": 0.46,
     "punchAmt": 0.0,
     "punchMs": 32.0,
     "tractShift": -2.0,
@@ -99,5 +98,15 @@
     "playMode": "Legato",
     "glideMode": "Legato",
     "bendRange": "±2 st",
-    "octave": "0 oct"
+    "octave": "0 oct",
+    "aShape": 0.46,
+    "bShape": 0.46,
+    "aModel": "Saw",
+    "bModel": "Saw",
+    "stack": "2",
+    "spread": 0.6,
+    "filterType": "Ladder",
+    "filterRes": 0.25,
+    "filterDrive": 0.0,
+    "filterPos": "Post"
 }

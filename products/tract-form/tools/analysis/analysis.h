@@ -66,6 +66,7 @@ struct Metrics {
     std::optional<double> tiltDbPerOct;  // printed as null when empty
     double offHarmonicDb = 0;
     double harmonicToleranceHz = 0;
+    double perHarmonicToleranceHz = 0;
 };
 
 struct MetricsRequest {
@@ -77,6 +78,7 @@ struct MetricsRequest {
     double f0 = 0;                // Hz; 0 skips offHarmonicDb
     double tiltUpperHz = 16000;   // see tiltDbPerOct()
     double harmonicToleranceHz = kMinHarmonicToleranceHz;
+    double perHarmonicHz = 0; // see offHarmonicDb()
 };
 
 Metrics computeMetrics(const Stereo& audio, const MetricsRequest& request);
@@ -118,8 +120,11 @@ std::optional<double> tiltDbPerOct(const Signal& x, std::size_t begin, std::size
 // tf-render uses. The spectrum is Welch-averaged Blackman-Harris frames of up
 // to 2^16 samples, whose main lobe (+-4 bins, +-2.9 Hz at 48 kHz) fits inside
 // the 5 Hz minimum, so a steady harmonic does not leak into the off share.
+// `perHarmonicHz` widens the tolerance at harmonic k to at least
+// 1.5 x k x perHarmonicHz: a detuned saw's k-th harmonic sits k times its
+// fundamental's offset away (tf::harmonicSpreadHz).
 double offHarmonicDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double f0,
-                     double toleranceHz);
+                     double toleranceHz, double perHarmonicHz = 0.0);
 
 // The tolerance for offHarmonicDb: max(5 Hz, 1.5 x the larger voice offset
 // from f0 x its ratio). A detuned or beat-locked voice puts its partials that

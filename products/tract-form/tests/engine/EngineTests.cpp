@@ -433,7 +433,7 @@ TEST_CASE("path alignment: the sub and growl paths have equal latency to the sam
     s.oversampling = factor;
     s.params = staticPatch();
     s.params[ParamId::coupling] = 0.0f;
-    s.params[ParamId::oscShape] = 0.0f;
+    s.params[ParamId::aShape] = s.params[ParamId::bShape] = 0.0f;
     s.params[ParamId::subWarmth] = 0.0f;
     s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
     s.params[ParamId::aPhase] = s.params[ParamId::bPhase] = 0.0f;
@@ -1193,8 +1193,7 @@ TEST_CASE("Phase 4: Stereo Sculpt Bell/Phaser/Comb modes and click-free mode swi
     CHECK(maxJump < 0.45);
 }
 
-TEST_CASE("Phase 4: Carrier oscShape enriches harmonics and Width 100% retains stereo Reese beating",
-          "[engine][phase4]") {
+TEST_CASE("Phase 4: Carrier Shape enriches harmonics and Width 100% retains stereo Reese beating", "[engine][phase4]") {
     Setup s;
     s.params = staticPatch();
     s.params[ParamId::coupling] = 0.0f;
@@ -1202,9 +1201,9 @@ TEST_CASE("Phase 4: Carrier oscShape enriches harmonics and Width 100% retains s
     s.params[ParamId::fbAmount] = 0.0f;
     s.params[ParamId::subLevel] = 0.0f;
     s.params[ParamId::aDetune] = s.params[ParamId::bDetune] = 0.0f;
-    s.params[ParamId::oscShape] = 0.0f;
+    s.params[ParamId::aShape] = s.params[ParamId::bShape] = 0.0f;
     const auto sineOnly = render(s, held(29), frames(0.5, s.sampleRate));
-    s.params[ParamId::oscShape] = 0.85f;
+    s.params[ParamId::aShape] = s.params[ParamId::bShape] = 0.85f;
     const auto shaped = render(s, held(29), frames(0.5, s.sampleRate));
     const auto from15 = static_cast<std::size_t>(frames(0.15, s.sampleRate));
     CHECK(analysis::rmsDb(slice(shaped.growl, from15, shaped.growl.size())) >

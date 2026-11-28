@@ -325,7 +325,7 @@ std::optional<double> tiltDbPerOct(const Signal& x, std::size_t begin, std::size
 }
 
 double offHarmonicDb(const Signal& x, std::size_t begin, std::size_t end, double sampleRate, double f0,
-                     double toleranceHz) {
+                     double toleranceHz, double perHarmonicHz) {
     if (f0 <= 0.0) return 0.0;
     std::size_t frame = 1;
     const Signal p = steadySpectrum(x, begin, end, frame);
@@ -337,7 +337,8 @@ double offHarmonicDb(const Signal& x, std::size_t begin, std::size_t end, double
         if (hz > 6000.0) break;
         total += p[i];
         const double k = std::max(1.0, std::round(hz / f0));
-        if (std::abs(hz - k * f0) > toleranceHz) off += p[i];
+        if (std::abs(hz - k * f0) > std::max(toleranceHz, 1.5 * k * perHarmonicHz))
+            off += p[i];
     }
     if (total <= 0) return -300.0;
     return std::max(-300.0, 10.0 * std::log10(std::max(off, 1e-300) / total));
@@ -400,7 +401,8 @@ Metrics computeMetrics(const Stereo& audio, const MetricsRequest& q) {
     m.sumCrestDb = toDb(steadyPeak) - m.rmsDb;
     m.tiltDbPerOct = tiltDbPerOct(mono, begin, end, q.sampleRate, q.tiltUpperHz);
     m.harmonicToleranceHz = q.harmonicToleranceHz;
-    m.offHarmonicDb = offHarmonicDb(mono, begin, end, q.sampleRate, q.f0, q.harmonicToleranceHz);
+    m.perHarmonicToleranceHz = q.perHarmonicHz;
+    m.offHarmonicDb = offHarmonicDb(mono, begin, end, q.sampleRate, q.f0, q.harmonicToleranceHz, q.perHarmonicHz);
     return m;
 }
 
@@ -412,10 +414,10 @@ std::string toJson(const Metrics& m) {
                   "{\"peakDb\": %.2f, \"truePeakDb\": %.2f, \"rmsDb\": %.2f, \"crestDb\": %.2f, \"subRmsDb\": %.2f, "
                   "\"subRmsRangeDb\": %.3f, \"sideBelowXoverDb\": %.2f, \"correlation\": %.4f, \"centroidHz\": %.1f, "
                   "\"centroidRangeHz\": %.1f, \"growlRmsDb\": %.2f, \"sumCrestDb\": %.2f, \"tiltDbPerOct\": %s, "
-                  "\"offHarmonicDb\": %.1f, \"harmonicToleranceHz\": %.2f}",
-                  m.peakDb, m.truePeakDb, m.rmsDb, m.crestDb, m.subRmsDb, m.subRmsRangeDb, m.sideBelowXoverDb, m.correlation,
-                  m.centroidHz, m.centroidRangeHz, m.growlRmsDb, m.sumCrestDb, tilt, m.offHarmonicDb,
-                  m.harmonicToleranceHz);
+                  "\"offHarmonicDb\": %.1f, \"harmonicToleranceHz\": %.2f, \"perHarmonicToleranceHz\": %.3f}",
+                  m.peakDb, m.truePeakDb, m.rmsDb, m.crestDb, m.subRmsDb, m.subRmsRangeDb, m.sideBelowXoverDb,
+                  m.correlation, m.centroidHz, m.centroidRangeHz, m.growlRmsDb, m.sumCrestDb, tilt, m.offHarmonicDb,
+                  m.harmonicToleranceHz, m.perHarmonicToleranceHz);
     return buf;
 }
 

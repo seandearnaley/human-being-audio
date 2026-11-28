@@ -130,6 +130,8 @@ inline constexpr std::array<LaneSpan, kLaneTargetCount> kLaneSpans{{
     {180.0f, false}, // fit: degrees, wraps
     {0.5f, false},   // width
     {18.0f, false},  // shift: formant shift in semitones
+    {0.5f, false},   // shape: both voices' Shape
+    {0.5f, false},   // res: filter resonance
 }};
 
 // The sum of every lane aimed at `target`, in -1..1 per lane (so it can exceed 1
