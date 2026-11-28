@@ -29,7 +29,8 @@ test("browse the studio products, inspect images and open install notes", async 
       "href",
       `${STUDIO.repository}/tree/main/products/${slug}`,
     );
-    const image = card.getByRole("img");
+    const image = card.locator("img.studio-interface");
+    await expect(image).toHaveAttribute("alt", /\S/);
     await image.scrollIntoViewIfNeeded();
     await expect
       .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
@@ -107,10 +108,10 @@ test("all showcase decks decode, switch tracks, and play exclusively on request"
   const tractDeck = page.locator('figure[data-showcase="tract-form"]');
   const poleDeck = page.locator('figure[data-showcase="pole-field"]');
   await tractDeck.locator(".showcase__track").nth(1).click();
-  await expect(tractDeck.locator(".showcase__title")).toHaveText("Acid Snap Sequence");
+  await expect(tractDeck.locator(".showcase__title")).toHaveText("Throat Wobble");
   await expect(tractDeck.locator("audio")).toHaveAttribute(
     "src",
-    "/audio/tract-form/02-acid-snap-sequence.mp3",
+    "/audio/tract-form/02-throat-wobble.mp3",
   );
   await expect(tractDeck).toHaveAttribute("data-playing", "true");
 
