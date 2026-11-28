@@ -1,0 +1,203 @@
+{
+  "format": 2,
+  "name": "Golden Lift",
+  "category": "Pop",
+  "bpm": 118.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Verse",
+      "key": {
+        "tonic": "G",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "G",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "add9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "F",
+          "quality": "d7",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Chorus",
+      "key": {
+        "tonic": "Bb",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "add9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "add9",
+          "beats": 4.0,
+          "bass": "A"
+        },
+        {
+          "root": "G",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "maj9s11",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "62": "r32",
+        "63": "r64"
+      }
+    },
+    {
+      "name": "Last Chorus",
+      "key": {
+        "tonic": "C",
+        "mode": "major"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "C",
+          "quality": "add9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "add9",
+          "beats": 4.0,
+          "bass": "B"
+        },
+        {
+          "root": "A",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "maj9s11",
+          "beats": 4.0
+        },
+        {
+          "root": "E",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "sus4",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "d9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "124": "r32",
+        "125": "r32",
+        "126": "r64",
+        "127": "gate"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 2,
+      "route": "pivot",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 2,
+      "to": 0,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Push",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Anchor",
+      "density": 0.65,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Hook",
+      "density": 0.62,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 4,
+      "seedP": 7,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Pluck 8ths",
+      "density": 0.45,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

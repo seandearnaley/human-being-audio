@@ -595,4 +595,71 @@ export function registerSculptureForms({ THREE, TSL, defineForm, U, stage, helpe
       if (moving) group.rotation.y += dt * 0.14;
     };
   });
+
+  /* ---- Knot: a voice-led trefoil carrying key A to key B, ringed by its four section orbits (Ligature) ---- */
+  defineForm("knot", ({ group, solid, wireOpacity, accent }) => {
+    const violet = vec3(0.66, 0.52, 1.0);
+    const cyan = vec3(0.22, 0.91, 1.0);
+    const amber = vec3(0.96, 0.65, 0.22);
+
+    const knotGeo = new THREE.TorusKnotGeometry(0.62, 0.115, 256, 24, 2, 3);
+    // Angle around the knot's centre; whole-number multiples keep the wave seamless where atan wraps.
+    const along = atan(positionGeometry.y, positionGeometry.x);
+    const weave = Fn(() => {
+      const lobes = floor(mix(float(3), float(9.99), U.formant));
+      const swell = sin(along.mul(lobes).sub(U.bars.mul(TWO_PI))).mul(0.026).mul(U.open.add(0.35));
+      const ripple = sin(along.mul(floor(mix(float(12), float(36.99), U.slice))).add(U.time.mul(2.2))).mul(0.008);
+      return normalLocal.mul(swell.add(ripple).add(U.hit.mul(0.08)));
+    })();
+    const knotPos = deform(positionLocal.add(weave));
+    const knotMask = crystal(solid, vec3(1.7));
+    const knotMat = glassMaterial({ color: 0x120f1e, metalness: 0.88, roughness: 0.1 });
+    knotMat.positionNode = knotPos;
+    knotMat.opacityNode = knotMask.mask;
+    knotMat.alphaTest = 0.5;
+    knotMat.iridescenceThicknessNode = filmThickness(220, 900);
+    // Key A (cyan) on one side, key B (amber) on the other; a bright bridge band travels the strand through violet.
+    const keyCol = mix(cyan, amber, smoothstep(float(-0.8), float(0.8), cos(along)));
+    const band = pow(sin(along.mul(3).sub(U.bars.mul(PI))).mul(0.5).add(0.5), float(6));
+    knotMat.emissiveNode = mix(violet, keyCol, band)
+      .mul(float(0.2).add(band.mul(0.6)).add(U.hit.mul(1.2)))
+      .add(accent.mul(knotMask.edge.mul(3.2)));
+    const knot = new THREE.Mesh(knotGeo, knotMat);
+    const knotWire = new THREE.Mesh(knotGeo, wireMaterial(violet, wireOpacity));
+    knotWire.material.positionNode = knotPos;
+
+    const ringCount = 4;
+    const ringGeo = new THREE.TorusGeometry(1.0, 0.02, 12, 160);
+    const ri = instanceIndex.toFloat();
+    const breathe = sin(U.bars.mul(TWO_PI.div(4)).sub(ri.mul(PI.div(2))))
+      .mul(mix(float(0.02), float(0.08), U.open))
+      .add(U.hit.mul(0.12).mul(float(1).sub(ri.div(float(ringCount)))));
+    const ringPos = deform(positionLocal.mul(float(1).add(breathe)));
+    const ringMask = crystal(solid, vec3(ri.mul(2.9).add(5.0)));
+    const ringMat = new THREE.MeshStandardNodeMaterial({ color: 0x0c0a14, roughness: 0.28, metalness: 0.3 });
+    ringMat.positionNode = ringPos;
+    ringMat.opacityNode = ringMask.mask;
+    ringMat.alphaTest = 0.5;
+    const ringT = ri.div(float(ringCount - 1));
+    const ringCol = mix(mix(cyan, violet, smoothstep(float(0), float(0.5), ringT)), amber, smoothstep(float(0.5), float(1), ringT));
+    ringMat.emissiveNode = ringCol.mul(float(1.15).add(U.hit.mul(1.2)));
+    const rings = new THREE.InstancedMesh(ringGeo, ringMat, ringCount);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (let j = 0; j < ringCount; j++) {
+      const r = 1.08 + j * 0.06;
+      q.setFromEuler(new THREE.Euler(Math.PI * 0.5 + (j - 1.5) * 0.42, (j * Math.PI) / 4, 0));
+      s.set(r, r, 1);
+      m.compose(v, q, s);
+      rings.setMatrixAt(j, m);
+    }
+
+    group.add(knot, knotWire, rings);
+    group.rotation.x = 0.36;
+    return (dt, moving) => {
+      if (moving) group.rotation.y += dt * 0.12;
+    };
+  });
 }

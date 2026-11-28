@@ -15,6 +15,13 @@ class NativeQualityTests(unittest.TestCase):
         self.assertEqual(native.affected(self.products, ["web/src/example.ts"]), [])
         self.assertEqual(native.affected(self.products, [".clang-tidy"]), self.products)
 
+    def test_a_product_built_from_another_products_engine_rebuilds_with_it(self):
+        products = ["torus-glide", "lineage", "ligature"]
+        self.assertEqual(native.affected(products, ["products/lineage/engine/src/engine.cpp"]), ["lineage", "ligature"])
+        self.assertEqual(native.affected(products, ["products/torus-glide/presets/01 Init.json"]),
+                         ["torus-glide", "ligature"])
+        self.assertEqual(native.affected(products, ["products/lineage/ui/src/editor.cpp"]), ["lineage"])
+
     def test_editor_probe_and_research_formats_trigger_their_consumers(self):
         self.assertEqual(native.affected(self.products, ["factory/release/standalone-linux.py"]), self.products)
         self.assertEqual(native.plan_checks(self.products, ["research/idea.cpp"])["jobs"], ["format"])

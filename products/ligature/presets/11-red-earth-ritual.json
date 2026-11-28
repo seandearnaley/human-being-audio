@@ -1,0 +1,135 @@
+{
+  "format": 2,
+  "name": "Red Earth Ritual",
+  "category": "Afro House",
+  "bpm": 120.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Ritual",
+      "key": {
+        "tonic": "C",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "C",
+          "quality": "m11",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Ab",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "m7",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Chant",
+      "key": {
+        "tonic": "A",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "F",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "six9",
+          "beats": 4.0
+        },
+        {
+          "root": "A",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "E",
+          "quality": "m7",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "60": "r32",
+        "61": "r32",
+        "62": "r64",
+        "63": "r64"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 2,
+      "route": "neapolitan",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 0,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Pulse",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Offbeat",
+      "density": 0.65,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 4,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Hook",
+      "density": 0.55,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 6,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Up 16ths",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 5,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

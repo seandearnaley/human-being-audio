@@ -1,0 +1,133 @@
+{
+  "format": 2,
+  "name": "Mirrorball Circle",
+  "category": "House",
+  "bpm": 123.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Loop",
+      "key": {
+        "tonic": "Bb",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "C",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "d13",
+          "beats": 4.0
+        },
+        {
+          "root": "D",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "m9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Filter Drop",
+      "key": {
+        "tonic": "Db",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Eb",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Ab",
+          "quality": "d13",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "62": "r32",
+        "63": "r64"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 0,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Pulse",
+      "density": 0.7,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Offbeat",
+      "density": 0.75,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Hook",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 6,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Up 16ths",
+      "density": 0.35,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 4,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

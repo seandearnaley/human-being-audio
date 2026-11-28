@@ -1,0 +1,145 @@
+{
+  "format": 2,
+  "name": "Dub Pressure",
+  "category": "Techno",
+  "bpm": 130.0,
+  "voiceLead": false,
+  "sections": [
+    {
+      "name": "Dub",
+      "key": {
+        "tonic": "A",
+        "mode": "minor"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "A",
+          "quality": "m9",
+          "beats": 8.0
+        },
+        {
+          "root": "D",
+          "quality": "q4",
+          "beats": 8.0
+        },
+        {
+          "root": "A",
+          "quality": "m9",
+          "beats": 8.0
+        },
+        {
+          "root": "F",
+          "quality": "maj7",
+          "beats": 4.0
+        },
+        {
+          "root": "E",
+          "quality": "q4",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Peak",
+      "key": {
+        "tonic": "Bb",
+        "mode": "minor"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 8.0
+        },
+        {
+          "root": "Eb",
+          "quality": "q4",
+          "beats": 8.0
+        },
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 8.0
+        },
+        {
+          "root": "Gb",
+          "quality": "maj7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "q4",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "124": "r32",
+        "125": "r32",
+        "126": "r64",
+        "127": "gate"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 0,
+      "bars": 2,
+      "route": "dim7",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Stabs",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Rolling",
+      "density": 0.65,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Off",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Up 16ths",
+      "density": 0.4,
+      "register": -1,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 4,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

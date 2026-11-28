@@ -1,0 +1,160 @@
+{
+  "format": 2,
+  "name": "Sunday Hands",
+  "category": "House",
+  "bpm": 124.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Groove",
+      "key": {
+        "tonic": "Ab",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Ab",
+          "quality": "add9",
+          "beats": 2.0
+        },
+        {
+          "root": "Ab",
+          "quality": "add9",
+          "beats": 2.0,
+          "bass": "C"
+        },
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "Eb",
+          "quality": "d9",
+          "beats": 2.0
+        },
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Peak",
+      "key": {
+        "tonic": "Bb",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "add9",
+          "beats": 2.0
+        },
+        {
+          "root": "Bb",
+          "quality": "add9",
+          "beats": 2.0,
+          "bass": "D"
+        },
+        {
+          "root": "Eb",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "F",
+          "quality": "d9",
+          "beats": 2.0
+        },
+        {
+          "root": "G",
+          "quality": "m9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "60": "r32",
+        "61": "r32",
+        "62": "r64",
+        "63": "gate"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 0,
+      "bars": 1,
+      "route": "backdoor",
+      "stutter": {
+        "14": "r32",
+        "15": "r64"
+      }
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Stabs",
+      "density": 0.7,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Offbeat",
+      "density": 0.7,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Hook",
+      "density": 0.55,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 6,
+      "seedP": 4,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Off",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

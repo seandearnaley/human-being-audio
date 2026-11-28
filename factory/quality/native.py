@@ -13,14 +13,21 @@ SHARED = {".clang-format", ".clang-format-ignore", ".clang-tidy", ".clangd", "st
           ".github/workflows/native.yml", ".gitmodules", "factory/release/standalone-linux.py"}
 VENDOR = {"third_party", "libs", "build", "_deps", ".cpm-cache"}
 TRANSLATIONS = {".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
+# Products whose build compiles another product's code: Ligature's studio voices build these instruments' core and
+# engine directories and embed their factory presets (products/ligature/voices/CMakeLists.txt).
+BUILDS_FROM = {"ligature": ("torus-glide", "lineage", "datum", "strike-body")}
+BORROWED_PARTS = ("core/", "engine/", "presets/")
 
 
 def affected(products, changes):
     if changes is None or any(p in SHARED or p.startswith(("cmake/", "modules/", "factory/quality/")) for p in changes):
         return products
-    return [name for name in products if any(
-        p.startswith(f"products/{name}/") and not p.endswith(".md") and not p.startswith(f"products/{name}/press/")
-        for p in changes)]
+    def touches(name, p):
+        if p.startswith(f"products/{name}/"):
+            return not p.endswith(".md") and not p.startswith(f"products/{name}/press/")
+        return any(p.startswith(f"products/{dep}/{part}") for dep in BUILDS_FROM.get(name, ()) for part in BORROWED_PARTS)
+
+    return [name for name in products if any(touches(name, p) for p in changes)]
 
 
 def plan_checks(products, changes, version_only=()):

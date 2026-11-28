@@ -1,0 +1,149 @@
+{
+  "format": 2,
+  "name": "Velvet Rewind",
+  "category": "Garage",
+  "bpm": 132.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Verse",
+      "key": {
+        "tonic": "D",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "D",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "D",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "maj9",
+          "beats": 2.0
+        },
+        {
+          "root": "A",
+          "quality": "d7b9",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Drop",
+      "key": {
+        "tonic": "F",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "add9",
+          "beats": 4.0
+        },
+        {
+          "root": "C",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "C",
+          "quality": "d7b9",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {
+        "28": "r32",
+        "60": "r32",
+        "61": "r64",
+        "62": "r64",
+        "63": "gate"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 0,
+      "bars": 2,
+      "route": "dim7",
+      "stutter": {
+        "30": "r32",
+        "31": "r64"
+      }
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "2-Step",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 3,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Garage",
+      "density": 0.7,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 4,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Answer",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 5,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Off",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

@@ -34,5 +34,9 @@
   "prism-vein": {
     "color": 0.77,
     "tame": 0.63
+  },
+  "ligature": {
+    "land": 0.5,
+    "sound_level": 0.63
   }
 }

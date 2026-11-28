@@ -1,0 +1,179 @@
+{
+  "format": 2,
+  "name": "Glacier Hymn",
+  "category": "Ambient",
+  "bpm": 70.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Shore",
+      "key": {
+        "tonic": "Db",
+        "mode": "major"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "Gb",
+          "quality": "maj9s11",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "Ab",
+          "quality": "six9",
+          "beats": 8.0,
+          "voicing": "spread"
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Deep",
+      "key": {
+        "tonic": "Bb",
+        "mode": "minor"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "m11",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "Gb",
+          "quality": "maj9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "Eb",
+          "quality": "m9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "F",
+          "quality": "sus4",
+          "beats": 8.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Light",
+      "key": {
+        "tonic": "D",
+        "mode": "major"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "E",
+          "quality": "m9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "G",
+          "quality": "maj9s11",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "B",
+          "quality": "m9",
+          "beats": 8.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "D",
+          "quality": "add9",
+          "beats": 8.0,
+          "voicing": "spread"
+        }
+      ],
+      "stutter": {}
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 4,
+      "route": "pivot",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "bars": 4,
+      "route": "hexatonic",
+      "stutter": {}
+    },
+    {
+      "from": 2,
+      "to": 0,
+      "bars": 4,
+      "route": "pedal",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Hold",
+      "density": 0.7,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Anchor",
+      "density": 0.3,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Answer",
+      "density": 0.3,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 5,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Up 16ths",
+      "density": 0.35,
+      "register": 0,
+      "rate": 0.5,
+      "seedR": 2,
+      "seedP": 3,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

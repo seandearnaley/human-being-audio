@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="320" viewBox="0 0 1440 320">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Ligature mark -->
+    <path d="M36,214 C64,84 216,84 244,214" stroke="#a884ff" stroke-width="22"/>
+    <path d="M36,214 C92,166 188,166 244,214" stroke="#38e8ff" stroke-width="13" stroke-opacity="0.78"/>
+    <circle cx="36" cy="214" r="26" fill="#090d14" stroke="#38e8ff" stroke-width="14"/>
+    <circle cx="140" cy="116" r="15" fill="#a884ff"/>
+    <circle cx="244" cy="214" r="26" fill="#090d14" stroke="#f5a638" stroke-width="14"/>
+
+    <!-- Wordmark: ligature -->
+    <g transform="translate(320, 236)" stroke-width="28">
+      <!-- l -->
+      <path d="M0,-168 V0" stroke="#e6ebf0"/>
+      <!-- i -->
+      <path d="M62,0 V-118" stroke="#e6ebf0"/>
+      <circle cx="62" cy="-164" r="15" fill="#38e8ff" stroke="none"/>
+      <!-- g -->
+      <circle cx="176" cy="-60" r="56" stroke="#e6ebf0"/>
+      <path d="M232,-116 V16 A56,48 0 0 1 132,46" stroke="#e6ebf0"/>
+      <!-- a -->
+      <circle cx="348" cy="-60" r="56" stroke="#e6ebf0"/>
+      <path d="M404,-116 V0" stroke="#e6ebf0"/>
+      <!-- t (violet bridge accent crossbar) -->
+      <path d="M484,-154 V-20 A26,26 0 0 0 510,4 H536" stroke="#e6ebf0"/>
+      <path d="M454,-112 H534" stroke="#a884ff"/>
+      <!-- u -->
+      <path d="M588,-116 V-46 A48,48 0 0 0 684,-46 V-116 M684,-46 V0" stroke="#e6ebf0"/>
+      <!-- r -->
+      <path d="M748,0 V-116 M748,-68 A44,44 0 0 1 806,-112" stroke="#e6ebf0"/>
+      <!-- e (amber target accent) -->
+      <path d="M852,-60 H964 A56,56 0 1 0 948,-16" stroke="#e6ebf0"/>
+      <circle cx="964" cy="-60" r="12" fill="#f5a638" stroke="none"/>
+    </g>
+  </g>
+</svg>

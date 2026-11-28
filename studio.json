@@ -74,6 +74,14 @@
       "manufacturerCode": "Hbmu",
       "pluginCode": "Prvn",
       "license": "AGPL-3.0-or-later"
+    },
+    "ligature": {
+      "name": "Ligature",
+      "artifacts": "plugin/Ligature_artefacts/Release",
+      "bundle": "com.humanbeingmusic.ligature",
+      "manufacturerCode": "Hbmu",
+      "pluginCode": "Lgtr",
+      "license": "AGPL-3.0-or-later"
     }
   }
 }

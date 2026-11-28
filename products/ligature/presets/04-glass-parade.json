@@ -1,0 +1,227 @@
+{
+  "format": 2,
+  "name": "Glass Parade",
+  "category": "Pop",
+  "bpm": 104.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Verse",
+      "key": {
+        "tonic": "A",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "A",
+          "quality": "m11",
+          "beats": 4.0
+        },
+        {
+          "root": "E",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "D",
+          "quality": "m9",
+          "beats": 2.0
+        },
+        {
+          "root": "E",
+          "quality": "sus4",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Pre",
+      "key": {
+        "tonic": "F",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "C",
+          "quality": "add9",
+          "beats": 4.0
+        },
+        {
+          "root": "D",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "C",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "C",
+          "quality": "d9",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Chorus",
+      "key": {
+        "tonic": "C",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "A",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "maj9s11",
+          "beats": 4.0
+        },
+        {
+          "root": "C",
+          "quality": "add9",
+          "beats": 4.0,
+          "bass": "E"
+        },
+        {
+          "root": "G",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "G",
+          "quality": "d9",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {
+        "60": "r32",
+        "61": "r32",
+        "62": "r64",
+        "63": "r64"
+      }
+    },
+    {
+      "name": "Middle 8",
+      "key": {
+        "tonic": "Db",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Gb",
+          "quality": "maj9s11",
+          "beats": 4.0
+        },
+        {
+          "root": "Ab",
+          "quality": "six9",
+          "beats": 4.0
+        },
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 2,
+      "route": "pivot",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 3,
+      "to": 0,
+      "bars": 2,
+      "route": "hexatonic",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Hold",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 2,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Garage",
+      "density": 0.55,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 3,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Hook",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 2,
+      "seedP": 5,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Pluck 8ths",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 3,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}

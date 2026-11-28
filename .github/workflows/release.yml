@@ -7,7 +7,7 @@ on:
       product:
         description: Product to package
         type: choice
-        options: [livecut-redux, tract-form, pole-field, cutline, torus-glide, strike-body, lineage, datum, prism-vein]
+        options: [livecut-redux, tract-form, pole-field, cutline, torus-glide, strike-body, lineage, datum, prism-vein, ligature]
         required: true
       publish:
         description: Publish the verified draft immediately

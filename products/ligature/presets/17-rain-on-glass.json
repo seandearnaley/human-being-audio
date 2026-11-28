@@ -1,0 +1,239 @@
+{
+  "format": 2,
+  "name": "Rain on Glass",
+  "category": "Liquid",
+  "bpm": 174.0,
+  "voiceLead": true,
+  "sections": [
+    {
+      "name": "Verse",
+      "key": {
+        "tonic": "Eb",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Ab",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "sus4",
+          "beats": 2.0
+        },
+        {
+          "root": "Bb",
+          "quality": "d9",
+          "beats": 2.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Drop",
+      "key": {
+        "tonic": "F",
+        "mode": "major"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "Bb",
+          "quality": "maj9",
+          "beats": 4.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "A",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "D",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "G",
+          "quality": "d9",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Lift",
+      "key": {
+        "tonic": "Ab",
+        "mode": "major"
+      },
+      "bars": 8,
+      "chords": [
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 4.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "C",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "d13",
+          "beats": 4.0
+        },
+        {
+          "root": "Db",
+          "quality": "maj9",
+          "beats": 4.0,
+          "voicing": "spread"
+        },
+        {
+          "root": "C",
+          "quality": "m7",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Eb",
+          "quality": "sus4",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {}
+    },
+    {
+      "name": "Roller",
+      "key": {
+        "tonic": "C",
+        "mode": "minor"
+      },
+      "bars": 4,
+      "chords": [
+        {
+          "root": "C",
+          "quality": "m11",
+          "beats": 4.0
+        },
+        {
+          "root": "Ab",
+          "quality": "maj9",
+          "beats": 4.0
+        },
+        {
+          "root": "F",
+          "quality": "m9",
+          "beats": 4.0
+        },
+        {
+          "root": "Bb",
+          "quality": "d13",
+          "beats": 4.0
+        }
+      ],
+      "stutter": {
+        "60": "r32",
+        "61": "r32",
+        "62": "r64",
+        "63": "r64"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "from": 0,
+      "to": 1,
+      "bars": 2,
+      "route": "pivot",
+      "stutter": {}
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "bars": 2,
+      "route": "backdoor",
+      "stutter": {}
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "bars": 1,
+      "route": "slam",
+      "stutter": {}
+    },
+    {
+      "from": 3,
+      "to": 0,
+      "bars": 2,
+      "route": "pedal",
+      "stutter": {}
+    }
+  ],
+  "parts": {
+    "Chords": {
+      "style": "Hold",
+      "density": 0.6,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 1,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Bass": {
+      "style": "Rolling",
+      "density": 0.55,
+      "register": 0,
+      "rate": 0.5,
+      "seedR": 2,
+      "seedP": 1,
+      "mute": false,
+      "solo": false
+    },
+    "Melody": {
+      "style": "Motif",
+      "density": 0.5,
+      "register": 0,
+      "rate": 1.0,
+      "seedR": 4,
+      "seedP": 4,
+      "mute": false,
+      "solo": false
+    },
+    "Arp": {
+      "style": "Up 16ths",
+      "density": 0.45,
+      "register": 0,
+      "rate": 0.5,
+      "seedR": 1,
+      "seedP": 5,
+      "mute": false,
+      "solo": false
+    }
+  },
+  "pins": []
+}
