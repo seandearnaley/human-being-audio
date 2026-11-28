@@ -2,6 +2,7 @@
 #include "lg/palette.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <string>
 

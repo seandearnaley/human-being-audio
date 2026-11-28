@@ -47,6 +47,7 @@ struct Engine::Impl {
     double expected = 0.0;      // where the next block should start if nothing jumped
     bool previewPlaying = false;
     double previewBeat = 0.0;
+    double blockBeats = 0.0; // the current block's length in beats
 
     Performance perf;
     std::uint64_t lastFollowed = 0;
@@ -462,7 +463,7 @@ struct Engine::Impl {
         int start = nextBar, fit = full;
         if (landBars > 1) {
             int landing = static_cast<int>(std::ceil(static_cast<double>(nextBar) / landBars)) * landBars;
-            if (landing - nextBar < 1)
+            if (full > 0 && landing - nextBar < 1) // a bridge needs at least a bar before the landing
                 landing += landBars;
             start = std::max(nextBar, landing - full);
             fit = landing - start;
@@ -747,6 +748,14 @@ void Engine::command(const Command& c) noexcept LG_NONBLOCKING {
 
 void Engine::follow(const Performance& p) noexcept LG_NONBLOCKING {
     auto& m = *impl_;
+    // The leader's preview: start and stop with it, on its clock. Re-synced only when it drifts by more than a
+    // couple of blocks, since a re-sync reads as a host jump and releases every note.
+    if (p.previewing != m.previewPlaying) {
+        m.previewPlaying = p.previewing;
+        m.previewBeat = p.previewBeat;
+    } else if (p.previewing && std::abs(p.previewBeat - m.previewBeat) > 2.0 * m.blockBeats) {
+        m.previewBeat = p.previewBeat;
+    }
     if (p.generation == m.lastFollowed)
         return;
     m.lastFollowed = p.generation;
@@ -808,7 +817,8 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
     m.renderPlaying = playing;
     m.beat0 = hostPlaying ? host.ppq : m.previewBeat;
     m.beatsPerSample = bpm / 60.0 / m.sampleRate;
-    const double beat1 = m.beat0 + m.numSamples * m.beatsPerSample;
+    m.blockBeats = m.numSamples * m.beatsPerSample;
+    const double beat1 = m.beat0 + m.blockBeats;
     if (m.flushSounding) {
         m.endAll(m.beat0);
         m.flushSounding = false;
@@ -828,6 +838,8 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
                 m.endAll(m.beat0);
         }
         m.handleInputs();
+        m.perf.previewing = m.previewPlaying;
+        m.perf.previewBeat = m.previewBeat;
         if (m.previewPlaying) { // a preview just started: play it from the next block
             m.sortOutput();
             m.render(left, right, m.numSamples);
@@ -898,6 +910,8 @@ void Engine::process(const EngineParams& params, const Transport& host, MidiOutB
     m.expected = beat1;
     if (!hostPlaying)
         m.previewBeat = beat1;
+    m.perf.previewing = m.previewPlaying;
+    m.perf.previewBeat = m.previewBeat;
 
     // Telemetry
     auto& t = m.tele;

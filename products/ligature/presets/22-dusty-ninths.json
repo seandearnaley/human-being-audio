@@ -1,140 +1,140 @@
 {
-  "format": 2,
-  "name": "Dusty Ninths",
-  "category": "Lo-fi",
-  "bpm": 78.0,
-  "voiceLead": true,
-  "sections": [
-    {
-      "name": "Study",
-      "key": {
-        "tonic": "F",
-        "mode": "major"
-      },
-      "bars": 4,
-      "chords": [
+    "format": 2,
+    "name": "Dusty Ninths",
+    "category": "Lo-fi",
+    "bpm": 78.0,
+    "voiceLead": true,
+    "sections": [
         {
-          "root": "G",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "name": "Study",
+            "key": {
+                "tonic": "F",
+                "mode": "major"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "G",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "C",
+                    "quality": "d13",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "D",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "C",
-          "quality": "d13",
-          "beats": 4.0
-        },
-        {
-          "root": "F",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "drop2"
-        },
-        {
-          "root": "D",
-          "quality": "d7b9",
-          "beats": 4.0
+            "name": "Night",
+            "key": {
+                "tonic": "A",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "B",
+                    "quality": "hdim",
+                    "beats": 2.0
+                },
+                {
+                    "root": "E",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "A",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "F",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                }
+            ],
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Night",
-      "key": {
-        "tonic": "A",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
+    ],
+    "bridges": [
         {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "pivot",
+            "stutter": {}
         },
         {
-          "root": "B",
-          "quality": "hdim",
-          "beats": 2.0
-        },
-        {
-          "root": "E",
-          "quality": "d7b9",
-          "beats": 2.0
-        },
-        {
-          "root": "A",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
-        },
-        {
-          "root": "F",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "pedal",
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    }
-  ],
-  "bridges": [
-    {
-      "from": 0,
-      "to": 1,
-      "bars": 2,
-      "route": "pivot",
-      "stutter": {}
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Hold",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Anchor",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Motif",
+            "density": 0.4,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 6,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Counter",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
     },
-    {
-      "from": 1,
-      "to": 0,
-      "bars": 2,
-      "route": "pedal",
-      "stutter": {}
-    }
-  ],
-  "parts": {
-    "Chords": {
-      "style": "Hold",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 2,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Bass": {
-      "style": "Anchor",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 2,
-      "mute": false,
-      "solo": false
-    },
-    "Melody": {
-      "style": "Motif",
-      "density": 0.4,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 6,
-      "seedP": 2,
-      "mute": false,
-      "solo": false
-    },
-    "Arp": {
-      "style": "Counter",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 3,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    }
-  },
-  "pins": []
+    "pins": []
 }

@@ -232,3 +232,21 @@ TEST_CASE("A looped performance is captured pass after pass, never on top of its
     }
     CHECK(last > 9.0); // the second pass follows the first
 }
+
+TEST_CASE("A note that passed through bypass is ended when Ligature comes back", "[plugin]") {
+    Init init;
+    Host host;
+    host.head.playing = false;
+    juce::MidiBuffer in;
+    in.addEvent(juce::MidiMessage::noteOn(1, 40, 1.0f), 0); // outside the launch and key-chord ranges
+    host.processor->processBlockBypassed(host.audio, in);
+    bool passed = false;
+    for (const auto m : in)
+        passed = passed || (m.getMessage().isNoteOn() && m.getMessage().getNoteNumber() == 40);
+    REQUIRE(passed);
+    host.block();
+    bool ended = false;
+    for (const auto m : host.midi)
+        ended = ended || (m.getMessage().isNoteOff() && m.getMessage().getNoteNumber() == 40);
+    CHECK(ended);
+}

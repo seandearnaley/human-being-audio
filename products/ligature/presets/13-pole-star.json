@@ -1,187 +1,187 @@
 {
-  "format": 2,
-  "name": "Pole Star",
-  "category": "Trance",
-  "bpm": 140.0,
-  "voiceLead": true,
-  "sections": [
-    {
-      "name": "Drop",
-      "key": {
-        "tonic": "A",
-        "mode": "minor"
-      },
-      "bars": 8,
-      "chords": [
+    "format": 2,
+    "name": "Pole Star",
+    "category": "Trance",
+    "bpm": 140.0,
+    "voiceLead": true,
+    "sections": [
         {
-          "root": "A",
-          "quality": "min",
-          "beats": 4.0
+            "name": "Drop",
+            "key": {
+                "tonic": "A",
+                "mode": "minor"
+            },
+            "bars": 8,
+            "chords": [
+                {
+                    "root": "A",
+                    "quality": "min",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "E",
+                    "quality": "sus4",
+                    "beats": 2.0
+                },
+                {
+                    "root": "E",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                },
+                {
+                    "root": "A",
+                    "quality": "min",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "G",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "E",
+                    "quality": "d7b9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {
+                "124": "r32",
+                "125": "r32",
+                "126": "r64",
+                "127": "r64"
+            }
         },
         {
-          "root": "F",
-          "quality": "maj9",
-          "beats": 4.0
-        },
-        {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0
-        },
-        {
-          "root": "E",
-          "quality": "sus4",
-          "beats": 2.0
-        },
-        {
-          "root": "E",
-          "quality": "d7b9",
-          "beats": 2.0
-        },
-        {
-          "root": "A",
-          "quality": "min",
-          "beats": 4.0
-        },
-        {
-          "root": "F",
-          "quality": "maj9",
-          "beats": 4.0
-        },
-        {
-          "root": "G",
-          "quality": "add9",
-          "beats": 4.0
-        },
-        {
-          "root": "E",
-          "quality": "d7b9",
-          "beats": 4.0
+            "name": "Breakdown",
+            "key": {
+                "tonic": "Db",
+                "mode": "major"
+            },
+            "bars": 8,
+            "chords": [
+                {
+                    "root": "Bb",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Gb",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Db",
+                    "quality": "add9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Ab",
+                    "quality": "add9",
+                    "beats": 4.0,
+                    "bass": "C"
+                },
+                {
+                    "root": "Bb",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Gb",
+                    "quality": "maj9s11",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Eb",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Ab",
+                    "quality": "sus4",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
         }
-      ],
-      "stutter": {
-        "124": "r32",
-        "125": "r32",
-        "126": "r64",
-        "127": "r64"
-      }
-    },
-    {
-      "name": "Breakdown",
-      "key": {
-        "tonic": "Db",
-        "mode": "major"
-      },
-      "bars": 8,
-      "chords": [
+    ],
+    "bridges": [
         {
-          "root": "Bb",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "hexatonic",
+            "stutter": {}
         },
         {
-          "root": "Gb",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Db",
-          "quality": "add9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Ab",
-          "quality": "add9",
-          "beats": 4.0,
-          "bass": "C"
-        },
-        {
-          "root": "Bb",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Gb",
-          "quality": "maj9s11",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Eb",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Ab",
-          "quality": "sus4",
-          "beats": 4.0
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "slam",
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    }
-  ],
-  "bridges": [
-    {
-      "from": 0,
-      "to": 1,
-      "bars": 2,
-      "route": "hexatonic",
-      "stutter": {}
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Hold",
+            "density": 0.7,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Rolling",
+            "density": 0.7,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Hook",
+            "density": 0.65,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 5,
+            "seedP": 5,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Up 16ths",
+            "density": 0.7,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        }
     },
-    {
-      "from": 1,
-      "to": 0,
-      "bars": 2,
-      "route": "slam",
-      "stutter": {}
-    }
-  ],
-  "parts": {
-    "Chords": {
-      "style": "Hold",
-      "density": 0.7,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Bass": {
-      "style": "Rolling",
-      "density": 0.7,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 2,
-      "seedP": 3,
-      "mute": false,
-      "solo": false
-    },
-    "Melody": {
-      "style": "Hook",
-      "density": 0.65,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 5,
-      "seedP": 5,
-      "mute": false,
-      "solo": false
-    },
-    "Arp": {
-      "style": "Up 16ths",
-      "density": 0.7,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 3,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    }
-  },
-  "pins": []
+    "pins": []
 }

@@ -1,145 +1,145 @@
 {
-  "format": 2,
-  "name": "Quartz Roller",
-  "category": "DnB",
-  "bpm": 172.0,
-  "voiceLead": true,
-  "sections": [
-    {
-      "name": "Roller",
-      "key": {
-        "tonic": "G",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
+    "format": 2,
+    "name": "Quartz Roller",
+    "category": "DnB",
+    "bpm": 172.0,
+    "voiceLead": true,
+    "sections": [
         {
-          "root": "G",
-          "quality": "q4",
-          "beats": 4.0
+            "name": "Roller",
+            "key": {
+                "tonic": "G",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "G",
+                    "quality": "q4",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "q4",
+                    "beats": 4.0
+                },
+                {
+                    "root": "D",
+                    "quality": "sus4",
+                    "beats": 2.0
+                },
+                {
+                    "root": "D",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "Eb",
-          "quality": "maj9",
-          "beats": 4.0
-        },
-        {
-          "root": "C",
-          "quality": "q4",
-          "beats": 4.0
-        },
-        {
-          "root": "D",
-          "quality": "sus4",
-          "beats": 2.0
-        },
-        {
-          "root": "D",
-          "quality": "d7b9",
-          "beats": 2.0
+            "name": "Switch",
+            "key": {
+                "tonic": "Bb",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "Bb",
+                    "quality": "q4",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Gb",
+                    "quality": "maj9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Eb",
+                    "quality": "q4",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "sus4",
+                    "beats": 2.0
+                },
+                {
+                    "root": "F",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {
+                "60": "r32",
+                "61": "r64",
+                "62": "r64",
+                "63": "gate"
+            }
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Switch",
-      "key": {
-        "tonic": "Bb",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
+    ],
+    "bridges": [
         {
-          "root": "Bb",
-          "quality": "q4",
-          "beats": 4.0
+            "from": 0,
+            "to": 1,
+            "bars": 1,
+            "route": "slam",
+            "stutter": {}
         },
         {
-          "root": "Gb",
-          "quality": "maj9",
-          "beats": 4.0
-        },
-        {
-          "root": "Eb",
-          "quality": "q4",
-          "beats": 4.0
-        },
-        {
-          "root": "F",
-          "quality": "sus4",
-          "beats": 2.0
-        },
-        {
-          "root": "F",
-          "quality": "d7b9",
-          "beats": 2.0
+            "from": 1,
+            "to": 0,
+            "bars": 2,
+            "route": "hexatonic",
+            "stutter": {}
         }
-      ],
-      "stutter": {
-        "60": "r32",
-        "61": "r64",
-        "62": "r64",
-        "63": "gate"
-      }
-    }
-  ],
-  "bridges": [
-    {
-      "from": 0,
-      "to": 1,
-      "bars": 1,
-      "route": "slam",
-      "stutter": {}
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Push",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Bass": {
+            "style": "Rolling",
+            "density": 0.8,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
+        },
+        "Melody": {
+            "style": "Off",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
+        },
+        "Arp": {
+            "style": "Up 16ths",
+            "density": 0.35,
+            "register": 0,
+            "rate": 0.5,
+            "seedR": 4,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
+        }
     },
-    {
-      "from": 1,
-      "to": 0,
-      "bars": 2,
-      "route": "hexatonic",
-      "stutter": {}
-    }
-  ],
-  "parts": {
-    "Chords": {
-      "style": "Push",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Bass": {
-      "style": "Rolling",
-      "density": 0.8,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 2,
-      "seedP": 2,
-      "mute": false,
-      "solo": false
-    },
-    "Melody": {
-      "style": "Off",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Arp": {
-      "style": "Up 16ths",
-      "density": 0.35,
-      "register": 0,
-      "rate": 0.5,
-      "seedR": 4,
-      "seedP": 3,
-      "mute": false,
-      "solo": false
-    }
-  },
-  "pins": []
+    "pins": []
 }

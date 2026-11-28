@@ -1,205 +1,205 @@
 {
-  "format": 2,
-  "name": "Gated Horizon",
-  "category": "Trance",
-  "bpm": 138.0,
-  "voiceLead": true,
-  "sections": [
-    {
-      "name": "Drive",
-      "key": {
-        "tonic": "D",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
+    "format": 2,
+    "name": "Gated Horizon",
+    "category": "Trance",
+    "bpm": 138.0,
+    "voiceLead": true,
+    "sections": [
         {
-          "root": "D",
-          "quality": "min",
-          "beats": 4.0
+            "name": "Drive",
+            "key": {
+                "tonic": "D",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "D",
+                    "quality": "min",
+                    "beats": 4.0
+                },
+                {
+                    "root": "Bb",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "sus4",
+                    "beats": 2.0
+                },
+                {
+                    "root": "C",
+                    "quality": "maj",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "Bb",
-          "quality": "add9",
-          "beats": 4.0
+            "name": "Breakdown",
+            "key": {
+                "tonic": "F",
+                "mode": "major"
+            },
+            "bars": 8,
+            "chords": [
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Bb",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "F",
+                    "quality": "add9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "C",
+                    "quality": "add9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "Bb",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "G",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "spread"
+                },
+                {
+                    "root": "C",
+                    "quality": "sus4",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "F",
-          "quality": "add9",
-          "beats": 4.0
-        },
-        {
-          "root": "C",
-          "quality": "sus4",
-          "beats": 2.0
-        },
-        {
-          "root": "C",
-          "quality": "maj",
-          "beats": 2.0
+            "name": "Climax",
+            "key": {
+                "tonic": "E",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "E",
+                    "quality": "min",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "G",
+                    "quality": "add9",
+                    "beats": 4.0
+                },
+                {
+                    "root": "D",
+                    "quality": "add9",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {
+                "60": "r32",
+                "61": "r32",
+                "62": "r64",
+                "63": "gate"
+            }
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Breakdown",
-      "key": {
-        "tonic": "F",
-        "mode": "major"
-      },
-      "bars": 8,
-      "chords": [
+    ],
+    "bridges": [
         {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "pivot",
+            "stutter": {}
         },
         {
-          "root": "Bb",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "spread"
+            "from": 1,
+            "to": 2,
+            "bars": 2,
+            "route": "neapolitan",
+            "stutter": {}
         },
         {
-          "root": "F",
-          "quality": "add9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "C",
-          "quality": "add9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "Bb",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "G",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "spread"
-        },
-        {
-          "root": "C",
-          "quality": "sus4",
-          "beats": 4.0
+            "from": 2,
+            "to": 0,
+            "bars": 2,
+            "route": "pedal",
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Climax",
-      "key": {
-        "tonic": "E",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
-        {
-          "root": "E",
-          "quality": "min",
-          "beats": 4.0
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Pulse",
+            "density": 0.75,
+            "register": 0,
+            "rate": 2.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "C",
-          "quality": "add9",
-          "beats": 4.0
+        "Bass": {
+            "style": "Offbeat",
+            "density": 0.8,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "G",
-          "quality": "add9",
-          "beats": 4.0
+        "Melody": {
+            "style": "Hook",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 7,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "D",
-          "quality": "add9",
-          "beats": 4.0
+        "Arp": {
+            "style": "Up 16ths",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
         }
-      ],
-      "stutter": {
-        "60": "r32",
-        "61": "r32",
-        "62": "r64",
-        "63": "gate"
-      }
-    }
-  ],
-  "bridges": [
-    {
-      "from": 0,
-      "to": 1,
-      "bars": 2,
-      "route": "pivot",
-      "stutter": {}
     },
-    {
-      "from": 1,
-      "to": 2,
-      "bars": 2,
-      "route": "neapolitan",
-      "stutter": {}
-    },
-    {
-      "from": 2,
-      "to": 0,
-      "bars": 2,
-      "route": "pedal",
-      "stutter": {}
-    }
-  ],
-  "parts": {
-    "Chords": {
-      "style": "Pulse",
-      "density": 0.75,
-      "register": 0,
-      "rate": 2.0,
-      "seedR": 1,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Bass": {
-      "style": "Offbeat",
-      "density": 0.8,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Melody": {
-      "style": "Hook",
-      "density": 0.6,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 7,
-      "seedP": 3,
-      "mute": false,
-      "solo": false
-    },
-    "Arp": {
-      "style": "Up 16ths",
-      "density": 0.6,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 2,
-      "seedP": 2,
-      "mute": false,
-      "solo": false
-    }
-  },
-  "pins": []
+    "pins": []
 }

@@ -427,3 +427,34 @@ TEST_CASE("Preparing again mid-play ends the notes the instrument still holds", 
     for (const auto& [note, n] : after)
         CHECK(n == 0);
 }
+
+TEST_CASE("A direct launch in the last bar lands on the upcoming phrase line", "[engine]") {
+    Rig rig; // Land: Phrase (4 bars)
+    while (rig.ppq < 13.0)
+        rig.block();
+    rig.engine.command({CommandKind::launchDirect, 1, 0});
+    rig.runBeats(4.0);
+    CHECK(rig.itemAt(16.5) == ItemRef::section(1));
+}
+
+TEST_CASE("Followers preview with the leader while the host is stopped", "[engine]") {
+    Rig leader, follower;
+    follower.params.outputRole = static_cast<int>(Role::bass);
+    leader.engine.command({CommandKind::previewPlay, 0, 0});
+    for (int i = 0; i < 200; ++i) {
+        leader.block(false);
+        follower.engine.follow(leader.engine.performance());
+        follower.block(false);
+    }
+    CHECK(follower.engine.telemetry().previewPlaying);
+    int ons = 0;
+    for (const auto& e : follower.events)
+        ons += e.status == 0x90 && e.channel == 0 ? 1 : 0;
+    CHECK(ons > 0);
+    leader.engine.command({CommandKind::previewStop, 0, 0});
+    leader.block(false);
+    follower.engine.follow(leader.engine.performance());
+    follower.block(false);
+    CHECK_FALSE(follower.engine.telemetry().previewPlaying);
+    CHECK(follower.balanced());
+}

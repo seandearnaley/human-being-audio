@@ -1,187 +1,187 @@
 {
-  "format": 2,
-  "name": "Lavender Detour",
-  "category": "Neo-soul",
-  "bpm": 90.0,
-  "voiceLead": true,
-  "sections": [
-    {
-      "name": "Verse",
-      "key": {
-        "tonic": "A",
-        "mode": "minor"
-      },
-      "bars": 4,
-      "chords": [
+    "format": 2,
+    "name": "Lavender Detour",
+    "category": "Neo-soul",
+    "bpm": 90.0,
+    "voiceLead": true,
+    "sections": [
         {
-          "root": "A",
-          "quality": "m11",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "name": "Verse",
+            "key": {
+                "tonic": "A",
+                "mode": "minor"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "A",
+                    "quality": "m11",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "G",
+                    "quality": "d13",
+                    "beats": 4.0
+                },
+                {
+                    "root": "C",
+                    "quality": "maj9",
+                    "beats": 2.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "E",
+                    "quality": "d7b9",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "name": "Chorus",
+            "key": {
+                "tonic": "F",
+                "mode": "major"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "Bb",
+                    "quality": "maj9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "A",
+                    "quality": "m7",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "D",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "G",
+                    "quality": "m9",
+                    "beats": 2.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "C",
+                    "quality": "d13",
+                    "beats": 2.0
+                }
+            ],
+            "stutter": {}
         },
         {
-          "root": "G",
-          "quality": "d13",
-          "beats": 4.0
-        },
-        {
-          "root": "C",
-          "quality": "maj9",
-          "beats": 2.0,
-          "voicing": "drop2"
-        },
-        {
-          "root": "E",
-          "quality": "d7b9",
-          "beats": 2.0
+            "name": "Bridge",
+            "key": {
+                "tonic": "Db",
+                "mode": "major"
+            },
+            "bars": 4,
+            "chords": [
+                {
+                    "root": "Gb",
+                    "quality": "maj9s11",
+                    "beats": 4.0
+                },
+                {
+                    "root": "F",
+                    "quality": "m7",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "Eb",
+                    "quality": "m9",
+                    "beats": 4.0,
+                    "voicing": "drop2"
+                },
+                {
+                    "root": "Ab",
+                    "quality": "d13",
+                    "beats": 4.0
+                }
+            ],
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Chorus",
-      "key": {
-        "tonic": "F",
-        "mode": "major"
-      },
-      "bars": 4,
-      "chords": [
+    ],
+    "bridges": [
         {
-          "root": "Bb",
-          "quality": "maj9",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "from": 0,
+            "to": 1,
+            "bars": 2,
+            "route": "pivot",
+            "stutter": {}
         },
         {
-          "root": "A",
-          "quality": "m7",
-          "beats": 4.0,
-          "voicing": "drop2"
+            "from": 1,
+            "to": 2,
+            "bars": 2,
+            "route": "dim7",
+            "stutter": {}
         },
         {
-          "root": "D",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
-        },
-        {
-          "root": "G",
-          "quality": "m9",
-          "beats": 2.0,
-          "voicing": "drop2"
-        },
-        {
-          "root": "C",
-          "quality": "d13",
-          "beats": 2.0
+            "from": 2,
+            "to": 0,
+            "bars": 2,
+            "route": "hexatonic",
+            "stutter": {}
         }
-      ],
-      "stutter": {}
-    },
-    {
-      "name": "Bridge",
-      "key": {
-        "tonic": "Db",
-        "mode": "major"
-      },
-      "bars": 4,
-      "chords": [
-        {
-          "root": "Gb",
-          "quality": "maj9s11",
-          "beats": 4.0
+    ],
+    "parts": {
+        "Chords": {
+            "style": "Hold",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 1,
+            "seedP": 2,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "F",
-          "quality": "m7",
-          "beats": 4.0,
-          "voicing": "drop2"
+        "Bass": {
+            "style": "Anchor",
+            "density": 0.6,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 3,
+            "seedP": 1,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "Eb",
-          "quality": "m9",
-          "beats": 4.0,
-          "voicing": "drop2"
+        "Melody": {
+            "style": "Motif",
+            "density": 0.5,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 5,
+            "seedP": 3,
+            "mute": false,
+            "solo": false
         },
-        {
-          "root": "Ab",
-          "quality": "d13",
-          "beats": 4.0
+        "Arp": {
+            "style": "Pluck 8ths",
+            "density": 0.45,
+            "register": 0,
+            "rate": 1.0,
+            "seedR": 2,
+            "seedP": 4,
+            "mute": false,
+            "solo": false
         }
-      ],
-      "stutter": {}
-    }
-  ],
-  "bridges": [
-    {
-      "from": 0,
-      "to": 1,
-      "bars": 2,
-      "route": "pivot",
-      "stutter": {}
     },
-    {
-      "from": 1,
-      "to": 2,
-      "bars": 2,
-      "route": "dim7",
-      "stutter": {}
-    },
-    {
-      "from": 2,
-      "to": 0,
-      "bars": 2,
-      "route": "hexatonic",
-      "stutter": {}
-    }
-  ],
-  "parts": {
-    "Chords": {
-      "style": "Hold",
-      "density": 0.6,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 1,
-      "seedP": 2,
-      "mute": false,
-      "solo": false
-    },
-    "Bass": {
-      "style": "Anchor",
-      "density": 0.6,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 3,
-      "seedP": 1,
-      "mute": false,
-      "solo": false
-    },
-    "Melody": {
-      "style": "Motif",
-      "density": 0.5,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 5,
-      "seedP": 3,
-      "mute": false,
-      "solo": false
-    },
-    "Arp": {
-      "style": "Pluck 8ths",
-      "density": 0.45,
-      "register": 0,
-      "rate": 1.0,
-      "seedR": 2,
-      "seedP": 4,
-      "mute": false,
-      "solo": false
-    }
-  },
-  "pins": []
+    "pins": []
 }

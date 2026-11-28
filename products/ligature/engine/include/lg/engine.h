@@ -85,6 +85,9 @@ struct Performance {
     double planStart = 0.0; // beat the bridge (or the direct launch) starts
     int planFit = 0;
     bool started = false;
+    // The leader's preview clock, refreshed every block without counting as a change: followers preview with it.
+    bool previewing = false;
+    double previewBeat = 0.0;
     std::uint64_t generation = 0;
 };
 

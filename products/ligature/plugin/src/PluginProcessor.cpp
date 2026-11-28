@@ -159,6 +159,16 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     handleInput(midi, numSamples, true, leading);
     midi.clear();
+    // Back from bypass: notes that passed through to the instrument while bypassed are still on there, and their
+    // note-offs will now be consumed here, so end them now.
+    for (std::size_t ch = 0; ch < passedThrough_.size(); ++ch) {
+        if (passedThrough_[ch].none())
+            continue;
+        for (int note = 0; note < 128; ++note)
+            if (passedThrough_[ch].test(static_cast<std::size_t>(note)))
+                midi.addEvent(juce::MidiMessage::noteOff(static_cast<int>(ch) + 1, note), 0);
+        passedThrough_[ch].reset();
+    }
 
     EngineParams ep;
     ep.landBars = landBars(params.choice(ParamId::land));
